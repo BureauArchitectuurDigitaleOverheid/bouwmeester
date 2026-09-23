@@ -132,6 +132,48 @@ async def _can_manage_link(
 # ---------------------------------------------------------------------------
 
 
+async def _met_teamnaam(db, links: list) -> list[MattermostChannelLinkResponse]:
+    """Vul de teamnaam aan, zodat twee gelijknamige kanalen te scheiden zijn.
+
+    Twee dingen worden hier opgehaald in plaats van opgeslagen.
+
+    De naam, omdat een opgeslagen naam veroudert zodra iemand het team in
+    Mattermost hernoemt; Bouwmeester zou dan maandenlang iets tonen dat er
+    correct uitziet en het niet is.
+
+    En het team-id, omdat koppelingen van vóór deze wijziging het niet
+    dragen: `team_id` staat daar op NULL, dus er valt niets op te zoeken.
+    Een migratie die dat eenmalig vult lost het op voor wat er nu is en
+    niet voor wat er tussendoor bijkomt. Bij het tonen ophalen herstelt
+    zichzelf.
+
+    Faalt zacht: zonder Mattermost is de lijst hetzelfde als voorheen.
+    """
+    antwoorden = [MattermostChannelLinkResponse.model_validate(x) for x in links]
+    if not antwoorden:
+        return antwoorden
+
+    from bouwmeester.services.mattermost_service import MattermostService
+
+    service = MattermostService(db)
+    if not await service.is_enabled():
+        return antwoorden
+
+    namen = await service.team_namen()
+    if not namen:
+        return antwoorden
+
+    ontbreekt = any(a.team_id is None for a in antwoorden)
+    per_kanaal = await service.team_id_per_kanaal() if ontbreekt else {}
+
+    for a in antwoorden:
+        team_id = a.team_id or per_kanaal.get(a.channel_id)
+        if team_id:
+            a.team_id = team_id
+            a.team_name = namen.get(team_id)
+    return antwoorden
+
+
 @router.get(
     "/initiatieven/{initiatief_id}/mattermost-channels",
     response_model=list[MattermostChannelLinkResponse],
@@ -145,7 +187,7 @@ async def list_initiatief_channels(
     await _resolve_initiatief(db, initiatief_id, init_ctx)
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
-    return [MattermostChannelLinkResponse.model_validate(link) for link in links]
+    return await _met_teamnaam(db, links)
 
 
 @router.post(
@@ -222,7 +264,7 @@ async def list_lead_channels(
     await _resolve_lead(db, lead_id, init_ctx)
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_LEAD, lead_id)
-    return [MattermostChannelLinkResponse.model_validate(link) for link in links]
+    return await _met_teamnaam(db, links)
 
 
 @router.post(

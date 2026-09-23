@@ -6,6 +6,7 @@ export interface MattermostChannelLink {
   channel_name: string;
   channel_display_name: string;
   team_id: string | null;
+  team_name?: string | null;
   scope_type: 'initiatief' | 'lead';
   scope_id: string;
   auto_note_enabled: boolean;
@@ -25,6 +26,7 @@ export interface MattermostChannelSearchResult {
   channel_name: string;
   channel_display_name: string;
   team_id: string | null;
+  team_name?: string | null;
   member_count: number | null;
   is_bot_member: boolean;
 }
@@ -34,6 +36,7 @@ export interface MattermostChannelLinkCreate {
   channel_name: string;
   channel_display_name: string;
   team_id?: string | null;
+  team_name?: string | null;
   auto_note_enabled?: boolean;
   suggest_leads_enabled?: boolean;
   parlementaire_alerts_enabled?: boolean;
