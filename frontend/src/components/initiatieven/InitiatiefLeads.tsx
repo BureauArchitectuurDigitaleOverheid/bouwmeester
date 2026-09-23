@@ -224,7 +224,7 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
               first). Icon-only, because the page's tab bar sits right above
               it: two text strips stacked read as two levels of navigation,
               while this one is a tool inside the Leads tab. */}
-          <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} variant="icon" />
+          <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
           <Button icon="plus" onClick={() => setShowIntake(true)}>

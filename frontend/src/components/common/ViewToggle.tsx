@@ -22,9 +22,11 @@ interface ViewToggleProps<T extends string> {
   /** Names the group itself; the items only name the options inside it. */
   accessibleLabel?: string;
   /**
-   * 'icon' shows only the icons, with the label as tooltip and accessible
-   * name. Use it where the toggle sits under a text tab bar, so the two do
-   * not read as the same kind of control. Needs string icon names.
+   * 'icon' (the default) shows only the icons, with the label as tooltip and
+   * accessible name. A view switch is a tool next to filters and actions,
+   * and as a text strip it read as a second level of navigation, and took
+   * the width of two filters. 'text' is there for a choice whose options
+   * have no recognisable icon.
    */
   variant?: 'text' | 'icon';
 }
@@ -47,7 +49,7 @@ export function ViewToggle<T extends string>({
   onChange,
   options,
   accessibleLabel = 'Weergave',
-  variant = 'text',
+  variant = 'icon',
 }: ViewToggleProps<T>) {
   const ref = useRef<HTMLElement>(null);
 

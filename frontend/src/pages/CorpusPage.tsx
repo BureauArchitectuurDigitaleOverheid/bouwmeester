@@ -11,7 +11,6 @@ import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
-import { Icon } from '@/components/nldd/Icon';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
@@ -22,9 +21,9 @@ import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 type ViewMode = 'list' | 'graph' | 'matrix';
 
 const VIEW_OPTIONS: ViewToggleOption<ViewMode>[] = [
-  { value: 'list', label: 'Lijst', icon: <Icon name="square-grid-2x2" size="sm" /> },
-  { value: 'graph', label: 'Netwerk', icon: <Icon name="git-fork" size="sm" /> },
-  { value: 'matrix', label: 'Matrix', icon: <Icon name="square-grid-3x3" size="sm" /> },
+  { value: 'list', label: 'Lijst', icon: 'square-grid-2x2' },
+  { value: 'graph', label: 'Netwerk', icon: 'git-fork' },
+  { value: 'matrix', label: 'Matrix', icon: 'square-grid-3x3' },
 ];
 
 const ALL_NODE_TYPES = Object.values(NodeType);
@@ -176,10 +175,58 @@ export function CorpusPage() {
     <nldd-container gap="24">
       {/* Page header */}
       <nldd-toolbar label="Corpusacties">
-        <nldd-toolbar-item slot="start" priority={1}>
-          <nldd-text size="sm" color="secondary">
-            Bekijk en beheer alle beleidsdocumenten, dossiers en instrumenten.
-          </nldd-text>
+        <nldd-toolbar-item slot="start" priority={1} min-width="60%">
+          {/* Filters share the toolbar row with the actions, and wrap only
+              when the room runs out. `min-width` makes the item fluid; a
+              percentage lets it give way to the end items instead of pushing
+              them into the overflow menu. Each field has a fixed width,
+              because a fit-content container measures its children and they
+              measure it back. */}
+          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+            <nldd-container width="224px">
+              <CorpusSearchField value={searchInput} onChange={setSearchInput} />
+            </nldd-container>
+            {viewMode !== 'matrix' && (
+              <nldd-container width="208px">
+                <MultiSelect
+                  value={enabledNodeTypes as Set<string>}
+                  onChange={handleNodeTypesChange}
+                  options={nodeTypeFilterOptions}
+                  allLabel="Alle types"
+                />
+              </nldd-container>
+            )}
+            {(viewMode === 'graph' || viewMode === 'matrix') && edgeTypeFilterOptions.length > 0 && (
+              <nldd-container width="208px">
+                <MultiSelect
+                  value={enabledEdgeTypes}
+                  onChange={handleEdgeTypesChange}
+                  options={edgeTypeFilterOptions}
+                  allLabel="Alle relaties"
+                />
+              </nldd-container>
+            )}
+            {viewMode === 'matrix' && (
+              <>
+                <nldd-container width="176px">
+                  <Select
+                    value={matrixRowType}
+                    onChange={(e) => setMatrixRowType(e.target.value as NodeType)}
+                    options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (rij)` }))}
+                    aria-label="Rij-type"
+                  />
+                </nldd-container>
+                <nldd-container width="176px">
+                  <Select
+                    value={matrixColType}
+                    onChange={(e) => setMatrixColType(e.target.value as NodeType)}
+                    options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (kolom)` }))}
+                    aria-label="Kolom-type"
+                  />
+                </nldd-container>
+              </>
+            )}
+          </nldd-container>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={3}>
           {/* A tab-like view switcher, not a single action: per the toolbar
@@ -206,53 +253,6 @@ export function CorpusPage() {
           <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>
-
-      {/* Shared filter bar */}
-      <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-        <nldd-container width="fit-content" min-width="224px">
-          <CorpusSearchField value={searchInput} onChange={setSearchInput} />
-        </nldd-container>
-        {viewMode !== 'matrix' && (
-          <nldd-container width="fit-content" min-width="208px">
-            <MultiSelect
-              value={enabledNodeTypes as Set<string>}
-              onChange={handleNodeTypesChange}
-              options={nodeTypeFilterOptions}
-              allLabel="Alle types"
-            />
-          </nldd-container>
-        )}
-        {(viewMode === 'graph' || viewMode === 'matrix') && edgeTypeFilterOptions.length > 0 && (
-          <nldd-container width="fit-content" min-width="208px">
-            <MultiSelect
-              value={enabledEdgeTypes}
-              onChange={handleEdgeTypesChange}
-              options={edgeTypeFilterOptions}
-              allLabel="Alle relaties"
-            />
-          </nldd-container>
-        )}
-        {viewMode === 'matrix' && (
-          <>
-            <nldd-container width="fit-content" min-width="176px">
-              <Select
-                value={matrixRowType}
-                onChange={(e) => setMatrixRowType(e.target.value as NodeType)}
-                options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (rij)` }))}
-                aria-label="Rij-type"
-              />
-            </nldd-container>
-            <nldd-container width="fit-content" min-width="176px">
-              <Select
-                value={matrixColType}
-                onChange={(e) => setMatrixColType(e.target.value as NodeType)}
-                options={ALL_NODE_TYPES.map((t) => ({ value: t, label: `${nodeLabel(t)} (kolom)` }))}
-                aria-label="Kolom-type"
-              />
-            </nldd-container>
-          </>
-        )}
-      </nldd-container>
 
       {/* View content */}
       {viewMode === 'list' ? (
