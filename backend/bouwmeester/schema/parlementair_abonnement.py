@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from bouwmeester.models.parlementair_signaalcontext import MAX_TEKST
+from bouwmeester.models.signaalcontext import MAX_TEKST
 
 
 class AbonnementCreate(BaseModel):

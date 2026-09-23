@@ -5,22 +5,22 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.models.parlementair_signaalcontext import (
+from bouwmeester.models.signaalcontext import (
     MAX_TEKST,
-    ParlementairSignaalcontext,
+    Signaalcontext,
 )
 
 
-class ParlementairSignaalcontextRepository:
+class SignaalcontextRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def get(
         self, scope_type: str, scope_id: uuid.UUID
-    ) -> ParlementairSignaalcontext | None:
-        stmt = select(ParlementairSignaalcontext).where(
-            ParlementairSignaalcontext.scope_type == scope_type,
-            ParlementairSignaalcontext.scope_id == scope_id,
+    ) -> Signaalcontext | None:
+        stmt = select(Signaalcontext).where(
+            Signaalcontext.scope_type == scope_type,
+            Signaalcontext.scope_id == scope_id,
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
@@ -31,7 +31,7 @@ class ParlementairSignaalcontextRepository:
 
     async def zet(
         self, scope_type: str, scope_id: uuid.UUID, tekst: str
-    ) -> ParlementairSignaalcontext | None:
+    ) -> Signaalcontext | None:
         """Schrijf de tekst, of verwijder hem als hij leeg is.
 
         Leeg opslaan zou een rij achterlaten die niets zegt maar wel in
@@ -47,7 +47,7 @@ class ParlementairSignaalcontextRepository:
             return None
 
         if bestaand is None:
-            bestaand = ParlementairSignaalcontext(
+            bestaand = Signaalcontext(
                 scope_type=scope_type, scope_id=scope_id, tekst=tekst
             )
             self.session.add(bestaand)

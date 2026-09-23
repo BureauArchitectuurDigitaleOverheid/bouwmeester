@@ -29,8 +29,8 @@ from bouwmeester.models.parlementair_abonnement import (
 from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
-from bouwmeester.repositories.parlementair_signaalcontext import (
-    ParlementairSignaalcontextRepository,
+from bouwmeester.repositories.signaalcontext import (
+    SignaalcontextRepository,
 )
 from bouwmeester.schema.parlementair_abonnement import (
     AbonnementCreate,
@@ -293,7 +293,7 @@ async def suggereer_zoektermen(
             ),
         )
 
-    signaalcontext = await ParlementairSignaalcontextRepository(db).tekst_voor(
+    signaalcontext = await SignaalcontextRepository(db).tekst_voor(
         SCOPE_INITIATIEF, initiatief.id
     )
 
@@ -398,7 +398,7 @@ async def get_signaalcontext(
     """De interne context die de prompts gebruiken."""
     await _require_initiatief_toegang(db, ctx, initiatief_id)
 
-    tekst = await ParlementairSignaalcontextRepository(db).tekst_voor(
+    tekst = await SignaalcontextRepository(db).tekst_voor(
         SCOPE_INITIATIEF, initiatief_id
     )
     return SignaalcontextResponse(tekst=tekst or "")
@@ -424,7 +424,7 @@ async def zet_signaalcontext(
     """
     await _require_initiatief_toegang(db, ctx, initiatief_id)
 
-    rij = await ParlementairSignaalcontextRepository(db).zet(
+    rij = await SignaalcontextRepository(db).zet(
         SCOPE_INITIATIEF, initiatief_id, payload.tekst
     )
     await log_activity(

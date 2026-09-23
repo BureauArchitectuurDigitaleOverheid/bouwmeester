@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DetailSection } from '@/components/common/DetailSection';
+import { Icon } from '@/components/nldd/Icon';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   createAbonnement,
   deleteAbonnement,
   getAbonnementen,
   getGekoppeldeKanalen,
-  getSignaalcontext,
   suggereerZoektermen,
   suggestieFoutmelding,
   updateAbonnement,
-  zetSignaalcontext,
   type GekoppeldKanaal,
   type ParlementairAbonnement,
   type Zoektermsuggestie,
@@ -187,20 +185,33 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   );
 
   return (
-    <DetailSection
-      title="Parlementaire signalen"
-      count={abonnementen.length}
-      separated
-    >
-      <nldd-container gap="12">
-        <nldd-text size="xs" color="secondary">
-          Nieuwe kamerstukken waarin een van deze termen voorkomt. Er wordt in de
-          volledige tekst gezocht, dus ook in bijlagen en beslisnota&apos;s.
-        </nldd-text>
-
-        <Bezorging kanalen={kanalen} />
-
-        <SignaalcontextVeld initiatiefId={initiatiefId} />
+    <nldd-card>
+      <nldd-container gap="12" padding="16">
+        {/* Kop op dezelfde schaal als de andere kaarten op deze pagina.
+            De knoppen staan hier en niet onder het veld: dit is waar je
+            voor komt, en de uitleg hoort eronder, niet ertussen. */}
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-container width="fit-content" className="row-fill">
+            <nldd-container layout="row" gap="6" vertical-alignment="center">
+              <Icon name="search" size="sm" />
+              <nldd-text size="xs" weight="bold" color="secondary">
+                {abonnementen.length > 0
+                  ? `Zoektermen (${abonnementen.length})`
+                  : 'Zoektermen'}
+              </nldd-text>
+            </nldd-container>
+          </nldd-container>
+          {abonnementen.length > 0 && (
+            <nldd-button
+              variant="neutral-transparent"
+              size="sm"
+              text="Suggesties"
+              start-icon="ai"
+              loading={orUndef(suggestiesBezig)}
+              onClick={haalSuggesties}
+            />
+          )}
+        </nldd-container>
 
         {fout && <nldd-banner variant="critical" size="sm" text={fout} />}
 
@@ -214,16 +225,6 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
             loading={orUndef(bezig)}
             onClick={toevoegen}
           />
-          {abonnementen.length > 0 && (
-            <nldd-button
-              variant="neutral-transparent"
-              size="sm"
-              text="Suggesties"
-              start-icon="ai"
-              loading={orUndef(suggestiesBezig)}
-              onClick={haalSuggesties}
-            />
-          )}
         </nldd-container>
 
         {suggesties !== null && (
@@ -273,12 +274,17 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
           </nldd-table>
         )}
 
+        {/* Onder de tabel, want het legt uit wat je daar ziet. Eén alinea:
+            vijf losse regels uitleg boven het invoerveld leest niemand. */}
         <nldd-text size="xs" color="secondary">
-          Een term die niets oplevert is niet per se fout. Een term die vaak wordt
-          weggeklikt is waarschijnlijk te breed.
+          Er wordt in de volledige tekst van nieuwe kamerstukken gezocht, ook in
+          bijlagen en beslisnota&apos;s. Een term die niets oplevert is niet per
+          se fout; een term die vaak wordt weggeklikt is waarschijnlijk te breed.
         </nldd-text>
+
+        <Bezorging kanalen={kanalen} />
       </nldd-container>
-    </DetailSection>
+    </nldd-card>
   );
 }
 
@@ -315,163 +321,6 @@ function Bezorging({ kanalen }: { kanalen: GekoppeldKanaal[] | null }) {
     <nldd-text size="xs" color="secondary">
       Berichten gaan naar {kanalen.length === 1 ? 'kanaal' : 'de kanalen'} {namen}.
     </nldd-text>
-  );
-}
-
-/**
- * De interne context die de prompts gebruiken om ruis te scheiden.
- *
- * Staat los van de beschrijving van het initiatief, en dat is de hele
- * reden dat dit veld bestaat: die beschrijving is publiek en vertelt een
- * mens wat het initiatief doet. Wat hier staat is afstelling van een
- * zoekmachine ("'fundament' is hier een projectnaam, niet de metafoor"),
- * en dat hoort niet op een publieke pagina.
- *
- * Standaard ingeklapt: de meeste mensen komen hier om een term toe te
- * voegen, niet om een prompt bij te stellen.
- */
-function SignaalcontextVeld({ initiatiefId }: { initiatiefId: string }) {
-  const [open, setOpen] = useState(false);
-  const [tekst, setTekst] = useState('');
-  const [origineel, setOrigineel] = useState('');
-  const [bezig, setBezig] = useState(false);
-  const [fout, setFout] = useState<string | null>(null);
-  const [bewaard, setBewaard] = useState(false);
-
-  useEffect(() => {
-    let actueel = true;
-    getSignaalcontext(initiatiefId)
-      .then((c) => {
-        if (!actueel) return;
-        setTekst(c.tekst);
-        setOrigineel(c.tekst);
-      })
-      .catch(() => {
-        // Stil: zonder context werkt alles, alleen minder scherp.
-      });
-    return () => {
-      actueel = false;
-    };
-  }, [initiatiefId]);
-
-  const opslaan = useCallback(async () => {
-    if (bezig) return;
-    setBezig(true);
-    setFout(null);
-    try {
-      const c = await zetSignaalcontext(initiatiefId, tekst);
-      setTekst(c.tekst);
-      setOrigineel(c.tekst);
-      setBewaard(true);
-    } catch {
-      setFout('Opslaan is niet gelukt.');
-    } finally {
-      setBezig(false);
-    }
-  }, [bezig, initiatiefId, tekst]);
-
-  const gewijzigd = tekst !== origineel;
-
-  if (!open) {
-    return (
-      <nldd-container layout="row" gap="8" vertical-alignment="center">
-        <nldd-button
-          variant="neutral-transparent"
-          size="sm"
-          text={origineel ? 'Context aanpassen' : 'Context toevoegen'}
-          start-icon="edit"
-          onClick={() => setOpen(true)}
-        />
-        <nldd-text size="xs" color="secondary">
-          {origineel
-            ? 'Het model weet waar dit dossier over gaat.'
-            : 'Zonder context beoordeelt het model alleen op de zoekterm.'}
-        </nldd-text>
-      </nldd-container>
-    );
-  }
-
-  return (
-    <nldd-container gap="8">
-      <nldd-text size="xs" color="secondary">
-        Waar dit dossier over gaat, en vooral wat er niet bij hoort. Het model
-        weegt dit zwaarder dan de zoekterm zelf, dus hier scheid je een
-        projectnaam van een woord dat toevallig hetzelfde is. Deze tekst is
-        intern en staat niet op de publieke pagina van het initiatief.
-      </nldd-text>
-
-      {fout && <nldd-banner variant="critical" size="sm" text={fout} />}
-
-      <ContextVeld
-        value={tekst}
-        onChange={(v) => {
-          setTekst(v);
-          setBewaard(false);
-        }}
-      />
-
-      <nldd-container layout="row" gap="8" vertical-alignment="center">
-        <nldd-button
-          variant="secondary"
-          size="sm"
-          text="Opslaan"
-          loading={orUndef(bezig)}
-          disabled={orUndef(!gewijzigd)}
-          onClick={opslaan}
-        />
-        <nldd-button
-          variant="neutral-transparent"
-          size="sm"
-          text="Sluiten"
-          onClick={() => {
-            setTekst(origineel);
-            setOpen(false);
-            setFout(null);
-          }}
-        />
-        {bewaard && !gewijzigd && (
-          <nldd-text size="xs" color="secondary">
-            Opgeslagen. Geldt vanaf het volgende kamerstuk.
-          </nldd-text>
-        )}
-      </nldd-container>
-    </nldd-container>
-  );
-}
-
-/**
- * Het tekstveld zelf, met de waarde via een ref.
- *
- * Een web component neemt geen React-prop aan en vuurt een eigen event,
- * dus `value` en `input` lopen via `useNlddValue`/`useNlddEvent`, net als
- * bij `TermField`.
- */
-function ContextVeld({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddValue(ref, value);
-  useNlddEvent(
-    ref,
-    'input',
-    useCallback((e: Event) => onChange(eventValue(e)), [onChange]),
-  );
-  return (
-    <nldd-multi-line-text-field
-      ref={ref}
-      rows={8}
-      maxlength={4000}
-      accessible-label="Context voor het taalmodel"
-      placeholder={
-        'Bijvoorbeeld: "Fundament" is hier de naam van een project ' +
-        '(Soevereine Overheidscloud). Niet relevant: "fundament" in ' +
-        'figuurlijke zin, zoals "het fundament onder de begroting".'
-      }
-    />
   );
 }
 

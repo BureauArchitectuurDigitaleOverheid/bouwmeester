@@ -1,10 +1,14 @@
-"""Add parlementair_signaalcontext
+"""Add signaalcontext
 
 De beschrijving van een initiatief is publiek (`/public/initiatief` geeft
 hem uit) en werd tegelijk als context aan de suggestie-prompt gevoerd. Dat
 zijn twee publieken met tegengestelde eisen: een mens wil lezen wat het
 initiatief doet, een taalmodel moet weten welk woord hier een metafoor is.
 Dit is het tweede veld, en het is niet publiek.
+
+Zonder `parlementair_` in de naam: wat hier staat gaat over het onderwerp
+en niet over de Tweede Kamer, dus een tweede bron (iBestuur bijvoorbeeld)
+deelt dezelfde tekst.
 
 Revision ID: a7f2d18c94e3
 Revises: e1a4c9f73b26
@@ -24,7 +28,7 @@ depends_on: str | None = None
 
 def upgrade() -> None:
     op.create_table(
-        "parlementair_signaalcontext",
+        "signaalcontext",
         sa.Column(
             "id",
             postgresql.UUID(as_uuid=True),
@@ -61,4 +65,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("parlementair_signaalcontext")
+    op.drop_table("signaalcontext")

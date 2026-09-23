@@ -18,6 +18,14 @@ oordeel, en een oordeel heeft context nodig.
 Per scope en niet per term: de termen zijn de vangst, de context is het
 oordeel daaroverheen. Per term zou dezelfde tekst vijf keer onderhouden
 moeten worden, en dan lopen de vijf kopieën uit elkaar.
+
+En niet per bron, om dezelfde reden. Wat hier staat zijn uitspraken over
+het ónderwerp ("fundament is hier een projectnaam"), niet over de Tweede
+Kamer. Een artikel op iBestuur waarin "het fundament onder de begroting"
+staat is precies even irrelevant. Wat wél per bron verschilt is het soort
+stuk, en dat zit al in `_CATEGORIE_CONTEXT` in de prompts. Vandaar de
+naam zonder `parlementair_`: de tabel is nog leeg, en hernoemen met data
+erin is duurder.
 """
 
 import uuid
@@ -35,10 +43,10 @@ from bouwmeester.core.database import Base
 MAX_TEKST = 4000
 
 
-class ParlementairSignaalcontext(Base):
+class Signaalcontext(Base):
     """Eén vrije tekst per scope, alleen voor de prompts."""
 
-    __tablename__ = "parlementair_signaalcontext"
+    __tablename__ = "signaalcontext"
     __table_args__ = (
         UniqueConstraint("scope_type", "scope_id", name="uq_signaalcontext_scope"),
     )

@@ -29,8 +29,8 @@ from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
 )
-from bouwmeester.repositories.parlementair_signaalcontext import (
-    ParlementairSignaalcontextRepository,
+from bouwmeester.repositories.signaalcontext import (
+    SignaalcontextRepository,
 )
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
@@ -68,7 +68,7 @@ class ParlementairImportService:
         self.edge_repo = SuggestedEdgeRepository(session)
         self.tag_repo = TagRepository(session)
         self.abonnement_repo = ParlementairAbonnementRepository(session)
-        self.signaalcontext_repo = ParlementairSignaalcontextRepository(session)
+        self.signaalcontext_repo = SignaalcontextRepository(session)
         self.notification_service = NotificationService(session)
         # Items die na een geslaagde commit nog een Mattermost-bericht
         # moeten krijgen. Zie `_process_item` stap 8b.
