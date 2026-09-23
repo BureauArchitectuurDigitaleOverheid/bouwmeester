@@ -45,19 +45,7 @@ function visibleTabs(initiatief: InitiatiefDetail): InitiatiefTab[] {
  */
 export function InitiatiefPage() {
   const { id, tab } = useParams<{ id: string; tab?: string }>();
-  const navigate = useNavigate();
   const { data: initiatief, isLoading, isError } = useInitiatief(id);
-
-  const tabBarRef = useRef<HTMLElement>(null);
-  const handleTabChange = useCallback(
-    (event: Event) => {
-      const item = (event as CustomEvent<{ item?: HTMLElement }>).detail?.item;
-      const next = item?.dataset.tabId;
-      if (id && isInitiatiefTab(next)) navigate(initiatiefPath(id, next));
-    },
-    [id, navigate],
-  );
-  useNlddEvent(tabBarRef, 'tabchange', handleTabChange);
 
   if (isLoading) {
     return (
@@ -117,16 +105,7 @@ export function InitiatiefPage() {
           )}
         </nldd-container>
 
-        <nldd-tab-bar ref={tabBarRef} variant="text" accessible-label="Onderdelen van het initiatief">
-          {tabs.map((t) => (
-            <nldd-tab-bar-item
-              key={t}
-              text={TAB_LABELS[t]}
-              data-tab-id={t}
-              current={activeTab === t ? true : undefined}
-            />
-          ))}
-        </nldd-tab-bar>
+        <InitiatiefTabBar initiatiefId={id} tabs={tabs} activeTab={activeTab} />
       </nldd-container>
 
       {/* Keyed on the initiatief, so switching between two of them does not
@@ -139,6 +118,47 @@ export function InitiatiefPage() {
         {activeTab === 'instellingen' && <TabBody><InitiatiefInstellingen initiatief={initiatief} /></TabBody>}
       </div>
     </nldd-container>
+  );
+}
+
+/**
+ * The section tabs. Their own component, so the `tabchange` listener binds
+ * when the bar mounts: `useNlddEvent` binds once, and on the page itself it
+ * ran while the loading spinner was still showing, found no bar, and never
+ * bound at all. The tabs then lit up on click and changed nothing.
+ */
+function InitiatiefTabBar({
+  initiatiefId,
+  tabs,
+  activeTab,
+}: {
+  initiatiefId: string;
+  tabs: InitiatiefTab[];
+  activeTab: InitiatiefTab;
+}) {
+  const navigate = useNavigate();
+  const ref = useRef<HTMLElement>(null);
+  const handleTabChange = useCallback(
+    (event: Event) => {
+      const item = (event as CustomEvent<{ item?: HTMLElement }>).detail?.item;
+      const next = item?.dataset.tabId;
+      if (isInitiatiefTab(next)) navigate(initiatiefPath(initiatiefId, next));
+    },
+    [initiatiefId, navigate],
+  );
+  useNlddEvent(ref, 'tabchange', handleTabChange);
+
+  return (
+    <nldd-tab-bar ref={ref} variant="text" accessible-label="Onderdelen van het initiatief">
+      {tabs.map((t) => (
+        <nldd-tab-bar-item
+          key={t}
+          text={TAB_LABELS[t]}
+          data-tab-id={t}
+          current={activeTab === t ? true : undefined}
+        />
+      ))}
+    </nldd-tab-bar>
   );
 }
 
