@@ -68,16 +68,30 @@ MAX_DOCUMENT_TEKENS = 500_000
 # eigen omvang. De pod werd er herhaaldelijk om gekilled: OOMKilled bij een
 # limiet van 961Mi, die het platform al twee keer automatisch had opgehoogd.
 # Inmiddels staat die op 2 GB, wat de uitschieter dempt maar niet weghaalt
-# zolang de bron zelf geen bovengrens kent. En omdat `markeer_ingehaald` pas
-# ná de hele ronde draait, bleef `ingehaald_op` NULL: de volgende ronde
-# haalde precies dezelfde stukken opnieuw op. Negentien uur lang, zonder dat
-# één ronde afrondde.
+# zolang de bron zelf geen bovengrens kent.
+#
+# Dat het bleef terugkomen zit in wáár de kill viel: `fetch_document_text`
+# draait in `fetch_items`, dus tijdens het ophalen en vóór de per-item-lus
+# die per stuk commit. Er kwam dus niets duurzaam vast te liggen, en de
+# volgende ronde begon precies bij hetzelfde stuk. Negentien uur lang,
+# zonder dat één ronde afrondde.
 #
 # 20 MB laat alles door wat we in productie zagen op die ene uitschieter na.
 # Een stuk daarboven is een bijlagenbundel of een scan, en `knip_rond_termen`
 # geeft het model toch maar 9.000 tekens: de rest was altijd al weggegooid
 # werk.
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+
+
+def _in_mb(bytes_: int) -> str:
+    """Bytes als MB met één decimaal.
+
+    Niet `// (1024 * 1024)`: dat floort, en een grens onder een megabyte
+    logt dan als "0 MB". Dat las in een test als "overschrijdt 0 MB", wat
+    precies de verkeerde indruk geeft aan wie de regel leest omdat er iets
+    onverwachts is afgekapt.
+    """
+    return f"{bytes_ / (1024 * 1024):.1f} MB"
 
 
 def _als_getal(waarde: str | None) -> int | None:
@@ -401,10 +415,12 @@ class TkconvClient:
                 aangekondigd = _als_getal(response.headers.get("content-length"))
                 if aangekondigd is not None and aangekondigd > MAX_DOCUMENT_BYTES:
                     logger.warning(
-                        "getraw %s is %d MB en wordt overgeslagen (grens %d MB)",
+                        "getraw %s kondigt %s aan en wordt overgeslagen "
+                        "(grens %s, %d bytes)",
                         nummer,
-                        aangekondigd // (1024 * 1024),
-                        MAX_DOCUMENT_BYTES // (1024 * 1024),
+                        _in_mb(aangekondigd),
+                        _in_mb(MAX_DOCUMENT_BYTES),
+                        aangekondigd,
                     )
                     return None, content_type
 
@@ -414,10 +430,14 @@ class TkconvClient:
                     omvang += len(brok)
                     if omvang > MAX_DOCUMENT_BYTES:
                         logger.warning(
-                            "getraw %s overschrijdt %d MB tijdens het lezen "
-                            "en wordt overgeslagen",
+                            "getraw %s overschrijdt de grens van %s tijdens "
+                            "het lezen en wordt overgeslagen (tot nu toe %s, "
+                            "%d bytes; de bron kondigde %s aan)",
                             nummer,
-                            MAX_DOCUMENT_BYTES // (1024 * 1024),
+                            _in_mb(MAX_DOCUMENT_BYTES),
+                            _in_mb(omvang),
+                            omvang,
+                            "niets" if aangekondigd is None else _in_mb(aangekondigd),
                         )
                         return None, content_type
                     brokken.append(brok)
