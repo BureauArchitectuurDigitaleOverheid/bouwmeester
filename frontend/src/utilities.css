@@ -216,10 +216,11 @@
 /* # Responsive label inside a Button
  *
  * A label that only shows once there is room for it beside an icon: hidden
- * below `sm`, inline from `sm` up. `Button.tsx` also reads this exact class
- * name off a slotted `<span>` to pull the text out as the button's
- * accessible name while it is visually hidden — see
- * `findResponsivelyHiddenLabel`.
+ * below `sm`, inline from `sm` up. Inside a `Button` the class itself does
+ * nothing, because `nldd-button` does not display slotted text: `Button.tsx`
+ * reads this exact class name off a `<span>` child and applies the same
+ * breakpoint itself, as the label from `sm` up and as the accessible name
+ * below it — see `findSpanLabel`.
  */
 .hidden-below-sm {
   display: none;
