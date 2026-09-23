@@ -58,6 +58,65 @@ SEARCH_TIMEOUT = 30.0
 # opslag en geen promptruimte.
 MAX_DOCUMENT_TEKENS = 500_000
 
+# Hoeveel bytes we van één document binnenhalen voordat we de download
+# afbreken. Dit is een geheugengrens, geen inhoudelijke: `getraw` kent geen
+# bovengrens aan wat het teruggeeft, en de container wel.
+#
+# Gemeten bij de bron op de stukken die de import op 23 september
+# langshaalde (`content-length` van `getraw`):
+#
+#     2026D44190    0,04 MB      2026D42894    0,30 MB
+#     2026D36027    0,07 MB      2026D42895    0,32 MB
+#     2026D45065    0,11 MB      2026D42901    1,02 MB
+#     2026D45064    0,22 MB      2026D43577  125,80 MB
+#
+# De op een na grootste is 1 MB; de uitschieter is 123 keer zo groot. Die
+# komt als bytes binnen, gaat als string door de PDF-parser en kost daarmee
+# een veelvoud van zijn eigen omvang. De pod werd er herhaaldelijk om
+# gekilled: OOMKilled bij een limiet van 961Mi, die het platform al twee
+# keer automatisch had opgehoogd. Inmiddels staat die op 2 GB, wat de
+# uitschieter dempt maar niet weghaalt zolang de bron zelf geen bovengrens
+# kent.
+#
+# Dat het bleef terugkomen zit in wáár de kill viel: `fetch_document_text`
+# draait in `fetch_items`, dus tijdens het ophalen en vóór de per-item-lus
+# die per stuk commit. Er kwam dus niets duurzaam vast te liggen, en de
+# volgende ronde begon precies bij hetzelfde stuk. Negentien uur lang,
+# zonder dat één ronde afrondde.
+#
+# 20 MB ligt ruim tussen die twee in: twintig keer het grootste normale
+# stuk, en een zesde van de uitschieter. Een stuk daarboven is een
+# bijlagenbundel of een scan, en `knip_rond_termen` geeft het model toch
+# maar 9.000 tekens: de rest was altijd al weggegooid werk.
+MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
+
+
+def _in_mb(bytes_: int) -> str:
+    """Bytes als MB met één decimaal.
+
+    Niet `// (1024 * 1024)`: dat floort, en een grens onder een megabyte
+    logt dan als "0 MB". Dat las in een test als "overschrijdt 0 MB", wat
+    precies de verkeerde indruk geeft aan wie de regel leest omdat er iets
+    onverwachts is afgekapt.
+    """
+    return f"{bytes_ / (1024 * 1024):.1f} MB"
+
+
+def _als_getal(waarde: str | None) -> int | None:
+    """Lees een header als getal, of geef None als dat niet lukt.
+
+    Headers komen van buiten en hoeven nergens aan te voldoen. Een
+    `content-length` die leeg is, onzin bevat of door een tussenliggende
+    proxy verdubbeld is tot "123, 123" mag geen exceptie opleveren op een
+    plek waar dat de hele import-ronde kost.
+    """
+    if not waarde:
+        return None
+    try:
+        return int(waarde)
+    except ValueError:
+        return None
+
 
 @dataclass
 class TkconvItem:
@@ -336,9 +395,65 @@ class TkconvClient:
         client = self._get_http_client()
         url = f"{self.base_url}/getraw/{nummer}"
 
+        # Streamend, met een grens op wat we binnenlaten. `client.get` leest
+        # de hele response in het geheugen voordat wij er iets over kunnen
+        # zeggen, en bij een document van 128 MB is dat precies de stap die
+        # de container omver duwt. Zo stopt de download zodra de grens in
+        # zicht komt, in plaats van erna.
         try:
-            response = await client.get(url, timeout=httpx.Timeout(DOCUMENT_TIMEOUT))
-            response.raise_for_status()
+            async with client.stream(
+                "GET", url, timeout=httpx.Timeout(DOCUMENT_TIMEOUT)
+            ) as response:
+                response.raise_for_status()
+
+                raw_type = response.headers.get("content-type") or ""
+                content_type = raw_type.split(";")[0].strip()
+
+                # De bron kent zijn eigen omvang meestal al. Die uitlezen
+                # scheelt het binnenhalen van de eerste 20 MB van een stuk
+                # dat we toch weggooien.
+                #
+                # `int()` in een try, want de header komt van buiten: leeg,
+                # onzin, of door een proxy verdubbeld tot "123, 123" laat
+                # hem struikelen. Een ValueError hier zou niet gevangen
+                # worden door de excepts hieronder en dus de hele ronde
+                # omleggen, wat precies het gedrag is dat deze wijziging
+                # wil wegnemen. Bij een onleesbare header vertrouwen we op
+                # de teller verderop.
+                aangekondigd = _als_getal(response.headers.get("content-length"))
+                if aangekondigd is not None and aangekondigd > MAX_DOCUMENT_BYTES:
+                    logger.warning(
+                        "getraw %s kondigt %s aan en wordt overgeslagen "
+                        "(grens %s, %d bytes)",
+                        nummer,
+                        _in_mb(aangekondigd),
+                        _in_mb(MAX_DOCUMENT_BYTES),
+                        aangekondigd,
+                    )
+                    return None, content_type
+
+                brokken: list[bytes] = []
+                omvang = 0
+                async for brok in response.aiter_bytes():
+                    omvang += len(brok)
+                    if omvang > MAX_DOCUMENT_BYTES:
+                        logger.warning(
+                            "getraw %s overschrijdt de grens van %s tijdens "
+                            "het lezen en wordt overgeslagen (tot nu toe %s, "
+                            "%d bytes; de bron kondigde %s aan)",
+                            nummer,
+                            _in_mb(MAX_DOCUMENT_BYTES),
+                            _in_mb(omvang),
+                            omvang,
+                            "niets" if aangekondigd is None else _in_mb(aangekondigd),
+                        )
+                        return None, content_type
+                    brokken.append(brok)
+
+                # Even staan de brokken en het samengevoegde geheel naast
+                # elkaar: kortstondig twee keer de grens, dus 40 MB. Dat is
+                # te overzien; het is de 128 MB die het probleem was.
+                inhoud = b"".join(brokken)
         except httpx.HTTPStatusError as e:
             logger.warning("getraw %s gaf %s", nummer, e.response.status_code)
             return None, None
@@ -346,9 +461,7 @@ class TkconvClient:
             logger.warning("getraw %s onbereikbaar: %s", nummer, e)
             return None, None
 
-        raw_type = response.headers.get("content-type") or ""
-        content_type = raw_type.split(";")[0].strip()
-        text = _extract_text(response.content, content_type, nummer)
+        text = _extract_text(inhoud, content_type, nummer)
         return text, content_type
 
 
