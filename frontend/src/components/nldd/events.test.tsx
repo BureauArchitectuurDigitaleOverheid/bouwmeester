@@ -95,6 +95,64 @@ describe('useNlddEvent', () => {
     // The second call uses the latest closure, not a stale one.
     expect(calls).toEqual(['first', 'second']);
   });
+
+  it('attaches to an element that mounts after the first render', () => {
+    // The regression this covers: the name field on the access request page
+    // only appears after a click, the listener was set up on mount while the
+    // ref was still null, and typing never reached state.
+    const onInput = vi.fn();
+    let el: HTMLElement | null = null;
+
+    function Harness({ show }: { show: boolean }) {
+      const ref = useRef<HTMLDivElement>(null);
+      useNlddEvent(ref, 'input', onInput);
+      return show ? (
+        <div
+          ref={(node) => {
+            ref.current = node;
+            el = node;
+          }}
+        />
+      ) : null;
+    }
+
+    const { rerender } = render(<Harness show={false} />);
+    rerender(<Harness show />);
+    act(() => void el?.dispatchEvent(new CustomEvent('input')));
+
+    expect(onInput).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves the listener to a remounted element', () => {
+    const onInput = vi.fn();
+    let el: HTMLElement | null = null;
+
+    function Harness({ k }: { k: string }) {
+      const ref = useRef<HTMLDivElement>(null);
+      useNlddEvent(ref, 'input', onInput);
+      return (
+        <div
+          key={k}
+          ref={(node) => {
+            ref.current = node;
+            if (node) el = node;
+          }}
+        />
+      );
+    }
+
+    const { rerender } = render(<Harness k="a" />);
+    const first = el as HTMLElement | null;
+    rerender(<Harness k="b" />);
+    expect(el).not.toBe(first);
+
+    act(() => void el?.dispatchEvent(new CustomEvent('input')));
+    expect(onInput).toHaveBeenCalledTimes(1);
+
+    // The detached element no longer reports.
+    act(() => void first?.dispatchEvent(new CustomEvent('input')));
+    expect(onInput).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('useNlddValue', () => {
@@ -123,6 +181,28 @@ describe('useNlddValue', () => {
     // Re-rendering with an unchanged value must not touch the property, or the
     // caret jumps to the end mid-word.
     expect(writes).toEqual(['a', 'b']);
+  });
+
+  it('writes the value into a field that mounts later', () => {
+    let el: HTMLInputElement | null = null;
+
+    function Harness({ show }: { show: boolean }) {
+      const ref = useRef<HTMLInputElement>(null);
+      useNlddValue(ref, 'bewaard');
+      return show ? (
+        <input
+          ref={(node) => {
+            ref.current = node;
+            el = node;
+          }}
+        />
+      ) : null;
+    }
+
+    const { rerender } = render(<Harness show={false} />);
+    rerender(<Harness show />);
+
+    expect((el as HTMLInputElement | null)?.value).toBe('bewaard');
   });
 });
 

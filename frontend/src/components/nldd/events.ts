@@ -63,6 +63,16 @@ export function eventValue(event: Event): string {
  *
  * The handler is kept in a ref, so passing an inline arrow does not tear the
  * listener down and rebuild it on every render.
+ *
+ * The effect deliberately has no dependency list. A version keyed on `[ref]`
+ * runs once, on mount, and when the element is rendered conditionally (behind a
+ * loading state, a step, an `editing ?` branch) the ref is still null at that
+ * moment. The ref object never changes, so the effect never runs again: the
+ * listener is simply never attached, and the field ignores every keystroke
+ * without an error. The same goes for an element that is unmounted and mounted
+ * again, which leaves the listener on the old one. Assigning a ref does not
+ * cause a render, so the only way to notice is to check after each commit; that
+ * check is a comparison and only touches the DOM when the element changed.
  */
 export function useNlddEvent<T extends HTMLElement = HTMLElement>(
   ref: RefObject<T | null>,
@@ -71,16 +81,31 @@ export function useNlddEvent<T extends HTMLElement = HTMLElement>(
 ): void {
   const saved = useRef(handler);
   saved.current = handler;
+  const attached = useRef<{ el: T; type: string; listener: (event: Event) => void } | null>(
+    null,
+  );
+  const hasHandler = handler !== undefined;
 
   useEffect(() => {
-    const el = ref.current;
-    if (!el || !handler) return;
+    const el = hasHandler ? ref.current : null;
+    const current = attached.current;
+    if (current && current.el === el && current.type === type) return;
+    if (current) current.el.removeEventListener(current.type, current.listener);
+    attached.current = null;
+    if (!el) return;
     const listener = (event: Event) => saved.current?.(event);
     el.addEventListener(type, listener);
-    return () => el.removeEventListener(type, listener);
-    // `handler` is read through the ref; only its presence matters here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ref, type, handler === undefined]);
+    attached.current = { el, type, listener };
+  });
+
+  useEffect(
+    () => () => {
+      const current = attached.current;
+      if (current) current.el.removeEventListener(current.type, current.listener);
+      attached.current = null;
+    },
+    [],
+  );
 }
 
 /**
@@ -88,18 +113,24 @@ export function useNlddEvent<T extends HTMLElement = HTMLElement>(
  *
  * Custom element values live on the property, not the attribute, and writing it
  * unconditionally on every render would reset the caret mid-word. Only write
- * when the two have actually diverged (an external reset, a refetch).
+ * when the two have actually diverged (an external reset, a refetch), and only
+ * after the value or the element changed. Like `useNlddEvent` this checks after
+ * every commit, so a field that mounts later still gets the value.
  */
 export function useNlddValue<T extends NlddValueElement>(
   ref: RefObject<T | null>,
   value: string | undefined,
 ): void {
+  const last = useRef<{ el: T | null; value: string | undefined }>({ el: null, value: undefined });
+
   useEffect(() => {
     const el = ref.current;
+    if (last.current.el === el && last.current.value === value) return;
+    last.current = { el, value };
     if (el && value !== undefined && el.value !== value) {
       el.value = value;
     }
-  }, [ref, value]);
+  });
 }
 
 /**
