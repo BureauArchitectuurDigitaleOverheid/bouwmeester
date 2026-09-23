@@ -9,6 +9,7 @@ import pytest
 from bouwmeester.services.import_strategies.base import FetchedItem
 from bouwmeester.services.import_strategies.kamervraag import KamervraagStrategy
 from bouwmeester.services.import_strategies.motie import MotieStrategy
+from bouwmeester.services.import_strategies.nieuws import NieuwsStrategy
 from bouwmeester.services.import_strategies.registry import (
     STRATEGIES,
     get_all_strategies,
@@ -33,6 +34,7 @@ class TestRegistry:
         assert "motie" in STRATEGIES
         assert "kamervraag" in STRATEGIES
         assert "toezegging" in STRATEGIES
+        assert "nieuwsartikel" in STRATEGIES
 
     def test_get_strategy_motie(self):
         s = get_strategy("motie")
@@ -51,12 +53,20 @@ class TestRegistry:
             get_strategy("onbekend")
 
     def test_get_all_strategies(self):
+        """Elke geregistreerde sleutel levert zijn eigen strategie op.
+
+        Geen telling: die moest bij elke nieuwe bron worden bijgewerkt en
+        faalde dan met "assert 5 == 4", wat niets zegt over wat er mis is.
+        Dat de registry en `STRATEGIES` dezelfde sleutels dragen, is wat
+        deze test hoort te bewaken.
+        """
         all_s = get_all_strategies()
-        assert len(all_s) == 4
+        assert set(all_s) == set(STRATEGIES)
         assert isinstance(all_s["motie"], MotieStrategy)
         assert isinstance(all_s["kamervraag"], KamervraagStrategy)
         assert isinstance(all_s["toezegging"], ToezeggingStrategy)
         assert isinstance(all_s["tkconv_document"], TkconvSearchStrategy)
+        assert isinstance(all_s["nieuwsartikel"], NieuwsStrategy)
 
 
 # ---------------------------------------------------------------------------

@@ -188,6 +188,11 @@ async def create_initiatief_channel(
             parlementaire_alerts_enabled=data.parlementaire_alerts_enabled
             if data.parlementaire_alerts_enabled is not None
             else False,
+            # Idem voor de vakpers, en apart aan te zetten: dat zijn
+            # andere stukken voor een ander gesprek.
+            nieuws_alerts_enabled=data.nieuws_alerts_enabled
+            if data.nieuws_alerts_enabled is not None
+            else False,
             created_by_id=current_user.id if current_user else None,
         )
     except IntegrityError:
@@ -359,6 +364,7 @@ async def update_channel_link(
         auto_note_enabled=data.auto_note_enabled,
         suggest_leads_enabled=data.suggest_leads_enabled,
         parlementaire_alerts_enabled=data.parlementaire_alerts_enabled,
+        nieuws_alerts_enabled=data.nieuws_alerts_enabled,
         reenable=data.reenable,
     )
     return MattermostChannelLinkResponse.model_validate(updated)

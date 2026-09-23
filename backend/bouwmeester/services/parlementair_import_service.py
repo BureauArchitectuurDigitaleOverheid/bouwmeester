@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.nieuwsbron import Nieuwsbron
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -35,6 +36,7 @@ from bouwmeester.repositories.signaalcontext import (
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
+from bouwmeester.services.import_strategies.nieuws import NieuwsStrategy
 from bouwmeester.services.import_strategies.registry import get_strategy
 from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
 from bouwmeester.services.llm import get_llm_service
@@ -43,6 +45,17 @@ from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerCli
 from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
+
+
+def _draagt_treffers(strategy: ImportStrategy) -> bool:
+    """Komt dit stuk van een zoekterm van een gebruiker?
+
+    Op de eigenschap en niet op het type, omdat tkconv en nieuws hier
+    hetzelfde doen en een derde bron dat ook zal doen. Een isinstance per
+    strategie zou bij elke nieuwe bron op twee plekken moeten worden
+    bijgewerkt, en vergeten betekent dat de treffers stil wegvallen.
+    """
+    return isinstance(getattr(strategy, "treffers", None), dict)
 
 
 class ParlementairImportService:
@@ -108,10 +121,32 @@ class ParlementairImportService:
                     logger.info("Geen actieve abonnementen, tkconv overgeslagen")
                     continue
 
+            # Dezelfde zoektermen, andere bronnen: een nieuwsfeed kent geen
+            # zoekopdracht, dus de strategie krijgt de feeds erbij en
+            # matcht zelf.
+            if isinstance(strategy, NieuwsStrategy):
+                strategy.abonnementen = await self.abonnement_repo.list_actief()
+                if not strategy.abonnementen:
+                    logger.info("Geen actieve abonnementen, nieuws overgeslagen")
+                    continue
+                strategy.bronnen = await self._actieve_nieuwsbronnen()
+                if not strategy.bronnen:
+                    logger.info("Geen actieve nieuwsbronnen, nieuws overgeslagen")
+                    continue
+
             count = await self._import_type(strategy)
             imported_count += count
 
         return imported_count
+
+    async def _actieve_nieuwsbronnen(self) -> list[Nieuwsbron]:
+        """De feeds die nu gevolgd worden.
+
+        Uit de database en niet uit config, omdat een bron toevoegen een
+        redactionele keuze is en geen deploy hoort te kosten.
+        """
+        stmt = select(Nieuwsbron).where(Nieuwsbron.actief.is_(True))
+        return list((await self.session.execute(stmt)).scalars().all())
 
     async def _import_type(self, strategy: ImportStrategy) -> int:
         """Import all items for a single strategy/type."""
@@ -419,7 +454,7 @@ class ParlementairImportService:
         is dit een van de stukken uit de afgelopen week — ook al kende het
         systeem het al via een ander abonnement.
         """
-        if not isinstance(strategy, TkconvSearchStrategy):
+        if not _draagt_treffers(strategy):
             return
 
         abonnement_ids = strategy.treffers.get(item.zaak_id, [])
@@ -622,7 +657,7 @@ class ParlementairImportService:
         # document matcht in de praktijk op meerdere termen tegelijk, dus
         # dit is een aparte tabel: het item wordt één keer geïmporteerd en
         # één keer gepost, met alle termen eronder.
-        if isinstance(strategy, TkconvSearchStrategy):
+        if _draagt_treffers(strategy):
             abonnement_ids = strategy.treffers.get(item.zaak_id, [])
             if abonnement_ids:
                 await self.abonnement_repo.registreer_treffers(
