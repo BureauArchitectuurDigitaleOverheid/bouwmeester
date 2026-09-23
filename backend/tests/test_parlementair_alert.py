@@ -56,6 +56,31 @@ def _svc() -> ParlementairAlertService:
     return ParlementairAlertService.__new__(ParlementairAlertService)
 
 
+async def _async_true() -> bool:
+    return True
+
+
+def _maak_verzender(opslag: list):
+    """Vangt wat er naar Mattermost zou gaan, in plaats van het te sturen."""
+
+    async def send(channel_id: str, text: str, props: dict) -> bool:
+        opslag.append({"channel_id": channel_id, "text": text, "props": props})
+        return True
+
+    return send
+
+
+def _maak_execute(rijen: list):
+    """Minimale stand-in voor `session.execute(...).scalars().all()`."""
+
+    async def execute(_stmt):
+        return SimpleNamespace(
+            scalars=lambda: SimpleNamespace(all=lambda: rijen),
+        )
+
+    return execute
+
+
 class TestRelevantie:
     def test_leest_de_score(self):
         assert _relevantie({"relevantie_score": 85}) == 85
@@ -308,3 +333,81 @@ class TestInhaalberichtBundelt:
         tekst = props["attachments"][0]["text"]
 
         assert tekst.count("Startnotitie NLDD") == 1
+
+
+class TestInhaalslagWeegtDeDrempel:
+    """De inhaalslag gebruikt dezelfde drempel als een losse alert.
+
+    Het geval uit productie, 22 september 2026: de eerste inhaalslag zette
+    47 stukken in het kanaal, waarvan 46 via één brede term. Oorzaak was
+    dat `relevantie_score` alleen in de losse-alertroute werd gezet, zodat
+    er bij de inhaalslag niets te wegen viel. Deze tests dekken de
+    weegkant; dat er een score staat is de verantwoordelijkheid van
+    `_beoordeel` in de importservice.
+    """
+
+    async def _post(self, abonnementen, items) -> tuple[int, list]:
+        """Draai `post_inhaalslag` met alles eromheen uitgeschakeld."""
+        verstuurd: list = []
+        svc = _svc()
+        svc.mattermost = SimpleNamespace(
+            is_enabled=_async_true,
+            send_channel_message=_maak_verzender(verstuurd),
+        )
+        svc.session = SimpleNamespace(
+            execute=_maak_execute([SimpleNamespace(channel_id="kanaal-1")])
+        )
+        gepost = await svc.post_inhaalslag(abonnementen, items)
+        return gepost, verstuurd
+
+    async def test_laag_scorend_stuk_blijft_uit_het_bericht(self):
+        abo = _abonnement(minimum_relevantie=10)
+        items = [
+            _item(titel="Gaat er echt over", relevantie_score=85),
+            _item(titel="Metafoor", zaak_nummer="2026D00002", relevantie_score=5),
+        ]
+
+        gepost, verstuurd = await self._post([abo], items)
+
+        assert gepost == 1
+        tekst = verstuurd[0]["props"]["attachments"][0]["text"]
+        assert "Gaat er echt over" in tekst
+        assert "Metafoor" not in tekst
+
+    async def test_niets_boven_de_drempel_geeft_geen_bericht(self):
+        """Stil blijven is beter dan een bericht met een lege lijst."""
+        abo = _abonnement(minimum_relevantie=40)
+        items = [_item(relevantie_score=5), _item(zaak_nummer="X", relevantie_score=0)]
+
+        gepost, verstuurd = await self._post([abo], items)
+
+        assert gepost == 0
+        assert verstuurd == []
+
+    async def test_de_laagste_drempel_telt(self):
+        """Twee termen, twee drempels: wie het ruimst staat bepaalt.
+
+        Anders zou de strengste term de stukken van de ruimste wegnemen,
+        terwijl die twee los van elkaar zijn ingesteld.
+        """
+        streng = _abonnement(term="streng", minimum_relevantie=80)
+        ruim = _abonnement(term="ruim", minimum_relevantie=10)
+        items = [_item(titel="Middenmoot", relevantie_score=50)]
+
+        gepost, verstuurd = await self._post([streng, ruim], items)
+
+        assert gepost == 1
+        assert "Middenmoot" in verstuurd[0]["props"]["attachments"][0]["text"]
+
+    async def test_stuk_zonder_score_blijft_staan(self):
+        """Een mislukte LLM-call mag een stuk niet verzwijgen.
+
+        `_relevantie` geeft dan 0 terug, en bij de standaarddrempel van 10
+        zou dat het stuk wegfilteren. Dat is de verkeerde kant om op te
+        falen: niet gewogen is iets anders dan te licht bevonden.
+        """
+        abo = _abonnement(minimum_relevantie=0)
+        gepost, verstuurd = await self._post([abo], [_item(titel="Ongewogen")])
+
+        assert gepost == 1
+        assert "Ongewogen" in verstuurd[0]["props"]["attachments"][0]["text"]

@@ -29,10 +29,15 @@ from bouwmeester.models.parlementair_abonnement import (
 from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
+from bouwmeester.repositories.signaalcontext import (
+    SignaalcontextRepository,
+)
 from bouwmeester.schema.parlementair_abonnement import (
     AbonnementCreate,
     AbonnementMetTellingResponse,
     AbonnementUpdate,
+    SignaalcontextResponse,
+    SignaalcontextUpdate,
     SuggestieResponse,
 )
 from bouwmeester.services.activity_service import log_activity
@@ -77,13 +82,24 @@ def _client_sleutel(request: Request) -> str:
     return request.client.host if request.client else "onbekend"
 
 
-def _onderwerp_van(initiatief: Initiatief) -> str:
+def _onderwerp_van(initiatief: Initiatief, signaalcontext: str | None) -> str:
     """Waar dit initiatief over gaat, als platte tekst voor de prompt.
 
-    De beschrijving staat als tiptap-JSON in de database; zonder conversie
-    zou de prompt een documentboom te lezen krijgen in plaats van een zin.
+    De signaalcontext gaat vóór de publieke beschrijving. Die twee velden
+    hebben verschillende publieken: de beschrijving staat op de publieke
+    initiatiefpagina en is voor een mens die wil weten wat het initiatief
+    doet, de signaalcontext is afstelling voor een taalmodel. Wie de
+    signaalcontext heeft ingevuld, heeft daar precies dit voor bedoeld.
+
+    De beschrijving blijft de terugval, want zonder ingevulde
+    signaalcontext is hij nog altijd beter dan alleen een naam. Hij staat
+    als tiptap-JSON in de database; zonder conversie zou de prompt een
+    documentboom te lezen krijgen in plaats van een zin.
     """
     from bouwmeester.utils.tiptap import tiptap_to_plain
+
+    if signaalcontext and signaalcontext.strip():
+        return f"{initiatief.naam}. {signaalcontext.strip()[:2000]}"
 
     beschrijving = (tiptap_to_plain(initiatief.beschrijving) or "").strip()
     if beschrijving:
@@ -277,13 +293,16 @@ async def suggereer_zoektermen(
             ),
         )
 
+    signaalcontext = await SignaalcontextRepository(db).tekst_voor(
+        SCOPE_INITIATIEF, initiatief.id
+    )
+
     async with TkconvClient() as client:
         suggesties = await stel_voor(
             huidige_termen=huidige,
             llm_service=llm_service,
             client=client,
-            # De beschrijving is tiptap-JSON; de prompt wil platte tekst.
-            onderwerp=_onderwerp_van(initiatief),
+            onderwerp=_onderwerp_van(initiatief, signaalcontext),
         )
 
     return [
@@ -364,3 +383,60 @@ async def delete_abonnement(
         details={"initiatief_id": str(initiatief_id), "term": term},
     )
     await db.commit()
+
+
+@router.get(
+    "/{initiatief_id}/signaalcontext",
+    response_model=SignaalcontextResponse,
+)
+async def get_signaalcontext(
+    initiatief_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: OptionalUser = None,
+    ctx: InitiatiefContext = Depends(get_initiatief_context),
+) -> SignaalcontextResponse:
+    """De interne context die de prompts gebruiken."""
+    await _require_initiatief_toegang(db, ctx, initiatief_id)
+
+    tekst = await SignaalcontextRepository(db).tekst_voor(
+        SCOPE_INITIATIEF, initiatief_id
+    )
+    return SignaalcontextResponse(tekst=tekst or "")
+
+
+@router.put(
+    "/{initiatief_id}/signaalcontext",
+    response_model=SignaalcontextResponse,
+)
+async def zet_signaalcontext(
+    initiatief_id: UUID,
+    payload: SignaalcontextUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: OptionalUser = None,
+    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    actor_id: UUID | None = None,
+) -> SignaalcontextResponse:
+    """Schrijf of wis de context.
+
+    De tekst zelf gaat niet mee in de activity-log: hij kan lang zijn en
+    wordt vaak bijgesteld, en dan staat een dossier in de log in plaats
+    van een gebeurtenis.
+    """
+    await _require_initiatief_toegang(db, ctx, initiatief_id)
+
+    rij = await SignaalcontextRepository(db).zet(
+        SCOPE_INITIATIEF, initiatief_id, payload.tekst
+    )
+    await log_activity(
+        db,
+        current_user,
+        actor_id,
+        "parlementair.signaalcontext_gewijzigd",
+        details={
+            "initiatief_id": str(initiatief_id),
+            "leeg": rij is None,
+            "tekens": len(payload.tekst.strip()),
+        },
+    )
+    await db.commit()
+    return SignaalcontextResponse(tekst=rij.tekst if rij is not None else "")

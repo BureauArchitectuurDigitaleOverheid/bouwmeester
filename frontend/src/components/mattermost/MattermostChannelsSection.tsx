@@ -52,12 +52,16 @@ export function MattermostChannelsSection({ scope }: Props) {
             two lines of text in a 48px block where a 32px button belongs.
             `fit-content` plus `row-fill` makes it take what is left over
             instead, which is what a heading beside an action wants. */}
+        {/* Zelfde kopschaal als de andere kaarten op de initiatiefpagina
+            (Zoektermen, Context, Publieke pagina). Stond hier als `<h4>`
+            uit de tijd dat deze sectie alleen in een modal hing; naast
+            die kaarten las hij als het hoofdonderwerp van de pagina. */}
         <nldd-container width="fit-content" className="row-fill">
           <nldd-container layout="row" gap="6" vertical-alignment="center">
-            <Icon name="tag" size="md" />
-            <nldd-title size={4}>
-              <h4>Mattermost-kanalen</h4>
-            </nldd-title>
+            <Icon name="tag" size="sm" />
+            <nldd-text size="xs" weight="bold" color="secondary">
+              Mattermost-kanalen
+            </nldd-text>
           </nldd-container>
         </nldd-container>
         <Button variant="secondary" size="sm" icon="plus" onClick={() => setPickerOpen(true)}>

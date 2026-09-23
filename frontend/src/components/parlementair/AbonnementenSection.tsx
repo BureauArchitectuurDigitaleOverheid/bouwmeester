@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DetailSection } from '@/components/common/DetailSection';
+import { Icon } from '@/components/nldd/Icon';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   createAbonnement,
@@ -185,18 +185,33 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
   );
 
   return (
-    <DetailSection
-      title="Parlementaire signalen"
-      count={abonnementen.length}
-      separated
-    >
-      <nldd-container gap="12">
-        <nldd-text size="xs" color="secondary">
-          Nieuwe kamerstukken waarin een van deze termen voorkomt. Er wordt in de
-          volledige tekst gezocht, dus ook in bijlagen en beslisnota&apos;s.
-        </nldd-text>
-
-        <Bezorging kanalen={kanalen} />
+    <nldd-card>
+      <nldd-container gap="12" padding="16">
+        {/* Kop op dezelfde schaal als de andere kaarten op deze pagina.
+            De knoppen staan hier en niet onder het veld: dit is waar je
+            voor komt, en de uitleg hoort eronder, niet ertussen. */}
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-container width="fit-content" className="row-fill">
+            <nldd-container layout="row" gap="6" vertical-alignment="center">
+              <Icon name="search" size="sm" />
+              <nldd-text size="xs" weight="bold" color="secondary">
+                {abonnementen.length > 0
+                  ? `Zoektermen (${abonnementen.length})`
+                  : 'Zoektermen'}
+              </nldd-text>
+            </nldd-container>
+          </nldd-container>
+          {abonnementen.length > 0 && (
+            <nldd-button
+              variant="neutral-transparent"
+              size="sm"
+              text="Suggesties"
+              start-icon="ai"
+              loading={orUndef(suggestiesBezig)}
+              onClick={haalSuggesties}
+            />
+          )}
+        </nldd-container>
 
         {fout && <nldd-banner variant="critical" size="sm" text={fout} />}
 
@@ -210,16 +225,6 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
             loading={orUndef(bezig)}
             onClick={toevoegen}
           />
-          {abonnementen.length > 0 && (
-            <nldd-button
-              variant="neutral-transparent"
-              size="sm"
-              text="Suggesties"
-              start-icon="ai"
-              loading={orUndef(suggestiesBezig)}
-              onClick={haalSuggesties}
-            />
-          )}
         </nldd-container>
 
         {suggesties !== null && (
@@ -269,12 +274,17 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
           </nldd-table>
         )}
 
+        {/* Onder de tabel, want het legt uit wat je daar ziet. Eén alinea:
+            vijf losse regels uitleg boven het invoerveld leest niemand. */}
         <nldd-text size="xs" color="secondary">
-          Een term die niets oplevert is niet per se fout. Een term die vaak wordt
-          weggeklikt is waarschijnlijk te breed.
+          Er wordt in de volledige tekst van nieuwe kamerstukken gezocht, ook in
+          bijlagen en beslisnota&apos;s. Een term die niets oplevert is niet per
+          se fout; een term die vaak wordt weggeklikt is waarschijnlijk te breed.
         </nldd-text>
+
+        <Bezorging kanalen={kanalen} />
       </nldd-container>
-    </DetailSection>
+    </nldd-card>
   );
 }
 
