@@ -141,11 +141,15 @@ export interface MattermostChannelOverview {
   channel_id: string;
   channel_display_name: string;
   channel_name: string;
+  team_id?: string | null;
+  team_name?: string | null;
   scope_type: 'lead' | 'initiatief';
   scope_id: string;
   scope_label: string | null;
   auto_note_enabled: boolean;
   suggest_leads_enabled: boolean;
+  parlementaire_alerts_enabled: boolean;
+  nieuws_alerts_enabled: boolean;
   last_seen_post_at: string | null;
   disabled_at: string | null;
   created_at: string;

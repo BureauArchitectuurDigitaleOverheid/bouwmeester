@@ -40,6 +40,7 @@ from bouwmeester.schema.mattermost_channel_link import (
     MattermostChannelLinkUpdate,
     MattermostChannelSearchResult,
 )
+from bouwmeester.services.mattermost_service import vul_teamnaam_aan
 
 logger = logging.getLogger(__name__)
 
@@ -135,43 +136,12 @@ async def _can_manage_link(
 async def _met_teamnaam(db, links: list) -> list[MattermostChannelLinkResponse]:
     """Vul de teamnaam aan, zodat twee gelijknamige kanalen te scheiden zijn.
 
-    Twee dingen worden hier opgehaald in plaats van opgeslagen.
-
-    De naam, omdat een opgeslagen naam veroudert zodra iemand het team in
-    Mattermost hernoemt; Bouwmeester zou dan maandenlang iets tonen dat er
-    correct uitziet en het niet is.
-
-    En het team-id, omdat koppelingen van vóór deze wijziging het niet
-    dragen: `team_id` staat daar op NULL, dus er valt niets op te zoeken.
-    Een migratie die dat eenmalig vult lost het op voor wat er nu is en
-    niet voor wat er tussendoor bijkomt. Bij het tonen ophalen herstelt
-    zichzelf.
-
-    Faalt zacht: zonder Mattermost is de lijst hetzelfde als voorheen.
+    De invulling zelf staat in `vul_teamnaam_aan`, want het beheeroverzicht
+    toont dezelfde kanalen met een eigen antwoordmodel en hoort niet een
+    tweede keer op te halen waarom de naam niet opgeslagen wordt.
     """
     antwoorden = [MattermostChannelLinkResponse.model_validate(x) for x in links]
-    if not antwoorden:
-        return antwoorden
-
-    from bouwmeester.services.mattermost_service import MattermostService
-
-    service = MattermostService(db)
-    if not await service.is_enabled():
-        return antwoorden
-
-    namen = await service.team_namen()
-    if not namen:
-        return antwoorden
-
-    ontbreekt = any(a.team_id is None for a in antwoorden)
-    per_kanaal = await service.team_id_per_kanaal() if ontbreekt else {}
-
-    for a in antwoorden:
-        team_id = a.team_id or per_kanaal.get(a.channel_id)
-        if team_id:
-            a.team_id = team_id
-            a.team_name = namen.get(team_id)
-    return antwoorden
+    return await vul_teamnaam_aan(db, antwoorden)
 
 
 @router.get(

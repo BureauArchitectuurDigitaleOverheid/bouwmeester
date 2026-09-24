@@ -53,6 +53,7 @@ from bouwmeester.schema.worker_health import (
     WorkerHeartbeatResponse,
 )
 from bouwmeester.services.activity_service import ActivityService
+from bouwmeester.services.mattermost_service import vul_teamnaam_aan
 
 logger = logging.getLogger(__name__)
 
@@ -1014,14 +1015,20 @@ async def mattermost_channel_overview(
                 channel_id=r.channel_id,
                 channel_display_name=r.channel_display_name,
                 channel_name=r.channel_name,
+                team_id=r.team_id,
                 scope_type=r.scope_type,
                 scope_id=r.scope_id,
                 scope_label=label,
                 auto_note_enabled=r.auto_note_enabled,
                 suggest_leads_enabled=r.suggest_leads_enabled,
+                parlementaire_alerts_enabled=r.parlementaire_alerts_enabled,
+                nieuws_alerts_enabled=r.nieuws_alerts_enabled,
                 last_seen_post_at=last_seen,
                 disabled_at=r.disabled_at,
                 created_at=r.created_at,
             )
         )
-    return out
+    # Twee kanalen in verschillende teams mogen dezelfde naam dragen, en
+    # dit overzicht zet ze onder elkaar. Zonder het team is niet te zien
+    # welke regel over welk kanaal gaat. Dezelfde weg als de kanaalkaart.
+    return await vul_teamnaam_aan(db, out)
