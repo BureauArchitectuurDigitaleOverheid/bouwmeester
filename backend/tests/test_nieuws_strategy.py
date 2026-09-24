@@ -46,12 +46,18 @@ def _artikel(titel: str, teaser: str = "", dagen_terug: int = 0, gid: str = ""):
 class _VasteClient(NieuwsClient):
     """Levert een vaste lijst in plaats van een echte feed."""
 
-    def __init__(self, artikelen):
+    def __init__(self, artikelen, body: str = ""):
         super().__init__(etags={})
         self._artikelen = artikelen
+        self._body = body
+        self.opgehaald: list[str] = []
 
     async def haal(self, url: str, bron: str):
         return self._artikelen
+
+    async def haal_artikel(self, url: str) -> str:
+        self.opgehaald.append(url)
+        return self._body
 
 
 @pytest.fixture(autouse=True)
@@ -169,6 +175,82 @@ class TestMatchen:
         await s2.fetch_items(client=_VasteClient([vers]), since=None, limit=50)
 
         assert s2.treffers[vers.gid] == [abo.id]
+
+
+class TestArtikelOphalen:
+    """De body wordt opgehaald, maar alleen waar dat iets oplevert."""
+
+    async def test_eerste_ronde_haalt_niets_op(self):
+        """150 pagina's ophalen om er nul te posten is verkeer voor niets."""
+        s = NieuwsStrategy()
+        s.abonnementen = [_abo("NLDD")]
+        s.bronnen = [SimpleNamespace(naam="iBestuur", feed_url="https://x/feed")]
+        client = _VasteClient([_artikel("NLDD krijgt vorm", dagen_terug=3)])
+
+        await s.fetch_items(client=client, since=None, limit=50)
+
+        assert client.opgehaald == []
+
+    async def test_term_alleen_in_de_body_wordt_gevonden(self):
+        """Precies het gemiste geval van 23 september 2026.
+
+        De teaser van "Strategische inzet digitalisering" noemt geen
+        enkele zoekterm; het artikel gaat wel over de NLDD.
+        """
+        abo = _abo("Nederlandse Digitale Dienst")
+        bronnen = [SimpleNamespace(naam="iBestuur", feed_url="https://x/feed")]
+
+        s = NieuwsStrategy()
+        s.abonnementen = [abo]
+        s.bronnen = bronnen
+        await s.fetch_items(
+            client=_VasteClient([_artikel("Oud", dagen_terug=5)]),
+            since=None,
+            limit=50,
+        )
+
+        vers = _artikel(
+            "Strategische inzet digitalisering: wat staat er op de rol?",
+            "In de Kamerbrief staan veel voornemens.",
+            dagen_terug=-1,
+        )
+        s2 = NieuwsStrategy()
+        s2.abonnementen = [abo]
+        s2.bronnen = bronnen
+        client = _VasteClient(
+            [vers], body="De Nederlandse Digitale Dienst rapporteert eind 2026."
+        )
+        items = await s2.fetch_items(client=client, since=None, limit=50)
+
+        assert len(items) == 1
+        assert client.opgehaald == [vers.link]
+        # Het model krijgt de tekst waarin ook gezocht is.
+        assert "Nederlandse Digitale Dienst" in items[0].document_tekst
+
+    async def test_mislukte_fetch_laat_de_teaser_gelden(self):
+        """Een stukgelopen scraper mag geen artikelen laten verdwijnen."""
+        abo = _abo("NLDD")
+        bronnen = [SimpleNamespace(naam="iBestuur", feed_url="https://x/feed")]
+
+        s = NieuwsStrategy()
+        s.abonnementen = [abo]
+        s.bronnen = bronnen
+        await s.fetch_items(
+            client=_VasteClient([_artikel("Oud", dagen_terug=5)]),
+            since=None,
+            limit=50,
+        )
+
+        vers = _artikel("NLDD krijgt vorm", dagen_terug=-1)
+        s2 = NieuwsStrategy()
+        s2.abonnementen = [abo]
+        s2.bronnen = bronnen
+        # Lege body: de fetch is mislukt of de opmaak is veranderd.
+        items = await s2.fetch_items(
+            client=_VasteClient([vers], body=""), since=None, limit=50
+        )
+
+        assert len(items) == 1
 
 
 class TestVorm:

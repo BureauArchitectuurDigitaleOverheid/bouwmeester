@@ -7,8 +7,10 @@ en deze tests leggen vast dat die twee ook echt allebei meetellen.
 """
 
 from bouwmeester.services.nieuws_client import (
+    MAX_ARTIKEL_TEKENS,
     NieuwsItem,
     _schoon,
+    artikeltekst,
     parse_feed,
 )
 
@@ -104,6 +106,77 @@ class TestDoorzoekbareTekst:
         tekst = item.doorzoekbare_tekst.lower()
         assert "e-facturatie" in tekst
         assert "nederlandse digitale dienst" in tekst
+
+
+class TestArtikeltekst:
+    """De teaser is te kort gebleken, dus halen we de body erbij.
+
+    Het geval: "Strategische inzet digitalisering" (iBestuur, 23 september
+    2026) heeft een teaser van 131 tekens waarin geen enkele zoekterm
+    voorkomt, terwijl het artikel over de NLDD gaat.
+    """
+
+    def test_leest_de_inhoudscontainer(self):
+        html = """<html><body>
+          <nav>Menu met Digitale Dienst erin</nav>
+          <div class="c-content-blocks"><p>De Nederlandse Digitale Dienst
+          krijgt vorm.</p></div>
+        </body></html>"""
+        tekst = artikeltekst(html)
+        assert "Nederlandse Digitale Dienst krijgt vorm." in tekst
+
+    def test_navigatie_telt_niet_mee(self):
+        """Anders matcht een zoekterm op het menu in plaats van het stuk."""
+        html = """<html><body>
+          <nav>RegelRecht in het menu</nav>
+          <div class="c-content-blocks"><p>Over bermbeheer.</p></div>
+        </body></html>"""
+        assert "menu" not in artikeltekst(html).lower()
+
+    def test_scripts_tellen_niet_mee(self):
+        html = """<div class="c-content-blocks">
+          <script>var x = "Nederlandse Digitale Dienst";</script>
+          <p>Over iets anders.</p></div>"""
+        assert "var x" not in artikeltekst(html)
+
+    def test_onbekende_opmaak_geeft_leeg(self):
+        """Leeg is het signaal om op de teaser terug te vallen.
+
+        Een bron die zijn HTML verandert mag geen artikelen laten
+        verdwijnen; dan is een kortere tekst beter dan geen artikel.
+        """
+        assert artikeltekst("<html><body><p>Los stuk tekst.</p></body></html>") == ""
+
+    def test_lege_invoer(self):
+        assert artikeltekst("") == ""
+
+    def test_lengte_begrensd(self):
+        html = '<div class="c-content-blocks">' + ("woord " * 20000) + "</div>"
+        assert len(artikeltekst(html)) <= MAX_ARTIKEL_TEKENS
+
+
+class TestDoorzoekbareTekstMetBody:
+    def _item(self, **kw):
+        basis = dict(
+            gid="1",
+            titel="Strategische inzet digitalisering",
+            samenvatting="In de Kamerbrief staan veel voornemens.",
+            link="https://x/1",
+            gepubliceerd=None,
+            bron="iBestuur",
+        )
+        basis.update(kw)
+        return NieuwsItem(**basis)
+
+    def test_body_doet_mee(self):
+        """Precies het gemiste geval: term alleen in de body."""
+        item = self._item(volledige_tekst="De Nederlandse Digitale Dienst rapporteert.")
+        tekst = item.doorzoekbare_tekst.lower()
+        assert "nederlandse digitale dienst" in tekst
+
+    def test_zonder_body_alleen_titel_en_teaser(self):
+        item = self._item()
+        assert item.doorzoekbare_tekst.count("\n") == 1
 
 
 class TestSchoon:

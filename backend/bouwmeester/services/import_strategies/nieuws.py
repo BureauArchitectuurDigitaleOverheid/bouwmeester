@@ -12,12 +12,17 @@ Zoeken gebeurt aan onze kant. Een nieuws-RSS heeft geen zoekparameter, dus
 we halen de feed één keer op en matchen alle abonnementen tegen titel plus
 teaser. Eén verzoek per bron per ronde, ongeacht het aantal zoektermen.
 
-We zoeken in ongeveer 300 tekens in plaats van in een heel document. Geen
-van beide feeds draagt `content:encoded` (gemeten 23 september 2026), dus
-een artikel dat het onderwerp pas verderop noemt, missen we. Dat is een
-aanvaarde beperking: een artikel gaat meestal over zijn kop, en het
-alternatief zou 150 pageloads per ronde zijn op sites die daar niet om
-gevraagd hebben.
+De artikeltekst wordt per artikel opgehaald. Geen van beide feeds draagt
+`content:encoded` (gemeten 23 september 2026), dus de feed levert alleen
+een teaser van 131 tot 345 tekens. Dat bleek te weinig: "Strategische
+inzet digitalisering" (iBestuur, 23 september 2026) heeft een teaser
+waarin geen enkele zoekterm voorkomt, terwijl de body de NLDD en de
+overheidscloud allebei noemt.
+
+Alleen voor artikelen boven het watermerk, dus in de praktijk een handvol
+per ronde en niet de 150 uit de feed. Mislukt het ophalen, dan geldt de
+teaser: een scraper die stukloopt op een nieuwe opmaak mag geen artikelen
+laten verdwijnen.
 """
 
 import logging
@@ -129,14 +134,28 @@ class NieuwsStrategy(ImportStrategy):
             if grens is not None and wanneer is not None and wanneer <= grens:
                 continue
 
-            ids = self._passende_abonnementen(artikel)
-            if not ids:
-                continue
-
             if eerste_ronde:
                 # Zoals bij tkconv: de eerste ronde zet alleen het
                 # watermerk. Anders opent de feature met een reeks
-                # berichten over artikelen van vorige maand.
+                # berichten over artikelen van vorige maand. Hier al
+                # stoppen, vóór de fetch: 150 artikelpagina's ophalen om
+                # er vervolgens nul te posten is verkeer voor niets.
+                continue
+
+            # De artikeltekst vóór het matchen, want juist in de body
+            # staat vaak het woord dat de teaser niet noemt. Gemeten
+            # geval: "Strategische inzet digitalisering" (iBestuur, 23
+            # september 2026) heeft een teaser van 131 tekens zonder één
+            # van de zoektermen, terwijl de body de NLDD en de
+            # overheidscloud allebei noemt.
+            #
+            # Alleen voor artikelen boven het watermerk, dus een handvol
+            # per ronde in plaats van de 150 uit de feed.
+            if artikel.link:
+                artikel.volledige_tekst = await client.haal_artikel(artikel.link)
+
+            ids = self._passende_abonnementen(artikel)
+            if not ids:
                 continue
 
             self.treffers[artikel.gid] = ids
@@ -175,8 +194,9 @@ class NieuwsStrategy(ImportStrategy):
             titel=artikel.titel,
             onderwerp=artikel.samenvatting,
             datum=artikel.gepubliceerd.date() if artikel.gepubliceerd else None,
-            # Wat we hebben is de teaser; die is ook de enige tekst waarin
-            # gezocht is, dus het model krijgt niet meer dan wij zagen.
+            # Precies de tekst waarin ook gezocht is: titel, teaser en de
+            # artikeltekst als die is opgehaald. Het model krijgt niet
+            # meer dan wij zagen, en niet minder.
             document_tekst=artikel.doorzoekbare_tekst,
             document_url=artikel.link,
             bron=artikel.bron,
