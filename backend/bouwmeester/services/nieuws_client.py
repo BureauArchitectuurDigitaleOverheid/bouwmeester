@@ -51,6 +51,31 @@ _TAG = re.compile(r"<[^>]+>")
 _CDATA = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.S)
 _WS = re.compile(r"\s+")
 
+# Wat we uit een artikelpagina knippen voordat we de tags weghalen. Zonder
+# dit belanden navigatie, cookiemeldingen en de scripts in de tekst, en dan
+# matcht een zoekterm op het menu in plaats van op het artikel.
+_ROMMEL = re.compile(
+    r"<(script|style|nav|header|footer|aside|form)\b.*?</\1>", re.S | re.I
+)
+
+# De container met de artikeltekst, per bron. Een <article>-tag is hier
+# onbruikbaar: de pagina van iBestuur draagt er elf, waarvan tien
+# teasers in de zijbalk. Een zoekterm zou dan matchen op een ander
+# artikel dat toevallig in de zijbalk staat.
+#
+# Kan breken als de bron zijn HTML verandert. Daarom is dit een
+# aanvulling en geen vervanging: valt de extractie weg, dan blijft de
+# teaser over en werkt alles zoals voorheen.
+_INHOUD_KLASSEN = (
+    "c-content-blocks",  # iBestuur en Binnenlands Bestuur
+    "article-content",
+    "articleBody",
+)
+
+# Genoeg voor een lang achtergrondstuk, en een grens omdat deze tekst in
+# de prompt belandt.
+MAX_ARTIKEL_TEKENS = 40_000
+
 
 @dataclass
 class NieuwsItem:
@@ -62,15 +87,23 @@ class NieuwsItem:
     link: str
     gepubliceerd: datetime | None
     bron: str
+    # De tekst van de artikelpagina, als die is opgehaald. Leeg betekent
+    # niet opgehaald of niet gelukt; dan valt alles terug op de teaser.
+    volledige_tekst: str = ""
 
     @property
     def doorzoekbare_tekst(self) -> str:
         """Waar een zoekterm in gevonden mag worden.
 
-        Titel en teaser samen. Zie de moduledocstring: de feeds dragen
-        geen volledige tekst, dus dit is alles wat er is.
+        Titel, teaser en, als we hem hebben, de artikeltekst. Dat laatste
+        is de reden dat de fetch bestaat: het artikel "Strategische inzet
+        digitalisering" (iBestuur, 23 september 2026) noemt de NLDD pas in
+        de body, en werd met alleen de teaser van 131 tekens gemist.
         """
-        return f"{self.titel}\n{self.samenvatting}"
+        delen = [self.titel, self.samenvatting]
+        if self.volledige_tekst:
+            delen.append(self.volledige_tekst)
+        return "\n".join(d for d in delen if d)
 
 
 def _schoon(ruwe: str | None) -> str:
@@ -93,6 +126,36 @@ def _schoon(ruwe: str | None) -> str:
 def _veld(blok: str, naam: str) -> str:
     m = re.search(rf"<{naam}[^>]*>(.*?)</{naam}>", blok, re.S)
     return _schoon(m.group(1)) if m else ""
+
+
+def artikeltekst(html: str) -> str:
+    """Haal de leestekst uit een artikelpagina.
+
+    Geeft een lege string terug als de inhoud niet te vinden is. Dat is
+    geen fout maar een signaal aan de aanroeper om op de teaser terug te
+    vallen: een scraper die stukloopt op een nieuwe opmaak mag geen
+    artikelen laten verdwijnen.
+    """
+    if not html:
+        return ""
+
+    start = -1
+    for klasse in _INHOUD_KLASSEN:
+        start = html.find(klasse)
+        if start != -1:
+            break
+    if start == -1:
+        return ""
+
+    # Vanaf de container tot het einde. Grof, maar de rommel eronder
+    # (zijbalk, voettekst) wordt door `_ROMMEL` en de lengtegrens al
+    # grotendeels weggenomen, en een sluitende tag vinden vraagt om een
+    # echte parser voor winst die we hier niet nodig hebben.
+    blok = html[start : start + MAX_ARTIKEL_TEKENS * 4]
+    blok = _ROMMEL.sub(" ", blok)
+    tekst = _TAG.sub(" ", blok)
+    tekst = _schoon(tekst)
+    return tekst[:MAX_ARTIKEL_TEKENS]
 
 
 def _datum(ruwe: str) -> datetime | None:
@@ -223,3 +286,36 @@ class NieuwsClient:
             self._etags[url] = nieuwe_etag
 
         return parse_feed(resp.text, bron)
+
+    async def haal_artikel(self, url: str) -> str:
+        """De leestekst van één artikelpagina, of leeg als dat niet lukt.
+
+        Alleen voor artikelen die nieuw zijn sinds de vorige ronde, dus
+        in de praktijk een handvol per ronde en niet de 150 uit de feed.
+
+        Faalt zacht en met opzet: elke uitkomst waarin we de tekst niet
+        krijgen levert een lege string op, en de aanroeper valt terug op
+        de teaser. Een bron die zijn opmaak verandert of even plat ligt
+        mag geen artikelen laten verdwijnen.
+        """
+        if self._client is None or not url:
+            return ""
+
+        try:
+            resp = await self._client.get(url)
+        except httpx.HTTPError as exc:
+            logger.warning("Artikel %s onbereikbaar: %s", url, exc)
+            return ""
+
+        if resp.status_code != 200:
+            logger.warning("Artikel %s gaf status %d", url, resp.status_code)
+            return ""
+
+        if len(resp.content) > MAX_FEED_BYTES:
+            logger.warning("Artikel %s is ongebruikelijk groot, overgeslagen", url)
+            return ""
+
+        tekst = artikeltekst(resp.text)
+        if not tekst:
+            logger.info("Geen artikeltekst gevonden op %s, teaser blijft gelden", url)
+        return tekst
