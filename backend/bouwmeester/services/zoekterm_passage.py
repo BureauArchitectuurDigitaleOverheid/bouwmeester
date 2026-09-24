@@ -67,9 +67,34 @@ def knip_rond_termen(tekst: str, termen: list[str]) -> str:
     overhead = len("\n\n") + len("[...]\n")
     budget = MAX_TOTAAL - len(kop)
 
-    for start, eind in _samengevoegd(vindplaatsen, len(tekst)):
+    vensters = _begrensd(_samengevoegd(vindplaatsen, len(tekst)))
+
+    # Op waarde kiezen, maar op volgorde tonen. Zonder de weging pakte dit
+    # simpelweg de eerste vensters tot het budget op was, en bij een
+    # verslag van een schriftelijk overleg is dat systematisch de
+    # verkeerde helft: de inleiding en de procedurele kop staan vooraan,
+    # de vragen staan achterin.
+    #
+    # Gemeten geval, 2026D45836 (43.185 tekens, 69 vraagtekens): de
+    # passage waarin een fractie vraagt welke rol de Digitale Dienst
+    # krijgt bij het cloudbeleid staat op teken 22.983, en viel buiten de
+    # selectie. Dat was juist de alinea die een lezer eruit haalde.
+    gekozen = sorted(
+        sorted(vensters, key=lambda v: _waarde(tekst, v, termen), reverse=True)[
+            : _past_er_in(budget, overhead)
+        ]
+    )
+
+    for start, eind in gekozen:
         if budget <= overhead:
             break
+        # De kop gaat er los bij, dus een venster dat daarin valt levert
+        # dezelfde tekst twee keer op. Dat kostte bij 2026D45836 1.100
+        # tekens aan een herhaalde voorpagina, ten koste van een passage
+        # met vragen.
+        if eind <= len(kop):
+            continue
+        start = max(start, len(kop))
         fragment = tekst[start:eind].strip()
         ruimte = budget - overhead
         if len(fragment) > ruimte:
@@ -82,6 +107,107 @@ def knip_rond_termen(tekst: str, termen: list[str]) -> str:
         budget -= len(fragment) + overhead
 
     return "\n\n".join(delen)
+
+
+# Een samengevoegd venster mag niet zo groot worden dat er maar één of
+# twee in het budget passen. Gemeten geval, 2026D45836: 71 vindplaatsen
+# smolten samen tot 12 vensters van 1.200 tot 9.027 tekens, waarvan er
+# twee in het budget pasten. De derde was juist de passage met de vragen.
+MAX_VENSTER = 2200
+
+
+def _begrensd(vensters: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Hak te grote vensters in stukken, in plaats van ze af te kappen.
+
+    Samenvoegen voorkomt dubbele tekst, maar bij een stuk waarin de term
+    overal valt groeit één blok door tot het de halve selectie opeet. Bij
+    2026D45836 werd dat een venster van 19.837 tot 23.739, en de passage
+    met de vragen stond op 22.983.
+
+    Afkappen op de start zou die passage net zo goed weggooien; in
+    stukken hakken laat elk deel apart meewegen, zodat de helft met de
+    vragen kan winnen van de helft met de inleiding.
+    """
+    uit: list[tuple[int, int]] = []
+    for start, eind in vensters:
+        positie = start
+        while positie < eind:
+            uit.append((positie, min(eind, positie + MAX_VENSTER)))
+            positie += MAX_VENSTER
+    return uit
+
+
+def _past_er_in(budget: int, overhead: int) -> int:
+    """Hoeveel vensters er hooguit in het budget passen.
+
+    Ruim geschat op het kleinst denkbare venster, zodat de weging kiest
+    welke vensters meegaan en de lus daarna afkapt op de echte lengtes.
+    """
+    per_venster = overhead + 1
+    return max(1, budget // per_venster)
+
+
+# Een vraagteken maakt een passage waardevoller dan een kop met dezelfde
+# term erin: bij een kamerstuk is wat er gevraagd wordt doorgaans het
+# nieuws, en een inhoudsopgave die de term vijf keer noemt is dat niet.
+_VRAAG = re.compile(r"\w[^.?!]{9,}\?")
+
+# Woorden die een passage markeren waarin iets gebeurt of gevraagd wordt.
+# Bewust kort gehouden: dit is een duw in de goede richting, geen poging
+# om te begrijpen wat er staat.
+_SIGNAALWOORDEN = (
+    "vraag",
+    "vragen",
+    "verzoek",
+    "verzoeken",
+    "toezegging",
+    "motie",
+    "wanneer",
+    "waarom",
+    "welke",
+    "hoe ",
+    "kan het kabinet",
+    "is de staatssecretaris",
+    "is de minister",
+)
+
+
+def _waarde(tekst: str, venster: tuple[int, int], termen: list[str]) -> float:
+    """Hoe bruikbaar is deze passage voor een alert?
+
+    Drie dingen tellen mee, in aflopende zwaarte: hoe vaak de zoekterm
+    er valt, of er een vraag in staat, en of er signaalwoorden staan.
+    Zonder dit is de volgorde in het document de enige maatstaf, en die
+    zegt niets over waar het onderwerp behandeld wordt.
+    """
+    start, eind = venster
+    fragment = tekst[start:eind]
+    klein = fragment.lower()
+
+    treffers = 0
+    for term in termen:
+        kern = term.strip().strip('"').lower()
+        if len(kern) >= 3:
+            treffers += klein.count(kern)
+
+    # Alleen vraagtekens die aan een zin hangen. Een losse reeks "? ? ?"
+    # (opmaakresten uit een docx, of een tabel) is geen vraag, en zonder
+    # deze eis scoorde zulke rommel hoger dan een echte kamervraag.
+    vragen = len(_VRAAG.findall(fragment))
+    signalen = sum(1 for woord in _SIGNAALWOORDEN if woord in klein)
+
+    # Een vraag zonder enige zoekterm in de buurt telt niet mee: dit gaat
+    # om passages over ónze zoekterm, niet om de vraagdichtheid van het
+    # stuk.
+    if treffers == 0:
+        vragen = 0
+        signalen = 0
+
+    # De term weegt het zwaarst (daar kwam het stuk op binnen), een vraag
+    # daarna, signaalwoorden als kleine correctie. De aantallen worden
+    # begrensd zodat één alinea met twintig vraagtekens niet de hele
+    # selectie opeet.
+    return min(treffers, 5) * 3.0 + min(vragen, 4) * 2.0 + min(signalen, 4) * 0.5
 
 
 def _vindplaatsen(tekst: str, termen: list[str]) -> list[int]:
