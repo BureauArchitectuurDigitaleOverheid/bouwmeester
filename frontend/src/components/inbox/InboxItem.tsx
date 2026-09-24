@@ -1,12 +1,11 @@
-import { Card } from '@/components/common/Card';
-import { Badge } from '@/components/common/Badge';
-import { RichTextDisplay } from '@/components/common/RichTextDisplay';
+import { useRef } from 'react';
+import { useNlddEvent } from '@/components/nldd/events';
 import { Icon } from '@/components/nldd/Icon';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { formatDateTimeShort } from '@/utils/dates';
-import { NOTIFICATION_TYPE_LABELS, INBOX_TYPE_COLORS } from '@/types';
+import { richTextToPlain } from '@/utils/richtext';
 import type { InboxItem as InboxItemType } from '@/types';
 
 interface InboxItemProps {
@@ -15,18 +14,69 @@ interface InboxItemProps {
   onMarkRead?: (id: string) => void;
 }
 
-const typeIcons: Record<string, React.ReactNode> = {
-  task: <Icon name="check-list" size="md" />,
-  node: <Icon name="file-text" size="md" />,
-  notification: <Icon name="bell" size="md" />,
-  message: <Icon name="message-rectangle-text" size="md" />,
+/**
+ * One icon per notification type. The icon carries the type, so the row needs
+ * no separate type badge: a coloured tag under every title repeated what the
+ * title already said and made each row a line taller.
+ */
+const NOTIFICATION_ICONS: Record<string, string> = {
+  task_assigned: 'check-list',
+  task_reassigned: 'check-list',
+  task_completed: 'check-mark-circle',
+  task_overdue: 'clock',
+  node_updated: 'file-text-pencil',
+  edge_created: 'link',
+  stakeholder_added: 'person-2',
+  stakeholder_role_changed: 'person-2',
+  coverage_needed: 'person-badge-plus',
+  politieke_input_imported: 'megaphone',
+  mention: 'at',
+  direct_message: 'message-rectangle-text',
+  agent_prompt: 'sparkles',
+  opdracht_created: 'clipboard',
+  opdracht_status_changed: 'clipboard',
+  access_request: 'key',
+  placement_request: 'person-badge-plus',
+  placement_approved: 'check-mark-circle',
+  placement_denied: 'dismiss-circle',
+  emoji_reaction: 'face-smiling',
 };
 
+/**
+ * Types whose message only restates the title. A mention says "Je bent genoemd
+ * in: X" as title and "Je bent vermeld in 'X'." as message; showing both gives
+ * two lines of the same fact. For those the second line names the sender.
+ */
+const MESSAGE_REPEATS_TITLE = new Set(['mention']);
+
+const SUPPORTING_MAX = 160;
+
+function supportingText(item: InboxItemType): string {
+  const parts: string[] = [];
+  if (item.notification_type && MESSAGE_REPEATS_TITLE.has(item.notification_type)) {
+    if (item.sender_name) parts.push(`Door ${item.sender_name}`);
+  } else {
+    const plain = richTextToPlain(item.description).replace(/\s+/g, ' ').trim();
+    if (plain) {
+      parts.push(plain.length > SUPPORTING_MAX ? `${plain.slice(0, SUPPORTING_MAX).trimEnd()}…` : plain);
+    }
+  }
+  if (item.reply_count) {
+    parts.push(`${item.reply_count} ${item.reply_count === 1 ? 'reactie' : 'reacties'}`);
+  }
+  return parts.join(' · ');
+}
+
+/** `**` is the cell's bold syntax, so it must not come in with the title. */
+function cellText(text: string): string {
+  return text.replace(/\*\*/g, '');
+}
 
 export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps) {
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
   const { openLeadDetail } = useLeadDetail();
+  const ref = useRef<HTMLElement>(null);
 
   const handleClick = () => {
     if (!item.read && onMarkRead) {
@@ -42,84 +92,49 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
       openLeadDetail(item.lead_id);
     }
   };
+  useNlddEvent(ref, 'click', handleClick);
 
-  const isClickable = item.type === 'message' || !!item.task_id || !!item.node_id || !!item.lead_id;
+  const icon = (item.notification_type && NOTIFICATION_ICONS[item.notification_type]) || 'bell';
+  const title = cellText(item.title);
+  const supporting = supportingText(item);
 
+  // Read and unread differ in weight, not in layout. The unread dot sits in a
+  // fixed column at the end, with an equally wide spacer on read rows, so the
+  // titles of both kinds start on the same line; a dot in front of the title
+  // pushed unread titles 30px to the right of read ones.
   return (
-    <Card
-      {...(isClickable ? { actionLabel: `Openen: ${item.title}` } : {})}
-      onClick={handleClick}
-    >
-      <nldd-container layout="row" gap="12" vertical-alignment="top">
-        {/* A 32px square icon badge with a read/unread background: nldd-container
-            has no fixed-height attribute (only width/min-width/max-width) and no
-            border-radius, so the box itself stays a plain styled div. The
-            background/color are still tokens, not hex values. */}
-        <div
-          className="shrink-0"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
-            ...(item.read
-              ? { background: 'var(--primitives-color-neutral-50)', color: 'var(--primitives-color-neutral-400)' }
-              : { background: 'var(--primitives-color-accent-25)', color: 'var(--primitives-color-accent-700)' }),
-          }}
-        >
-          {typeIcons[item.type] || <Icon name="bell" size="md" />}
-        </div>
-
-        <nldd-container layout="stack" gap="0" min-width="0" width="full">
-          <nldd-container layout="row" gap="8" vertical-alignment="center">
-            {!item.read && (
-              // A plain unread dot: nldd-badge is the design system's dot/count
-              // overlay, but it anchors to a corner of ITS sibling (see
-              // PersonAvatar's online dot) rather than sitting inline in a row,
-              // which is what this needs.
-              <span
-                className="shrink-0"
-                style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '9999px', background: 'var(--primitives-color-warning-500)' }}
-              />
-            )}
-            {/* nldd-text has no truncate/ellipsis attribute, so the wrapper
-                providing it stays plain CSS. */}
-            <div className="truncate">
-              <nldd-text size="sm" weight={item.read ? 'regular' : 'medium'} {...(item.read ? { color: 'secondary' } : {})}>
-                {item.title}
-              </nldd-text>
-            </div>
-          </nldd-container>
-
-          {item.description && (
-            // line-clamp-2 has no design-system equivalent either; the 12px
-            // text size and bottom margin are inline since RichTextDisplay's
-            // own content isn't an nldd-text to size via props.
-            <div className="line-clamp-2" style={{ fontSize: '12px', marginBottom: '8px' }}>
-              <RichTextDisplay content={item.description} fallback="" />
-            </div>
-          )}
-
-          <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <Badge variant={INBOX_TYPE_COLORS[item.type] ?? 'gray'}>
-              {(item.notification_type && NOTIFICATION_TYPE_LABELS[item.notification_type]) || item.type}
-            </Badge>
-            {item.reply_count != null && item.reply_count > 0 && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center">
-                <Icon name="message-rectangle-text" size="xs" />
-                <nldd-text size="xs" color="accent">
-                  {item.reply_count} {item.reply_count === 1 ? 'reactie' : 'reacties'}
-                </nldd-text>
-              </nldd-container>
-            )}
-            <nldd-text size="xs" color="secondary">
-              {formatDateTimeShort(item.created_at)}
-            </nldd-text>
-          </nldd-container>
-        </nldd-container>
-      </nldd-container>
-    </Card>
+    <nldd-list-item ref={ref} button size="sm">
+      <nldd-icon-cell
+        icon={icon}
+        size="20"
+        vertical-alignment="top"
+        color={item.read ? 'secondary' : 'accent'}
+      />
+      <nldd-spacer-cell size="12" />
+      <nldd-text-cell
+        text={item.read ? title : `**${title}**`}
+        {...(supporting ? { 'supporting-text': supporting } : {})}
+        vertical-alignment="top"
+        {...(item.read ? { color: 'secondary' } : {})}
+      />
+      {/* The date is metadata, so it is set a step smaller than the title, and
+          it never wraps: a text cell at the row's own size put it at title
+          size and broke "19 sep., 14:22" over two lines in a narrow window. */}
+      <nldd-cell vertical-alignment="top" width="fit-content" horizontal-alignment="right">
+        <nldd-text size="xs" color="secondary" style={{ whiteSpace: 'nowrap' }}>
+          {formatDateTimeShort(item.created_at)}
+        </nldd-text>
+      </nldd-cell>
+      <nldd-spacer-cell size="8" />
+      {item.read ? (
+        <nldd-spacer-cell size="16" />
+      ) : (
+        // A cell rather than nldd-icon-cell: the dot is the only place the row
+        // says it is unread, so it needs a label, and the icon cell has none.
+        <nldd-cell vertical-alignment="top">
+          <Icon name="circle-filled-small" size="16" color="accent" label="Ongelezen" />
+        </nldd-cell>
+      )}
+    </nldd-list-item>
   );
 }
