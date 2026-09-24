@@ -105,7 +105,8 @@ export function InboxPage() {
     read: n.is_read,
   }));
 
-  const hasUnread = inboxItems.some((item) => !item.read);
+  const unreadCount = inboxItems.filter((item) => !item.read).length;
+  const hasUnread = unreadCount > 0;
 
   return (
     <nldd-simple-section width="960px" horizontal-alignment="center">
@@ -222,8 +223,22 @@ export function InboxPage() {
                 6 is 18px, and the title bar's h1 is 20px. A section of the
                 page sits below that h1, so 6; at 4 it rendered larger than the
                 heading naming the whole page. */}
-            <nldd-container width="fit-content" className="row-fill">
+            <nldd-container
+              width="fit-content"
+              className="row-fill"
+              layout="row"
+              gap="8"
+              vertical-alignment="center"
+            >
               <nldd-title size={6}><h2>Meldingen</h2></nldd-title>
+              {/* The count belongs to the heading, not to a second label under
+                  it. Unread is the number that asks for something; the total
+                  is visible by scrolling. */}
+              {hasUnread && (
+                <nldd-text size="sm" color="secondary">
+                  {unreadCount} ongelezen
+                </nldd-text>
+              )}
             </nldd-container>
             {hasUnread && currentPerson?.id && (
               <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>

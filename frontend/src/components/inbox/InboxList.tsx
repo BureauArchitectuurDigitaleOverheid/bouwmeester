@@ -8,13 +8,19 @@ interface InboxListProps {
   onMarkRead?: (id: string) => void;
 }
 
-const GROUP_LABELS: Record<string, string> = {
-  task: 'Taken',
-  node: 'Corpus',
-  notification: 'Meldingen',
-  message: 'Berichten',
-};
-
+/**
+ * One list, newest first, as the API returns it.
+ *
+ * It used to group by type, with a label per group. Almost everything is a
+ * `notification`, so in practice that printed one label, "Meldingen (49)",
+ * right under the "Meldingen" heading, and when there were several groups it
+ * broke the one order an inbox should have: when did this come in. Each row
+ * now carries its type as an icon instead.
+ *
+ * `box-base` because the page behind it is tinted: the rows sit on one card
+ * with dividers, instead of 49 separate cards each with its own border and
+ * shadow competing for attention.
+ */
 export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
   if (items.length === 0) {
     return (
@@ -26,30 +32,11 @@ export function InboxList({ items, onOpenThread, onMarkRead }: InboxListProps) {
     );
   }
 
-  // Group by type
-  const grouped = items.reduce(
-    (groups, item) => {
-      if (!groups[item.type]) groups[item.type] = [];
-      groups[item.type].push(item);
-      return groups;
-    },
-    {} as Record<string, InboxItem[]>,
-  );
-
   return (
-    <nldd-container layout="stack" gap="24">
-      {Object.entries(grouped).map(([type, groupItems]) => (
-        <nldd-container key={type} layout="stack" gap="8">
-          <nldd-text size="xs" weight="bold" color="secondary">
-            {GROUP_LABELS[type] ?? type} ({groupItems.length})
-          </nldd-text>
-          <nldd-container layout="stack" gap="8">
-            {groupItems.map((item) => (
-              <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} onMarkRead={onMarkRead} />
-            ))}
-          </nldd-container>
-        </nldd-container>
+    <nldd-list variant="box-base" accessible-label="Meldingen">
+      {items.map((item) => (
+        <InboxItemCard key={item.id} item={item} onOpenThread={onOpenThread} onMarkRead={onMarkRead} />
       ))}
-    </nldd-container>
+    </nldd-list>
   );
 }
