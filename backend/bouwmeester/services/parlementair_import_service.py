@@ -312,6 +312,37 @@ class ParlementairImportService:
                     ", ".join(str(a.id) for a in abonnementen),
                 )
 
+    def _relevante_tekst(
+        self, item: FetchedItem, strategy: ImportStrategy
+    ) -> str | None:
+        """De passages waar de zoektermen vallen, of het begin van het stuk.
+
+        `build_extract_tags_prompt` kapt af op de eerste 10.000 tekens. Bij
+        een verslag van een schriftelijk overleg van 43.000 tekens levert
+        dat de voorpagina en de inhoudsopgave op, en dan moet het model
+        tags kiezen voor een stuk waarvan het het onderwerp nooit heeft
+        gezien.
+
+        Komt het stuk niet van een zoekterm (de moties en kamervragen uit
+        de OData-API), dan is er niets om omheen te knippen en blijft het
+        gedrag zoals het was.
+        """
+        tekst = item.document_tekst
+        if not tekst:
+            return tekst
+
+        treffers = getattr(strategy, "treffers", None)
+        if not isinstance(treffers, dict):
+            return tekst
+
+        ids = treffers.get(item.zaak_id) or []
+        abonnementen = getattr(strategy, "abonnementen", []) or []
+        termen = [a.term for a in abonnementen if a.id in ids]
+        if not termen:
+            return tekst
+
+        return knip_rond_termen(tekst, termen)
+
     async def _beoordeel(
         self, parlementair_item: ParlementairItem, abonnementen: list
     ) -> None:
@@ -361,6 +392,19 @@ class ParlementairImportService:
             )
             if alert.samenvatting:
                 parlementair_item.llm_samenvatting = alert.samenvatting
+            else:
+                # Geen samenvatting gekregen. Dat wordt gelogd omdat het
+                # anders onzichtbaar is: het bericht valt terug op het
+                # onderwerp van het stuk en ziet er dan gewoon uit, terwijl
+                # het model niets heeft kunnen zeggen. In productie stonden
+                # twee mislukte aanroepen op hetzelfde stuk zonder dat er
+                # ergens iets over te vinden was.
+                logger.warning(
+                    "Geen samenvatting voor %s (%d tekens tekst, reden: %s)",
+                    parlementair_item.zaak_nummer,
+                    len(parlementair_item.document_tekst or ""),
+                    alert.reden or "onbekend",
+                )
             extra = dict(bestaand)
             extra["relevantie_score"] = alert.relevantie_score
             extra["relevantie_reden"] = alert.reden
@@ -516,7 +560,13 @@ class ParlementairImportService:
                     extraction = await llm_service.extract_tags(
                         titel=item.titel,
                         onderwerp=item.onderwerp,
-                        document_tekst=item.document_tekst,
+                        # Niet het hele document: de prompt kapt af op de
+                        # eerste 10.000 tekens, en dat is bij een verslag
+                        # van 43.000 tekens de voorpagina en de
+                        # inhoudsopgave. Dezelfde behandeling als het
+                        # alert-pad krijgt, zodat het model naar de
+                        # passages kijkt waar de zoektermen vallen.
+                        document_tekst=self._relevante_tekst(item, strategy),
                         bestaande_tags=tag_names,
                         context_hint=strategy.context_hint(),
                     )
