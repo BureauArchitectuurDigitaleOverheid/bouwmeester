@@ -96,7 +96,16 @@ _CATEGORIE_CONTEXT: dict[str, str] = {
         "wordt er precies gevraagd over de zoekterm. Een vraag is geen "
         "standpunt van het kabinet, dus schrijf niet alsof het beleid is.\n"
         "Zijn het antwoorden op eerder gestelde vragen, zeg dan wat het "
-        "kabinet antwoordt."
+        "kabinet antwoordt.\n"
+        "CITEER DE VRAAG. Een lezer wil weten wat er gevraagd is, niet "
+        "dat er gevraagd is: neem de kernvraag over de zoekterm "
+        "letterlijk over, tussen aanhalingstekens, en kort hem alleen in "
+        "als hij langer is dan twee zinnen. Staan er meerdere vragen over "
+        "de zoekterm, kies dan die het meest over de zoekterm zelf gaat "
+        "en noem hoeveel er nog meer zijn.\n"
+        "Bij een verslag van een schriftelijk overleg stellen meerdere "
+        "fracties vragen over hetzelfde onderwerp. Noem dan welke "
+        "fracties dat zijn."
     ),
     "vergadering_vooruit": (
         "Dit is de AGENDA van een procedurevergadering die nog MOET "
