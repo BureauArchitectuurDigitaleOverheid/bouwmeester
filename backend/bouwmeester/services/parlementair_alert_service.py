@@ -65,6 +65,34 @@ REACTIE_NIET_RELEVANT = "x"
 REACTIE_OPVOLGEN = "eyes"
 
 
+# Teksten die een mislukte LLM-aanroep ooit als samenvatting heeft
+# opgeleverd. De bron daarvan is weg (zie `extract_tags`), maar stukken
+# die vóór die wijziging zijn geïmporteerd dragen ze nog, en die worden
+# opnieuw gepost zodra een nieuwe zoekterm ze aandraagt.
+#
+# Een vangnet en geen oplossing: het echte werk is dat een foutpad nooit
+# tekst produceert die op inhoud lijkt.
+_FOUTMELDINGEN = frozenset(
+    {
+        "tag-extractie mislukt",
+        "samenvatting mislukt",
+        "extractie mislukt",
+    }
+)
+
+
+def _bruikbare_samenvatting(ruwe: str | None) -> str:
+    """De samenvatting, of leeg als het een foutmelding blijkt.
+
+    Leeg is hier het goede antwoord: `format_alert` valt dan terug op het
+    onderwerp van het stuk, en dat is altijd echte tekst uit de bron.
+    """
+    tekst = (ruwe or "").strip()
+    if tekst.lower().rstrip(".") in _FOUTMELDINGEN:
+        return ""
+    return tekst
+
+
 def _vinkje_voor(item: ParlementairItem):
     """Welke kanaalinstelling bepaalt of dit stuk gepost mag worden.
 
@@ -196,7 +224,7 @@ class ParlementairAlertService:
         # een kamerstuk van derden samen, dus een stuk dat het overhaalt
         # om `@channel` of een link in de samenvatting te zetten krijgt
         # dat anders ongefilterd in het kanaal.
-        samenvatting = _escape_md((item.llm_samenvatting or "").strip())
+        samenvatting = _escape_md(_bruikbare_samenvatting(item.llm_samenvatting))
         if not samenvatting:
             samenvatting = _escape_md((item.onderwerp or "")[:300])
 

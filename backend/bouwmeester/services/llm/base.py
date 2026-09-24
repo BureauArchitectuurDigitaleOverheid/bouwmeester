@@ -163,10 +163,21 @@ class BaseLLMService(ABC):
             )
         except Exception:
             logger.exception("Fout bij LLM tag-extractie")
+            # Leeg en niet "Tag-extractie mislukt". Deze waarde landt in
+            # `ParlementairItem.llm_samenvatting`, en dat veld wordt
+            # gepost als de tekst van een Mattermost-alert. Een interne
+            # foutmelding stond daardoor in productie als samenvatting in
+            # het kanaal (24 september 2026), waar hij eruitzag als iets
+            # dat iemand had geschreven.
+            #
+            # Leeg is bovendien wat de rest van de keten al verwacht:
+            # `format_alert` valt terug op het onderwerp zodra de
+            # samenvatting leeg is, en dat gedrag werkte hier niet omdat
+            # het veld gevuld was met een zin.
             return TagExtractionResult(
                 matched_tags=[],
                 suggested_new_tags=[],
-                samenvatting="Tag-extractie mislukt",
+                samenvatting="",
             )
 
     async def summarize_kamerstuk_alert(
