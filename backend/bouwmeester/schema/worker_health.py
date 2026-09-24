@@ -39,11 +39,17 @@ class MattermostChannelOverview(BaseModel):
     channel_id: str
     channel_display_name: str
     channel_name: str
+    team_id: str | None = None
+    # Bij het tonen opgehaald, niet opgeslagen: een opgeslagen naam
+    # veroudert zodra iemand het team hernoemt.
+    team_name: str | None = None
     scope_type: str  # "lead" | "initiatief"
     scope_id: UUID
     scope_label: str | None
     auto_note_enabled: bool
     suggest_leads_enabled: bool
+    parlementaire_alerts_enabled: bool
+    nieuws_alerts_enabled: bool
     last_seen_post_at: datetime | None
     disabled_at: datetime | None
     created_at: datetime

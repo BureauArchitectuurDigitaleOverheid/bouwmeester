@@ -830,3 +830,47 @@ class MattermostService:
         if self._client:
             await self._client.aclose()
             self._client = None
+
+
+async def vul_teamnaam_aan(session: AsyncSession, antwoorden: list) -> list:
+    """Vul `team_id` en `team_name` aan op alles wat een kanaal toont.
+
+    Werkt op elk antwoordobject dat `channel_id`, `team_id` en `team_name`
+    draagt, zodat de kanaalkaart en het beheeroverzicht dezelfde weg lopen
+    in plaats van twee implementaties naast elkaar.
+
+    Twee dingen worden hier opgehaald in plaats van opgeslagen.
+
+    De naam, omdat een opgeslagen naam veroudert zodra iemand het team in
+    Mattermost hernoemt; Bouwmeester zou dan maandenlang iets tonen dat er
+    correct uitziet en het niet is.
+
+    En het team-id, omdat koppelingen van vóór deze wijziging het niet
+    dragen: `team_id` staat daar op NULL, dus er valt niets op te zoeken.
+    Een migratie die dat eenmalig vult lost het op voor wat er nu is en
+    niet voor wat er tussendoor bijkomt. Bij het tonen ophalen herstelt
+    zichzelf.
+
+    Faalt zacht: zonder Mattermost is de lijst precies wat hij hiervoor
+    was. Een kanaal zonder teamnaam is beter dan een lijst die omvalt.
+    """
+    if not antwoorden:
+        return antwoorden
+
+    service = MattermostService(session)
+    if not await service.is_enabled():
+        return antwoorden
+
+    namen = await service.team_namen()
+    if not namen:
+        return antwoorden
+
+    ontbreekt = any(a.team_id is None for a in antwoorden)
+    per_kanaal = await service.team_id_per_kanaal() if ontbreekt else {}
+
+    for a in antwoorden:
+        team_id = a.team_id or per_kanaal.get(a.channel_id)
+        if team_id:
+            a.team_id = team_id
+            a.team_name = namen.get(team_id)
+    return antwoorden

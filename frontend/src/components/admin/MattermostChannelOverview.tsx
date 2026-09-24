@@ -19,24 +19,50 @@ function scopeText(channel: Channel): string {
   return `${prefix}: ${label}`;
 }
 
+/** De vier schakelaars van een koppeling, in de volgorde van de kaart.
+ *
+ * De tekst is korter dan het label op de checkbox ("Kamerstuk-alerts"
+ * wordt "Kamerstukken"), want er passen er vier naast elkaar in deze
+ * kolom. Elke schakelaar krijgt een eigen tag in plaats van één
+ * samengestelde regel: met drie of vier actieve schakelaars liep die
+ * regel de kolom uit.
+ */
+const MODES = [
+  { key: 'auto_note_enabled', text: 'Notities' },
+  { key: 'suggest_leads_enabled', text: 'Leads' },
+  { key: 'parlementaire_alerts_enabled', text: 'Kamerstukken' },
+  { key: 'nieuws_alerts_enabled', text: 'Nieuws' },
+] as const satisfies ReadonlyArray<{ key: keyof Channel; text: string }>;
+
 function modeCell(channel: Channel) {
   if (channel.disabled_at) {
     return <nldd-tag text="Uitgeschakeld" icon="dismiss-circle" color="critical" size="sm" />;
   }
-  if (channel.auto_note_enabled || channel.suggest_leads_enabled) {
-    const parts = [
-      channel.auto_note_enabled ? 'Notities' : null,
-      channel.suggest_leads_enabled ? 'Lead-suggesties' : null,
-    ].filter(Boolean);
-    return <nldd-tag text={parts.join(' + ')} icon="check-mark-circle" color="success" size="sm" />;
+  const actief = MODES.filter((mode) => channel[mode.key]);
+  if (actief.length === 0) {
+    return <nldd-tag text="Niets actief" icon="minus-circle" color="neutral" size="sm" />;
   }
-  return <nldd-tag text="Niets actief" icon="minus-circle" color="neutral" size="sm" />;
+  return (
+    <nldd-container layout="wrap" gap="4" width="full" vertical-alignment="center">
+      {actief.map((mode) => (
+        <nldd-tag key={mode.key} text={mode.text} color="success" size="sm" />
+      ))}
+    </nldd-container>
+  );
 }
 
 function ChannelRow({ channel }: { channel: Channel }) {
   return (
     <nldd-table-row>
-      <nldd-title-cell text={`#${channel.channel_display_name}`} supporting-text={channel.channel_name} />
+      {/* Het team erbij, want twee kanalen in verschillende teams mogen
+          dezelfde naam dragen en dit overzicht zet ze onder elkaar.
+          Zonder die regel is niet te zien welke rij welk kanaal is. */}
+      <nldd-title-cell
+        text={`#${channel.channel_display_name}`}
+        supporting-text={
+          channel.team_name ? `${channel.channel_name} · ${channel.team_name}` : channel.channel_name
+        }
+      />
       <nldd-text-cell text={scopeText(channel)} />
       <nldd-text-cell>{modeCell(channel)}</nldd-text-cell>
       <nldd-text-cell text={formatRelative(channel.last_seen_post_at)} color="secondary" hide-below="md" />
@@ -77,8 +103,8 @@ export function MattermostChannelOverviewTable() {
         </nldd-text>
       </nldd-container>
       <nldd-table
-        columns="minmax(200px,1fr) minmax(160px,1fr) 160px 140px"
-        sm-columns="1fr 160px"
+        columns="minmax(200px,1fr) minmax(160px,1fr) minmax(200px,240px) 140px"
+        sm-columns="1fr 200px"
         accessible-label="Mattermost-kanalen"
       >
         <nldd-table-row slot="header">
