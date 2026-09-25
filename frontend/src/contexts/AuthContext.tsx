@@ -59,8 +59,33 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * The backend was out of reach, not wrong: no response at all, or a 5xx.
+ *
+ * In production the API lives on its own origin (component-2), so a backend
+ * that is restarting after a deploy answers from the ingress without CORS
+ * headers, and the browser reports that as a bare `TypeError: Failed to fetch`.
+ * The same happens for a laptop that wakes up before its Wi-Fi does. Both pass
+ * within seconds, so they are worth waiting out rather than showing.
+ */
+class TransientAuthError extends Error {}
+
+const UNREACHABLE_MESSAGE = 'Bouwmeester is even niet bereikbaar. We proberen het automatisch opnieuw.';
+
+/** Backoff for the first check: about 15 seconds in total before giving up. */
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000];
+
+/** How often the error screen tries again on its own. */
+const RECOVERY_INTERVAL_MS = 10_000;
+
 async function fetchAuthStatus(): Promise<AuthState> {
-  const res = await fetch(`${BASE_URL}/api/auth/status`, { credentials: 'include' });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/api/auth/status`, { credentials: 'include' });
+  } catch {
+    throw new TransientAuthError(UNREACHABLE_MESSAGE);
+  }
+  if (res.status >= 500) throw new TransientAuthError(UNREACHABLE_MESSAGE);
   if (!res.ok) throw new Error(`Auth status check failed: ${res.status}`);
   const data = await res.json();
   return {
@@ -96,6 +121,19 @@ async function fetchAuthStatus(): Promise<AuthState> {
   };
 }
 
+/** `fetchAuthStatus`, retried with backoff while the failure is transient. */
+async function fetchAuthStatusWithRetry(isCancelled: () => boolean): Promise<AuthState> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fetchAuthStatus();
+    } catch (err) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (!(err instanceof TransientAuthError) || delay === undefined || isCancelled()) throw err;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     loading: true,
@@ -110,16 +148,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    fetchAuthStatus()
-      .then((s) => setState(s))
+    let cancelled = false;
+    fetchAuthStatusWithRetry(() => cancelled)
+      .then((s) => {
+        if (!cancelled) setState(s);
+      })
       .catch((err) => {
+        if (cancelled) return;
         setState((prev) => ({
           ...prev,
           loading: false,
           error: err instanceof Error ? err.message : 'Kon authenticatiestatus niet ophalen',
         }));
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // Once the error screen is up, keep trying on our own: every few seconds, and
+  // straight away when the browser says the network is back. The first answer
+  // that gets through replaces the error with the real state, so a deploy that
+  // outlasts the backoff above still ends without anyone pressing a button.
+  const hasError = state.error !== null;
+  useEffect(() => {
+    if (!hasError) return;
+    let cancelled = false;
+    const tryAgain = () => {
+      fetchAuthStatus()
+        .then((s) => {
+          if (!cancelled) setState(s);
+        })
+        .catch(() => {
+          // Still out of reach; the next tick tries again.
+        });
+    };
+    const interval = setInterval(tryAgain, RECOVERY_INTERVAL_MS);
+    window.addEventListener('online', tryAgain);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener('online', tryAgain);
+    };
+  }, [hasError]);
 
   const refreshAuthStatus = useCallback(async () => {
     try {
