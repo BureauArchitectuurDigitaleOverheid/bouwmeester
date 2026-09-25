@@ -273,16 +273,24 @@ class ParlementairAlertService:
             }
         ]
 
-        # Het `title`-veld van een attachment rendert geen markdown en
-        # geen `:emoji:`-codes. Escapen levert daar dus zichtbare
-        # backslashes op (`\(O.a. Kamerstuk 26643-1542\)`) en de
-        # emoji-code blijft letterlijk staan. Allebei stonden ze zo in
-        # productie, 24 september 2026.
+        # Het `title`-veld is platte tekst zolang er een `title_link`
+        # staat: de webapp rendert dan `decodeHtmlEntities(title)` binnen
+        # een link, zonder markdown en zonder `:emoji:`-codes. Escapen
+        # levert daar alleen zichtbare backslashes op
+        # (`\(O.a. Kamerstuk 26643-1542\)`) en de emoji-code blijft
+        # letterlijk staan; allebei stonden ze zo in productie op
+        # 24 september 2026.
         #
-        # Niet escapen is hier ook veilig, juist omdat het veld niets
-        # interpreteert: een titel met `@channel` of een link erin wordt
-        # als platte tekst getoond.
-        titel = f"{presentatie.get('teken', '')} {item.titel}".strip()
+        # Zónder `title_link` gaat de titel wél door een markdown-renderer
+        # (LinkOnlyRenderer: opmaak wordt gestript, maar links en emoji
+        # renderen). `_titel_link` garandeert daarom altijd een link, want
+        # deze titel komt uit een kamerstuk van derden en `[tekst](url)`
+        # zou dan een klikbare link opleveren die iets anders belooft dan
+        # waar hij heen gaat.
+        titel_link = item.document_url or ""
+        ruwe_titel = f"{presentatie.get('teken', '')} {item.titel}".strip()
+        # Zonder link geldt de markdown-tak, en dan escapen we alsnog.
+        titel = ruwe_titel if titel_link else _escape_md(ruwe_titel)
         attachment: dict = {
             # Ook platte tekst: dit is wat een notificatie op een telefoon
             # toont. Backslashes horen daar net zomin.
@@ -290,7 +298,7 @@ class ParlementairAlertService:
             "color": kleur,
             "pretext": kop,
             "title": titel,
-            "title_link": item.document_url or "",
+            "title_link": titel_link,
             "text": "\n\n".join(tekst_delen),
             "fields": fields,
             "footer": self._voettekst(item, extra),

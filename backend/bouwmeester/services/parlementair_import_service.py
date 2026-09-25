@@ -238,8 +238,18 @@ class ParlementairImportService:
             # geïmporteerd — een gemist bericht is beter dan een bericht
             # over een stuk dat is teruggedraaid.
             for item_id in self._te_alerteren:
-                await self._alert_kamerstuk(item_id)
-                self._gepost_deze_ronde.add(item_id)
+                # Alleen als er werkelijk een bericht uit is gegaan. Een
+                # alert die onder de drempel bleef, geen kanaal vond of
+                # faalde, heeft niets getoond — en dan mag de dedup-poort
+                # het stuk niet uit de inhaalslag houden.
+                #
+                # Zonder deze voorwaarde verdween een stuk in stilte: de
+                # bestaande term hield hem tegen op `minimum_relevantie`,
+                # en de verse term (die hem wél had getoond) sloeg hem
+                # over omdat hij "al gepost" heette. `markeer_ingehaald`
+                # maakte dat verlies bovendien permanent.
+                if await self._alert_kamerstuk(item_id):
+                    self._gepost_deze_ronde.add(item_id)
 
         if self._inhaalslag:
             await self._post_inhaalslag(self._inhaalslag)
@@ -470,7 +480,7 @@ class ParlementairImportService:
                 teksten.append(tekst)
         return "\n\n".join(teksten) if teksten else None
 
-    async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> None:
+    async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> int:
         """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
 
         Draait ná de commit van het item, dus met een id in plaats van een
@@ -481,6 +491,11 @@ class ParlementairImportService:
         bericht wordt gemaakt: de score bepaalt de vorm, niet of er gepost
         wordt. Een mislukte LLM-call mag het stuk niet verzwijgen, dus
         beide stappen falen zacht.
+
+        Geeft terug in hoeveel kanalen werkelijk is gepost. Nul is een
+        geldige uitkomst (onder de drempel, geen kanaal, of een fout bij
+        het posten), en de aanroeper heeft dat verschil nodig: alleen een
+        stuk dat echt is getoond mag uit de inhaalslag worden gehouden.
         """
         from bouwmeester.services.parlementair_alert_service import (
             ParlementairAlertService,
@@ -493,7 +508,7 @@ class ParlementairImportService:
             logger.warning(
                 "Kamerstuk %s verdwenen vóór het alert", parlementair_item_id
             )
-            return
+            return 0
 
         abonnementen = await self.abonnement_repo.list_abonnementen_voor_item(
             parlementair_item.id
@@ -508,10 +523,12 @@ class ParlementairImportService:
                 parlementair_item.zaak_nummer,
                 gepost,
             )
+            return gepost
         except Exception:
             logger.exception(
                 "Alert posten mislukt voor %s", parlementair_item.zaak_nummer
             )
+            return 0
 
     async def _koppel_aan_bestaand_item(
         self,
