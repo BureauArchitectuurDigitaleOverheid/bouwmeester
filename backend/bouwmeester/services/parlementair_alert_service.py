@@ -31,6 +31,9 @@ from bouwmeester.services.kamerstuk_soort import (
 )
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
+from bouwmeester.services.mattermost_utils import (
+    escape_mattermost_prose as _escape_proza,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +82,25 @@ _FOUTMELDINGEN = frozenset(
         "extractie mislukt",
     }
 )
+
+
+def _kort(tekst: str, grens: int) -> str:
+    """Kort een titel in op een woordgrens, met een beletselteken.
+
+    `titel[:70]` hakte midden in een woord: "over cloudbeleid (O.a. Ka"
+    stond zo in productie. Een afgekapte titel zonder teken leest
+    bovendien als een volledige titel, wat erger is dan zichtbaar
+    ingekort.
+    """
+    tekst = tekst.strip()
+    if len(tekst) <= grens:
+        return tekst
+    afgekapt = tekst[:grens]
+    spatie = afgekapt.rfind(" ")
+    # Alleen terug naar de spatie als dat niet de halve titel weggooit.
+    if spatie > grens * 0.6:
+        afgekapt = afgekapt[:spatie]
+    return afgekapt.rstrip(" ,.;:-") + "…"
 
 
 def _bruikbare_samenvatting(ruwe: str | None) -> str:
@@ -224,15 +246,15 @@ class ParlementairAlertService:
         # een kamerstuk van derden samen, dus een stuk dat het overhaalt
         # om `@channel` of een link in de samenvatting te zetten krijgt
         # dat anders ongefilterd in het kanaal.
-        samenvatting = _escape_md(_bruikbare_samenvatting(item.llm_samenvatting))
+        samenvatting = _escape_proza(_bruikbare_samenvatting(item.llm_samenvatting))
         if not samenvatting:
-            samenvatting = _escape_md((item.onderwerp or "")[:300])
+            samenvatting = _escape_proza((item.onderwerp or "")[:300])
 
         tekst_delen = [samenvatting]
 
         actie = (extra.get("actie") or "").strip()
         if actie:
-            tekst_delen.append(f":arrow_right: {_escape_md(actie)}")
+            tekst_delen.append(f":arrow_right: {_escape_proza(actie)}")
 
         acties = []
         if item.document_url:
@@ -247,17 +269,36 @@ class ParlementairAlertService:
             {
                 "short": False,
                 "title": "Gevonden op",
-                "value": ", ".join(_escape_md(t) for t in termen),
+                "value": ", ".join(_escape_proza(t) for t in termen),
             }
         ]
 
-        titel = f"{presentatie['emoji']} {_escape_md(item.titel)}"
+        # Het `title`-veld is platte tekst zolang er een `title_link`
+        # staat: de webapp rendert dan `decodeHtmlEntities(title)` binnen
+        # een link, zonder markdown en zonder `:emoji:`-codes. Escapen
+        # levert daar alleen zichtbare backslashes op
+        # (`\(O.a. Kamerstuk 26643-1542\)`) en de emoji-code blijft
+        # letterlijk staan; allebei stonden ze zo in productie op
+        # 24 september 2026.
+        #
+        # Zónder `title_link` gaat de titel wél door een markdown-renderer
+        # (LinkOnlyRenderer: opmaak wordt gestript, maar links en emoji
+        # renderen). `_titel_link` garandeert daarom altijd een link, want
+        # deze titel komt uit een kamerstuk van derden en `[tekst](url)`
+        # zou dan een klikbare link opleveren die iets anders belooft dan
+        # waar hij heen gaat.
+        titel_link = item.document_url or ""
+        ruwe_titel = f"{presentatie.get('teken', '')} {item.titel}".strip()
+        # Zonder link geldt de markdown-tak, en dan escapen we alsnog.
+        titel = ruwe_titel if titel_link else _escape_md(ruwe_titel)
         attachment: dict = {
-            "fallback": f"{presentatie['label']}: {_escape_md(item.titel)}",
+            # Ook platte tekst: dit is wat een notificatie op een telefoon
+            # toont. Backslashes horen daar net zomin.
+            "fallback": f"{presentatie['label']}: {item.titel}",
             "color": kleur,
             "pretext": kop,
             "title": titel,
-            "title_link": item.document_url or "",
+            "title_link": titel_link,
             "text": "\n\n".join(tekst_delen),
             "fields": fields,
             "footer": self._voettekst(item, extra),
@@ -315,7 +356,7 @@ class ParlementairAlertService:
         if bijlage_bij:
             onderwerp = (extra.get("bijlage_bij_onderwerp") or "").strip()
             if onderwerp:
-                delen.append(f"bij _{_escape_md(onderwerp[:60])}_")
+                delen.append(f"bij _{_escape_proza(onderwerp[:60])}_")
             else:
                 delen.append(f"bij {bijlage_bij}")
 
@@ -397,7 +438,7 @@ class ParlementairAlertService:
                 categorie, CATEGORIE_PRESENTATIE[CAT_OVERIG]
             )
             datum = _nl_datum(item.datum) if item.datum else ""
-            titel = _escape_md(item.titel[:70])
+            titel = _escape_md(_kort(item.titel, 70))
             link = item.document_url
             regel = f"{presentatie['emoji']} "
             regel += f"[{titel}]({link})" if link else titel
@@ -405,13 +446,17 @@ class ParlementairAlertService:
                 regel += f" · {datum}"
             regels.append(regel)
 
-        termen = ", ".join(_escape_md(a.term) for a in abonnementen)
+        termen = ", ".join(_escape_proza(a.term) for a in abonnementen)
         kop = "Nieuwe zoekterm" if len(abonnementen) == 1 else "Nieuwe zoektermen"
         attachment = {
             "fallback": f"{len(items)} eerdere stukken gevonden voor {termen}",
             "color": "#64748B",
             "pretext": f":mag: **{kop}** · {termen}",
-            "title": f"{len(items)} stukken uit de afgelopen week gevonden",
+            "title": (
+                "1 stuk uit de afgelopen week gevonden"
+                if len(items) == 1
+                else f"{len(items)} stukken uit de afgelopen week gevonden"
+            ),
             "text": "\n".join(regels),
             "footer": (
                 "Eenmalige inhaalslag bij het aanzetten. Hierna verschijnen "
