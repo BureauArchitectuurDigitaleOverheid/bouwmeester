@@ -95,14 +95,41 @@ class LeadCandidateClassification(BaseModel):
     lead in zit terwijl er niemand gekeken heeft."""
 
 
+class LegeLLMResponsError(ValueError):
+    """Het model gaf niets terug.
+
+    Een eigen fout, omdat `json.loads("")` anders `Expecting value: line 1
+    column 1 (char 0)` oplevert. Die melding leest als kapotte JSON en
+    wijst naar de parser, terwijl het probleem bij de provider ligt. In
+    productie kostte dat verschil een middag zoeken (25 september 2026):
+    de traceback wees vier frames diep naar `json/decoder.py`, en wat er
+    werkelijk stond was dat VLAM een lege string had teruggegeven.
+
+    Erft van ValueError, zodat bestaande `except Exception`-paden hem
+    blijven vangen en een lege respons nog steeds zacht faalt.
+    """
+
+
 class BaseLLMService(ABC):
     """Abstract base for all LLM providers."""
 
     capabilities: ProviderCapabilities
 
     def _parse_json(self, content: str) -> dict:
-        """Parse JSON from LLM response, handling markdown code blocks."""
+        """Parse JSON from LLM response, handling markdown code blocks.
+
+        Een lege respons krijgt een eigen fout. `json.loads("")` geeft
+        anders `Expecting value: line 1 column 1 (char 0)`, en dat leest
+        als kapotte JSON terwijl er niets terugkwam. In productie kostte
+        dat verschil een middag zoeken (25 september 2026): de provider
+        gaf een lege string terug en de traceback wees naar de parser.
+        """
         import re
+
+        if not content or not content.strip():
+            raise LegeLLMResponsError(
+                "het model gaf een lege respons terug (geen tekst om te lezen)"
+            )
 
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
@@ -154,7 +181,12 @@ class BaseLLMService(ABC):
             context_hint=context_hint,
         )
         try:
-            text = await self._complete(prompt)
+            # 2048 en niet de standaard 1024: het antwoord draagt een lijst
+            # tags plus een samenvatting van twee zinnen, en een afgekapt
+            # antwoord is geen geldige JSON. Andere aanroepen in dit
+            # bestand zetten hun budget ook expliciet; deze twee vielen
+            # stil terug op de standaard.
+            text = await self._complete(prompt, max_tokens=2048)
             result = self._parse_json(text)
             return TagExtractionResult(
                 matched_tags=result.get("matched_tags", []),
@@ -233,7 +265,8 @@ class BaseLLMService(ABC):
         laatste: Exception | None = None
         for poging in (1, 2):
             try:
-                text = await self._complete(prompt)
+                # Idem: samenvatting, reden en actie in één JSON.
+                text = await self._complete(prompt, max_tokens=2048)
                 result = self._parse_json(text)
                 score = result.get("relevantie_score", 50)
                 if not isinstance(score, int | float):

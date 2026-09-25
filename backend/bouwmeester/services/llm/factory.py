@@ -150,6 +150,32 @@ def _log_llm_configuration(
         "ja" if vlam_built else "nee",
         preferred or "-",
     )
+
+    # Wie het publieke werk krijgt, met de reden erbij. De regel hierboven
+    # geeft de ingrediënten; deze geeft de uitkomst, en dat is wat je wil
+    # weten als je net `LLM_PROVIDER` hebt omgezet. Zonder deze regel is
+    # het antwoord alleen af te leiden uit een traceback van een mislukte
+    # aanroep, en dat was op 25 september 2026 precies het probleem.
+    if preferred == "vlam":
+        winnaar, reden = (
+            ("VLAM", "voorkeur") if vlam_built else ("Claude", "VLAM niet opgebouwd")
+        )
+    else:
+        winnaar, reden = (
+            ("Claude", "voorkeur")
+            if claude_built
+            else ("VLAM", "Claude niet opgebouwd")
+        )
+    if not (claude_built or vlam_built):
+        winnaar, reden = ("geen", "geen enkele provider opgebouwd")
+
+    logger.info(
+        "Publiek werk (kamerstukken, samenvattingen) gaat naar: %s (%s). "
+        "Intern en vertrouwelijk werk gaat altijd naar VLAM, ongeacht de "
+        "voorkeur: Claude draagt alleen PUBLIC.",
+        winnaar,
+        reden,
+    )
     if vlam_built:
         bron = (
             "platform (VLAM_API_URL)" if platform_url else "handmatig (VLAM_BASE_URL)"

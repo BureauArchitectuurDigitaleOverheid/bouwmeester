@@ -28,7 +28,7 @@ def _svc(antwoorden: list):
         def __init__(self):
             self.aanroepen = 0
 
-        async def _complete(self, prompt: str) -> str:
+        async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
             self.aanroepen += 1
             volgende = antwoorden[self.aanroepen - 1]
             if isinstance(volgende, Exception):
