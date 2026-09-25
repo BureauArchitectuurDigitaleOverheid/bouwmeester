@@ -34,6 +34,7 @@ from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escap
 from bouwmeester.services.mattermost_utils import (
     escape_mattermost_prose as _escape_proza,
 )
+from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,51 @@ def _kort(tekst: str, grens: int) -> str:
     if spatie > grens * 0.6:
         afgekapt = afgekapt[:spatie]
     return afgekapt.rstrip(" ,.;:-") + "…"
+
+
+def _terugval(item: ParlementairItem, termen: list[str] | None = None) -> str:
+    """Wat er in het bericht komt als de samenvatting ontbreekt.
+
+    Het onderwerp is de eerste keus, maar bij een agenda is dat woord
+    voor woord de titel: dan staat er twee keer hetzelfde en zegt het
+    bericht niets. Zo stond een agenda van de commissie Digitale Zaken op
+    25 september 2026 in het kanaal, terwijl het document wel degelijk
+    vertelde dat er een rondetafelgesprek over de oprichting van de
+    dienst wordt voorbereid.
+
+    Dan liever de passage uit het document waar de zoekterm valt. Dat is
+    geen samenvatting, maar het is wél nieuwe informatie, en het is de
+    passage waarom dit stuk überhaupt binnenkwam.
+    """
+    titel = (item.titel or "").strip().lower()
+    onderwerp = (item.onderwerp or "").strip()
+
+    if onderwerp and onderwerp.lower() != titel:
+        return onderwerp[:300]
+
+    # Niet het begin van het document, maar de passage waar de zoekterm
+    # valt. Het begin van een agenda is de voortouwcommissie en een rij
+    # agendapuntnummers; de passage eromheen zegt waarom dit stuk binnenkwam.
+    ruw = item.document_tekst or ""
+    tekst = ruw
+    if termen and ruw:
+        geknipt = knip_rond_termen(ruw, termen)
+        # `knip_rond_termen` zet de kop van het document vooraan, want een
+        # losse passage is zonder die context niet te plaatsen. Voor een
+        # prompt is dat goed; hier niet, want de kop van een agenda is de
+        # voortouwcommissie en een rij agendapuntnummers. We nemen daarom
+        # het eerste stuk ná de kop.
+        _, _, na_kop = geknipt.partition("[...]")
+        tekst = na_kop or geknipt
+
+    tekst = " ".join(tekst.split())
+    if tekst:
+        return _kort(tekst, 300)
+
+    # Niets bruikbaars. Het onderwerp herhalen is nog altijd beter dan een
+    # leeg bericht; de titel staat er dan twee keer, maar de links en de
+    # zoektermen eronder dragen het bericht.
+    return onderwerp[:300]
 
 
 def _bruikbare_samenvatting(ruwe: str | None) -> str:
@@ -248,7 +294,7 @@ class ParlementairAlertService:
         # dat anders ongefilterd in het kanaal.
         samenvatting = _escape_proza(_bruikbare_samenvatting(item.llm_samenvatting))
         if not samenvatting:
-            samenvatting = _escape_proza((item.onderwerp or "")[:300])
+            samenvatting = _escape_proza(_terugval(item, termen))
 
         tekst_delen = [samenvatting]
 

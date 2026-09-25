@@ -109,7 +109,7 @@ class TestExtractTagsGeeftGeenFouttekst:
         from bouwmeester.services.llm.base import BaseLLMService
 
         class _Stuk(BaseLLMService):
-            async def _complete(self, prompt: str) -> str:
+            async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
                 raise RuntimeError("model onbereikbaar")
 
         svc = _Stuk.__new__(_Stuk)
