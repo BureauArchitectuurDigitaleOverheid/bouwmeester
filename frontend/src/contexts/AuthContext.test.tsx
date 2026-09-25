@@ -70,6 +70,31 @@ describe('AuthProvider first status check', () => {
     expect(seen?.authenticated).toBe(true);
   });
 
+  it('rides out a whole backend deploy without showing the error', async () => {
+    // A deploy was measured at 37 seconds of 503s.
+    let up = false;
+    const fetchMock = vi.fn(async () =>
+      up ? okResponse() : new Response('', { status: 503 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await flush();
+    await flush(37_000);
+    expect(seen?.error).toBeNull();
+    expect(seen?.loading).toBe(true);
+
+    up = true;
+    await flush(15_000);
+
+    expect(seen?.error).toBeNull();
+    expect(seen?.authenticated).toBe(true);
+  });
+
   it('treats a 5xx as transient too', async () => {
     const fetchMock = vi
       .fn()
@@ -117,9 +142,9 @@ describe('AuthProvider first status check', () => {
         <Probe />
       </AuthProvider>,
     );
-    // Run through the whole backoff: 1 + 2 + 4 + 8 seconds.
+    // Run through the whole backoff: 1 + 2 + 4 + 8 + 15 + 15 seconds.
     await flush();
-    await flush(15_000);
+    await flush(45_000);
     expect(seen?.error).toMatch(/niet bereikbaar/);
 
     up = true;

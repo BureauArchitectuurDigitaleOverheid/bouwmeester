@@ -72,8 +72,14 @@ class TransientAuthError extends Error {}
 
 const UNREACHABLE_MESSAGE = 'Bouwmeester is even niet bereikbaar. We proberen het automatisch opnieuw.';
 
-/** Backoff for the first check: about 15 seconds in total before giving up. */
-const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000];
+/**
+ * Backoff for the first check: 45 seconds in total before giving up. A
+ * backend deploy was measured at 37 seconds of 503s (2026-09-25): the pod
+ * holds a volume only one pod can mount, so the old one stops before the new
+ * one starts. The whole window fits inside this, so a deploy shows "Laden..."
+ * rather than an error.
+ */
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 15_000, 15_000];
 
 /** How often the error screen tries again on its own. */
 const RECOVERY_INTERVAL_MS = 10_000;
