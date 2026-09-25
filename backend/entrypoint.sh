@@ -32,12 +32,6 @@ fi
 echo "Running database migrations..."
 alembic upgrade head
 
-# Bijlagen van het oude volume naar de objectopslag. Idempotent en nooit
-# fataal: wat al in de bucket staat wordt overgeslagen, en een fout laat de
-# app gewoon starten (de leesterugval in core/blob_store.py vangt het op).
-# Vervalt samen met het volume.
-python -u -m bouwmeester.services.bijlagen_migration || true
-
 echo "Starting background worker..."
 # `-u` forces unbuffered stdout/stderr so worker logs surface immediately
 # in container logs, even before the buffer would normally flush.

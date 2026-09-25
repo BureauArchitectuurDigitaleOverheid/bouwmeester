@@ -1,18 +1,16 @@
-"""The bijlagen store: S3 in production, a directory locally, and the move between.
+"""The bijlagen store: S3 in production, a directory locally.
 
 S3 runs against moto, which implements the same API the MinIO bucket on ZAD
 speaks, so the missing-object and size paths are the real botocore ones.
 """
 
 import uuid
-from pathlib import Path
 
 import boto3
 import pytest
 from moto import mock_aws
 
 from bouwmeester.core.blob_store import (
-    FallbackBlobStore,
     InvalidKeyError,
     LocalBlobStore,
     S3BlobStore,
@@ -20,10 +18,7 @@ from bouwmeester.core.blob_store import (
     set_blob_store,
 )
 from bouwmeester.models.chat_attachment import ChatAttachment
-from bouwmeester.services.bijlagen_migration import (
-    check_database_against_store,
-    copy_directory_to_store,
-)
+from bouwmeester.services.bijlagen_check import check_database_against_store
 
 BUCKET = "bouwmeester-test"
 
@@ -93,57 +88,14 @@ async def test_invalid_key_is_refused(store):
 
 
 # ---------------------------------------------------------------------------
-# The move from the volume
+# The database against the store
 # ---------------------------------------------------------------------------
 
 
-async def test_fallback_serves_a_file_only_the_volume_has(s3_store, tmp_path):
-    volume = LocalBlobStore(tmp_path)
-    await volume.put("leads/l/1_oud.pdf", b"oud")
-    store = FallbackBlobStore(s3_store, volume)
-
-    assert await store.get("leads/l/1_oud.pdf") == b"oud"
-    assert await store.size("leads/l/1_oud.pdf") == 3
-
-    # New files go to the bucket only.
-    await store.put("leads/l/2_nieuw.pdf", b"nieuw")
-    assert await s3_store.get("leads/l/2_nieuw.pdf") == b"nieuw"
-    assert await volume.get("leads/l/2_nieuw.pdf") is None
-
-
-async def test_copy_directory_copies_once_and_skips_the_write_check(
-    s3_store, tmp_path: Path
-):
-    (tmp_path / "chat" / "a").mkdir(parents=True)
-    (tmp_path / "chat" / "a" / "1_x.png").write_bytes(b"png")
-    (tmp_path / "node" / "2_y.pdf").parent.mkdir()
-    (tmp_path / "node" / "2_y.pdf").write_bytes(b"pdf!")
-    (tmp_path / "chat" / ".write_test_42").write_bytes(b"")
-
-    first = await copy_directory_to_store(tmp_path, s3_store)
-    assert (first.copied, first.already_present, first.failed) == (2, 0, [])
-    assert await s3_store.get("chat/a/1_x.png") == b"png"
-    assert await s3_store.get("node/2_y.pdf") == b"pdf!"
-    assert await s3_store.size("chat/.write_test_42") is None
-
-    # Running it again on every start costs a listing, not a second upload.
-    second = await copy_directory_to_store(tmp_path, s3_store)
-    assert (second.copied, second.already_present) == (0, 2)
-
-
-async def test_copy_directory_without_a_volume_does_nothing(s3_store, tmp_path):
-    report = await copy_directory_to_store(tmp_path / "bestaat-niet", s3_store)
-    assert (report.copied, report.already_present, report.failed) == (0, 0, [])
-
-
-async def test_check_tells_copied_from_volume_only_from_lost(
-    db_session, s3_store, tmp_path
-):
-    volume = LocalBlobStore(tmp_path)
-    in_bucket, on_volume, lost = (f"{uuid.uuid4()}/1_{n}.png" for n in "abc")
-    await s3_store.put(f"chat/{in_bucket}", b"1")
-    await volume.put(f"chat/{on_volume}", b"2")
-    for pad in (in_bucket, on_volume, lost):
+async def test_check_counts_files_the_store_lacks(db_session, s3_store):
+    present, lost = (f"{uuid.uuid4()}/1_{n}.png" for n in "ab")
+    await s3_store.put(f"chat/{present}", b"1")
+    for pad in (present, lost):
         db_session.add(
             ChatAttachment(
                 bestandsnaam="x.png",
@@ -155,15 +107,13 @@ async def test_check_tells_copied_from_volume_only_from_lost(
     await db_session.flush()
 
     checks = {
-        c.table: c
-        for c in await check_database_against_store(db_session, s3_store, volume)
+        c.table: c for c in await check_database_against_store(db_session, s3_store)
     }
     chat = checks["chat_attachment"]
-    assert chat.total >= 3
+    assert chat.total >= 2
+    assert chat.present >= 1
     assert f"chat/{lost}" in chat.missing
-    assert f"chat/{in_bucket}" not in chat.missing
-    assert f"chat/{on_volume}" not in chat.missing
-    assert chat.only_on_volume >= 1
+    assert f"chat/{present}" not in chat.missing
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,8 @@ Keys are the paths the database already stores, relative to the old bijlagen
 root: ``<node_id>/<uuid>_<name>`` for a bron, ``leads/<lead_id>/...`` for a
 lead and ``chat/<id>/...`` for chat (whose ``pad`` column is relative to
 ``chat/``, so callers add that prefix). Moving the files therefore needed no
-data migration in the database, only a copy of the files themselves.
+data migration in the database, only a copy of the files themselves, which
+ran at startup until every row was accounted for in the bucket.
 
 Without object-store settings (local development, tests) the files stay in a
 local directory, behind the same interface.
@@ -184,39 +185,6 @@ class S3BlobStore:
         )
 
 
-class FallbackBlobStore:
-    """Write to *primary*; read from *primary*, and from *fallback* if it is not there.
-
-    For the move from the volume to the bucket: the copy at startup
-    (``scripts/copy_bijlagen_to_object_store.py``) should leave nothing behind,
-    but while the volume is still mounted a file it missed stays downloadable
-    instead of turning into a 404. Goes away together with the volume.
-    """
-
-    def __init__(self, primary: BlobStore, fallback: BlobStore) -> None:
-        self.primary = primary
-        self.fallback = fallback
-
-    async def put(self, key: str, data: bytes, content_type: str | None = None) -> None:
-        await self.primary.put(key, data, content_type)
-
-    async def get(self, key: str) -> bytes | None:
-        data = await self.primary.get(key)
-        if data is None:
-            data = await self.fallback.get(key)
-            if data is not None:
-                logger.warning("Bijlage %s alleen op het volume gevonden", key)
-        return data
-
-    async def size(self, key: str) -> int | None:
-        found = await self.primary.size(key)
-        return found if found is not None else await self.fallback.size(key)
-
-    async def delete(self, key: str) -> None:
-        await self.primary.delete(key)
-        await self.fallback.delete(key)
-
-
 def s3_client_from_settings():
     """A boto3 S3 client for the configured object store, or ``None``."""
     from bouwmeester.core.config import get_settings
@@ -252,15 +220,8 @@ def _configured_store() -> BlobStore:
         logger.info("Bijlagen: lokale opslag in %s", bijlagen_root())
         return LocalBlobStore(bijlagen_root())
     bucket = get_settings().OBJECT_STORE_BUCKET_NAME
-    s3 = S3BlobStore(client, bucket)
-    local_root = bijlagen_root()
-    if local_root.is_dir():
-        logger.info(
-            "Bijlagen: objectopslag, bucket %s, met %s als terugval", bucket, local_root
-        )
-        return FallbackBlobStore(s3, LocalBlobStore(local_root))
     logger.info("Bijlagen: objectopslag, bucket %s", bucket)
-    return s3
+    return S3BlobStore(client, bucket)
 
 
 def get_blob_store() -> BlobStore:
