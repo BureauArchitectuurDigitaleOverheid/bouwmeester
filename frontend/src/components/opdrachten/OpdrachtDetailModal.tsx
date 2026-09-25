@@ -442,7 +442,10 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                   <nldd-list variant="box-tinted" dividers="always">
                     {members.map((member) => (
                       <nldd-list-item key={member.person_id}>
-                        <nldd-cell>
+                        {/* `full`: a fit-content cell measures its content, and a
+                            container measures its parent, so the two wait on
+                            each other and the name can end up zero wide. */}
+                        <nldd-cell width="full">
                           <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
                             <NlddActionText
                               text={member.person_naam}
@@ -502,7 +505,10 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                   <nldd-list variant="box-tinted" dividers="always">
                     {eenheden.map((eenheid) => (
                       <nldd-list-item key={eenheid.eenheid_id}>
-                        <nldd-cell>
+                        {/* `full`: a fit-content cell measures its content, and a
+                            container measures its parent, so the two wait on
+                            each other and the name can end up zero wide. */}
+                        <nldd-cell width="full">
                           <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
                             <NlddActionText
                               text={eenheid.eenheid_naam}

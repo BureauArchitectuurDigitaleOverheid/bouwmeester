@@ -363,7 +363,7 @@ function ColumnRow({
             </nldd-text>
           </nldd-container>
 
-          <nldd-container layout="row" gap="4">
+          <nldd-container width="fit-content" className="shrink-0" layout="row" gap="4">
             <NlddIconButton
               icon="chevron-up"
               accessibleLabel="Omhoog"

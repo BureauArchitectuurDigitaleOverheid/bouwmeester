@@ -220,9 +220,10 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               accessible-label="Subeenheid toevoegen"
               // group/group-hover reveal-on-row-hover has no nldd
               // equivalent; `group` itself lives on the parent
-              // nldd-list-item above. group-hover-reveal is the real CSS
-              // backing this in utilities.css.
-              className="group-hover-reveal"
+              // nldd-list-item above. `-above-sm` because a touch screen
+              // has no hover: plain group-hover-reveal left this button
+              // invisible on a phone.
+              className="group-hover-reveal-above-sm"
             >
               <Icon name="Plus" size="xs" />
             </nldd-list-item-segment>

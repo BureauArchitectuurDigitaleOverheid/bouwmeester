@@ -266,7 +266,7 @@ function PostRow({
           )}
         </nldd-container>
         {canEdit && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
+          <nldd-container width="fit-content" className="shrink-0" layout="row" gap="4" vertical-alignment="center">
             <NlddIconButton
               icon="pencil"
               accessibleLabel="Bewerken"

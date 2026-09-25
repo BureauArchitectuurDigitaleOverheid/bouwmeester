@@ -1259,14 +1259,24 @@ interface ContactRowProps {
   onRemove: () => void;
 }
 
+// Expertise is free text, and a tag never shrinks below its full label. As a
+// tag beside the name it could take the whole row on a phone and leave the
+// name zero wide, one letter per line. As the name's second line it wraps.
 function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
   return (
     <nldd-list-item>
       <nldd-icon-cell icon="person" size="16" />
-      <nldd-text-cell text={naam} width="full" />
-      {expertise && <nldd-tag text={expertise} color="donkerblauw" size="sm" />}
-      <nldd-tag text={rolLabel} color="neutral" size="sm" />
-      <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
+      <nldd-text-cell
+        text={naam}
+        width="full"
+        {...(expertise ? { 'supporting-text': expertise } : {})}
+      />
+      <nldd-cell>
+        <nldd-tag text={rolLabel} color="neutral" size="sm" />
+      </nldd-cell>
+      <nldd-cell>
+        <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
+      </nldd-cell>
     </nldd-list-item>
   );
 }
@@ -1282,8 +1292,12 @@ function LinkedNodeRow({ title, nodeType, onUnlink }: LinkedNodeRowProps) {
     <nldd-list-item>
       <nldd-icon-cell icon="link" size="16" />
       <nldd-text-cell text={title} width="full" />
-      <nldd-tag text={nodeType} color="neutral" size="sm" />
-      <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
+      <nldd-cell>
+        <nldd-tag text={nodeType} color="neutral" size="sm" />
+      </nldd-cell>
+      <nldd-cell>
+        <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
+      </nldd-cell>
     </nldd-list-item>
   );
 }

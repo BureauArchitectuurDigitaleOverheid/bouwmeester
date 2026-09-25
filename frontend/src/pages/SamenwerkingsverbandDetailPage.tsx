@@ -421,44 +421,43 @@ export function SamenwerkingsverbandDetailPage() {
                   </nldd-list-item>
                 );
               }
+              // One text cell with everything but the name on its second
+              // line. Before, two full-width containers split the row in
+              // half, and the free-text expertise badge (a tag never
+              // shrinks) spilled over the date on a phone.
+              //
+              // `-above-sm`: on a touch screen there is no hover, so the
+              // buttons stay visible there. Plain `group-hover-reveal`
+              // hid them at every width, which left no way to edit or
+              // remove a lid on a phone.
+              const sinds = `sinds ${new Date(lid.start_datum).toLocaleDateString('nl-NL')}`;
+              const tot = lid.eind_datum
+                ? `tot ${new Date(lid.eind_datum).toLocaleDateString('nl-NL')}`
+                : null;
+              const details = [lid.person_expertise, lid.rol, sinds, tot]
+                .filter(Boolean)
+                .join(' · ');
               return (
-                // `group`/`group-hover` is plain CSS (a parent-hover
-                // selector), which has no nldd-container equivalent. Same
-                // pattern as LeadDetailPanel's hover-reveal action buttons.
                 <nldd-list-item key={lid.id} className="group">
-                  <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
-                    <nldd-container layout="row" gap="8" vertical-alignment="center" width="full">
-                      <nldd-text size="sm" weight="medium">{lid.person_naam}</nldd-text>
-                      {lid.person_expertise && (
-                        <Badge variant="indigo">{lid.person_expertise}</Badge>
-                      )}
-                      {lid.rol && (
-                        <nldd-text size="xs" color="secondary">— {lid.rol}</nldd-text>
-                      )}
-                    </nldd-container>
-                    <nldd-text size="xs" color="secondary">
-                      sinds {new Date(lid.start_datum).toLocaleDateString('nl-NL')}
-                      {lid.eind_datum && (
-                        <> · tot {new Date(lid.eind_datum).toLocaleDateString('nl-NL')}</>
-                      )}
-                    </nldd-text>
-                    <nldd-container layout="row" gap="2" vertical-alignment="center" className="group-hover-reveal">
-                      <NlddIconButton
-                        icon="pencil"
-                        accessibleLabel="Bewerken"
-                        variant="neutral-transparent"
-                        size="sm"
-                        onClick={() => startEditLid(lid)}
-                      />
-                      <NlddIconButton
-                        icon="close"
-                        accessibleLabel="Verwijderen"
-                        variant="neutral-transparent"
-                        size="sm"
-                        onClick={() => setConfirmRemoveLidId(lid.id)}
-                      />
-                    </nldd-container>
-                  </nldd-container>
+                  <nldd-text-cell text={lid.person_naam} supporting-text={details} width="full" />
+                  <nldd-cell className="group-hover-reveal-above-sm">
+                    <NlddIconButton
+                      icon="pencil"
+                      accessibleLabel="Bewerken"
+                      variant="neutral-transparent"
+                      size="sm"
+                      onClick={() => startEditLid(lid)}
+                    />
+                  </nldd-cell>
+                  <nldd-cell className="group-hover-reveal-above-sm">
+                    <NlddIconButton
+                      icon="close"
+                      accessibleLabel="Verwijderen"
+                      variant="neutral-transparent"
+                      size="sm"
+                      onClick={() => setConfirmRemoveLidId(lid.id)}
+                    />
+                  </nldd-cell>
                 </nldd-list-item>
               );
             })}

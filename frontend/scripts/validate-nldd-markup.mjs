@@ -58,6 +58,17 @@ const MEASURES_PARENT = new Set(['nldd-container', 'nldd-segmented-control']);
  */
 const SIZES_TO_CONTENT = new Set(['nldd-toolbar-item']);
 
+// Rows that are composed of cells, and the controls that fill whatever width
+// they get unless told otherwise.
+const ROWS = new Set(['nldd-list-item', 'nldd-table-row', 'nldd-list-item-segment']);
+const FILLS_BY_DEFAULT = new Set([
+  'nldd-dropdown',
+  'nldd-text-field',
+  'nldd-combo-box',
+  'nldd-search-field',
+  'nldd-date-field',
+]);
+
 const iconNames = new Set();
 {
   const iconDir = path.join(pkgRoot, 'dist/components/content/icon');
@@ -335,6 +346,34 @@ for (const file of files) {
             'shrink-0 or min-width: it collapses to zero or to its narrowest word.',
         );
       }
+    }
+
+    // A field control bare in a list or table row. A row is made of cells:
+    // text cells share the width that is left, so an element that fills its
+    // space by default takes that space from them. An nldd-dropdown without
+    // `width` did exactly that in the eenheden beheer: on a phone the name
+    // cell next to it was one character wide and "RegelRecht" came out as a
+    // column of letters. Put the control in an `nldd-cell`, and give a
+    // dropdown a `width`.
+    if (stackIsReliable && ROWS.has(stack[stack.length - 1]) && FILLS_BY_DEFAULT.has(tag)) {
+      const line = source.slice(0, m.index).split('\n').length;
+      problems.push(
+        `${rel}:${line} <${tag}> directly in <${stack[stack.length - 1]}>: it fills the row ` +
+          'and squeezes the text cells. Put it in an <nldd-cell> (a dropdown with a width).',
+      );
+    }
+    if (
+      stackIsReliable &&
+      tag === 'nldd-dropdown' &&
+      stack[stack.length - 1] === 'nldd-cell' &&
+      ROWS.has(stack[stack.length - 2]) &&
+      !/\bwidth="/.test(attrText)
+    ) {
+      const line = source.slice(0, m.index).split('\n').length;
+      problems.push(
+        `${rel}:${line} <nldd-dropdown> in a row cell without width: it stretches ` +
+          'to fill the row. Give it a width.',
+      );
     }
 
     // A container sitting directly inside a card, without padding of its own.

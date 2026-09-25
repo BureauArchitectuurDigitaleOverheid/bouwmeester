@@ -593,7 +593,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       </nldd-container>
 
                       {/* Actions on the right */}
-                      <nldd-container layout="row" gap="2" vertical-alignment="center" padding-top="4">
+                      <nldd-container width="fit-content" className="shrink-0" layout="row" gap="2" vertical-alignment="center" padding-top="4">
                         {edge.status === 'pending' && (
                           <>
                             <NlddIconButton
