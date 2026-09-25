@@ -20,6 +20,29 @@ from bouwmeester.middleware.session import ServerSideSessionMiddleware
 logger = logging.getLogger(__name__)
 
 
+class HealthCheckAccessFilter(logging.Filter):
+    """Keep successful health probes out of the access log.
+
+    Kubernetes probes ``/api/health/ready`` and ``/api/health/live`` every few
+    seconds. Logged, that is a line every 2-3 seconds, and the log window ZAD
+    shows is short enough that startup output scrolled out of it within
+    minutes. A probe that fails still gets logged: that is the one worth
+    seeing.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        # uvicorn.access: (client, method, path, http_version, status_code)
+        if isinstance(args, tuple) and len(args) >= 5:
+            path, status = str(args[2]), args[4]
+            if path.startswith("/api/health/") and status == 200:
+                return False
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(HealthCheckAccessFilter())
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()

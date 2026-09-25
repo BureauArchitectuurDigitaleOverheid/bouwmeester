@@ -5,17 +5,22 @@ set -e
 # re-install the project and fails on read-only .pth files.
 export PATH="/app/.venv/bin:$PATH"
 
-# Ensure bijlagen directories exist (volume mounts may override image dirs)
-mkdir -p /data/bijlagen/chat /data/bijlagen/leads 2>/dev/null || true
+# Bijlagen go to object storage when OBJECT_STORE_BUCKET_NAME is set
+# (production, see core/blob_store.py). Only without it do they live in
+# /data/bijlagen, and only then does that directory have to be writable.
+if [ -z "${OBJECT_STORE_BUCKET_NAME:-}" ]; then
+    # Ensure bijlagen directories exist (volume mounts may override image dirs)
+    mkdir -p /data/bijlagen/chat /data/bijlagen/leads 2>/dev/null || true
 
-# Verify write access — fail fast with actionable error
-if ! touch /data/bijlagen/chat/.write_test_$$ 2>/dev/null; then
-    echo "ERROR: /data/bijlagen/chat is not writable"
-    echo "Current user: $(id)"
-    ls -la /data/bijlagen/ 2>/dev/null || ls -la /data/ 2>/dev/null || true
-    exit 1
+    # Verify write access — fail fast with actionable error
+    if ! touch /data/bijlagen/chat/.write_test_$$ 2>/dev/null; then
+        echo "ERROR: /data/bijlagen/chat is not writable"
+        echo "Current user: $(id)"
+        ls -la /data/bijlagen/ 2>/dev/null || ls -la /data/ 2>/dev/null || true
+        exit 1
+    fi
+    rm -f /data/bijlagen/chat/.write_test_$$ 2>/dev/null || true
 fi
-rm -f /data/bijlagen/chat/.write_test_$$ 2>/dev/null || true
 
 # De Claude CLI (abonnementsroute voor de LLM-laag) schrijft configuratie in
 # $HOME. ZAD draait de container onder een willekeurige UID uit groep 0, en

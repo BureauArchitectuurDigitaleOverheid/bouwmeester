@@ -785,13 +785,6 @@ export const NOTIFICATION_TYPE_COLORS: Record<string, string> = {
   emoji_reaction: 'roze',
 };
 
-export const INBOX_TYPE_COLORS: Record<string, BadgeVariant> = {
-  task: 'blue',
-  node: 'purple',
-  notification: 'amber',
-  message: 'green',
-};
-
 // Activity
 export interface Activity {
   id: string;
