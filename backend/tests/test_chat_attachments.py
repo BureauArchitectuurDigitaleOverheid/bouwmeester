@@ -11,15 +11,10 @@ from bouwmeester.models.chat_attachment import ChatAttachment
 
 
 @pytest.fixture
-def chat_bijlagen_tmp(tmp_path: Path):
-    """Patch bijlagen roots to a temp directory for chat attachment tests."""
-    chat_root = tmp_path / "chat"
-    chat_root.mkdir()
-    with (
-        patch("bouwmeester.api.routes.chat.CHAT_BIJLAGEN_ROOT", chat_root),
-        patch("bouwmeester.core.storage.bijlagen_root", return_value=tmp_path),
-    ):
-        yield tmp_path
+def chat_bijlagen_tmp(blob_root: Path):
+    """The directory behind this test's bijlagen store, with its chat/ dir."""
+    (blob_root / "chat").mkdir(exist_ok=True)
+    return blob_root
 
 
 # ---------------------------------------------------------------------------

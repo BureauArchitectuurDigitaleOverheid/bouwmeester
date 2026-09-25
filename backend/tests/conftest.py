@@ -44,6 +44,22 @@ def _reset_mattermost_hint_cache():
 
 
 @pytest.fixture(autouse=True)
+def blob_root(tmp_path_factory):
+    """Every test gets its own empty bijlagen store, in a temporary directory.
+
+    Without it an upload in a test would land wherever the configured store
+    points, which on a developer machine is ``/data/bijlagen`` or a bucket.
+    Tests that look at the files themselves take this fixture for the path.
+    """
+    from bouwmeester.core.blob_store import LocalBlobStore, set_blob_store
+
+    root = tmp_path_factory.mktemp("bijlagen")
+    set_blob_store(LocalBlobStore(root))
+    yield root
+    set_blob_store(None)
+
+
+@pytest.fixture(autouse=True)
 async def _dispose_global_engine():
     """Dispose the module-level engine after each test.
 

@@ -2,7 +2,6 @@
 
 import uuid
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -167,13 +166,9 @@ async def test_update_bron_detail_valid_url(client, bron_node):
 
 
 @pytest.fixture
-def bijlagen_tmp(tmp_path: Path):
-    """Patch BIJLAGEN_ROOT to a temp directory for file-related tests."""
-    with (
-        patch("bouwmeester.api.routes.bijlage.BIJLAGEN_ROOT", tmp_path),
-        patch("bouwmeester.core.storage.bijlagen_root", return_value=tmp_path),
-    ):
-        yield tmp_path
+def bijlagen_tmp(blob_root: Path):
+    """The directory behind this test's bijlagen store."""
+    return blob_root
 
 
 async def test_upload_bijlage(client, bron_node, bijlagen_tmp):

@@ -8,7 +8,6 @@ import re
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from pathlib import Path
 from uuid import UUID
 
 from openai import APIError
@@ -26,7 +25,7 @@ from bouwmeester.schema.chat import (
 )
 from bouwmeester.services.document_extract import (
     IMAGE_CONTENT_TYPES,
-    extract_text,
+    extract_text_from_bytes,
 )
 from bouwmeester.services.llm.base import BaseLLMService
 from bouwmeester.services.llm.prompts import (
@@ -77,21 +76,16 @@ def _clean_content(text: str) -> str:
     return text.strip()
 
 
-def _chat_bijlagen_root() -> Path:
-    """Resolve the root directory for chat attachments."""
-    from bouwmeester.core.storage import bijlagen_root
-
-    return bijlagen_root() / "chat"
-
-
-def _build_attachment_refs(
+async def _build_attachment_refs(
     attachments: list[ChatAttachment],
 ) -> list[dict]:
     """Build lightweight refs for storing in conversation history (no base64).
 
-    This function performs blocking I/O (text extraction) — callers should
-    wrap it with ``asyncio.to_thread``.
+    Documents are read from the bijlagen store once, here, and their text is
+    kept in the ref, so later turns do not have to extract it again.
     """
+    from bouwmeester.core.storage import chat_key, read_blob
+
     refs = []
     for att in attachments:
         if att.content_type in IMAGE_CONTENT_TYPES:
@@ -106,9 +100,12 @@ def _build_attachment_refs(
             )
         else:
             # Store extracted text inline so we don't need to re-extract
-            root = _chat_bijlagen_root()
-            file_path = root / att.pad
-            extracted = extract_text(file_path, att.content_type)
+            data = await read_blob(chat_key(att.pad))
+            extracted = (
+                await asyncio.to_thread(extract_text_from_bytes, data, att.content_type)
+                if data is not None
+                else None
+            )
             refs.append(
                 {
                     "type": "document_ref",
@@ -120,19 +117,20 @@ def _build_attachment_refs(
     return refs
 
 
-def _reconstruct_content_from_refs(
+async def _reconstruct_content_from_refs(
     text: str | None,
     refs: list[dict],
 ) -> str | list[dict]:
     """Reconstruct LLM content array from stored refs.
 
-    Uses the ``pad`` field stored in image refs to locate files on disk
-    instead of iterating directory contents.
+    Uses the ``pad`` field stored in image refs to fetch the image from the
+    bijlagen store.
     """
+    from bouwmeester.core.storage import chat_key, read_blob
+
     if not refs:
         return text or ""
 
-    root = _chat_bijlagen_root()
     parts: list[dict] = [{"type": "text", "text": text or ""}]
     has_image = False
 
@@ -141,21 +139,20 @@ def _reconstruct_content_from_refs(
             content_type = ref.get("content_type", "image/png")
             pad = ref.get("pad")
             if pad:
-                file_path = root / pad
-                try:
-                    data = file_path.read_bytes()
-                    b64 = base64.b64encode(data).decode("ascii")
-                    parts.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{content_type};base64,{b64}",
-                            },
-                        }
-                    )
-                    has_image = True
-                except OSError:
-                    logger.warning("Could not read image file: %s", file_path)
+                data = await read_blob(chat_key(pad))
+                if data is None:
+                    logger.warning("Could not read image file: %s", pad)
+                    continue
+                b64 = base64.b64encode(data).decode("ascii")
+                parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{content_type};base64,{b64}",
+                        },
+                    }
+                )
+                has_image = True
         elif ref.get("type") == "document_ref":
             extracted = ref.get("extracted_text", "")
             if extracted:
@@ -173,7 +170,7 @@ def _reconstruct_content_from_refs(
     return parts
 
 
-def _prepare_llm_messages(messages: list[dict]) -> list[dict]:
+async def _prepare_llm_messages(messages: list[dict]) -> list[dict]:
     """Prepare messages for the LLM by reconstructing attachment refs.
 
     Replaces ``attachment_refs`` in *all* user messages with actual content
@@ -185,7 +182,9 @@ def _prepare_llm_messages(messages: list[dict]) -> list[dict]:
         refs = msg.get("attachment_refs")
         if refs:
             copy = {k: v for k, v in msg.items() if k != "attachment_refs"}
-            copy["content"] = _reconstruct_content_from_refs(msg.get("content"), refs)
+            copy["content"] = await _reconstruct_content_from_refs(
+                msg.get("content"), refs
+            )
             out.append(copy)
         else:
             out.append(msg)
@@ -1847,12 +1846,11 @@ async def _execute_write_tool(
             }
 
         elif tool_name == "attach_to_bron":
-            import shutil
-
             from bouwmeester.core.storage import (
                 BRON_ALLOWED_CONTENT_TYPES,
-                bijlagen_root,
-                safe_resolve,
+                chat_key,
+                read_blob,
+                store_upload,
             )
             from bouwmeester.models.bron import Bron
             from bouwmeester.models.bron_bijlage import BronBijlage
@@ -1912,30 +1910,19 @@ async def _execute_write_tool(
                     ),
                 }
 
-            # Resolve source path with traversal guard
-            root = bijlagen_root()
-            chat_root = root / "chat"
-            try:
-                src_path = safe_resolve(chat_root, att.pad)
-            except ValueError:
+            data = await read_blob(chat_key(att.pad))
+            if data is None:
                 return {
                     "success": False,
-                    "summary": "Ongeldig pad voor chat-bijlage.",
-                }
-            if not src_path.exists():
-                return {
-                    "success": False,
-                    "summary": "Bronbestand niet gevonden op disk.",
+                    "summary": "Bronbestand niet gevonden.",
                 }
 
-            # Copy file from chat dir to bron dir (non-blocking)
-            dest_dir = root / str(node_id)
-            await asyncio.to_thread(dest_dir.mkdir, parents=True, exist_ok=True)
-            dest_name = f"{uuid.uuid4().hex}_{att.bestandsnaam}"
-            dest_path = dest_dir / dest_name
-            await asyncio.to_thread(shutil.copy2, str(src_path), str(dest_path))
-
-            relative_path = f"{node_id}/{dest_name}"
+            _, relative_path = await store_upload(
+                data,
+                att.bestandsnaam,
+                item_id=node_id,
+                content_type=att.content_type,
+            )
             bijlage = BronBijlage(
                 bron_id=node_id,
                 bestandsnaam=att.bestandsnaam,
@@ -2485,9 +2472,7 @@ class ChatService:
         # Store in history with lightweight refs (no base64)
         # Use asyncio.to_thread for blocking text extraction (#8)
         attachment_refs = (
-            await asyncio.to_thread(_build_attachment_refs, attachments)
-            if attachments
-            else []
+            await _build_attachment_refs(attachments) if attachments else []
         )
         history_entry: dict = {"role": "user", "content": message}
         if attachment_refs:
@@ -2510,7 +2495,7 @@ class ChatService:
 
             # Reconstruct ALL user messages that have attachment_refs (#1, #2)
             # Done once before the LLM call, outside per-message iteration.
-            llm_messages = await asyncio.to_thread(_prepare_llm_messages, llm_messages)
+            llm_messages = await _prepare_llm_messages(llm_messages)
 
             try:
                 response = await self._llm.chat_with_tools(
@@ -2630,9 +2615,7 @@ class ChatService:
             # If we have pending writes, stop the loop and return to user
             if has_pending:
                 llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
-                llm_messages = await asyncio.to_thread(
-                    _prepare_llm_messages, llm_messages
-                )
+                llm_messages = await _prepare_llm_messages(llm_messages)
                 try:
                     response2 = await self._llm.chat_with_tools(
                         messages=llm_messages,
@@ -2738,7 +2721,7 @@ class ChatService:
 
         try:
             llm_messages = _truncate_messages(messages, _MAX_MESSAGES_FOR_LLM)
-            llm_messages = await asyncio.to_thread(_prepare_llm_messages, llm_messages)
+            llm_messages = await _prepare_llm_messages(llm_messages)
             response = await self._llm.chat_with_tools(
                 messages=llm_messages,
                 tools=[],

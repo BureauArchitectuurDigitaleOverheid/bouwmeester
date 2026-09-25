@@ -5,7 +5,7 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,13 +18,12 @@ from bouwmeester.core.initiatief_context import (
     get_initiatief_context,
 )
 from bouwmeester.core.storage import (
-    ensure_bijlagen_dir,
-    file_exists_on_disk,
+    blob_available,
+    blob_download,
+    delete_blob,
     read_upload_content,
-    safe_resolve_or_400,
-    sanitize_download_filename,
+    store_upload,
     validate_upload,
-    write_upload_to_disk,
 )
 from bouwmeester.models.github_link import SCOPE_LEAD, GitHubLink
 from bouwmeester.models.lead import Lead
@@ -68,8 +67,6 @@ from bouwmeester.services.notification_service import NotificationService
 router = APIRouter(prefix="/leads", tags=["leads"])
 
 logger = logging.getLogger(__name__)
-
-LEADS_BIJLAGEN_ROOT = ensure_bijlagen_dir()
 
 
 def _robust_parse_json(text: str) -> dict:
@@ -379,13 +376,13 @@ async def get_lead(
         GitHubLinkResponse.model_validate(link) for link in gh_links
     ]
 
-    # Mark file-attachments whose files no longer exist on disk.
+    # Mark file-attachments whose files no longer exist in the store.
     # URL-attachments (soort='link') hebben geen pad — die blijven beschikbaar.
     pad_by_id = {a.id: a.pad for a in lead.attachments}
     for att in response.attachments:
         pad = pad_by_id.get(att.id)
         if att.soort == "file" and pad:
-            att.bestand_beschikbaar = file_exists_on_disk(LEADS_BIJLAGEN_ROOT, pad)
+            att.bestand_beschikbaar = await blob_available(pad)
         else:
             att.bestand_beschikbaar = True
 
@@ -1029,12 +1026,15 @@ async def upload_attachment(
     content = await read_upload_content(file)
     validate_upload(content, content_type)
 
-    leads_dir = LEADS_BIJLAGEN_ROOT / "leads"
-    filename, relative_path, _ = write_upload_to_disk(
-        content, file.filename or "bijlage", leads_dir, item_id=lead_id
+    filename, relative_path = await store_upload(
+        content,
+        file.filename or "bijlage",
+        prefix="leads",
+        item_id=lead_id,
+        content_type=content_type,
     )
-    # Prefix with "leads/" since write_upload_to_disk returns path relative
-    # to leads_dir, but DB stores path relative to LEADS_BIJLAGEN_ROOT.
+    # store_upload returns the path without its prefix; lead_attachment.pad
+    # has always kept the "leads/" in it.
     relative_path = f"leads/{relative_path}"
 
     attachment = LeadAttachment(
@@ -1070,7 +1070,7 @@ async def download_attachment(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
-) -> FileResponse:
+) -> Response:
     """Download a lead attachment."""
     lead = await db.get(Lead, lead_id)
     if lead is None:
@@ -1086,14 +1086,12 @@ async def download_attachment(
     if attachment is None:
         raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
 
-    file_path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, attachment.pad)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
-
-    return FileResponse(
-        path=str(file_path),
-        filename=sanitize_download_filename(attachment.bestandsnaam),
-        media_type=attachment.content_type or "application/octet-stream",
+    if not attachment.pad:
+        raise HTTPException(status_code=404, detail="Bestand niet gevonden")
+    return await blob_download(
+        attachment.pad,
+        attachment.bestandsnaam,
+        attachment.content_type or "application/octet-stream",
     )
 
 
@@ -1108,7 +1106,7 @@ async def delete_attachment(
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> None:
-    """Delete a lead attachment (DB record and file on disk)."""
+    """Delete a lead attachment (DB record and stored file)."""
     lead = await db.get(Lead, lead_id)
     if lead is None:
         raise HTTPException(status_code=404, detail="Lead niet gevonden")
@@ -1123,7 +1121,7 @@ async def delete_attachment(
     if attachment is None:
         raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
 
-    file_path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, attachment.pad)
+    attachment_pad = attachment.pad
     attachment_naam = attachment.bestandsnaam
     await db.delete(attachment)
 
@@ -1139,8 +1137,8 @@ async def delete_attachment(
         },
     )
 
-    if file_path.exists():
-        file_path.unlink()
+    if attachment_pad:
+        await delete_blob(attachment_pad)
 
 
 # ---------------------------------------------------------------------------

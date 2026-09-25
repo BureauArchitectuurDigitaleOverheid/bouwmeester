@@ -150,17 +150,16 @@ async def test_internal_listing_returns_full_payload_for_lead_members(
     assert post["mail_cc"] == ["cc@x.nl"]
 
 
-async def test_load_lead_attachments_for_llm_picks_text_and_image(tmp_path):
+async def test_load_lead_attachments_for_llm_picks_text_and_image(blob_root):
     """Unit test the helper that feeds existing lead-attachments into the LLM."""
     from datetime import UTC, datetime
-    from unittest.mock import patch
 
     from bouwmeester.api.routes import lead_update as lu_module
     from bouwmeester.models.lead_attachment import LeadAttachment
 
-    txt_file = tmp_path / "notitie.txt"
+    txt_file = blob_root / "notitie.txt"
     txt_file.write_text("Dit is een notitie uit een eerder gesprek.", encoding="utf-8")
-    png_file = tmp_path / "screenshot.png"
+    png_file = blob_root / "screenshot.png"
     # 1x1 transparent PNG — small but valid bytes the helper will base64.
     png_file.write_bytes(
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
@@ -187,8 +186,9 @@ async def test_load_lead_attachments_for_llm_picks_text_and_image(tmp_path):
         ),
     ]
 
-    with patch.object(lu_module, "LEADS_BIJLAGEN_ROOT", tmp_path):
-        text_parts, image_parts = lu_module._load_lead_attachments_for_llm(attachments)
+    text_parts, image_parts = await lu_module._load_lead_attachments_for_llm(
+        attachments
+    )
 
     assert any("notitie uit een eerder gesprek" in t for t in text_parts)
     assert len(image_parts) == 1
@@ -258,14 +258,13 @@ async def test_parse_strips_markdown_codeblock_from_llm_response(
     assert resp.json()["titel"] == "X"
 
 
-async def test_load_lead_attachments_for_llm_skips_oversized(tmp_path):
+async def test_load_lead_attachments_for_llm_skips_oversized(blob_root):
     from datetime import UTC, datetime
-    from unittest.mock import patch
 
     from bouwmeester.api.routes import lead_update as lu_module
     from bouwmeester.models.lead_attachment import LeadAttachment
 
-    big = tmp_path / "huge.txt"
+    big = blob_root / "huge.txt"
     big.write_bytes(b"x" * (lu_module._MAX_ATTACHMENT_BYTES + 1))
 
     attachments = [
@@ -278,7 +277,8 @@ async def test_load_lead_attachments_for_llm_skips_oversized(tmp_path):
             created_at=datetime.now(UTC),
         )
     ]
-    with patch.object(lu_module, "LEADS_BIJLAGEN_ROOT", tmp_path):
-        text_parts, image_parts = lu_module._load_lead_attachments_for_llm(attachments)
+    text_parts, image_parts = await lu_module._load_lead_attachments_for_llm(
+        attachments
+    )
     assert text_parts == []
     assert image_parts == []

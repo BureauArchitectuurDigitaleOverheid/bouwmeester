@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,13 +18,12 @@ from bouwmeester.core.org_context import (
 from bouwmeester.core.permissions import require_permission
 from bouwmeester.core.storage import (
     BRON_ALLOWED_CONTENT_TYPES,
-    ensure_bijlagen_dir,
-    file_exists_on_disk,
+    blob_available,
+    blob_download,
+    delete_blob,
     read_upload_content,
-    safe_resolve_or_400,
-    sanitize_download_filename,
+    store_upload,
     validate_upload,
-    write_upload_to_disk,
 )
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.bron_bijlage import BronBijlage
@@ -32,8 +31,6 @@ from bouwmeester.schema.bron import BronBijlageResponse
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/nodes/{node_id}/bijlage", tags=["bijlage"])
-
-BIJLAGEN_ROOT = ensure_bijlagen_dir()
 
 
 async def _get_bron(
@@ -73,15 +70,16 @@ async def upload_bijlage(
 
     # Write new file first (before deleting old one, to avoid data loss
     # on write failure).
-    filename, relative_path, _ = write_upload_to_disk(
-        content, file.filename or "bijlage", BIJLAGEN_ROOT, item_id=node_id
+    filename, relative_path = await store_upload(
+        content,
+        file.filename or "bijlage",
+        item_id=node_id,
+        content_type=content_type,
     )
 
     # Remove existing bijlage if present (file + DB row).
     if bron.bijlage:
-        old_path = safe_resolve_or_400(BIJLAGEN_ROOT, bron.bijlage.pad)
-        if old_path.exists():
-            old_path.unlink()
+        await delete_blob(bron.bijlage.pad)
         await db.delete(bron.bijlage)
         await db.flush()
 
@@ -124,7 +122,7 @@ async def get_bijlage_info(
     if bijlage is None:
         return None
     response = BronBijlageResponse.model_validate(bijlage)
-    response.bestand_beschikbaar = file_exists_on_disk(BIJLAGEN_ROOT, bijlage.pad)
+    response.bestand_beschikbaar = await blob_available(bijlage.pad)
     return response
 
 
@@ -134,7 +132,7 @@ async def download_bijlage(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
-) -> FileResponse:
+) -> Response:
     """Download the file attachment of a bron node."""
     await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
@@ -144,14 +142,10 @@ async def download_bijlage(
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
-    file_path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
-
-    return FileResponse(
-        path=str(file_path),
-        filename=sanitize_download_filename(bijlage.bestandsnaam),
-        media_type=bijlage.content_type or "application/octet-stream",
+    return await blob_download(
+        bijlage.pad,
+        bijlage.bestandsnaam,
+        bijlage.content_type or "application/octet-stream",
     )
 
 
@@ -163,7 +157,7 @@ async def delete_bijlage(
     _perm=Depends(require_permission("node:update")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> None:
-    """Delete a bron node's file attachment (DB record and file on disk)."""
+    """Delete a bron node's file attachment (DB record and stored file)."""
     await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
@@ -172,7 +166,7 @@ async def delete_bijlage(
     if bijlage is None:
         raise HTTPException(status_code=404, detail="Geen bijlage gevonden")
 
-    file_path = safe_resolve_or_400(BIJLAGEN_ROOT, bijlage.pad)
+    bijlage_pad = bijlage.pad
     bijlage_naam = bijlage.bestandsnaam
     await db.delete(bijlage)
 
@@ -186,5 +180,4 @@ async def delete_bijlage(
     )
 
     # Delete file after DB delete succeeds (commit happens in get_db).
-    if file_path.exists():
-        file_path.unlink()
+    await delete_blob(bijlage_pad)

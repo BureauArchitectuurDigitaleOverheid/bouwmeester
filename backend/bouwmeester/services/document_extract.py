@@ -48,6 +48,28 @@ def extract_text(
     return None
 
 
+def extract_text_from_bytes(
+    data: bytes, content_type: str, max_chars: int = MAX_EXTRACTED_CHARS
+) -> str | None:
+    """`extract_text` for content in memory, such as a file from object storage.
+
+    The extractors read from a path, so the bytes go through a temporary file
+    that is removed again afterwards. Blocking: run it in a thread.
+    """
+    if content_type in IMAGE_CONTENT_TYPES:
+        return None
+
+    from tempfile import NamedTemporaryFile
+
+    with NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = Path(tmp.name)
+    try:
+        return extract_text(tmp_path, content_type, max_chars)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def _extract_pdf(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
     from pdfminer.high_level import extract_text as pdf_extract
 

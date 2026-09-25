@@ -1,5 +1,6 @@
 """API routes for LeadUpdatePost — per-lead update posts (mail + community)."""
 
+import asyncio
 import base64
 import logging
 from datetime import UTC, datetime
@@ -14,15 +15,11 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.api.deps import require_found
 from bouwmeester.api.routes.leads import _check_lead_access, _robust_parse_json
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
 from bouwmeester.core.database import get_db
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
-)
-from bouwmeester.core.storage import (
-    ensure_bijlagen_dir,
-    file_exists_on_disk,
-    safe_resolve_or_400,
 )
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
@@ -37,15 +34,13 @@ from bouwmeester.schema.lead_update import (
     LeadUpdatePostResponse,
 )
 from bouwmeester.services.activity_service import log_activity
-from bouwmeester.services.document_extract import extract_text
+from bouwmeester.services.document_extract import extract_text_from_bytes
 from bouwmeester.services.eml_builder import build_outlook_draft_eml
 from bouwmeester.services.markdown_min import markdown_to_html
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leads", tags=["lead-updates"])
-
-LEADS_BIJLAGEN_ROOT = ensure_bijlagen_dir()
 
 # Cap how many existing attachments we drop into a single LLM call. The /parse
 # endpoint already accepts ad-hoc uploads; bulk-feeding 30 historical files
@@ -176,10 +171,10 @@ async def _suggested_recipients(db: AsyncSession, lead_id: UUID) -> list[str]:
     return sorted({c["email"] for c in contacts if c["email"]})
 
 
-def _load_lead_attachments_for_llm(
+async def _load_lead_attachments_for_llm(
     attachments: list[LeadAttachment],
 ) -> tuple[list[str], list[dict]]:
-    """Read existing lead-attachments from disk for LLM consumption.
+    """Read existing lead-attachments from the bijlagen store for LLM consumption.
 
     Returns (text_parts, image_parts) — same shapes the parse endpoint uses
     for ad-hoc UploadFile inputs. Images become vision content; text-bearing
@@ -200,16 +195,13 @@ def _load_lead_attachments_for_llm(
         reverse=True,
     )[:_MAX_ATTACHMENTS_FOR_PARSE]
 
+    store = get_blob_store()
     for att in sorted_attachments:
-        if not file_exists_on_disk(LEADS_BIJLAGEN_ROOT, att.pad):
-            continue
         try:
-            file_path = safe_resolve_or_400(LEADS_BIJLAGEN_ROOT, att.pad)
-        except HTTPException:
+            size = await store.size(att.pad)
+        except InvalidKeyError:
             continue
-        try:
-            size = file_path.stat().st_size
-        except OSError:
+        if size is None:
             continue
         if size > _MAX_ATTACHMENT_BYTES:
             logger.info(
@@ -219,12 +211,12 @@ def _load_lead_attachments_for_llm(
             )
             continue
 
+        content_bytes = await store.get(att.pad)
+        if content_bytes is None:
+            continue
+
         ct = att.content_type or ""
         if ct.startswith("image/"):
-            try:
-                content_bytes = file_path.read_bytes()
-            except OSError:
-                continue
             b64 = base64.b64encode(content_bytes).decode("ascii")
             image_parts.append(
                 {
@@ -234,7 +226,7 @@ def _load_lead_attachments_for_llm(
             )
             continue
 
-        extracted = extract_text(file_path, ct)
+        extracted = await asyncio.to_thread(extract_text_from_bytes, content_bytes, ct)
         if extracted:
             label = att.bestandsnaam or "bijlage"
             text_parts.append(f"[bijlage: {label}]\n{extracted}")
@@ -279,7 +271,7 @@ async def parse_lead_update(
     # check when the user just wants to clean up a quick paste.
     pull_attachments = include_attachments or use_lead_history
     if pull_attachments and lead.attachments:
-        attachment_text, attachment_images = _load_lead_attachments_for_llm(
+        attachment_text, attachment_images = await _load_lead_attachments_for_llm(
             lead.attachments
         )
         text_parts.extend(attachment_text)
@@ -301,20 +293,9 @@ async def parse_lead_update(
                     }
                 )
                 continue
-            # Persist to a tempfile so we can reuse the existing extractor.
-            from pathlib import Path
-            from tempfile import NamedTemporaryFile
-
-            with NamedTemporaryFile(delete=False) as tmp:
-                tmp.write(content_bytes)
-                tmp_path = Path(tmp.name)
-            try:
-                extracted = extract_text(tmp_path, ct)
-            finally:
-                try:
-                    tmp_path.unlink()
-                except OSError:
-                    pass
+            extracted = await asyncio.to_thread(
+                extract_text_from_bytes, content_bytes, ct
+            )
             if extracted:
                 text_parts.append(extracted)
 
