@@ -218,27 +218,57 @@ class BaseLLMService(ABC):
             context_regels=context_regels,
             signaalcontext=signaalcontext,
         )
-        try:
-            text = await self._complete(prompt)
-            result = self._parse_json(text)
-            score = result.get("relevantie_score", 50)
-            if not isinstance(score, int | float):
-                score = 50
-            return KamerstukAlertResult(
-                samenvatting=str(result.get("samenvatting", "")).strip(),
-                relevantie_score=max(0, min(100, int(score))),
-                reden=str(result.get("reden", "")).strip(),
-                actie=str(result.get("actie", "") or "").strip(),
-            )
-        except Exception:
-            logger.exception("Fout bij LLM-samenvatting van kamerstuk")
-            # Geen samenvatting is geen reden om het stuk te verzwijgen:
-            # het bericht valt terug op titel en onderwerp.
-            return KamerstukAlertResult(
-                samenvatting="",
-                relevantie_score=50,
-                reden="samenvatting mislukt",
-            )
+        # Twee pogingen. Een alert is eenmalig: mislukt de samenvatting,
+        # dan valt het bericht terug op de titel en komt het stuk nooit
+        # meer langs — de volgende ronde ziet het als bekend. Dat is een
+        # andere afweging dan bij een achtergrondtaak die vanzelf opnieuw
+        # draait.
+        #
+        # Waarom dit nodig bleek: op 24 en 25 september 2026 kwam een
+        # kamerstuk en een agenda zonder samenvatting in het kanaal,
+        # terwijl dezelfde prompt handmatig in één keer een bruikbaar
+        # antwoord gaf. De oorzaak was niet te achterhalen omdat de logs
+        # te kort bewaard blijven; een tweede poging kost weinig en dekt
+        # de vluchtige gevallen (time-out, een hapering in de CLI).
+        laatste: Exception | None = None
+        for poging in (1, 2):
+            try:
+                text = await self._complete(prompt)
+                result = self._parse_json(text)
+                score = result.get("relevantie_score", 50)
+                if not isinstance(score, int | float):
+                    score = 50
+                return KamerstukAlertResult(
+                    samenvatting=str(result.get("samenvatting", "")).strip(),
+                    relevantie_score=max(0, min(100, int(score))),
+                    reden=str(result.get("reden", "")).strip(),
+                    actie=str(result.get("actie", "") or "").strip(),
+                )
+            except Exception as exc:
+                laatste = exc
+                if poging == 1:
+                    logger.warning(
+                        "Samenvatting mislukt (poging 1, %s: %s), nog een keer",
+                        type(exc).__name__,
+                        str(exc)[:200],
+                    )
+
+        # Geen samenvatting is geen reden om het stuk te verzwijgen: het
+        # bericht valt terug op de titel. De reden gaat mee naar de
+        # aanroeper, die hem logt met het documentnummer erbij.
+        logger.exception(
+            "Samenvatting definitief mislukt na twee pogingen",
+            exc_info=laatste,
+        )
+        return KamerstukAlertResult(
+            samenvatting="",
+            relevantie_score=50,
+            reden=(
+                f"samenvatting mislukt: {type(laatste).__name__}"
+                if laatste
+                else "samenvatting mislukt"
+            ),
+        )
 
     async def suggest_tags(
         self,
