@@ -71,40 +71,75 @@ _SOORT_CATEGORIE: dict[str, str] = {
 
 # Hoe elke categorie in Mattermost verschijnt. Het icoon is een emoji omdat
 # een attachment geen eigen iconenset heeft; de kleur is de streep links.
+#
+# Twee vormen van hetzelfde icoon, omdat Mattermost ze niet overal gelijk
+# behandelt: `emoji` (de `:code:`-vorm) rendert in `text` en `pretext`,
+# `teken` (het Unicode-teken zelf) is nodig in het `title`-veld van een
+# attachment. Daar bleef `:question:` letterlijk staan, zichtbaar in
+# productie op 24 september 2026.
 CATEGORIE_PRESENTATIE: dict[str, dict[str, str]] = {
-    CAT_VRAAG: {"emoji": ":question:", "label": "Kamervraag", "kleur": "#B45309"},
+    CAT_VRAAG: {
+        "emoji": ":question:",
+        "teken": "\u2753",
+        "label": "Kamervraag",
+        "kleur": "#B45309",
+    },
     CAT_VERGADERING_VOORUIT: {
         "emoji": ":calendar:",
+        "teken": "\U0001f4c5",
         "label": "Procedurevergadering",
         "kleur": "#7C3AED",
     },
     CAT_VERGADERING_TERUG: {
         "emoji": ":memo:",
+        "teken": "\U0001f4dd",
         "label": "Verslag vergadering",
         "kleur": "#64748B",
     },
-    CAT_BIJLAGE: {"emoji": ":paperclip:", "label": "Bijlage", "kleur": "#1E3A8A"},
-    CAT_BRIEF: {"emoji": ":envelope:", "label": "Kamerbrief", "kleur": "#1E3A8A"},
+    CAT_BIJLAGE: {
+        "emoji": ":paperclip:",
+        "teken": "\U0001f4ce",
+        "label": "Bijlage",
+        "kleur": "#1E3A8A",
+    },
+    CAT_BRIEF: {
+        "emoji": ":envelope:",
+        "teken": "\u2709\ufe0f",
+        "label": "Kamerbrief",
+        "kleur": "#1E3A8A",
+    },
     # `herkomst` verschijnt achter het soort in de kopregel, waar het iets
     # toevoegt dat het soort niet zegt. Bij een position paper is dat het
     # belangrijkste feit: het komt van buiten de Kamer en is een standpunt
     # van een belanghebbende, geen beleid.
     CAT_EXTERN: {
         "emoji": ":speech_balloon:",
+        "teken": "\U0001f4ac",
         "label": "Extern",
         "kleur": "#0F766E",
         "herkomst": "van buiten de Kamer",
     },
-    CAT_WETGEVING: {"emoji": ":scroll:", "label": "Wetgeving", "kleur": "#991B1B"},
+    CAT_WETGEVING: {
+        "emoji": ":scroll:",
+        "teken": "\U0001f4dc",
+        "label": "Wetgeving",
+        "kleur": "#991B1B",
+    },
     CAT_NIEUWS: {
         "emoji": ":newspaper:",
+        "teken": "\U0001f4f0",
         "label": "Nieuws",
         "kleur": "#7C3AED",
         # De publicatie staat in de kopregel omdat het bij journalistiek
         # het eerste is wat je wil weten: wie schrijft dit.
         "herkomst": "vakpers",
     },
-    CAT_OVERIG: {"emoji": ":page_facing_up:", "label": "Kamerstuk", "kleur": "#64748B"},
+    CAT_OVERIG: {
+        "emoji": ":page_facing_up:",
+        "teken": "\U0001f4c4",
+        "label": "Kamerstuk",
+        "kleur": "#64748B",
+    },
 }
 
 
