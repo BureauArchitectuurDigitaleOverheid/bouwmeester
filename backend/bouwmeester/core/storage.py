@@ -8,8 +8,10 @@ import shutil
 import uuid as _uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import quote
 
 from fastapi import HTTPException
+from fastapi.responses import Response
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
@@ -76,37 +78,6 @@ def bijlagen_root() -> Path:
     if data_path:
         return Path(data_path) / "bijlagen"
     return Path("/data/bijlagen")
-
-
-def safe_resolve(root: Path, relative: str) -> Path:
-    """Resolve *relative* under *root*, guarding against path traversal.
-
-    Raises ``ValueError`` if the resolved path escapes *root*.
-    """
-    resolved = (root / relative).resolve()
-    if not resolved.is_relative_to(root.resolve()):
-        raise ValueError("Path traversal attempt detected")
-    return resolved
-
-
-def safe_resolve_or_400(root: Path, relative: str) -> Path:
-    """Like :func:`safe_resolve` but raises HTTP 400 on traversal."""
-    try:
-        return safe_resolve(root, relative)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Ongeldig pad")
-
-
-def file_exists_on_disk(root: Path, relative: str) -> bool:
-    """Check whether the file at *relative* under *root* exists.
-
-    Returns ``False`` when the path escapes *root* (traversal) or cannot
-    be resolved for any reason, so callers never need their own try/except.
-    """
-    try:
-        return safe_resolve(root, relative).exists()
-    except (ValueError, OSError):
-        return False
 
 
 # Magic-byte signatures for content-type verification.
@@ -204,59 +175,99 @@ def sanitize_download_filename(name: str) -> str:
     return name.replace('"', "").replace("\r", "").replace("\n", "")
 
 
-def ensure_bijlagen_dir(subdir: str | None = None) -> Path:
-    """Return a bijlagen subdirectory, creating it if possible.
-
-    Returns ``bijlagen_root() / subdir`` (or just ``bijlagen_root()``
-    when *subdir* is ``None``) after a best-effort ``mkdir``.
-    """
-    path = bijlagen_root() / subdir if subdir else bijlagen_root()
-    try:
-        path.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        pass  # May fail in CI/test; directories are also created per-upload
-    return path
-
-
-def write_upload_to_disk(
+async def store_upload(
     content: bytes,
     filename: str,
-    storage_dir: Path,
+    *,
+    prefix: str = "",
     item_id: _uuid.UUID | str | None = None,
-) -> tuple[str, str, Path]:
-    """Sanitize *filename*, write *content* to disk, return metadata.
+    content_type: str | None = None,
+) -> tuple[str, str]:
+    """Store an uploaded file in the bijlagen store and return ``(name, pad)``.
 
-    Creates ``storage_dir / item_id / <uuid>_<safe_name>`` (or
-    ``storage_dir / <uuid>_<safe_name>`` when *item_id* is ``None``).
+    The object lands at ``<prefix>/<item_id>/<uuid>_<name>``. The returned
+    ``pad`` leaves out *prefix*, because that is how each table has always
+    stored it: relative to the root for bron, to ``chat/`` for chat. Leads
+    keep the ``leads/`` in their column, so their callers add it back.
 
-    Returns:
-        ``(sanitized_filename, relative_path, absolute_path)``
-
-    Raises:
-        ``HTTPException(500)`` on write failure.
+    Raises ``HTTPException(500)`` when the store refuses the write.
     """
+    from bouwmeester.core.blob_store import get_blob_store
+
     safe_basename = Path(filename).name or "bijlage"
     safe_name = f"{_uuid.uuid4().hex}_{safe_basename}"
+    pad = f"{item_id}/{safe_name}" if item_id is not None else safe_name
+    key = f"{prefix}/{pad}" if prefix else pad
+    try:
+        await get_blob_store().put(key, content, content_type)
+    except Exception:
+        logger.exception("Failed to store upload %s", key)
+        raise HTTPException(status_code=500, detail="Kan bestand niet opslaan.")
+    return safe_basename, pad
 
-    if item_id is not None:
-        dir_path = storage_dir / str(item_id)
-    else:
-        dir_path = storage_dir
+
+def chat_key(pad: str) -> str:
+    """The store key for a chat attachment, whose ``pad`` is relative to ``chat/``."""
+    return f"chat/{pad}"
+
+
+async def blob_available(key: str) -> bool:
+    """Whether the file behind *key* exists. False for an invalid key too."""
+    from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
 
     try:
-        dir_path.mkdir(parents=True, exist_ok=True)
-        abs_path = dir_path / safe_name
-        abs_path.write_bytes(content)
-    except OSError:
-        logger.exception("Failed to write upload to %s", dir_path)
-        raise HTTPException(
-            status_code=500,
-            detail="Kan bestand niet opslaan.",
-        )
+        return await get_blob_store().size(key) is not None
+    except InvalidKeyError:
+        return False
 
-    # Build a relative path from storage_dir for DB storage.
-    rel_path = str(abs_path.relative_to(storage_dir))
-    return safe_basename, rel_path, abs_path
+
+async def read_blob(key: str) -> bytes | None:
+    """The file behind *key*, or ``None`` when it is missing or the key is invalid."""
+    from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
+
+    try:
+        return await get_blob_store().get(key)
+    except InvalidKeyError:
+        return None
+
+
+async def delete_blob(key: str) -> None:
+    """Remove the file behind *key*. Never raises: the DB row is already gone,
+    and a file left behind is a smaller problem than a failed request."""
+    from bouwmeester.core.blob_store import get_blob_store
+
+    try:
+        await get_blob_store().delete(key)
+    except Exception:
+        logger.warning("Kon bijlage %s niet verwijderen", key, exc_info=True)
+
+
+async def blob_download(key: str, filename: str, media_type: str) -> Response:
+    """A download response for the file behind *key*.
+
+    Same headers as the ``FileResponse`` it replaces: the file is offered as
+    an attachment under its original name, UTF-8 encoded when it needs to be.
+    """
+    from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
+
+    try:
+        data = await get_blob_store().get(key)
+    except InvalidKeyError:
+        raise HTTPException(status_code=400, detail="Ongeldig pad")
+    if data is None:
+        raise HTTPException(status_code=404, detail="Bestand niet gevonden")
+
+    safe = sanitize_download_filename(filename)
+    quoted = quote(safe)
+    if quoted != safe:
+        disposition = f"attachment; filename*=utf-8''{quoted}"
+    else:
+        disposition = f'attachment; filename="{safe}"'
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": disposition},
+    )
 
 
 async def read_upload_content(file: UploadFile, max_size: int | None = None) -> bytes:

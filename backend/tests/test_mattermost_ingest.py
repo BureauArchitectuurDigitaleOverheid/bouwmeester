@@ -709,13 +709,9 @@ async def test_two_concurrent_sessions_racing_same_post_id_produce_one_suggestio
 
 
 @pytest.fixture
-def lead_bijlagen_tmp(tmp_path):
-    """Patch bijlagen-root voor ingest-file-tests zodat we niet naar
-    /data/bijlagen schrijven."""
-    from unittest.mock import patch
-
-    with patch("bouwmeester.core.storage.bijlagen_root", return_value=tmp_path):
-        yield tmp_path
+def lead_bijlagen_tmp(blob_root):
+    """De map achter de bijlagen-store van deze test."""
+    return blob_root
 
 
 def _setup_lead_channel(db_session, lead) -> str:

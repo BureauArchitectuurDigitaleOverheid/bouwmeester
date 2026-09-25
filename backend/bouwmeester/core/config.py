@@ -138,6 +138,24 @@ class Settings(BaseSettings):
     # Age encryption for database backups
     AGE_SECRET_KEY: str = ""  # Age secret key for decryption (set on production)
 
+    # Object storage for bijlagen: the S3-compatible bucket that ZAD's
+    # `minio-storage` service injects. Unset means files stay in a local
+    # directory (see core/blob_store.py).
+    OBJECT_STORE_ENDPOINT_URL: str = ""
+    OBJECT_STORE_BUCKET_NAME: str = ""
+    OBJECT_STORE_USER: str = ""
+    OBJECT_STORE_PASSWORD: str = ""
+    OBJECT_STORE_REGION: str = ""
+
+    @property
+    def object_store_configured(self) -> bool:
+        return bool(
+            self.OBJECT_STORE_ENDPOINT_URL
+            and self.OBJECT_STORE_BUCKET_NAME
+            and self.OBJECT_STORE_USER
+            and self.OBJECT_STORE_PASSWORD
+        )
+
     @model_validator(mode="after")
     def _derive_database_url(self) -> "Settings":
         """Build DATABASE_URL from ZAD individual env vars if not set."""

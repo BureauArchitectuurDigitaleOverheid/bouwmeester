@@ -243,13 +243,12 @@ async def delete_node(
     node_title = node.title if node else None
     node_type = node.node_type if node else None
 
-    # Clean up bijlage files on disk before deleting the bron node,
-    # because CASCADE will remove the DB rows but not the files.
+    # Note the bron's stored file before deleting the node, because CASCADE
+    # removes the DB row but not the file.
     bijlage_path_to_delete: str | None = None
     if node and node.node_type == "bron":
         from sqlalchemy import select
 
-        from bouwmeester.core.storage import bijlagen_root, safe_resolve
         from bouwmeester.models.bron_bijlage import BronBijlage
 
         result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == id))
@@ -273,13 +272,9 @@ async def delete_node(
 
     # Delete the file after DB deletion succeeds.
     if bijlage_path_to_delete:
-        root = bijlagen_root()
-        try:
-            file_path = safe_resolve(root, bijlage_path_to_delete)
-        except ValueError:
-            file_path = None
-        if file_path and file_path.exists():
-            file_path.unlink()
+        from bouwmeester.core.storage import delete_blob
+
+        await delete_blob(bijlage_path_to_delete)
 
     await log_activity(
         db,

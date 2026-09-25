@@ -34,9 +34,8 @@ from bouwmeester.core.database import async_session
 from bouwmeester.core.storage import (
     ALLOWED_CONTENT_TYPES,
     MAX_UPLOAD_SIZE,
-    ensure_bijlagen_dir,
+    store_upload,
     verify_content_type,
-    write_upload_to_disk,
 )
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
@@ -835,13 +834,16 @@ class MattermostIngestService:
             )
             return
 
-        leads_dir = ensure_bijlagen_dir() / "leads"
         original_name = info.get("name") or f"bijlage-{file_id}"
-        filename, relative_path, _ = write_upload_to_disk(
-            content, original_name, leads_dir, item_id=lead_id
+        filename, relative_path = await store_upload(
+            content,
+            original_name,
+            prefix="leads",
+            item_id=lead_id,
+            content_type=claimed_ct,
         )
-        # write_upload_to_disk geeft pad relatief tot leads_dir; DB slaat
-        # op tov LEADS_BIJLAGEN_ROOT, dus pre-pend "leads/".
+        # store_upload geeft het pad zonder prefix; lead_attachment.pad houdt
+        # "leads/" erin.
         relative_path = f"leads/{relative_path}"
 
         attachment = LeadAttachment(

@@ -3,19 +3,18 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.storage import (
-    ensure_bijlagen_dir,
+    blob_download,
+    chat_key,
     read_upload_content,
-    safe_resolve_or_400,
-    sanitize_download_filename,
+    store_upload,
     validate_upload,
-    write_upload_to_disk,
 )
 from bouwmeester.models.chat_attachment import ChatAttachment
 from bouwmeester.schema.chat import (
@@ -32,8 +31,6 @@ from bouwmeester.services.llm import get_llm_service_for
 from bouwmeester.services.llm.base import DataSensitivity
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-
-CHAT_BIJLAGEN_ROOT = ensure_bijlagen_dir("chat")
 
 
 @router.post(
@@ -52,11 +49,12 @@ async def upload_chat_attachment(
     validate_upload(content, content_type)
 
     attachment_id = uuid.uuid4()
-    filename, relative_path, _ = write_upload_to_disk(
+    filename, relative_path = await store_upload(
         content,
         file.filename or "bijlage",
-        CHAT_BIJLAGEN_ROOT,
+        prefix="chat",
         item_id=attachment_id,
+        content_type=content_type,
     )
     person_id = current_user.id if current_user else None
 
@@ -85,7 +83,7 @@ async def preview_chat_attachment(
     attachment_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-) -> FileResponse:
+) -> Response:
     """Serve a chat attachment for preview/thumbnail."""
     stmt = select(ChatAttachment).where(ChatAttachment.id == attachment_id)
     # Scope access: authenticated users see own + unowned attachments;
@@ -103,21 +101,14 @@ async def preview_chat_attachment(
     if not attachment:
         raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
 
-    file_path = safe_resolve_or_400(CHAT_BIJLAGEN_ROOT, attachment.pad)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Bestand niet gevonden op disk")
-
-    safe_filename = sanitize_download_filename(attachment.bestandsnaam)
     # Serve images with their real content type so <img> tags and inline
     # preview work.  Non-image types get application/octet-stream to
     # prevent browsers from rendering potentially dangerous content
     # (HTML, SVG, etc.) inline.
     ct = attachment.content_type or ""
     media_type = ct if ct.startswith("image/") else "application/octet-stream"
-    return FileResponse(
-        path=str(file_path),
-        media_type=media_type,
-        filename=safe_filename,
+    return await blob_download(
+        chat_key(attachment.pad), attachment.bestandsnaam, media_type
     )
 
 

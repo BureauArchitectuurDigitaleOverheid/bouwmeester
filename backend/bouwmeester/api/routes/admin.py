@@ -1032,3 +1032,51 @@ async def mattermost_channel_overview(
     # dit overzicht zet ze onder elkaar. Zonder het team is niet te zien
     # welke regel over welk kanaal gaat. Dezelfde weg als de kanaalkaart.
     return await vul_teamnaam_aan(db, out)
+
+
+# ---------------------------------------------------------------------------
+# Bijlagen: object storage check
+# ---------------------------------------------------------------------------
+
+
+@router.get("/bijlagen/opslag")
+async def bijlagen_opslag(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Every file the attachment tables refer to, checked against the bucket.
+
+    The gate for removing the old volume: ``alleen_op_volume`` has to be 0 in
+    every table. Reads the bucket directly, past the read fallback, so a file
+    that only the volume still has shows up as such instead of as present.
+    """
+    from bouwmeester.core.blob_store import (
+        LocalBlobStore,
+        S3BlobStore,
+        s3_client_from_settings,
+    )
+    from bouwmeester.core.storage import bijlagen_root
+    from bouwmeester.services.bijlagen_migration import check_database_against_store
+
+    client = s3_client_from_settings()
+    if client is None:
+        return {"objectopslag": False, "tabellen": []}
+    store = S3BlobStore(client, get_settings().OBJECT_STORE_BUCKET_NAME)
+    root = bijlagen_root()
+    volume = LocalBlobStore(root) if root.is_dir() else None
+    checks = await check_database_against_store(db, store, volume)
+    return {
+        "objectopslag": True,
+        "volume_aanwezig": volume is not None,
+        "tabellen": [
+            {
+                "tabel": c.table,
+                "totaal": c.total,
+                "in_bucket": c.present,
+                "alleen_op_volume": c.only_on_volume,
+                "nergens": c.missing_count,
+                "voorbeelden_nergens": c.missing,
+            }
+            for c in checks
+        ],
+    }
