@@ -290,11 +290,11 @@ async def get_or_create_person(
     person = result.scalar_one_or_none()
 
     if person is not None:
-        if person.oidc_email != email:
-            person.oidc_email = email
-            await db.flush()
-        # Auto-accumulate verified emails across logins.
+        # Only an address the IdP vouched for becomes the login address.
         if email_verified:
+            if person.oidc_email != email:
+                person.oidc_email = email
+                await db.flush()
             await _ensure_email_linked(db, person.id, email)
         return person
 
@@ -304,10 +304,15 @@ async def get_or_create_person(
     # Person is not already bound to another identity.
     if email_owner is not None and email_verified:
         if email_owner.oidc_subject is None:
+            from bouwmeester.core.authority import hold_placements_for_approval
+
             email_owner.oidc_subject = sub
             email_owner.oidc_email = email
             if name and not email_owner.naam:
                 email_owner.naam = name
+            # Until now this was a contact that anyone could place; from now
+            # on its placements grant access, so a manager approves them.
+            await hold_placements_for_approval(db, email_owner)
             await db.flush()
             await db.refresh(email_owner)
             return email_owner
@@ -335,7 +340,7 @@ async def get_or_create_person(
                 naam=name or email,
                 email=email,
                 oidc_subject=sub,
-                oidc_email=email,
+                oidc_email=email if email_verified else None,
             )
             db.add(person)
             await db.flush()
@@ -881,23 +886,10 @@ async def get_optional_user(
 #   so the app keeps working in dev without an OIDC provider.  When deployed
 #   behind the Keycloak gateway, every request carries a valid token and
 #   OptionalUser returns the authenticated Person.
-# - AdminUser: super_admin or platform_admin.  Returns None in dev mode.
-# - SuperAdminUser: super_admin only.  Returns None in dev mode.
+# - AdminUser / SuperAdminUser: see core.permissions (they build on the
+#   PermissionContext).
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
-
-# The admin dependencies build on the PermissionContext; import them here to
-# avoid a circular import at module level (permissions imports this module).
-from bouwmeester.core.permissions import (  # noqa: E402
-    PermissionContext,
-    get_admin_user,
-    get_permission_context,
-    get_super_admin_user,
-)
-
-AdminUser = Annotated[Person | None, Depends(get_admin_user)]
-SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
-PermUser = Annotated[PermissionContext, Depends(get_permission_context)]
 
 
 def effective_person_id(

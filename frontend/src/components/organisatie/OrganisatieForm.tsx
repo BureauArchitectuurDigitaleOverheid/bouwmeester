@@ -121,7 +121,9 @@ export function OrganisatieForm({
       naam: naam.trim(),
       type,
       parent_id: parentId || null,
-      manager_id: managerId || null,
+      // Only send a manager when this person may name one; otherwise the
+      // backend would read an unchanged value as an attempt to set it.
+      ...(canSetManager ? { manager_id: managerId || null } : {}),
       beschrijving: cleanBeschrijving,
     });
   };

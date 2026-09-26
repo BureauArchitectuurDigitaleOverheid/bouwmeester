@@ -39,16 +39,25 @@ class InitiatiefContext:
 
 async def build_initiatief_context(
     db: AsyncSession,
-    person: Person,
+    person: Person | None,
     *,
-    perm_ctx=None,
+    perm_ctx: PermissionContext | None = None,
 ) -> InitiatiefContext:
     """Build an InitiatiefContext for the given person.
 
     Pass an existing *perm_ctx* to avoid building it a second time.
     """
-    from bouwmeester.core.permissions import build_permission_context
+    from bouwmeester.core.permissions import (
+        anonymous_permission_context,
+        build_permission_context,
+    )
 
+    if person is None:
+        # Dev mode sees everything; otherwise an anonymous request sees nothing.
+        anon = perm_ctx or anonymous_permission_context()
+        return InitiatiefContext(
+            is_admin=anon.is_super_admin, is_authenticated=anon.is_authenticated
+        )
     if perm_ctx is None:
         perm_ctx = await build_permission_context(db, person)
     if perm_ctx.is_super_admin:
@@ -108,13 +117,7 @@ async def get_initiatief_context(
     if cached is not None:
         return cached
 
-    if person is None:
-        # Dev mode sees everything; otherwise an anonymous request sees nothing.
-        ctx = InitiatiefContext(
-            is_admin=perm_ctx.is_super_admin, is_authenticated=perm_ctx.is_authenticated
-        )
-    else:
-        ctx = await build_initiatief_context(db, person, perm_ctx=perm_ctx)
+    ctx = await build_initiatief_context(db, person, perm_ctx=perm_ctx)
 
     request.state.initiatief_context = ctx
     return ctx

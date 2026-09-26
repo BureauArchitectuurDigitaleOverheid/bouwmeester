@@ -22,7 +22,6 @@ import {
   type ContactPersonFieldsState,
 } from '@/components/leads/contactPersonFields';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { usePermissions } from '@/hooks/usePermissions';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { INITIATIEF_COLORS, formatFunctie } from '@/types';
@@ -117,7 +116,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const { currentPerson } = useCurrentPerson();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatiefMutation = useCreateInitiatief();
-  const canCreateInitiatief = usePermissions().hasPermission('initiatief:create');
   const createContact = useCreateContactPerson();
   const { data: people } = usePeople();
   const { data: allTags } = useTags();
@@ -525,15 +523,11 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                 label: i.naam,
               })) ?? []}
               placeholder="Selecteer initiatief..."
-              onCreate={
-                canCreateInitiatief
-                  ? async (name) => {
-                      const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-                      const result = await createInitiatiefMutation.mutateAsync({ naam: name, kleur });
-                      return result.id;
-                    }
-                  : undefined
-              }
+              onCreate={async (name) => {
+                const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+                const result = await createInitiatiefMutation.mutateAsync({ naam: name, kleur });
+                return result.id;
+              }}
               createLabel="Nieuw initiatief"
             />
           )}

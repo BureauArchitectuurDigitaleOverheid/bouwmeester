@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import or_, select
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
@@ -20,6 +20,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.org_tree import get_ancestor_ids, get_membership_ids
+from bouwmeester.repositories.resource_scope import resolve_resource_eenheid_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,9 @@ class OrgContext:
 
 async def build_org_context(
     db: AsyncSession,
-    person: Person,
+    person: Person | None,
     *,
-    perm_ctx=None,
+    perm_ctx: PermissionContext | None = None,
 ) -> OrgContext:
     """Build an OrgContext for the given person.
 
@@ -58,8 +59,17 @@ async def build_org_context(
     has one.
     """
     from bouwmeester.core.authority import managed_eenheid_ids, managed_subtree_ids
-    from bouwmeester.core.permissions import build_permission_context
+    from bouwmeester.core.permissions import (
+        anonymous_permission_context,
+        build_permission_context,
+    )
 
+    if person is None:
+        # Dev mode sees everything; otherwise an anonymous request sees nothing.
+        anon = perm_ctx or anonymous_permission_context()
+        return OrgContext(
+            is_admin=anon.is_super_admin, is_authenticated=anon.is_authenticated
+        )
     if perm_ctx is None:
         perm_ctx = await build_permission_context(db, person)
     if perm_ctx.is_super_admin:
@@ -111,13 +121,7 @@ async def get_org_context(
     if cached is not None:
         return cached
 
-    if person is None:
-        # Dev mode sees everything; otherwise an anonymous request sees nothing.
-        ctx = OrgContext(
-            is_admin=perm_ctx.is_super_admin, is_authenticated=perm_ctx.is_authenticated
-        )
-    else:
-        ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
+    ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
 
     request.state.org_context = ctx
     return ctx
@@ -225,80 +229,3 @@ async def check_resource_org_scope(
     if not found:
         raise HTTPException(status_code=404, detail=f"{resource_type} not found")
     check_org_scope(eenheid_id, org_ctx)
-
-
-async def resolve_resource_eenheid_id(
-    db: AsyncSession,
-    resource_type: str,
-    resource_id: UUID,
-) -> tuple[bool, UUID | None]:
-    """Resolve the organisatie_eenheid_id for a polymorphic resource.
-
-    Returns ``(found, eenheid_id)`` — *found* is ``False`` when the
-    resource does not exist (distinguishing from a resource that exists
-    but has no eenheid assigned).
-    """
-    if resource_type == "corpus_node":
-        from bouwmeester.models.corpus_node import CorpusNode
-
-        stmt = select(CorpusNode.organisatie_eenheid_id).where(
-            CorpusNode.id == resource_id
-        )
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "organisatie_eenheid":
-        from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
-        stmt = select(OrganisatieEenheid.id).where(OrganisatieEenheid.id == resource_id)
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "opdracht":
-        from bouwmeester.models.opdracht import Opdracht
-
-        stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "task":
-        from bouwmeester.models.task import Task
-
-        stmt = select(Task.organisatie_eenheid_id).where(Task.id == resource_id)
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "initiatief":
-        from bouwmeester.models.resource_permission import ResourcePermission
-
-        stmt = select(ResourcePermission.organisatie_eenheid_id).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == resource_id,
-            ResourcePermission.organisatie_eenheid_id.isnot(None),
-        )
-        result = await db.execute(stmt)
-        first = result.scalars().first()
-        return (True, first)
-
-    if resource_type == "lead":
-        from bouwmeester.models.lead import Lead
-        from bouwmeester.models.resource_permission import ResourcePermission
-
-        stmt = (
-            select(ResourcePermission.organisatie_eenheid_id)
-            .join(Lead, Lead.initiatief_id == ResourcePermission.resource_id)
-            .where(
-                Lead.id == resource_id,
-                ResourcePermission.resource_type == "initiatief",
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-            )
-        )
-        result = await db.execute(stmt)
-        first = result.scalars().first()
-        return (True, first)
-
-    return (False, None)

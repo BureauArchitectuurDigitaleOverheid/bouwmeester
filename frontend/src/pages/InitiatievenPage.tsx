@@ -4,7 +4,6 @@ import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useInitiatieven } from '@/hooks/useInitiatieven';
-import { usePermissions } from '@/hooks/usePermissions';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 import { CreateInitiatiefModal } from '@/components/initiatieven/CreateInitiatiefModal';
 import { initiatiefIconColor } from '@/components/initiatieven/initiatiefColors';
@@ -101,7 +100,6 @@ function InitiatiefCard({ initiatief }: { initiatief: InitiatiefListItem }) {
  * initiatief's own page, whose first tab is its leads.
  */
 export function InitiatievenPage() {
-  const canCreate = usePermissions().hasPermission('initiatief:create');
   const navigate = useNavigate();
   const { data: initiatieven = [], isLoading } = useInitiatieven();
   const [showCreate, setShowCreate] = useState(false);
@@ -120,14 +118,12 @@ export function InitiatievenPage() {
             {isLoading ? '' : plural(initiatieven.length, 'initiatief', 'initiatieven')}
           </nldd-text>
         </nldd-toolbar-item>
-        {canCreate && (
-          <nldd-toolbar-item slot="end">
-            <Button icon="plus" onClick={() => setShowCreate(true)}>
-              Nieuw initiatief
-            </Button>
-            <nldd-menu-item slot="overflow" text="Nieuw initiatief" icon="plus"></nldd-menu-item>
-          </nldd-toolbar-item>
-        )}
+        <nldd-toolbar-item slot="end">
+          <Button icon="plus" onClick={() => setShowCreate(true)}>
+            Nieuw initiatief
+          </Button>
+          <nldd-menu-item slot="overflow" text="Nieuw initiatief" icon="plus"></nldd-menu-item>
+        </nldd-toolbar-item>
       </nldd-toolbar>
 
       {isLoading ? (

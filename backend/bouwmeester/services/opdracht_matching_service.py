@@ -18,10 +18,10 @@ from bouwmeester.services.llm.base import DataSensitivity
 
 logger = logging.getLogger(__name__)
 
-# Links the LLM creates on its own are read-only.  Its input is external FCC
-# text, so it must never hand out a role that can manage the opdracht or
-# grant further rights; a person promotes a contact to eigenaar by hand.
-AI_GRANTED_ROL = "betrokken"
+# Links the LLM creates on its own grant nothing.  Its input is external FCC
+# text, so it must never hand out access; a person turns a contact into
+# betrokken or eigenaar by hand.
+AI_GRANTED_ROL = "contactpersoon"
 
 # Module-level lock to prevent concurrent bulk matching operations
 _bulk_matching_lock = asyncio.Lock()

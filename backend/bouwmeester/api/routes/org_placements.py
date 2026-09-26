@@ -173,7 +173,10 @@ async def update_placement_request(
 
     # Only someone who may decide on the request may redirect it
     await require_can_decide_placement_request(
-        db, perm_ctx, req.person_id, req.organisatie_eenheid_id
+        db,
+        perm_ctx,
+        requester_id=req.person_id,
+        eenheid_id=req.organisatie_eenheid_id,
     )
 
     req.organisatie_eenheid_id = data.organisatie_eenheid_id
@@ -219,7 +222,10 @@ async def approve_placement(
         raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
 
     await require_can_decide_placement_request(
-        db, perm_ctx, req.person_id, req.organisatie_eenheid_id
+        db,
+        perm_ctx,
+        requester_id=req.person_id,
+        eenheid_id=req.organisatie_eenheid_id,
     )
 
     req.status = "approved"
@@ -272,7 +278,10 @@ async def deny_placement(
         raise HTTPException(status_code=400, detail="Verzoek is al afgehandeld")
 
     await require_can_decide_placement_request(
-        db, perm_ctx, req.person_id, req.organisatie_eenheid_id
+        db,
+        perm_ctx,
+        requester_id=req.person_id,
+        eenheid_id=req.organisatie_eenheid_id,
     )
 
     req.status = "denied"

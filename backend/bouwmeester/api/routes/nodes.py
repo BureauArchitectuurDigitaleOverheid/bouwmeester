@@ -17,7 +17,11 @@ from bouwmeester.core.org_context import (
     check_resource_org_scope,
     get_org_context,
 )
-from bouwmeester.core.permissions import PermissionContext, require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+)
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -380,9 +384,7 @@ async def add_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("resource_permission:manage")
-    ),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> NodeStakeholderResponse:
     """Add a person as stakeholder on a node with a role."""
     service = NodeService(db)
@@ -439,9 +441,7 @@ async def update_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("resource_permission:manage")
-    ),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> NodeStakeholderResponse:
     """Update a stakeholder's role on a node."""
     repo = ResourcePermissionRepository(db)
@@ -501,9 +501,7 @@ async def remove_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("resource_permission:manage")
-    ),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     """Remove a stakeholder from a node."""
     repo = ResourcePermissionRepository(db)

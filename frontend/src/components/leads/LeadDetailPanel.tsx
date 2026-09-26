@@ -37,7 +37,6 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
-import { usePermissions } from '@/hooks/usePermissions';
 import { getLeadAttachmentDownloadUrl } from '@/api/leads';
 import { isOverdue, formatDateLong, timeAgo } from '@/utils/dates';
 import {
@@ -116,7 +115,6 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   const { data: people } = usePeople();
   const { data: initiatieven } = useInitiatieven();
   const createInitiatief = useCreateInitiatief();
-  const canCreateInitiatief = usePermissions().hasPermission('initiatief:create');
   const createPerson = useCreatePerson();
 
   const updateLead = useUpdateLead();
@@ -395,15 +393,11 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             ]}
             placeholder="Selecteer initiatief..."
             onClear={editInitiatiefId ? () => setEditInitiatiefId('') : undefined}
-            onCreate={
-              canCreateInitiatief
-                ? async (name) => {
-                    const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
-                    const result = await createInitiatief.mutateAsync({ naam: name, kleur });
-                    return result.id;
-                  }
-                : undefined
-            }
+            onCreate={async (name) => {
+              const kleur = INITIATIEF_COLORS[Math.floor(Math.random() * INITIATIEF_COLORS.length)];
+              const result = await createInitiatief.mutateAsync({ naam: name, kleur });
+              return result.id;
+            }}
             createLabel="Nieuw initiatief"
           />
           <Input label="Volgende actie" type="text" value={editNextAction} onChange={(e) => setEditNextAction(e.target.value)} />

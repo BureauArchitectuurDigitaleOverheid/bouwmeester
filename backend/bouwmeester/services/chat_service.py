@@ -9,6 +9,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from openai import APIError
@@ -33,6 +34,12 @@ from bouwmeester.services.llm.prompts import (
     CHAT_SYSTEM_PROMPT,
     build_chat_context_message,
 )
+
+if TYPE_CHECKING:
+    from bouwmeester.core.initiatief_context import InitiatiefContext
+    from bouwmeester.core.org_context import OrgContext
+    from bouwmeester.core.permissions import PermissionContext
+    from bouwmeester.models.person import Person
 
 logger = logging.getLogger(__name__)
 
@@ -1577,10 +1584,10 @@ async def _resolve_person_org_eenheid(
 class _ChatAccess:
     """Who the chat acts for, with contexts built at most once per session."""
 
-    person: object | None
-    perm_ctx: object
-    org_ctx: object | None = None
-    init_ctx: object | None = None
+    person: "Person | None"
+    perm_ctx: "PermissionContext"
+    org_ctx: "OrgContext | None" = None
+    init_ctx: "InitiatiefContext | None" = None
 
 
 async def _chat_access(db: AsyncSession, person_id: UUID | None) -> _ChatAccess:
@@ -1604,39 +1611,30 @@ async def _chat_access(db: AsyncSession, person_id: UUID | None) -> _ChatAccess:
     return access
 
 
-async def _build_chat_org_context(db: AsyncSession, person_id: UUID | None):
+async def _build_chat_org_context(
+    db: AsyncSession, person_id: UUID | None
+) -> "OrgContext":
     """OrgContext for the chat user (dev mode: everything, anonymous: nothing)."""
-    from bouwmeester.core.org_context import OrgContext, build_org_context
+    from bouwmeester.core.org_context import build_org_context
 
     access = await _chat_access(db, person_id)
     if access.org_ctx is None:
-        access.org_ctx = (
-            await build_org_context(db, access.person, perm_ctx=access.perm_ctx)
-            if access.person is not None
-            else OrgContext(
-                is_admin=access.perm_ctx.is_super_admin,
-                is_authenticated=access.perm_ctx.is_authenticated,
-            )
+        access.org_ctx = await build_org_context(
+            db, access.person, perm_ctx=access.perm_ctx
         )
     return access.org_ctx
 
 
-async def _build_chat_initiatief_context(db: AsyncSession, person_id: UUID | None):
+async def _build_chat_initiatief_context(
+    db: AsyncSession, person_id: UUID | None
+) -> "InitiatiefContext":
     """InitiatiefContext for the chat user (lead access), same rules."""
-    from bouwmeester.core.initiatief_context import (
-        InitiatiefContext,
-        build_initiatief_context,
-    )
+    from bouwmeester.core.initiatief_context import build_initiatief_context
 
     access = await _chat_access(db, person_id)
     if access.init_ctx is None:
-        access.init_ctx = (
-            await build_initiatief_context(db, access.person, perm_ctx=access.perm_ctx)
-            if access.person is not None
-            else InitiatiefContext(
-                is_admin=access.perm_ctx.is_super_admin,
-                is_authenticated=access.perm_ctx.is_authenticated,
-            )
+        access.init_ctx = await build_initiatief_context(
+            db, access.person, perm_ctx=access.perm_ctx
         )
     return access.init_ctx
 
@@ -1660,7 +1658,7 @@ _WRITE_TOOL_POLICY: dict[str, tuple[str | None, tuple[tuple[str, str], ...]]] = 
     ),
     "update_task": ("task:update", (("task", "task_id"),)),
     "add_tag_to_node": ("tag:create", (("corpus_node", "node_id"),)),
-    "add_stakeholder": ("resource_permission:manage", (("corpus_node", "node_id"),)),
+    "add_stakeholder": (None, ()),
     "attach_to_bron": ("node:update", (("corpus_node", "node_id"),)),
     "create_lead": (None, ()),
     "update_lead": (None, ()),

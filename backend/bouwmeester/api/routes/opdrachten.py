@@ -4,11 +4,16 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import (
+    require_can_change_resource_role,
+    require_can_grant_resource_role,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
@@ -16,7 +21,11 @@ from bouwmeester.core.org_context import (
     check_resource_org_scope,
     get_org_context,
 )
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+)
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
@@ -395,6 +404,25 @@ async def remove_node_koppeling(
 # ---------------------------------------------------------------------------
 
 
+async def _opdracht_grants(
+    db: AsyncSession,
+    opdracht_id: UUID,
+    *,
+    person_id: UUID | None = None,
+    eenheid_id: UUID | None = None,
+) -> list[ResourcePermission]:
+    """The grants a member or eenheid route is about to change."""
+    stmt = select(ResourcePermission).where(
+        ResourcePermission.resource_type == "opdracht",
+        ResourcePermission.resource_id == opdracht_id,
+    )
+    if person_id is not None:
+        stmt = stmt.where(ResourcePermission.person_id == person_id)
+    if eenheid_id is not None:
+        stmt = stmt.where(ResourcePermission.organisatie_eenheid_id == eenheid_id)
+    return list((await db.execute(stmt)).scalars().all())
+
+
 @router.post(
     "/{id}/members",
     response_model=OpdrachtMemberResponse,
@@ -405,12 +433,18 @@ async def add_member(
     data: OpdrachtMemberCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtMemberResponse:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     require_found(await repo.get(id), "Opdracht")
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="opdracht",
+        resource_id=id,
+        rol=data.rol,
+        target_person_id=data.person_id,
+    )
 
     try:
         member = await repo.add_member(id, data.person_id, data.rol)
@@ -451,11 +485,11 @@ async def remove_member(
     person_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
+    for grant in await _opdracht_grants(db, id, person_id=person_id):
+        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=None)
     if not await repo.remove_member(id, person_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -481,11 +515,11 @@ async def update_member_role(
     data: OpdrachtMemberUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtMemberResponse:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
+    for grant in await _opdracht_grants(db, id, person_id=person_id):
+        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=data.rol)
     member = await repo.update_member_role(id, person_id, data.rol)
     if member is None:
         raise HTTPException(
@@ -530,12 +564,18 @@ async def add_eenheid(
     data: OpdrachtEenheidCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtEenheidResponse:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     require_found(await repo.get(id), "Opdracht")
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="opdracht",
+        resource_id=id,
+        rol=data.rol,
+        target_person_id=None,
+    )
 
     try:
         rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
@@ -576,11 +616,11 @@ async def remove_eenheid(
     eenheid_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
+    for grant in await _opdracht_grants(db, id, eenheid_id=eenheid_id):
+        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=None)
     if not await repo.remove_eenheid(id, eenheid_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -606,11 +646,11 @@ async def update_eenheid_rol(
     data: OpdrachtEenheidUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtEenheidResponse:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
+    for grant in await _opdracht_grants(db, id, eenheid_id=eenheid_id):
+        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=data.rol)
     rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
     if rp is None:
         raise HTTPException(

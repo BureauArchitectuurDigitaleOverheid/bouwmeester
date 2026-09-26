@@ -22,12 +22,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import (
-    get_admin_user,
     get_optional_user,
     get_or_create_person,
     validate_bearer_token,
 )
-from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.core.permissions import PermissionContext, get_admin_user
 from bouwmeester.middleware.auth_required import is_public_path
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
@@ -93,20 +92,20 @@ async def tree(db_session: AsyncSession) -> Tree:
     contact = await make_person(db, "Contact", account=False)
 
     return Tree(
-        ministerie,
-        dg,
-        directie,
-        team,
-        sibling,
-        gemeente,
-        member,
-        editor,
-        directie_manager,
-        ministry_admin,
-        platform_admin,
-        super_admin,
-        contact,
-        db,
+        ministerie=ministerie,
+        dg=dg,
+        directie=directie,
+        team=team,
+        sibling=sibling,
+        gemeente=gemeente,
+        member=member,
+        editor=editor,
+        directie_manager=directie_manager,
+        ministry_admin=ministry_admin,
+        platform_admin=platform_admin,
+        super_admin=super_admin,
+        contact=contact,
+        db=db,
     )
 
 
@@ -544,14 +543,65 @@ async def _node(db: AsyncSession) -> CorpusNode:
     return node
 
 
-async def test_editor_cannot_make_self_owner_of_unlinked_initiatief(tree: Tree):
+async def test_only_owner_grants_on_unlinked_initiatief(tree: Tree):
     initiatief = await _initiatief(tree.db)
     async with client_as(tree.db, tree.editor) as c:
         resp = await c.post(
             f"/api/resource-permissions/initiatief/{initiatief.id}",
-            json={"person_id": str(tree.editor.id), "rol": "eigenaar"},
+            json={"person_id": str(tree.member.id), "rol": "viewer"},
         )
     assert resp.status_code == 403
+
+
+async def _link_initiatief(
+    db: AsyncSession, initiatief: Initiatief, org: OrganisatieEenheid, rol: str
+) -> None:
+    db.add(
+        ResourcePermission(
+            organisatie_eenheid_id=org.id,
+            resource_type="initiatief",
+            resource_id=initiatief.id,
+            rol=rol,
+        )
+    )
+    await db.flush()
+
+
+async def test_read_link_gives_no_authority_over_initiatief(tree: Tree):
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "viewer")
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.post(
+            f"/api/resource-permissions/initiatief/{initiatief.id}",
+            json={"person_id": str(tree.member.id), "rol": "eigenaar"},
+        )
+    assert resp.status_code == 403
+
+
+async def test_owning_eenheid_editor_grants_on_initiatief(tree: Tree):
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "eigenaar")
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.post(
+            f"/api/resource-permissions/initiatief/{initiatief.id}",
+            json={"person_id": str(tree.member.id), "rol": "contributor"},
+        )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_last_owner_cannot_leave(tree: Tree):
+    initiatief = await _initiatief(tree.db)
+    grant = ResourcePermission(
+        person_id=tree.member.id,
+        resource_type="initiatief",
+        resource_id=initiatief.id,
+        rol="eigenaar",
+    )
+    tree.db.add(grant)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.member) as c:
+        resp = await c.delete(f"/api/resource-permissions/{grant.id}")
+    assert resp.status_code == 409
 
 
 async def test_owner_hands_out_roles(tree: Tree):
@@ -571,6 +621,16 @@ async def test_owner_hands_out_roles(tree: Tree):
             json={"person_id": str(tree.editor.id), "rol": "contributor"},
         )
     assert resp.status_code == 200, resp.text
+
+
+async def test_editor_adds_self_as_node_stakeholder(tree: Tree):
+    node = await _node(tree.db)
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.post(
+            f"/api/nodes/{node.id}/stakeholders",
+            json={"person_id": str(tree.editor.id), "rol": "betrokken"},
+        )
+    assert resp.status_code == 201, resp.text
 
 
 async def test_editor_adds_node_stakeholder_but_not_owner(tree: Tree):
@@ -624,10 +684,10 @@ async def test_member_cannot_create_edge_type(tree: Tree):
     assert resp.status_code == 403
 
 
-async def test_member_cannot_create_initiatief(tree: Tree):
+async def test_member_creates_initiatief_and_owns_it(tree: Tree):
     async with client_as(tree.db, tree.member) as c:
-        resp = await c.post("/api/initiatieven", json={"naam": "Stiekem"})
-    assert resp.status_code == 403
+        resp = await c.post("/api/initiatieven", json={"naam": "Eigen initiatief"})
+    assert resp.status_code == 201, resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -652,13 +712,13 @@ async def test_chat_add_stakeholder_needs_permission(tree: Tree):
     assert granted is None
 
 
-async def test_chat_editor_cannot_make_self_owner(tree: Tree):
+async def test_chat_editor_cannot_name_node_owner(tree: Tree):
     from bouwmeester.services.chat_service import _execute_write_tool
 
     node = await _node(tree.db)
     result = await _execute_write_tool(
         "add_stakeholder",
-        {"node_id": str(node.id), "person_id": str(tree.editor.id), "rol": "eigenaar"},
+        {"node_id": str(node.id), "person_id": str(tree.member.id), "rol": "eigenaar"},
         tree.db,
         person_id=tree.editor.id,
     )
@@ -766,3 +826,149 @@ async def test_bearer_token_needs_whitelisted_email():
         patch("bouwmeester.core.whitelist.is_email_allowed", return_value=False),
     ):
         assert await validate_bearer_token("t", settings) is None
+
+
+# ---------------------------------------------------------------------------
+# Round-two scenarios
+# ---------------------------------------------------------------------------
+
+
+async def test_editor_cannot_make_self_opdracht_owner(tree: Tree):
+    from bouwmeester.models.opdracht import Opdracht
+
+    opdracht = Opdracht(
+        id=uuid.uuid4(),
+        type="opdracht",
+        titel="Onderzoek",
+        begrotingsjaar=2026,
+        opdrachtgever_id=tree.team.id,
+    )
+    tree.db.add(opdracht)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.post(
+            f"/api/opdrachten/{opdracht.id}/members",
+            json={"person_id": str(tree.editor.id), "rol": "eigenaar"},
+        )
+        other = await c.post(
+            f"/api/opdrachten/{opdracht.id}/members",
+            json={"person_id": str(tree.member.id), "rol": "betrokken"},
+        )
+    assert resp.status_code == 403
+    assert other.status_code == 201, other.text
+
+
+def test_ai_matches_grant_nothing():
+    from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS
+    from bouwmeester.services.opdracht_matching_service import AI_GRANTED_ROL
+
+    assert RESOURCE_ROLE_PERMISSIONS["opdracht"][AI_GRANTED_ROL] == set()
+
+
+async def test_platform_admin_does_not_staff_the_organisation(tree: Tree):
+    async with client_as(tree.db, tree.platform_admin) as c:
+        resp = await c.post(
+            "/api/roles/assign",
+            json=_assign(tree.member, "ministry_admin", tree.dg),
+        )
+    assert resp.status_code == 403
+
+
+async def test_ministry_admin_revokes_within_subtree_only(tree: Tree):
+    inside = await grant_role(tree.db, tree.member, "editor", tree.sibling)
+    outside = await grant_role(tree.db, tree.member, "editor", tree.ministerie)
+    async with client_as(tree.db, tree.ministry_admin) as c:
+        ok = await c.delete(f"/api/roles/assignments/{inside.id}")
+        refused = await c.delete(f"/api/roles/assignments/{outside.id}")
+    assert ok.status_code == 200, ok.text
+    assert refused.status_code == 403
+
+
+async def test_editor_cannot_dissolve_team(tree: Tree):
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.put(
+            f"/api/organisatie/{tree.team.id}",
+            json={"geldig_tot": str(date.today())},
+        )
+    assert resp.status_code == 403
+
+
+async def test_external_eenheid_with_internal_part_is_not_free_to_move(tree: Tree):
+    zbo = await make_org(tree.db, "Zbo", "zbo")
+    await make_org(tree.db, "Intern team", "team", zbo)
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.put(
+            f"/api/organisatie/{zbo.id}", json={"parent_id": str(tree.gemeente.id)}
+        )
+    assert resp.status_code == 403
+
+
+async def test_sharing_needs_authority_over_the_source(tree: Tree):
+    share = {"target_eenheid_id": str(tree.gemeente.id), "access_level": "read"}
+    async with client_as(tree.db, tree.ministry_admin) as c:
+        inside = await c.post(
+            "/api/sharing", json={**share, "source_eenheid_id": str(tree.team.id)}
+        )
+        outside = await c.post(
+            "/api/sharing",
+            json={**share, "source_eenheid_id": str(tree.ministerie.id)},
+        )
+    assert inside.status_code == 200, inside.text
+    assert outside.status_code == 403
+
+
+async def test_pending_requests_follow_the_managed_subtree(tree: Tree):
+    in_tree = await _request(tree.db, tree.contact, tree.team)
+    above = await _request(tree.db, tree.contact, tree.dg)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.get("/api/org-placements/pending")
+    ids = {r["id"] for r in resp.json()}
+    assert str(in_tree.id) in ids
+    assert str(above.id) not in ids
+
+
+async def test_managed_subtree_in_org_context(tree: Tree):
+    from bouwmeester.core.org_context import build_org_context
+
+    ctx = await build_org_context(tree.db, tree.directie_manager)
+    assert {tree.directie.id, tree.team.id, tree.sibling.id} <= set(
+        ctx.managed_subtree_ids
+    )
+    assert tree.dg.id not in ctx.managed_subtree_ids
+
+
+async def test_first_login_puts_contact_placements_up_for_approval(tree: Tree):
+    await place(tree.db, tree.contact, tree.team)
+    await place(tree.db, tree.contact, tree.gemeente)
+    email = await _email_of(tree.db, tree.contact)
+
+    person = await get_or_create_person(
+        tree.db, sub="new-colleague", email=email, name="C", email_verified=True
+    )
+
+    assert person.id == tree.contact.id
+    assert await _placement_of(tree.db, tree.contact, tree.team) is None
+    assert await _placement_of(tree.db, tree.contact, tree.gemeente) is not None
+    request = await tree.db.scalar(
+        select(OrgPlacementRequest).where(
+            OrgPlacementRequest.person_id == tree.contact.id,
+            OrgPlacementRequest.organisatie_eenheid_id == tree.team.id,
+        )
+    )
+    assert request is not None and request.status == "pending"
+
+
+async def test_admin_seed_skips_address_added_to_own_profile(tree: Tree):
+    from bouwmeester.core import whitelist
+
+    admin_email = f"future-admin-{uuid.uuid4().hex[:8]}@example.com"
+    tree.db.add(PersonEmail(person_id=tree.member.id, email=admin_email))
+    await tree.db.flush()
+
+    with patch.object(whitelist, "_load_emails_from_file", return_value={admin_email}):
+        await whitelist.seed_admins_from_file(tree.db)
+
+    roles = await tree.db.scalars(
+        select(PersonRole.role_id).where(PersonRole.person_id == tree.member.id)
+    )
+    assert "super_admin" not in set(roles)

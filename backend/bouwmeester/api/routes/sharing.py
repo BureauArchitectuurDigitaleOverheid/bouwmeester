@@ -70,18 +70,23 @@ async def _require_share_authority(
     source_eenheid_id: UUID | None,
     source_node_id: UUID | None,
 ) -> None:
-    """Sharing (or unsharing) needs org:manage on the source eenheid.
+    """Sharing (or unsharing) needs org:manage on every source eenheid.
 
     Being able to see an eenheid is not enough: that would let a member of
-    a team share its whole directorate onward.
+    a team share its whole directorate onward.  A source without any eenheid
+    is tenant-wide, so only a system role may share it.
     """
+    eenheid_ids = [source_eenheid_id] if source_eenheid_id else []
     if source_node_id is not None:
         node = await db.get(CorpusNode, source_node_id)
         if node is None:
-            raise HTTPException(404, "Source node not found")
-        source_eenheid_id = source_eenheid_id or node.organisatie_eenheid_id
-    if source_eenheid_id is not None:
-        await require_permission_on_eenheid(db, perm, "org:manage", source_eenheid_id)
+            raise HTTPException(404, "Item niet gevonden")
+        if node.organisatie_eenheid_id:
+            eenheid_ids.append(node.organisatie_eenheid_id)
+    if not eenheid_ids and not perm.has_system_permission("org:manage"):
+        raise HTTPException(403, "Alleen systeembeheerders delen dit")
+    for eenheid_id in eenheid_ids:
+        await require_permission_on_eenheid(db, perm, "org:manage", eenheid_id)
 
 
 @router.post("", response_model=SharedAccessResponse)

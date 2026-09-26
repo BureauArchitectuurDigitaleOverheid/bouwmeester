@@ -12,10 +12,10 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import AdminUser, SuperAdminUser
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.encryption import decrypt_value, encrypt_value
+from bouwmeester.core.permissions import AdminUser, SuperAdminUser
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest

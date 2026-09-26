@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
-from bouwmeester.core.auth import OptionalUser, SuperAdminUser
+from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_delete_person,
     require_can_edit_person,
@@ -20,6 +20,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, apply_org_filter, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
+    SuperAdminUser,
     get_permission_context,
     require_permission,
 )
@@ -455,7 +456,9 @@ async def update_person(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonDetailResponse:
     """Update person fields (naam, functie, etc.)."""
-    if "email" in data.model_fields_set and data.email != person.email:
+    if "email" in data.model_fields_set and data.email != normalize_email(
+        person.email or ""
+    ):
         await require_can_edit_person(db, perm_ctx, person, identity=True)
     # Changing is_agent requires admin privileges (agents bypass email whitelist).
     if (

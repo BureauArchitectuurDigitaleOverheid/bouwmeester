@@ -49,13 +49,14 @@ async def _check_eenheid_write_access(
     perm_ctx: PermissionContext,
     org_ctx: OrgContext,
 ) -> None:
-    """Allow update/delete on an eenheid that is either in scope or owned.
+    """Allow editing an eenheid that is either in scope or owned.
 
-    A user with org:manage may mutate any eenheid within their org scope
-    (the regular ministry-admin / unit-manager case). Editors who created
-    a stakeholder eenheid outside their scope are granted an "eigenaar"
-    resource-permission at create-time and may mutate it via that path.
-    Raises 403 otherwise.
+    Covers the ordinary fields (naam, beschrijving) and is the first gate
+    for delete.  Anything that shifts rights (parent, type, manager,
+    dissolving) is checked on top of this by ``core.authority`` via
+    ``_check_structural_changes``.  Editors who created a stakeholder
+    eenheid outside their scope hold an "eigenaar" resource-permission on
+    it and may edit it through that.  Raises 403 otherwise.
 
     TOOI/synthetische rijen zijn read-only behalve voor super_admin —
     die kennen we als bron != 'handmatig'. Mutaties op die rijen worden
@@ -82,7 +83,7 @@ async def _check_eenheid_write_access(
         )
 
     all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-    if org_ctx.is_admin or eenheid_id in all_visible:
+    if eenheid_id in all_visible:
         return
     if perm_ctx.person_id is not None and await check_resource_permission(
         db,
@@ -442,6 +443,10 @@ async def delete_organisatie(
     await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
+    # Deleting needs no members and no sub-eenheden (checked below), so the
+    # only right it can take away is the manager's role.
+    if await repo.get_current_manager_id(id) is not None:
+        await require_can_set_manager(db, perm_ctx, eenheid_id=id, new_manager_id=None)
     if await repo.has_children(id):
         raise HTTPException(
             status_code=409,

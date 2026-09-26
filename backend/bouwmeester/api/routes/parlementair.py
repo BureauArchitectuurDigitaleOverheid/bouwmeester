@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import validate_list
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import require_can_change_resource_role
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import PermissionContext, require_permission
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.person import Person
@@ -245,7 +246,7 @@ async def complete_review(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    perm_ctx: PermissionContext = Depends(require_permission("parlementair:review")),
 ) -> ParlementairItemResponse:
     """Complete review: assign eigenaar, create follow-up tasks, mark as reviewed."""
     repo = ParlementairItemRepository(db)
@@ -268,6 +269,11 @@ async def complete_review(
     )
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
+    # Naming the first eigenaar of a freshly imported item is the point of
+    # the review.  Replacing someone who already owns it is a change of
+    # rights like any other.
+    if existing is not None and existing.person_id != body.eigenaar_id:
+        await require_can_change_resource_role(db, perm_ctx, existing, new_rol=None)
     if existing is None:
         db.add(
             ResourcePermission(

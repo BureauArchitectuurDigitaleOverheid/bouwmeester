@@ -100,7 +100,7 @@ function PersonRolesPanel({
   personId: string;
 }) {
   const { person: authPerson } = useAuth();
-  const { isSuperAdmin: isAdmin, hasSystemPermission, managesEenheid } = usePermissions();
+  const { isSuperAdmin, hasSystemPermission, managesEenheid } = usePermissions();
   const isSelf = authPerson?.id === personId;
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
@@ -138,27 +138,27 @@ function PersonRolesPanel({
 
   // Determine the caller's max role rank for filtering
   const myMaxRank = useMemo(() => {
-    if (isAdmin) return 999;
+    if (isSuperAdmin) return 999;
     const myRoleIds = authPerson?.roles?.map((r) => r.role_id) ?? [];
     return Math.max(0, ...(roles ?? []).filter((r) => myRoleIds.includes(r.id)).map((r) => r.rank));
-  }, [isAdmin, authPerson?.roles, roles]);
+  }, [isSuperAdmin, authPerson?.roles, roles]);
 
   // Offer only eenheden where the backend will accept the assignment: the
   // ones this person manages (and everything below), or all of them for a
   // system-wide role.
   const scopedOrgUnits = useMemo(() => {
     if (!orgUnits) return [];
-    if (isAdmin || hasSystemPermission('people:assign_role')) return orgUnits;
+    if (hasSystemPermission('people:assign_role')) return orgUnits;
     return orgUnits.filter((u) => managesEenheid(u.id));
-  }, [orgUnits, isAdmin, hasSystemPermission, managesEenheid]);
+  }, [orgUnits, hasSystemPermission, managesEenheid]);
 
   // Filter roles to those the user can assign (rank < myMaxRank)
   const assignableRoles = useMemo(() => {
     if (!roles) return [];
-    if (isAdmin) return roles;
+    if (isSuperAdmin) return roles;
     // System roles are super_admin-only; the backend refuses them otherwise.
     return roles.filter((r) => r.level !== 'system' && r.rank < myMaxRank);
-  }, [roles, myMaxRank, isAdmin]);
+  }, [roles, myMaxRank, isSuperAdmin]);
 
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
@@ -225,7 +225,7 @@ function PersonRolesPanel({
             // super_admin; anyone else's role needs a higher rank.
             const canRevoke = isSelf
               ? a.role_id !== 'super_admin'
-              : isAdmin || roleRank < myMaxRank;
+              : isSuperAdmin || roleRank < myMaxRank;
             return (
               <AssignmentRow
                 key={a.id}
@@ -243,7 +243,7 @@ function PersonRolesPanel({
 
       {/* Add role button / form — directly after roles. Nobody but a
           super_admin assigns roles to themselves. */}
-      {isSelf && !isAdmin ? null : !showForm ? (
+      {isSelf && !isSuperAdmin ? null : !showForm ? (
         <NlddButton
           text="Rol toewijzen"
           startIcon="plus"

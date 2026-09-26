@@ -47,7 +47,7 @@ export function usePermissions() {
   );
 
   // Dev mode (no OIDC) has no user and the backend allows everything.
-  const isAdmin = !oidcConfigured || (person?.is_admin ?? false);
+  const isSuperAdmin = !oidcConfigured || (person?.is_admin ?? false);
 
   // Eenheden whose members this person manages, with the same inheritance
   // the backend applies (the eenheid itself or anything above it).
@@ -57,15 +57,15 @@ export function usePermissions() {
   );
   const managesEenheid = useCallback(
     (eenheidId: string): boolean =>
-      isAdmin || managedSubtree.has('*') || managedSubtree.has(eenheidId),
-    [isAdmin, managedSubtree],
+      isSuperAdmin || managedSubtree.has('*') || managedSubtree.has(eenheidId),
+    [isSuperAdmin, managedSubtree],
   );
 
   // Tenant-wide actions (syncs, merges, restoring a backup) need the
   // permission from a system role, not from a role scoped to one eenheid.
   const hasSystemPermission = useCallback(
-    (perm: string): boolean => isAdmin || systemPermissions.has(perm),
-    [isAdmin, systemPermissions],
+    (perm: string): boolean => isSuperAdmin || systemPermissions.has(perm),
+    [isSuperAdmin, systemPermissions],
   );
 
   return {
@@ -73,7 +73,7 @@ export function usePermissions() {
     hasAnyPermission,
     hasSystemPermission,
     managesEenheid,
-    isSuperAdmin: isAdmin,
+    isSuperAdmin,
     permissions,
   };
 }

@@ -61,34 +61,26 @@ def _validate_resource_type(resource_type: str) -> None:
         )
 
 
-async def _require_manage_permission(
+async def _require_can_list_grants(
     perm: PermissionContext,
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
     org_ctx: OrgContext,
 ) -> None:
-    """Check that the caller can manage permissions on the given resource.
+    """Read gate for listing who holds which rol on a resource.
 
-    Checks both RBAC permissions and org scope: the resource must belong
-    to an eenheid within the caller's visible scope.
+    An eigenaar of the resource, or someone with ``resource_permission:manage``
+    who can see the resource.  Changing grants is decided in
+    ``core.authority``.
     """
     if perm.is_super_admin:
         return
-
-    has_resource = await check_resource_permission(
-        db,
-        perm.person_id,  # type: ignore[arg-type]
-        resource_type,
-        resource_id,
-        "resource_permission:manage",
+    has_resource = perm.person_id is not None and await check_resource_permission(
+        db, perm.person_id, resource_type, resource_id, "resource_permission:manage"
     )
-    has_rbac = perm.has_permission("resource_permission:manage")
-
-    if not has_resource and not has_rbac:
-        raise HTTPException(403, "Insufficient permissions")
-
-    # Even with resource-level or RBAC permission, enforce org scope
+    if not has_resource and not perm.has_permission("resource_permission:manage"):
+        raise HTTPException(403, "Onvoldoende rechten")
     await check_resource_org_scope(db, resource_type, resource_id, org_ctx)
 
 
@@ -180,8 +172,8 @@ async def list_resource_permissions(
     """List people and roles on a resource."""
     _validate_resource_type(resource_type)
     if not perm.is_authenticated:
-        raise HTTPException(401, "Not authenticated")
-    await _require_manage_permission(perm, db, resource_type, resource_id, org_ctx)
+        raise HTTPException(401, "Niet ingelogd")
+    await _require_can_list_grants(perm, db, resource_type, resource_id, org_ctx)
 
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource(resource_type, resource_id)
@@ -202,7 +194,7 @@ async def add_resource_permission(
     """Add a person to a resource with a role."""
     _validate_resource_type(resource_type)
     if not perm.is_authenticated:
-        raise HTTPException(401, "Not authenticated")
+        raise HTTPException(401, "Niet ingelogd")
     await require_can_grant_resource_role(
         db,
         perm,
@@ -223,7 +215,7 @@ async def add_resource_permission(
     except IntegrityError:
         raise HTTPException(
             409,
-            "Permission already exists",
+            "Deze toekenning bestaat al",
         )
 
     await log_activity(
@@ -254,12 +246,12 @@ async def update_resource_permission(
 ):
     """Change a resource permission's role."""
     if not perm.is_authenticated:
-        raise HTTPException(401, "Not authenticated")
+        raise HTTPException(401, "Niet ingelogd")
 
     repo = ResourcePermissionRepository(db)
     rp = await repo.get_with_person(rp_id)
     if rp is None:
-        raise HTTPException(404, "Permission not found")
+        raise HTTPException(404, "Toekenning niet gevonden")
     await require_can_change_resource_role(db, perm, rp, new_rol=data.rol)
 
     rp.rol = data.rol
@@ -276,12 +268,12 @@ async def delete_resource_permission(
 ):
     """Remove a resource permission."""
     if not perm.is_authenticated:
-        raise HTTPException(401, "Not authenticated")
+        raise HTTPException(401, "Niet ingelogd")
 
     repo = ResourcePermissionRepository(db)
     rp = await repo.get_with_person(rp_id)
     if rp is None:
-        raise HTTPException(404, "Permission not found")
+        raise HTTPException(404, "Toekenning niet gevonden")
     await require_can_change_resource_role(db, perm, rp, new_rol=None)
 
     await log_activity(

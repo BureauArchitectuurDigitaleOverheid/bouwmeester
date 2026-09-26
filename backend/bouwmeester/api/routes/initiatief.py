@@ -17,7 +17,6 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     build_permission_context,
     get_permission_context,
-    require_permission,
 )
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import (
@@ -131,7 +130,6 @@ async def create_initiatief(
     data: InitiatiefCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("initiatief:create")),
 ) -> InitiatiefResponse:
     repo = InitiatiefRepository(db)
     created_by_id = current_user.id if current_user else None

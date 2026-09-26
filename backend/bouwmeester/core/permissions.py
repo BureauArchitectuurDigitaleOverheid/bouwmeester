@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
@@ -62,6 +63,8 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
             "resource_permission:manage",
         },
         "betrokken": {"opdracht:read"},
+        # Informational: the person is the client's contact, no access.
+        "contactpersoon": set(),
     },
     "organisatie_eenheid": {
         "eigenaar": {"org:manage", "resource_permission:manage"},
@@ -280,6 +283,10 @@ async def get_super_admin_user(
     if admin is None or perm_ctx.is_super_admin:
         return admin
     raise HTTPException(status_code=403, detail="Alleen voor systeembeheerders")
+
+
+AdminUser = Annotated[Person | None, Depends(get_admin_user)]
+SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
 
 
 async def check_resource_permission(

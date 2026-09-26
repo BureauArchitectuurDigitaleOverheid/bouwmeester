@@ -166,6 +166,9 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 PersonRole.start_datum <= today,
                 PersonRole.eind_datum.is_(None),
             )
+            # Oldest first, so with two active managers the most recent one
+            # ends up in the dict: the same one get_current_manager_id returns.
+            .order_by(PersonRole.start_datum.asc())
         )
         result = await self.session.execute(stmt)
         return {row[0]: row[1] for row in result.all()}

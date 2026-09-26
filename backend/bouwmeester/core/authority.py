@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.permissions import (
@@ -29,11 +29,13 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     check_resource_permission,
 )
+from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
     OrganisatieEenheid,
 )
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.org_tree import (
@@ -41,6 +43,7 @@ from bouwmeester.repositories.org_tree import (
     get_self_and_ancestor_ids,
     get_subtree_ids,
 )
+from bouwmeester.repositories.resource_scope import get_authority_eenheid_ids
 
 # Roles that make someone responsible for the members of an eenheid (and
 # of everything below it).
@@ -75,13 +78,22 @@ async def rights_on_eenheid(
     db: AsyncSession,
     perm_ctx: PermissionContext,
     eenheid_id: UUID,
+    *,
+    include_system_roles: bool = True,
 ) -> EenheidRights:
-    """Resolve what *perm_ctx* may do on *eenheid_id*, inheriting downward."""
+    """Resolve what *perm_ctx* may do on *eenheid_id*, inheriting downward.
+
+    ``include_system_roles=False`` leaves out system roles other than
+    super_admin, for decisions that belong to the organisation rather than
+    to platform operators (who manages whom).
+    """
     if perm_ctx.is_super_admin:
         return EenheidRights(frozenset(), frozenset(), is_super_admin=True)
 
-    roles: set[str] = set(perm_ctx.system_roles)
-    permissions: set[str] = set(perm_ctx.system_permissions)
+    roles: set[str] = set(perm_ctx.system_roles) if include_system_roles else set()
+    permissions: set[str] = (
+        set(perm_ctx.system_permissions) if include_system_roles else set()
+    )
     for eid in await get_self_and_ancestor_ids(db, eenheid_id):
         roles.update(perm_ctx.scoped_roles.get(eid, ()))
         permissions |= perm_ctx.scoped_permissions.get(eid, set())
@@ -178,9 +190,44 @@ async def require_can_place(
     )
 
 
+async def hold_placements_for_approval(db: AsyncSession, person: Person) -> int:
+    """Turn a contact's placements in the internal organisation into requests.
+
+    Called when a contact becomes an account (its first login).  Contacts
+    may be placed by anyone, so those placements were never approved; now
+    that they would grant access, each becomes a pending placement request
+    for a manager of the eenheid.  Links to external organisations stay.
+    Returns the number of requests created.
+    """
+    result = await db.execute(
+        select(PersonOrganisatieEenheid)
+        .join(
+            OrganisatieEenheid,
+            OrganisatieEenheid.id == PersonOrganisatieEenheid.organisatie_eenheid_id,
+        )
+        .where(
+            PersonOrganisatieEenheid.person_id == person.id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
+        )
+    )
+    placements = list(result.scalars().all())
+    for placement in placements:
+        db.add(
+            OrgPlacementRequest(
+                person_id=person.id,
+                organisatie_eenheid_id=placement.organisatie_eenheid_id,
+                dienstverband=placement.dienstverband,
+            )
+        )
+        await db.delete(placement)
+    return len(placements)
+
+
 async def require_can_decide_placement_request(
     db: AsyncSession,
     perm_ctx: PermissionContext,
+    *,
     requester_id: UUID,
     eenheid_id: UUID,
 ) -> None:
@@ -206,6 +253,21 @@ async def _eenheid_type(db: AsyncSession, eenheid_id: UUID | None) -> str | None
     )
 
 
+async def _has_internal_descendant(db: AsyncSession, eenheid_id: UUID) -> bool:
+    below = await get_subtree_ids(db, [eenheid_id]) - {eenheid_id}
+    if not below:
+        return False
+    hit = await db.scalar(
+        select(OrganisatieEenheid.id)
+        .where(
+            OrganisatieEenheid.id.in_(below),
+            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
+        )
+        .limit(1)
+    )
+    return hit is not None
+
+
 async def require_can_move_eenheid(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -218,10 +280,10 @@ async def require_can_move_eenheid(
 
     Whoever manages a parent manages everything below it, and members see
     all their ancestors.  So when the internal organisation is involved
-    (before or after, the eenheid or its parent), the caller must manage the
-    eenheid itself and the new parent.  Detaching into a new root is
-    super_admin-only.  External organisations can be arranged freely by
-    anyone allowed to edit them.
+    (before or after, the eenheid, its parent or anything below it), the
+    caller must manage the eenheid itself and the new parent.  Detaching
+    into a new root is super_admin-only.  External organisations without
+    internal parts can be arranged freely by anyone allowed to edit them.
     """
     if perm_ctx.is_super_admin:
         return
@@ -233,7 +295,9 @@ async def require_can_move_eenheid(
         await _eenheid_type(db, eenheid.parent_id),
         await _eenheid_type(db, new_parent_id),
     }
-    if not involved & INTERNAL_EENHEID_TYPES:
+    if not involved & INTERNAL_EENHEID_TYPES and not await _has_internal_descendant(
+        db, eenheid.id
+    ):
         return
     if not await can_manage_members(db, perm_ctx, eenheid.id):
         raise _forbidden(
@@ -298,14 +362,18 @@ async def _require_role_authority(
     """Guard granting or revoking *role* on *eenheid_id*, whoever it is for.
 
     System roles are super_admin-only.  Otherwise ``people:assign_role``
-    must be effective on the eenheid and *role* must rank below the
-    caller's highest role there.
+    must be effective on the eenheid through an organisational role
+    (platform_admin operates the platform, it does not staff the
+    organisation), and *role* must rank below the caller's highest role
+    there.
     """
     if perm_ctx.is_super_admin:
         return
     if eenheid_id is None:
         raise _forbidden("Alleen systeembeheerders kennen systeemrollen toe")
-    rights = await rights_on_eenheid(db, perm_ctx, eenheid_id)
+    rights = await rights_on_eenheid(
+        db, perm_ctx, eenheid_id, include_system_roles=False
+    )
     if not rights.has("people:assign_role"):
         raise _forbidden("Geen bevoegdheid om rollen toe te kennen in deze eenheid")
     if role.rank >= await _role_rank(db, set(rights.roles)):
@@ -490,14 +558,12 @@ async def _require_grant_authority(
     """Authority to hand out (or change) a rol on a resource.
 
     - an eigenaar of the resource may hand out any rol;
-    - otherwise ``resource_permission:manage`` must be effective on the
-      eenheid the resource belongs to, and never for yourself;
-    - a resource without an eenheid only has its eigenaars, except that
-      corpus nodes (tenant-wide today) take non-owner stakeholders from
-      anyone with ``resource_permission:manage``.
+    - otherwise ``resource_permission:manage`` must be effective on one of
+      the eenheden that own the resource, and not for yourself;
+    - a resource without such an eenheid only has its eigenaars, except that
+      corpus nodes (tenant-wide today) take non-owner stakeholders, yourself
+      included, from anyone with ``resource_permission:manage``.
     """
-    from bouwmeester.core.org_context import resolve_resource_eenheid_id
-
     if perm_ctx.is_super_admin:
         return
     if perm_ctx.person_id is not None and await check_resource_permission(
@@ -505,25 +571,43 @@ async def _require_grant_authority(
     ):
         return
 
-    found, eenheid_id = await resolve_resource_eenheid_id(
-        db, resource_type, resource_id
-    )
+    found, eenheid_ids = await get_authority_eenheid_ids(db, resource_type, resource_id)
     if not found:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"{resource_type} not found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Item niet gevonden")
+    if resource_type == "corpus_node" and not eenheid_ids and not owner_rol:
+        if perm_ctx.has_permission("resource_permission:manage"):
+            return
+        raise _forbidden("Onvoldoende rechten")
     if target_person_id is not None and target_person_id == perm_ctx.person_id:
         raise _forbidden("Je kunt jezelf geen rol op dit item geven")
-    if eenheid_id is not None:
-        await require_permission_on_eenheid(
-            db, perm_ctx, "resource_permission:manage", eenheid_id
-        )
-        return
-    if (
-        resource_type == "corpus_node"
-        and not owner_rol
-        and perm_ctx.has_permission("resource_permission:manage")
-    ):
-        return
+    for eenheid_id in eenheid_ids:
+        rights = await rights_on_eenheid(db, perm_ctx, eenheid_id)
+        if rights.has("resource_permission:manage"):
+            return
     raise _forbidden("Alleen de eigenaar kan hier rollen toekennen")
+
+
+async def _require_keeps_an_owner(
+    db: AsyncSession, grant: ResourcePermission, new_rol: str | None
+) -> None:
+    """409 when the change would leave the resource without any eigenaar."""
+    if grant.rol != "eigenaar" or new_rol == "eigenaar":
+        return
+    owners = await db.scalar(
+        select(func.count())
+        .select_from(ResourcePermission)
+        .where(
+            ResourcePermission.resource_type == grant.resource_type,
+            ResourcePermission.resource_id == grant.resource_id,
+            ResourcePermission.rol == "eigenaar",
+            ResourcePermission.id != grant.id,
+        )
+    )
+    if not owners:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Er moet minstens één eigenaar overblijven",
+        )
 
 
 async def require_can_grant_resource_role(
@@ -556,9 +640,11 @@ async def require_can_change_resource_role(
 ) -> None:
     """Guard changing (``new_rol``) or removing (``None``) an existing grant.
 
-    Leaving a resource yourself is always allowed.  Anything else needs the
-    authority to hand out both the current and the new rol.
+    A resource never loses its last eigenaar this way.  Otherwise leaving a
+    resource yourself is always allowed; anything else needs the authority
+    to hand out both the current and the new rol.
     """
+    await _require_keeps_an_owner(db, grant, new_rol)
     if new_rol is None and grant.person_id == perm_ctx.person_id:
         return
     if new_rol is not None:
