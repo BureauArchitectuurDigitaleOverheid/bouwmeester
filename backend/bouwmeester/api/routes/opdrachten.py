@@ -13,10 +13,10 @@ from bouwmeester.core.authority import (
     require_can_change_grants,
     require_can_grant_resource_role,
 )
+from bouwmeester.core.authz import can, require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
-    check_org_scope,
     check_resource_org_scope,
     get_org_context,
 )
@@ -24,6 +24,7 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
     require_permission,
+    require_system_permission,
 )
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -49,6 +50,32 @@ from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
 from bouwmeester.utils.financieel import calculate_uitnutting
 
 router = APIRouter(prefix="/opdrachten", tags=["opdrachten"])
+
+_UPDATE = requires("opdracht:update", "opdracht")
+_UPDATE_VIA_OPDRACHT_ID = requires(
+    "opdracht:update", "opdracht", path_param="opdracht_id"
+)
+
+
+async def _require_can_place_opdracht(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    permission: str,
+    *eenheid_ids: UUID | None,
+) -> None:
+    """403 unless *permission* holds where the opdracht (will) live.
+
+    An opdracht answers to its client and to the team doing the work (see
+    ``resource_scope``), so rights on either one suffice.  Without both it
+    is decided tenant-wide, like an FCC import.
+    """
+    placed = [eid for eid in eenheid_ids if eid is not None]
+    for eid in placed[:-1]:
+        if await can(db, perm_ctx, permission, "opdracht", eenheid_id=eid):
+            return
+    await require(
+        db, perm_ctx, permission, "opdracht", eenheid_id=placed[-1] if placed else None
+    )
 
 
 @router.get("", response_model=list[OpdrachtResponse])
@@ -127,7 +154,8 @@ async def match_contacts_bulk(
         description="Hermatchen voor alle opdrachten, ook met bestaande koppelingen",
     ),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
+    # Touches every opdracht, also those outside the caller's eenheden.
+    _perm=Depends(require_system_permission("opdracht:update")),
 ) -> dict:
     """Match contacts for opdrachten without linked members/eenheden.
 
@@ -158,10 +186,15 @@ async def create_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:create")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtResponse:
-    check_org_scope(data.opdrachtgever_id, org_ctx)
+    await _require_can_place_opdracht(
+        db,
+        perm_ctx,
+        "opdracht:create",
+        data.opdrachtgever_id,
+        data.opdrachtnemer_eenheid_id,
+    )
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
 
@@ -251,17 +284,27 @@ async def update_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(_UPDATE),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
 
     # Capture old state before update
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
-    if data.opdrachtgever_id is not None:
-        check_org_scope(data.opdrachtgever_id, org_ctx)
-    old = await repo.get(id)
-    require_found(old, "Opdracht")
+    old = require_found(await repo.get(id), "Opdracht")
+
+    # Moving the opdracht is placing it anew: it must land where you may write.
+    moved = data.model_fields_set & {"opdrachtgever_id", "opdrachtnemer_eenheid_id"}
+    if moved:
+        await _require_can_place_opdracht(
+            db,
+            perm_ctx,
+            "opdracht:update",
+            data.opdrachtgever_id
+            if "opdrachtgever_id" in moved
+            else old.opdrachtgever_id,
+            data.opdrachtnemer_eenheid_id
+            if "opdrachtnemer_eenheid_id" in moved
+            else old.opdrachtnemer_eenheid_id,
+        )
 
     # Reject setting instrument_id to null on non-FCC opdrachten
     if (
@@ -321,13 +364,11 @@ async def delete_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:delete")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(requires("opdracht:delete", "opdracht")),
 ) -> None:
     repo = OpdrachtRepository(db)
 
     # Capture info before deletion for activity log
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     opdracht = await repo.get(id)
     require_found(opdracht, "Opdracht")
     instrument_id = opdracht.instrument_id
@@ -369,10 +410,8 @@ async def add_node_koppeling(
     data: OpdrachtNodeCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_UPDATE_VIA_OPDRACHT_ID),
 ) -> OpdrachtNodeResponse:
-    await check_resource_org_scope(db, "opdracht", opdracht_id, org_ctx)
     repo = OpdrachtRepository(db)
     require_found(await repo.get(opdracht_id), "Opdracht")
     link = await repo.add_node_koppeling(opdracht_id, data)
@@ -388,10 +427,8 @@ async def remove_node_koppeling(
     koppeling_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_UPDATE_VIA_OPDRACHT_ID),
 ) -> None:
-    await check_resource_org_scope(db, "opdracht", opdracht_id, org_ctx)
     repo = OpdrachtRepository(db)
     require_deleted(
         await repo.remove_node_koppeling(opdracht_id, koppeling_id), "Koppeling"
@@ -697,11 +734,9 @@ async def match_contacts(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_UPDATE),
 ) -> list[OpdrachtMemberResponse | OpdrachtEenheidResponse]:
     """Trigger LLM-based matching of persons/eenheden to this opdracht."""
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(id), "Opdracht")
 

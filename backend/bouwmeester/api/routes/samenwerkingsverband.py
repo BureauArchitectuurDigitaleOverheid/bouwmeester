@@ -8,8 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+)
 from bouwmeester.models.person import Person
 from bouwmeester.models.persoon_samenwerkingsverband import (
     PersoonSamenwerkingsverband,
@@ -34,6 +39,10 @@ router = APIRouter(
     prefix="/samenwerkingsverbanden",
     tags=["samenwerkingsverbanden"],
 )
+
+# Members are part of the verband: managing them is updating the verband.
+_UPDATE = requires("samenwerkingsverband:update", "samenwerkingsverband")
+_DELETE = requires("samenwerkingsverband:delete", "samenwerkingsverband")
 
 
 def _to_response(
@@ -99,8 +108,10 @@ async def create_samenwerkingsverband(
     data: SamenwerkingsverbandCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("samenwerkingsverband:create")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> SamenwerkingsverbandResponse:
+    # Samenwerkingsverbanden live outside the eenheid tree: tenant-wide.
+    await require(db, perm_ctx, "samenwerkingsverband:create", "samenwerkingsverband")
     repo = SamenwerkingsverbandRepository(db)
     created_by_id = current_user.id if current_user else None
     verband = await repo.create(data, created_by_id=created_by_id)
@@ -182,7 +193,7 @@ async def update_samenwerkingsverband(
     data: SamenwerkingsverbandUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("samenwerkingsverband:update")),
+    _authz=Depends(_UPDATE),
 ) -> SamenwerkingsverbandResponse:
     repo = SamenwerkingsverbandRepository(db)
     verband = require_found(await repo.update(id, data), "Samenwerkingsverband")
@@ -205,7 +216,7 @@ async def delete_samenwerkingsverband(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("samenwerkingsverband:delete")),
+    _authz=Depends(_DELETE),
 ) -> None:
     repo = SamenwerkingsverbandRepository(db)
     verband = require_found(await repo.get(id), "Samenwerkingsverband")
@@ -248,7 +259,7 @@ async def add_lid(
     data: SamenwerkingsverbandLidCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("samenwerkingsverband:update")),
+    _authz=Depends(_UPDATE),
 ) -> SamenwerkingsverbandLidResponse:
     verband = require_found(
         await db.get(Samenwerkingsverband, id), "Samenwerkingsverband"
@@ -316,7 +327,7 @@ async def update_lid(
     data: SamenwerkingsverbandLidUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("samenwerkingsverband:update")),
+    _authz=Depends(_UPDATE),
 ) -> SamenwerkingsverbandLidResponse:
     from sqlalchemy import select
 
@@ -357,7 +368,7 @@ async def remove_lid(
     lid_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("samenwerkingsverband:update")),
+    _authz=Depends(_UPDATE),
 ) -> None:
     from sqlalchemy import select
 
