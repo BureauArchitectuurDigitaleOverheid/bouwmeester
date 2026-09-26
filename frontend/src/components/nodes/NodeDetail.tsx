@@ -13,7 +13,7 @@ import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { Icon } from '@/components/nldd/Icon';
-import { NlddActionText } from '@/components/nldd/NlddLink';
+import { NlddActionText, NlddListItemButton } from '@/components/nldd/NlddLink';
 import { useNlddEvent } from '@/components/nldd/events';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
@@ -41,17 +41,6 @@ function NlddTagToken({ text, onDismiss }: { text: string; onDismiss: () => void
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'dismiss', onDismiss);
   return <nldd-token ref={ref} text={text} control="dismiss" dismiss-text={`Verwijder tag ${text}`} />;
-}
-
-/** An `nldd-list-item[button]` row with its click bridged to React. */
-function ClickableListItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return (
-    <nldd-list-item ref={ref} button>
-      {children}
-    </nldd-list-item>
-  );
 }
 
 /** "13-02-2026 — heden" for an open record, both dates for a closed one. */
@@ -466,7 +455,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 <nldd-title size={3}><h3>Verwijzingen ({references.length})</h3></nldd-title>
                 <nldd-list variant="box-tinted" dividers="never">
                   {references.map((ref) => (
-                    <ClickableListItem
+                    <NlddListItemButton
                       key={`${ref.source_type}-${ref.source_id}`}
                       onClick={() => {
                         if (ref.source_type === 'node') navigate(`/nodes/${ref.source_id}`);
@@ -479,7 +468,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         </Badge>
                       </nldd-text-cell>
                       <nldd-text-cell text={ref.source_title} />
-                    </ClickableListItem>
+                    </NlddListItemButton>
                   ))}
                 </nldd-list>
               </Card>
@@ -531,14 +520,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 <nldd-title size={3}><h3>Verbonden nodes ({neighbors.length})</h3></nldd-title>
                 <nldd-list variant="box-tinted" dividers="never">
                   {neighbors.slice(0, 5).map((neighbor) => (
-                    <ClickableListItem key={neighbor.id} onClick={() => navigate(`/nodes/${neighbor.id}`)}>
+                    <NlddListItemButton key={neighbor.id} onClick={() => navigate(`/nodes/${neighbor.id}`)}>
                       <nldd-text-cell width="fit-content">
                         <Badge color={NODE_TYPE_COLORS[neighbor.node_type]} dot title={nodeAltLabel(neighbor.node_type)}>
                           {nodeLabel(neighbor.node_type)}
                         </Badge>
                       </nldd-text-cell>
                       <nldd-text-cell text={neighbor.title} />
-                    </ClickableListItem>
+                    </NlddListItemButton>
                   ))}
                 </nldd-list>
                 {neighbors.length > 5 && (

@@ -1,5 +1,6 @@
 /**
- * Router-aware wrappers around the nldd elements that navigate.
+ * Router-aware wrappers around the nldd elements that navigate, plus the
+ * list row that acts instead.
  *
  * The design system renders real `<a href>` elements, which is what we want:
  * middle-click and cmd-click keep working, and the address is shareable. But a
@@ -63,6 +64,28 @@ export function NlddListItemLink({
 
   return (
     <nldd-list-item ref={ref} href={to} current={current ? true : undefined} size={size}>
+      {children}
+    </nldd-list-item>
+  );
+}
+
+interface NlddListItemButtonProps {
+  onClick: () => void;
+  size?: 'sm' | 'md';
+  children: ReactNode;
+}
+
+/**
+ * An `nldd-list-item` that performs an action instead of navigating.
+ *
+ * The `button` attribute renders the row as a real `<button>`, which is valid
+ * in every list type, including `navigation`.
+ */
+export function NlddListItemButton({ onClick, size = 'md', children }: NlddListItemButtonProps) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onClick);
+  return (
+    <nldd-list-item ref={ref} button size={size}>
       {children}
     </nldd-list-item>
   );

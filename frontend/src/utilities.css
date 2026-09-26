@@ -94,6 +94,19 @@
   visibility: hidden;
 }
 
+/* `visually-hidden` is the opposite: no box on screen, still read out. For a
+ * label that only an icon shows, where the name has to come from somewhere
+ * and the element offers no attribute for it.
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* # Responsive stack-to-row
  *
  * A header that stacks its title block above its actions on a narrow screen,

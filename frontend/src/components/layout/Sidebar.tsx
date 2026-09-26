@@ -7,7 +7,7 @@ import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { formatOrganisatieType } from '@/types';
-import { NlddListItemLink } from '@/components/nldd/NlddLink';
+import { NlddListItemLink, NlddListItemButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 
 /** Accessible name per navigation group; each group is its own nav landmark. */
@@ -34,7 +34,7 @@ interface NavItem {
 
 export function Sidebar({ mobile }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, setMobileSidebarOpen } = useUIStore();
-  const { person: authPerson } = useAuth();
+  const { person: authPerson, authenticated, logout, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
   const { hasPermission, hasAnyPermission } = usePermissions();
@@ -151,6 +151,23 @@ export function Sidebar({ mobile }: SidebarProps) {
     ));
   };
 
+  const renderCells = (icon: string, label: string) => (
+    <>
+      <nldd-icon-cell icon={icon} size="20" />
+      {/* The cells sit flush against each other: neither the icon cell nor the
+          row adds any inline spacing, so without this the label starts exactly
+          at the icon's right edge. A spacer cell is how the design system's
+          own examples put a gap between two cells. */}
+      {expanded ? <nldd-spacer-cell size="12" /> : null}
+      {/* Collapsed, the row shows the icon alone. The icon cell has no
+          accessible name of its own, so the label stays in the row, hidden
+          from sight only; without it a collapsed row, and "Uitloggen" in
+          particular, is a control with no name. Never put bare text in a row:
+          a cell sets the type scale and color. */}
+      <nldd-text-cell text={label} className={expanded ? undefined : 'visually-hidden'} />
+    </>
+  );
+
   const renderItems = (items: NavItem[]) =>
     items.map((item) => (
       <NlddListItemLink
@@ -159,18 +176,16 @@ export function Sidebar({ mobile }: SidebarProps) {
         current={isCurrent(item.to)}
         onNavigate={closeSheet}
       >
-        <nldd-icon-cell icon={item.icon} size="20" />
-        {/* The cells sit flush against each other: neither the icon cell nor the
-            row adds any inline spacing, so without this the label starts exactly
-            at the icon's right edge. A spacer cell is how the design system's
-            own examples put a gap between two cells. */}
-        {expanded ? <nldd-spacer-cell size="12" /> : null}
-        {/* Collapsed, the row is the icon alone; the label lives in the tooltip
-            the icon cell provides via its accessible name. Never put bare text
-            in a row — a cell sets the type scale and color. */}
-        {expanded ? <nldd-text-cell text={item.label} /> : null}
+        {renderCells(item.icon, item.label)}
       </NlddListItemLink>
     ));
+
+  // Close the sheet first: logging out leaves the page, and the view-as
+  // switch changes what the menu itself shows.
+  const runAction = (action: () => void) => () => {
+    closeSheet();
+    action();
+  };
 
   return (
     // Full-height flex column: no nldd-container height="full" equivalent
@@ -233,6 +248,22 @@ export function Sidebar({ mobile }: SidebarProps) {
           accessible-label="Beheer en instellingen"
         >
           {renderItems(bottomNavItems)}
+          {/* Actions rather than places, so button rows; a navigation list
+              supports those alongside its links. They live here and not in the
+              header because they are rarely used and the header toolbar is
+              full. */}
+          {realIsAdmin && (
+            <NlddListItemButton onClick={runAction(toggleViewAsNonAdmin)}>
+              {viewAsNonAdmin
+                ? renderCells('eye-slash', 'Terug naar beheerweergave')
+                : renderCells('eye', 'Bekijk als medewerker')}
+            </NlddListItemButton>
+          )}
+          {authenticated && (
+            <NlddListItemButton onClick={runAction(logout)}>
+              {renderCells('logout', 'Uitloggen')}
+            </NlddListItemButton>
+          )}
         </nldd-list>
       </div>
     </div>
