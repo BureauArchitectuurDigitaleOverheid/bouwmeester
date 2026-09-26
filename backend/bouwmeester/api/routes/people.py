@@ -16,6 +16,7 @@ from bouwmeester.core.authority import (
     require_can_edit_person,
     require_can_place,
 )
+from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, apply_org_filter, get_org_context
 from bouwmeester.core.permissions import (
@@ -155,7 +156,7 @@ async def create_person(
     actor_id: UUID | None = Query(None),
     force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:create")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonCreateResponse:
     """Create a person.
 
@@ -163,6 +164,9 @@ async def create_person(
     If a person with the same name already exists, returns 409 with the
     duplicates unless force=true is passed.
     """
+    # A new person lives in no eenheid yet (placing is a separate, guarded
+    # step), so creating one is decided tenant-wide.
+    await require(db, perm_ctx, "people:create", "person")
     # Agent creation requires admin privileges (agents bypass email whitelist).
     if data.is_agent and not perm_ctx.is_super_admin:
         raise HTTPException(

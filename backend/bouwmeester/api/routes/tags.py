@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import (
     TagCreate,
@@ -59,9 +60,11 @@ async def create_tag(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("tag:create")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> TagResponse:
     """Create a new tag, optionally with a parent_id for hierarchy."""
+    # Tags are one shared vocabulary: the tenant-wide fallback in authz.
+    await require(db, perm_ctx, "tag:create", "tag")
     repo = TagRepository(db)
     tag = await repo.create(data)
 
@@ -93,7 +96,7 @@ async def update_tag(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("tag:update")),
+    _authz=Depends(requires("tag:update", "tag", path_param="tag_id")),
 ) -> TagResponse:
     """Update a tag's name or parent."""
     repo = TagRepository(db)
@@ -116,7 +119,7 @@ async def delete_tag(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("tag:delete")),
+    _authz=Depends(requires("tag:delete", "tag", path_param="tag_id")),
 ) -> None:
     """Delete a tag permanently."""
     repo = TagRepository(db)

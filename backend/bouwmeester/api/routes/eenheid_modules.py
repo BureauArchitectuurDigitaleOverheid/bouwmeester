@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authority import require_permission_on_eenheid
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import PermissionContext, require_permission
+from bouwmeester.core.permissions import require_permission
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.repositories.eenheid_module import EenheidModuleRepository
 from bouwmeester.schema.eenheid_module import (
@@ -23,6 +23,9 @@ from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/eenheid-modules", tags=["eenheid-modules"])
 
+# Module toggles are managed on the eenheid itself (or from above it).
+_ON_EENHEID = requires("org:manage", "organisatie_eenheid", path_param="eenheid_id")
+
 
 @router.get(
     "/{eenheid_id}",
@@ -30,12 +33,10 @@ router = APIRouter(prefix="/eenheid-modules", tags=["eenheid-modules"])
 )
 async def get_eenheid_modules(
     eenheid_id: UUID,
-    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
+    _authz=Depends(_ON_EENHEID),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Get module config for an eenheid, including inherited state."""
-    require_found(await db.get(OrganisatieEenheid, eenheid_id), "Eenheid")
-    await require_permission_on_eenheid(db, perm_ctx, "org:manage", eenheid_id)
     repo = EenheidModuleRepository(db)
     configs = await repo.get_full_config(eenheid_id)
     return EenheidModulesResponse(
@@ -52,12 +53,11 @@ async def update_eenheid_module(
     eenheid_id: UUID,
     data: EenheidModuleUpdate,
     current_user: OptionalUser,
-    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
+    _authz=Depends(_ON_EENHEID),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Toggle a module on/off for an eenheid."""
     eenheid = require_found(await db.get(OrganisatieEenheid, eenheid_id), "Eenheid")
-    await require_permission_on_eenheid(db, perm_ctx, "org:manage", eenheid_id)
 
     repo = EenheidModuleRepository(db)
 

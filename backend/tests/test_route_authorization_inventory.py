@@ -65,7 +65,7 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/skill.md": "skill markdown bundle, no PII",
     "/api/roles": "globale rol-definitielijst, ministerie-breed referentiedata",
     # Org-chart is bewust ministerie-breed leesbaar binnen de tenant.
-    # Mutaties hebben wel require_permission("org:manage") + check_org_scope.
+    # Mutations go through core.authz (org:manage on the eenheid) and core.authority.
     "/api/organisatie": "org-chart is ministerie-breed by design",
     "/api/organisatie/search": "org-chart, ministerie-breed",
     "/api/organisatie/tree-children": "org-chart, ministerie-breed (lazy-load van children)",  # noqa: E501
@@ -273,9 +273,6 @@ _WRITE_ALLOWLIST: dict[str, str] = {
 # today.  Migrating a route means removing it here (the second test below
 # insists).  Never add to this list.
 _WRITE_KNOWN_DEBT: set[str] = {
-    # bijlage.py: require_permission + check_resource_org_scope
-    "POST /api/nodes/{node_id}/bijlage",
-    "DELETE /api/nodes/{node_id}/bijlage",
     # fcc.py: require_permission (fcc:sync)
     "POST /api/fcc/conflicts/{opdracht_id}/resolve",
     "POST /api/fcc/opdrachten/{opdracht_id}/push",
@@ -284,16 +281,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "POST /api/import/edges",
     "POST /api/import/nodes",
     "POST /api/import/politieke-inputs",
-    # opdrachten.py: require_permission + check_resource_org_scope
-    "POST /api/opdrachten",
-    "PUT /api/opdrachten/{id}",
-    "DELETE /api/opdrachten/{id}",
-    "POST /api/opdrachten/{id}/match-contacts",
-    "POST /api/opdrachten/match-contacts-bulk",
-    "POST /api/opdrachten/{opdracht_id}/koppelingen",
-    "DELETE /api/opdrachten/{opdracht_id}/koppelingen/{koppeling_id}",
-    # organisatie.py: require_permission + _check_eenheid_write_access
-    "PUT /api/organisatie/{id}",
     # parlementair.py: require_permission (parlementair:review / :import)
     "PATCH /api/parlementair/edges/{edge_id}",
     "PUT /api/parlementair/edges/{edge_id}/approve",
@@ -303,23 +290,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "POST /api/parlementair/imports/trigger",
     "PUT /api/parlementair/imports/{import_id}/reject",
     "PUT /api/parlementair/imports/{import_id}/reopen",
-    # people.py: require_permission (people:create)
-    "POST /api/people",
-    # samenwerkingsverband.py: require_permission
-    "POST /api/samenwerkingsverbanden",
-    "PUT /api/samenwerkingsverbanden/{id}",
-    "DELETE /api/samenwerkingsverbanden/{id}",
-    "POST /api/samenwerkingsverbanden/{id}/leden",
-    "PUT /api/samenwerkingsverbanden/{id}/leden/{lid_id}",
-    "DELETE /api/samenwerkingsverbanden/{id}/leden/{lid_id}",
-    # stakeholder_assessments.py: _check_scope_access
-    "POST /api/stakeholder-assessments",
-    "PUT /api/stakeholder-assessments/{id}",
-    "DELETE /api/stakeholder-assessments/{id}",
-    # tags.py: require_permission (tenant-wide vocabulary, see core.authz)
-    "POST /api/tags",
-    "PUT /api/tags/{tag_id}",
-    "DELETE /api/tags/{tag_id}",
 }
 
 
