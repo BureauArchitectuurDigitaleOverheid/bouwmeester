@@ -402,17 +402,7 @@ function UpdateRow({
                 : `Concept · ${formatDateLong(post.created_at)}`}
             </nldd-text>
             {post.body_public && (
-              <nldd-text
-                size="xs"
-                color="secondary"
-                style={{
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
+              <nldd-text size="xs" color="secondary" className="line-clamp-2 whitespace-pre-wrap">
                 {post.body_public}
               </nldd-text>
             )}

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { entityColorVar } from '@/types';
 
 /**
@@ -19,8 +20,15 @@ export const EDGE_LABEL_BG_COLOR = 'var(--semantics-surfaces-base-background-col
 /** The dot grid on the canvas. SVG attribute: resolve before use. */
 export const GRID_COLOR = 'var(--semantics-dividers-color)';
 
-/** Border of the controls and the minimap floating on the canvas. */
-export const FLOATING_PANEL_BORDER = '1px solid var(--semantics-dividers-color)';
+/**
+ * The controls and the minimap floating on the canvas: a card's radius and
+ * shadow, with a divider-colored border. Pass as their `style`.
+ */
+export const FLOATING_PANEL_STYLE: CSSProperties = {
+  borderRadius: 'var(--components-card-corner-radius)',
+  border: '1px solid var(--semantics-dividers-color)',
+  boxShadow: 'var(--components-card-box-shadow)',
+};
 
 /** The minimap's dim over what is out of view. SVG attribute: resolve before use. */
 export const MINIMAP_MASK_COLOR =

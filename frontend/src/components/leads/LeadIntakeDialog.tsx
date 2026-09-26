@@ -71,8 +71,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const [organization, setOrganization] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [tagSearch, setTagSearch] = useState('');
-  const [tagDropdownOpen, setTagDropdownOpen] = useState(false);
   const [stage, setStage] = useState<string>('inbox');
   const [contacts, setContacts] = useState<ContactEntry[]>([emptyContact()]);
   const updateContact = useCallback((index: number, updates: Partial<ContactEntry>) => {
@@ -118,9 +116,10 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
   const createContact = useCreateContactPerson();
   const { data: people } = usePeople();
   const { data: allTags } = useTags();
+  // Deduplicated: the menu keys its items by name, the value the API takes.
+  const tagNames = useMemo(() => [...new Set((allTags ?? []).map((t) => t.name))], [allTags]);
   const { openLeadDetail } = useLeadDetail();
   const { data: duplicates } = useCheckDuplicates(title, organization || undefined);
-  const tagContainerRef = useRef<HTMLDivElement>(null);
 
   // Assignee options: current person first (with "(mij)")
   const assigneeOptions = useMemo(
@@ -307,26 +306,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     }
   }, [firstContactName, people, updateContact]);
 
-  // Filter tags for search dropdown
-  const filteredTags = useMemo(
-    () =>
-      (allTags ?? [])
-        .filter((t) => !selectedTags.includes(t.name))
-        .filter((t) => (tagSearch ? t.name.toLowerCase().includes(tagSearch.toLowerCase()) : false)),
-    [allTags, selectedTags, tagSearch],
-  );
-
-  // Close tag dropdown on click outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (tagContainerRef.current && !tagContainerRef.current.contains(e.target as Node)) {
-        setTagDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const reset = useCallback(() => {
     setStep('input');
     setRawText('');
@@ -339,8 +318,6 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
     setOrganization('');
     setDescription('');
     setSelectedTags([]);
-    setTagSearch('');
-    setTagDropdownOpen(false);
     setStage('inbox');
     setContacts([emptyContact()]);
     setExtraExpertiseValues([]);
@@ -619,7 +596,7 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
                     ) : (
                       <nldd-icon name="file-text" size="16" aria-hidden="true" />
                     )}
-                    <nldd-text size="sm" color="secondary" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <nldd-text size="sm" color="secondary" className="truncate row-fill">
                       {file.name}
                     </nldd-text>
                     <NlddIconButton
@@ -684,9 +661,9 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
       )}
 
       {step === 'parsing' && (
-        <nldd-container gap="12" horizontal-alignment="center" padding="48" style={{ textAlign: 'center' }}>
+        <nldd-container gap="12" horizontal-alignment="center" padding="48">
           <LoadingSpinner />
-          <nldd-text size="sm" color="secondary">VLAM analyseert je invoer...</nldd-text>
+          <nldd-text size="sm" color="secondary" horizontal-alignment="center">VLAM analyseert je invoer...</nldd-text>
         </nldd-container>
       )}
 
@@ -706,7 +683,9 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           <nldd-container layout="grid" column-count={1} md-column-count={2} gap="16">
             {/* LEFT COLUMN: Lead info */}
             <nldd-container gap="16">
-              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.03em' }}>Lead</nldd-text>
+              <nldd-title size={6}>
+                <h3>Lead</h3>
+              </nldd-title>
 
               <Input
                 label="Titel"
@@ -773,65 +752,19 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               />
 
               <nldd-form-field label="Tags">
-                {/* Selected tags as removable chips */}
-                {selectedTags.length > 0 && (
-                  <nldd-container layout="wrap" gap="6" padding-bottom="8">
-                    {selectedTags.map((tag) => (
-                      <RemovableTagChip
-                        key={tag}
-                        tag={tag}
-                        onRemove={() => setSelectedTags((prev) => prev.filter((t) => t !== tag))}
-                      />
-                    ))}
-                  </nldd-container>
-                )}
-
-                {/* Search input for adding tags */}
-                <div style={{ position: 'relative' }} ref={tagContainerRef}>
-                  <TagSearchField
-                    value={tagSearch}
-                    onChange={(v) => {
-                      setTagSearch(v);
-                      setTagDropdownOpen(true);
-                    }}
-                    onFocus={() => { if (tagSearch) setTagDropdownOpen(true); }}
-                    onSubmit={() => {
-                      if (tagSearch.trim() && !selectedTags.includes(tagSearch.trim())) {
-                        setSelectedTags((prev) => [...prev, tagSearch.trim()]);
-                      }
-                      setTagSearch('');
-                      setTagDropdownOpen(false);
-                    }}
-                  />
-
-                  {/* Dropdown with matching existing tags */}
-                  {tagDropdownOpen && tagSearch && filteredTags.length > 0 && (
-                    <nldd-list
-                      variant="box-tinted"
-                      dividers="never"
-                      accessible-label="Tag-suggesties"
-                      style={{ position: 'absolute', zIndex: 10, marginTop: '4px', width: '100%', maxHeight: '160px', overflowY: 'auto' }}
-                    >
-                      {filteredTags.slice(0, 10).map((tag) => (
-                        <TagSuggestionItem
-                          key={tag.id}
-                          name={tag.name}
-                          onSelect={() => {
-                            setSelectedTags((prev) => [...prev, tag.name]);
-                            setTagSearch('');
-                            setTagDropdownOpen(false);
-                          }}
-                        />
-                      ))}
-                    </nldd-list>
-                  )}
-                </div>
+                <TagTokenField
+                  values={selectedTags}
+                  tagNames={tagNames}
+                  onChange={setSelectedTags}
+                />
               </nldd-form-field>
             </nldd-container>
 
             {/* RIGHT COLUMN: People */}
             <nldd-container gap="16">
-              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.03em' }}>Personen</nldd-text>
+              <nldd-title size={6}>
+                <h3>Personen</h3>
+              </nldd-title>
 
               <CreatableSelect
                 label="Binnengebracht door"
@@ -992,94 +925,60 @@ function DuplicateLeadLink({ title, detail, onOpen }: DuplicateLeadLinkProps) {
   );
 }
 
-interface RemovableTagChipProps {
-  tag: string;
-  onRemove: () => void;
+interface TagTokenFieldProps {
+  /** Chosen tag names, existing or new. */
+  values: string[];
+  /** Every known tag name, offered in the menu. */
+  tagNames: string[];
+  onChange: (values: string[]) => void;
 }
 
 /**
- * nldd-tag has no dismiss affordance (it is a static label, per its own
- * template — no click semantics, no end-icon slot), so a removable chip stays
- * a plain styled span with a real icon button rather than forcing the tag
- * component into a role it does not support.
+ * The lead's tags as an `nldd-token-field`: chosen tags are dismissible tokens,
+ * the menu offers every known tag (the field hides those already chosen), and
+ * `allow-custom` turns typed text that matches nothing into a new tag. Tags go
+ * to the API by name, so a token's value is the name itself.
+ *
+ * `.values` is a live property, not a reflected attribute, so it is written
+ * only when it has diverged from React state (a parse result filling in
+ * suggested tags, a reset), never mid-typing.
  */
-function RemovableTagChip({ tag, onRemove }: RemovableTagChipProps) {
-  const display = tag.includes('/') ? tag.split('/').pop() : tag;
-  return (
-    <span
-      title={tag}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '4px',
-        borderRadius: '9999px',
-        padding: '2px 10px',
-        fontSize: '12px',
-        fontWeight: 500,
-        backgroundColor: 'var(--primitives-color-neutral-100)',
-        color: 'var(--primitives-color-neutral-700)',
-      }}
-    >
-      {display}
-      <NlddIconButton
-        icon="close"
-        accessibleLabel={`${tag} verwijderen`}
-        variant="neutral-transparent"
-        size="xs"
-        onClick={onRemove}
-      />
-    </span>
-  );
-}
+function TagTokenField({ values, tagNames, onChange }: TagTokenFieldProps) {
+  const ref = useRef<HTMLElement & { values?: string[] }>(null);
 
-interface TagSearchFieldProps {
-  value: string;
-  onChange: (value: string) => void;
-  onFocus: () => void;
-  onSubmit: () => void;
-}
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const current = el.values ?? [];
+    if (current.length !== values.length || !values.every((v) => current.includes(v))) {
+      el.values = values;
+    }
+  }, [values]);
 
-function TagSearchField({ value, onChange, onFocus, onSubmit }: TagSearchFieldProps) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'input', useCallback((e: Event) => onChange(eventValue(e)), [onChange]));
-  useNlddEvent(ref, 'focus', onFocus);
   useNlddEvent(
     ref,
-    'keydown',
+    'change',
     useCallback(
-      (e: Event) => {
-        if ((e as KeyboardEvent).key === 'Enter') {
-          e.preventDefault();
-          onSubmit();
-        }
+      (event: Event) => {
+        const next = (event as CustomEvent<{ values?: string[] }>).detail?.values ?? [];
+        onChange(next.map((v) => v.trim()).filter(Boolean));
       },
-      [onSubmit],
+      [onChange],
     ),
   );
 
   return (
-    <nldd-text-field
+    <nldd-token-field
       ref={ref}
-      value={value}
       placeholder="Zoek of typ een tag..."
-      accessible-label="Zoek of typ een tag"
-      width="full"
-    />
-  );
-}
-
-interface TagSuggestionItemProps {
-  name: string;
-  onSelect: () => void;
-}
-
-function TagSuggestionItem({ name, onSelect }: TagSuggestionItemProps) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onSelect);
-
-  return (
-    <nldd-list-item ref={ref} button>
-      <nldd-text-cell text={name} />
-    </nldd-list-item>
+      allow-custom
+      accessible-label="Tags"
+    >
+      <nldd-menu>
+        {tagNames.map((name) => (
+          <nldd-menu-item key={name} value={name} text={name} />
+        ))}
+      </nldd-menu>
+    </nldd-token-field>
   );
 }

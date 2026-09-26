@@ -61,13 +61,8 @@
 
 /* # Type treatments the system does not offer
  *
- * nldd-text has size, weight and color, but no case or letter-spacing. Both
- * appear on the small all-caps section labels this app uses.
+ * nldd-text has size, weight and color, but no letter-spacing or monospace.
  */
-.uppercase {
-  text-transform: uppercase;
-}
-
 .tracking-tight {
   letter-spacing: -0.015em;
 }
@@ -562,49 +557,6 @@
   height: 12px;
   width: 12px;
   border-radius: 9999px;
-}
-
-/* # Community graph node-type filter chips (LeadGraphView)
- *
- * A row of toggle pills above the reactflow canvas plus one "clear focus"
- * pill pushed to the row's far end. Each toggle carries its own active-state
- * color (a Rijkshuisstijl scale name picked per node type) as an inline style
- * from the component, since that color varies per button; this class holds
- * only the shape and the inactive/hover states that are the same for all of
- * them.
- */
-.node-type-toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.node-type-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  /* A pill, not a browser button: without this the user-agent border draws a
-   * grey box around every toggle in the row. */
-  border: none;
-  cursor: pointer;
-  border-radius: 9999px;
-  padding: 4px 12px;
-  font-size: var(--primitives-font-size-80);
-  font-weight: 500;
-  color: var(--semantics-content-secondary-color);
-  background-color: var(--semantics-surfaces-tinted-background-color);
-  transition: color 150ms, background-color 150ms;
-}
-
-.node-type-toggle-focus {
-  margin-left: auto;
-  color: var(--primitives-color-paars-800);
-  background-color: var(--primitives-color-paars-100);
-}
-
-.node-type-toggle-focus:hover {
-  background-color: var(--primitives-color-paars-200);
 }
 
 /* # ReactFlow canvas frame

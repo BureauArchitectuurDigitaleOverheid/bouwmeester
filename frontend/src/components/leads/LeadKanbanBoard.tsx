@@ -10,13 +10,6 @@ import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import type { Lead, LeadColumn, LeadFilters } from '@/types';
 import { leadColumnTagColor } from './stageColors';
 
-/** The column's top border picks up the same color as its nldd-tag, at the
- *  "100" (solid-fill) primitive step, via a CSS custom property: the color is
- *  one of a closed set chosen at runtime, not known at build time. */
-function columnBorderColorVar(color: string): string {
-  return `var(--primitives-color-${leadColumnTagColor(color)}-100)`;
-}
-
 interface LeadKanbanBoardProps {
   searchQuery?: string;
   initiatiefId: string;
@@ -216,13 +209,16 @@ export function LeadKanbanBoard({
               flex: '1 1 0',
               minWidth: '200px',
               width: '320px',
-              borderRadius: 'var(--primitives-corner-radius-lg)',
+              borderRadius: 'var(--semantics-surfaces-corner-radius)',
               outline: dragOverColumn === col.slug ? '2px solid var(--primitives-color-accent-300)' : 'none',
               outlineOffset: '-2px',
             }}
           >
-            <nldd-card>
-              <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', borderTop: `3px solid ${columnBorderColorVar(col.color)}` }}>
+            {/* A tinted box, not a card: the column is a region that stands
+                out from the page, and the lead cards inside sit on it. The
+                column's color is its tag's. */}
+            <nldd-box background="tinted">
+              <nldd-container gap="0">
                 <nldd-container layout="row" gap="8" vertical-alignment="center" padding="12" padding-block="10">
                   <nldd-tag text={col.name} color={leadColumnTagColor(col.color)} size="sm" />
                   <nldd-text size="xs" color="secondary" style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -284,14 +280,11 @@ export function LeadKanbanBoard({
                       })()}
                     </>
                   ) : (
-                    <nldd-text
-                      size="xs"
-                      color="secondary"
-                      horizontal-alignment="center"
-                      style={{ padding: '24px 0', display: 'block' }}
-                    >
-                      Sleep leads hierheen
-                    </nldd-text>
+                    <nldd-container padding-block="24">
+                      <nldd-text size="xs" color="secondary" horizontal-alignment="center">
+                        Sleep leads hierheen
+                      </nldd-text>
+                    </nldd-container>
                   )}
                 </nldd-container>
 
@@ -303,8 +296,8 @@ export function LeadKanbanBoard({
                   onClick={() => setShowIntake(true)}
                   width="full"
                 />
-              </div>
-            </nldd-card>
+              </nldd-container>
+            </nldd-box>
           </div>
         ))}
       </div>
