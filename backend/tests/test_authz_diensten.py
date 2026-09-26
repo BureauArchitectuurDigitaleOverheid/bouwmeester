@@ -8,7 +8,9 @@ import uuid
 import pytest
 
 from bouwmeester.models.task import Task
+from bouwmeester.services.caller import caller_for
 from bouwmeester.services.chat_service import _authorize_write_tool
+from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 from tests.authz_world import World
 from tests.factories import client_as
 
@@ -77,3 +79,20 @@ async def test_chat_create_task_asks_what_post_tasks_asks(world, who, args, refu
 
     assert (refusal is not None) is refused, refusal
     assert (resp.status_code in (403, 404)) is refused, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Chat and slash commands resolve their caller the same way
+# ---------------------------------------------------------------------------
+
+
+async def test_chat_and_slash_share_one_caller(world):
+    person = world.person["team_editor"]
+    chat = await caller_for(world.db, person.id)
+    slash = await MattermostSlashService(world.db)._caller(person.id)
+
+    assert slash is not None
+    assert slash.perm_ctx is chat.perm_ctx  # one context per session
+    assert slash.org_ctx is chat.org_ctx
+    # a command always comes from a known person, never anonymous
+    assert await MattermostSlashService(world.db)._caller(uuid.uuid4()) is None

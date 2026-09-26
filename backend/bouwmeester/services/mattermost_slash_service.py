@@ -9,15 +9,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.authz import can, perm_ctx_for, visibility
+from bouwmeester.core.authz import can
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.initiatief_context import (
-    InitiatiefContext,
     apply_initiatief_filter,
     apply_lead_filter,
 )
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
-from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.core.org_context import apply_org_filter
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
@@ -36,6 +34,7 @@ from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
 from bouwmeester.repositories.search import SearchRepository
+from bouwmeester.services.caller import Caller, caller_for
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
 
 logger = logging.getLogger(__name__)
@@ -99,37 +98,25 @@ class _ChannelCtx:
     team_id: str | None
 
 
-@dataclass(frozen=True)
-class _Caller:
-    """Rights and visibility of the person behind a command."""
-
-    perm_ctx: PermissionContext
-    org_ctx: OrgContext
-    init_ctx: InitiatiefContext
-
-
 class MattermostSlashService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = MattermostUserRepository(session)
-        self._callers: dict[UUID, _Caller | None] = {}
 
     async def _resolve_person_id(self, mattermost_user_id: str) -> UUID | None:
         """Resolve a Mattermost user ID to a Bouwmeester person ID."""
         mapping = await self.repo.get_by_mattermost_user_id(mattermost_user_id)
         return mapping.person_id if mapping else None
 
-    async def _caller(self, person_id: UUID) -> _Caller | None:
-        """Rights and visibility of *person_id*, built once per command."""
-        if person_id not in self._callers:
-            person = await self.session.get(Person, person_id)
-            caller = None
-            if person is not None:
-                perm_ctx = await perm_ctx_for(self.session, person_id)
-                org_ctx, init_ctx = await visibility(self.session, perm_ctx)
-                caller = _Caller(perm_ctx, org_ctx, init_ctx)
-            self._callers[person_id] = caller
-        return self._callers[person_id]
+    async def _caller(self, person_id: UUID) -> Caller | None:
+        """Rights and visibility of *person_id*; ``None`` for an unknown person.
+
+        Unlike the chat, a command always comes from a linked person: an
+        unknown id is refused, never treated as anonymous (dev mode).
+        """
+        if await self.session.get(Person, person_id) is None:
+            return None
+        return await caller_for(self.session, person_id)
 
     async def _may(
         self, person_id: UUID, permission: str, resource_type: str, resource_id: UUID
