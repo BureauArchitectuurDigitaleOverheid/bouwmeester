@@ -173,6 +173,20 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
     return f" AND ({column} IS NULL OR {column} = ANY(:visible_eenheid_ids))"
 
 
+def org_filter_sql_params(ctx: OrgContext | None) -> dict:
+    """The bind parameters :func:`org_filter_sql_clause` refers to.
+
+    Exactly the parameters the clause uses, so a caller whose only visible
+    eenheden come from shares still binds ``visible_eenheid_ids``.
+    """
+    if ctx is None or ctx.is_admin or not ctx.is_authenticated:
+        return {}
+    all_visible = _visible_ids(ctx)
+    if not all_visible:
+        return {}
+    return {"visible_eenheid_ids": [str(eid) for eid in all_visible]}
+
+
 def _visible_ids(ctx: OrgContext) -> list[UUID]:
     return list(set(ctx.visible_eenheid_ids) | set(ctx.shared_eenheid_ids))
 

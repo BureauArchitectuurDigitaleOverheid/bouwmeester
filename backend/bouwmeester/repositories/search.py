@@ -6,7 +6,11 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.initiatief_context import InitiatiefContext, apply_lead_filter
-from bouwmeester.core.org_context import OrgContext, org_filter_sql_clause
+from bouwmeester.core.org_context import (
+    OrgContext,
+    org_filter_sql_clause,
+    org_filter_sql_params,
+)
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.lead import Lead
 from bouwmeester.utils.tiptap import tiptap_to_plain
@@ -194,16 +198,7 @@ class SearchRepository:
         }
         if lead_filter:
             params["visible_lead_ids"] = visible_lead_ids
-        if (
-            org_ctx is not None
-            and org_ctx.is_authenticated
-            and not org_ctx.is_admin
-            and org_ctx.visible_eenheid_ids
-        ):
-            all_visible = list(
-                set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-            )
-            params["visible_eenheid_ids"] = [str(eid) for eid in all_visible]
+        params.update(org_filter_sql_params(org_ctx))
 
         result = await self.session.execute(text(full_sql), params)
         rows = result.all()
@@ -265,16 +260,7 @@ class SearchRepository:
             params["exclude_id"] = exclude_node_id
 
         org_clause = org_filter_sql_clause("organisatie_eenheid_id", org_ctx)
-        if (
-            org_ctx is not None
-            and org_ctx.is_authenticated
-            and not org_ctx.is_admin
-            and org_ctx.visible_eenheid_ids
-        ):
-            all_visible = list(
-                set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-            )
-            params["visible_eenheid_ids"] = [str(eid) for eid in all_visible]
+        params.update(org_filter_sql_params(org_ctx))
 
         # Composite score: trigram similarity on title + optional FTS on description
         sql = f"""
