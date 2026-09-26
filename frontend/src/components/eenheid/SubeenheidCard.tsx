@@ -31,7 +31,10 @@ export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
             />
           )}
         </nldd-container>
-        <nldd-container layout="row" gap="16">
+        {/* `wrap`, not `row`: three counts do not fit beside each other in a
+            card on a phone, and a row squeezed "Open: 0" onto three lines
+            while "Afgerond" ran past the card's edge. */}
+        <nldd-container layout="wrap" gap="16">
           <nldd-text size="sm" color="secondary">
             Open: {sub.open_count}
           </nldd-text>
