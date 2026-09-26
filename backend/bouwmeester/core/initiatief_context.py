@@ -1,9 +1,15 @@
-"""Initiatief-based access context for leads visibility filtering.
+"""Initiatief access: list visibility, and single-initiatief checks on authz.
 
-Determines which initiatieven a user can see based on:
+``InitiatiefContext`` filters lists (leads, initiatieven) on the
+initiatieven a user is linked to:
+
 - Direct membership (resource_permission with person_id set)
 - Organisatie-eenheid membership (resource_permission with eenheid_id set
   + PersonOrganisatieEenheid)
+
+Questions about one initiatief (may I read it, which access level do I
+have) go through ``core.authz`` instead, so a permission only counts where
+it holds.
 """
 
 from __future__ import annotations
@@ -13,11 +19,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from uuid import UUID
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import or_, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.authz import can
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
@@ -25,6 +32,38 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 
 logger = logging.getLogger(__name__)
+
+# The access level the frontend shows, strongest first, and the permission
+# that earns it.  ``core.permissions.RESOURCE_ROLE_PERMISSIONS`` maps the
+# resource roles onto the same permissions, so a role and a level agree.
+ACCESS_LEVEL_PERMISSIONS: tuple[tuple[str, str], ...] = (
+    ("eigenaar", "initiatief:delete"),
+    ("contributor", "initiatief:update"),
+    ("viewer", "initiatief:read"),
+)
+
+
+async def initiatief_access_level(
+    db: AsyncSession, perm_ctx: PermissionContext, initiatief_id: UUID
+) -> str | None:
+    """The caller's access level on one initiatief, derived from ``authz.can``."""
+    for level, permission in ACCESS_LEVEL_PERMISSIONS:
+        if await can(db, perm_ctx, permission, "initiatief", initiatief_id):
+            return level
+    return None
+
+
+async def require_initiatief_read(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    initiatief_id: UUID,
+) -> None:
+    """404 unless the caller may read this initiatief.
+
+    404 rather than 403: that an initiatief exists is information too.
+    """
+    if not await can(db, perm_ctx, "initiatief:read", "initiatief", initiatief_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Initiatief niet gevonden")
 
 
 @dataclass

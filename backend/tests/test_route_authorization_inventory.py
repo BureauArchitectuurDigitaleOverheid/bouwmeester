@@ -245,6 +245,10 @@ _WRITE_ALLOWLIST: dict[str, str] = {
     "POST /api/llm/kompas-guidance": "no mutation: advice on text in the request",
     "POST /api/llm/suggest-tags": "no mutation: advice on text in the request",
     "POST /api/leads/parse-intake": "no mutation: parses text in the request",
+    "POST /api/initiatieven": (
+        "personal initiatief: the creator becomes its eigenaar, the payload "
+        "grants nothing else (test_authz_initiatief pins that)"
+    ),
     "POST /api/mattermost/link-code": "self-scoped: link own Mattermost account",
     "DELETE /api/mattermost/link": "self-scoped: unlink own Mattermost account",
     "POST /api/mattermost/slash": "authenticated via shared secret",
@@ -276,22 +280,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "POST /api/import/edges",
     "POST /api/import/nodes",
     "POST /api/import/politieke-inputs",
-    # initiatief.py: _require_access / _resolve_access_level; create unchecked
-    "POST /api/initiatieven",
-    "PUT /api/initiatieven/{id}",
-    "PUT /api/initiatieven/{id}/settings",
-    "DELETE /api/initiatieven/{id}",
-    # initiatief_update.py: _require_access
-    "POST /api/initiatieven/{initiatief_id}/updates",
-    "PUT /api/initiatieven/{initiatief_id}/updates/{post_id}",
-    "DELETE /api/initiatieven/{initiatief_id}/updates/{post_id}",
-    "POST /api/initiatieven/{initiatief_id}/updates/{post_id}/publish",
-    "POST /api/initiatieven/{initiatief_id}/updates/{post_id}/unpublish",
-    # lead_columns.py: _require_access
-    "POST /api/initiatieven/{initiatief_id}/columns",
-    "POST /api/initiatieven/{initiatief_id}/columns/reorder",
-    "PUT /api/initiatieven/{initiatief_id}/columns/{column_id}",
-    "DELETE /api/initiatieven/{initiatief_id}/columns/{column_id}",
     # lead_update.py: _check_lead_access
     "POST /api/leads/{lead_id}/updates",
     "POST /api/leads/{lead_id}/updates/parse",
@@ -319,11 +307,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "DELETE /api/leads/{lead_id}/nodes/{link_id}",
     "POST /api/leads/{lead_id}/tags",
     "DELETE /api/leads/{lead_id}/tags/{tag_id}",
-    # mattermost_channels.py: _can_manage_link / _resolve_initiatief / _resolve_lead
-    "POST /api/initiatieven/{initiatief_id}/mattermost-channels",
-    "POST /api/leads/{lead_id}/mattermost-channels",
-    "PATCH /api/mattermost-channels/{link_id}",
-    "DELETE /api/mattermost-channels/{link_id}",
     # opdrachten.py: require_permission + check_resource_org_scope
     "POST /api/opdrachten",
     "PUT /api/opdrachten/{id}",
@@ -343,12 +326,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "POST /api/parlementair/imports/trigger",
     "PUT /api/parlementair/imports/{import_id}/reject",
     "PUT /api/parlementair/imports/{import_id}/reopen",
-    # parlementair_abonnement.py: _require_initiatief_toegang (visibility)
-    "POST /api/initiatieven/{initiatief_id}/abonnementen",
-    "POST /api/initiatieven/{initiatief_id}/abonnementen/suggesties",
-    "PATCH /api/initiatieven/{initiatief_id}/abonnementen/{abonnement_id}",
-    "DELETE /api/initiatieven/{initiatief_id}/abonnementen/{abonnement_id}",
-    "PUT /api/initiatieven/{initiatief_id}/signaalcontext",
     # people.py: require_permission (people:create)
     "POST /api/people",
     # samenwerkingsverband.py: require_permission
@@ -362,9 +339,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "POST /api/stakeholder-assessments",
     "PUT /api/stakeholder-assessments/{id}",
     "DELETE /api/stakeholder-assessments/{id}",
-    # sharing.py: _require_share_authority (org:manage per eenheid, on authz)
-    "POST /api/sharing",
-    "DELETE /api/sharing/{share_id}",
     # tags.py: require_permission (tenant-wide vocabulary, see core.authz)
     "POST /api/tags",
     "PUT /api/tags/{tag_id}",

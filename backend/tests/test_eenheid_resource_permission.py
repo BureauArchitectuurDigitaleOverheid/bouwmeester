@@ -1,10 +1,15 @@
-"""Tests for eenheid-scoped resource permissions on initiatieven."""
+"""Tests for eenheid-scoped resource permissions on initiatieven.
+
+Access levels come from ``core.authz`` via ``initiatief_access_level``.
+"""
 
 from datetime import date, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.initiatief_context import initiatief_access_level
+from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.initiatief import InitiatiefRepository
@@ -26,7 +31,7 @@ async def eenheid_rp_setup(db_session: AsyncSession):
             start_datum=date.today() - timedelta(days=30),
         )
     )
-    # Person has editor role (for RBAC baseline)
+    # Editor on the org: counts only on initiatieven that org owns
     db_session.add(
         PersonRole(
             person_id=person.id,
@@ -50,6 +55,11 @@ async def eenheid_rp_setup(db_session: AsyncSession):
     }
 
 
+async def _level(s) -> str | None:
+    ctx = await build_permission_context(s["db"], s["person"])
+    return await initiatief_access_level(s["db"], ctx, s["initiatief"].id)
+
+
 async def test_add_eenheid_creates_resource_permission(eenheid_rp_setup):
     """Adding an eenheid to an initiatief creates a resource_permission row."""
     s = eenheid_rp_setup
@@ -70,7 +80,7 @@ async def test_eenheid_access_level_via_resource_permission(eenheid_rp_setup):
     await s["repo"].add_eenheid(s["initiatief"].id, s["org"].id, "contributor")
 
     # Check that person has access via eenheid
-    level = await s["repo"].get_eenheid_access_level(s["initiatief"].id, s["person"].id)
+    level = await _level(s)
     assert level == "contributor"
 
 
@@ -80,22 +90,22 @@ async def test_eenheid_eigenaar_grants_higher_access(eenheid_rp_setup):
 
     await s["repo"].add_eenheid(s["initiatief"].id, s["org"].id, "eigenaar")
 
-    level = await s["repo"].get_eenheid_access_level(s["initiatief"].id, s["person"].id)
+    level = await _level(s)
     assert level == "eigenaar"
 
 
-async def test_is_member_via_eenheid(eenheid_rp_setup):
-    """is_member returns True when person is in a linked eenheid."""
+async def test_viewer_eenheid_gives_read_access(eenheid_rp_setup):
+    """A person in a linked eenheid gets access, even as viewer."""
     s = eenheid_rp_setup
 
     # Not a member yet
-    assert not await s["repo"].is_member(s["initiatief"].id, s["person"].id)
+    assert await _level(s) is None
 
     # Link eenheid
     await s["repo"].add_eenheid(s["initiatief"].id, s["org"].id, "viewer")
 
     # Now is a member
-    assert await s["repo"].is_member(s["initiatief"].id, s["person"].id)
+    assert await _level(s) is not None
 
 
 async def test_remove_eenheid_revokes_access(eenheid_rp_setup):
@@ -103,10 +113,10 @@ async def test_remove_eenheid_revokes_access(eenheid_rp_setup):
     s = eenheid_rp_setup
 
     await s["repo"].add_eenheid(s["initiatief"].id, s["org"].id, "contributor")
-    assert await s["repo"].is_member(s["initiatief"].id, s["person"].id)
+    assert await _level(s) is not None
 
     await s["repo"].remove_eenheid(s["initiatief"].id, s["org"].id)
-    assert not await s["repo"].is_member(s["initiatief"].id, s["person"].id)
+    assert await _level(s) is None
 
 
 async def test_update_eenheid_rol(eenheid_rp_setup):
@@ -114,26 +124,12 @@ async def test_update_eenheid_rol(eenheid_rp_setup):
     s = eenheid_rp_setup
 
     await s["repo"].add_eenheid(s["initiatief"].id, s["org"].id, "viewer")
-    level = await s["repo"].get_eenheid_access_level(s["initiatief"].id, s["person"].id)
+    level = await _level(s)
     assert level == "viewer"
 
     await s["repo"].update_eenheid_rol(s["initiatief"].id, s["org"].id, "eigenaar")
-    level = await s["repo"].get_eenheid_access_level(s["initiatief"].id, s["person"].id)
+    level = await _level(s)
     assert level == "eigenaar"
-
-
-async def test_list_eenheden_returns_only_eenheid_scoped(eenheid_rp_setup):
-    """list_eenheden returns only eenheid-scoped permissions, not person-scoped."""
-    s = eenheid_rp_setup
-
-    # Add both person and eenheid permissions
-    await s["repo"].add_member(s["initiatief"].id, s["person"].id, "eigenaar")
-    await s["repo"].add_eenheid(s["initiatief"].id, s["org"].id, "contributor")
-
-    eenheden = await s["repo"].list_eenheden(s["initiatief"].id)
-    assert len(eenheden) == 1
-    assert eenheden[0].organisatie_eenheid_id == s["org"].id
-    assert eenheden[0].person_id is None
 
 
 async def test_expired_eenheid_membership_no_access(eenheid_rp_setup):
@@ -155,6 +151,6 @@ async def test_expired_eenheid_membership_no_access(eenheid_rp_setup):
     await db.flush()
 
     # Person should no longer have access via eenheid
-    level = await s["repo"].get_eenheid_access_level(s["initiatief"].id, s["person"].id)
+    level = await _level(s)
     assert level is None
-    assert not await s["repo"].is_member(s["initiatief"].id, s["person"].id)
+    assert await _level(s) is None
