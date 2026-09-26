@@ -17,7 +17,7 @@ from bouwmeester.core.authority import (
     require_can_grant_resource_role,
     require_can_name_first_owner,
 )
-from bouwmeester.core.authz import require
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context, sees_eenheid
 from bouwmeester.core.permissions import (
@@ -103,15 +103,10 @@ def _item_response(
     return response
 
 
-async def _require_can_review_edge(
-    db: AsyncSession, perm_ctx: PermissionContext, edge_id: UUID
-) -> SuggestedEdge:
-    """A suggested edge is reviewed as part of its item."""
-    suggested_edge = await db.get(SuggestedEdge, edge_id)
-    if suggested_edge is None:
-        raise HTTPException(status_code=404, detail="Suggested edge not found")
-    await _require_can_review(db, perm_ctx, suggested_edge.parlementair_item_id)
-    return suggested_edge
+# Reviewing a suggestion is parlementair:review on its item's node; core.authz
+# decides that on the suggested edge itself.
+_REVIEW_EDGE = requires("suggested_edge:update", "suggested_edge", path_param="edge_id")
+_RESET_EDGE = requires("suggested_edge:delete", "suggested_edge", path_param="edge_id")
 
 
 @router.get("/imports", response_model=list[ParlementairItemResponse])
@@ -432,10 +427,12 @@ async def update_suggested_edge(
     body: UpdateSuggestedEdgeRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_REVIEW_EDGE),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
-    suggested_edge = await _require_can_review_edge(db, perm_ctx, edge_id)
+    suggested_edge = require_found(
+        await db.get(SuggestedEdge, edge_id), "Suggested edge"
+    )
     repo = SuggestedEdgeRepository(db)
     if suggested_edge.status != "pending":
         raise HTTPException(status_code=400, detail="Can only update pending edges")
@@ -451,12 +448,12 @@ async def approve_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_REVIEW_EDGE),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
-    # Approving creates an edge: core.authz decides it on the suggestion.
-    suggested_edge = await _require_can_review_edge(db, perm_ctx, edge_id)
-    await require(db, perm_ctx, "suggested_edge:update", "suggested_edge", edge_id)
+    suggested_edge = require_found(
+        await db.get(SuggestedEdge, edge_id), "Suggested edge"
+    )
     suggested_edge_repo = SuggestedEdgeRepository(db)
     item = await db.get(ParlementairItem, suggested_edge.parlementair_item_id)
     if item is None or item.corpus_node_id is None:
@@ -512,10 +509,9 @@ async def reject_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_REVIEW_EDGE),
 ) -> SuggestedEdgeResponse:
     """Reject a suggested edge (sets status to rejected)."""
-    await _require_can_review_edge(db, perm_ctx, edge_id)
     repo = SuggestedEdgeRepository(db)
     updated = await repo.update_status(
         edge_id,
@@ -542,13 +538,16 @@ async def reset_suggested_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_RESET_EDGE),
 ) -> SuggestedEdgeResponse:
-    """Reset a suggested edge back to pending, undoing approve/reject."""
-    suggested_edge = await _require_can_review_edge(db, perm_ctx, edge_id)
-    # Resetting an approved suggestion deletes the edge it created, so it is
-    # decided in core.authz like removing the suggestion's edge.
-    await require(db, perm_ctx, "suggested_edge:delete", "suggested_edge", edge_id)
+    """Reset a suggested edge back to pending, undoing approve/reject.
+
+    Resetting an approved suggestion deletes the edge it created, so it is
+    asked as deleting the suggestion.
+    """
+    suggested_edge = require_found(
+        await db.get(SuggestedEdge, edge_id), "Suggested edge"
+    )
     repo = SuggestedEdgeRepository(db)
 
     # If it was approved, delete the actual edge that was created

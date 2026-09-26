@@ -321,3 +321,35 @@ async def test_reset_without_review_right_keeps_the_edge(pw: World):
         resp = await c.put(f"/api/parlementair/edges/{suggestion.id}/reset")
     assert resp.status_code == 403
     assert await pw.db.get(Edge, uuid.UUID(edge_id)) is not None
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "json"),
+    [
+        ("patch", "", {"edge_type_id": "x"}),
+        ("put", "/approve", None),
+        ("put", "/reject", None),
+        ("put", "/reset", None),
+    ],
+)
+async def test_suggested_edge_review_is_decided_on_the_suggestion(
+    pw: World, method: str, path: str, json: dict | None
+):
+    """Every review route asks authz on the suggestion: 403 without, 404 unknown."""
+    item = await _review_item(pw, "node_team")
+    suggestion = await pw.db.scalar(
+        select(SuggestedEdge).where(SuggestedEdge.parlementair_item_id == item.id)
+    )
+    kwargs = {"json": json} if json is not None else {}
+    async with client_as(pw.db, pw.person["viewer"]) as c:
+        refused = await c.request(
+            method, f"/api/parlementair/edges/{suggestion.id}{path}", **kwargs
+        )
+    async with client_as(pw.db, pw.person["manager"]) as c:
+        missing = await c.request(
+            method, f"/api/parlementair/edges/{uuid.uuid4()}{path}", **kwargs
+        )
+    assert refused.status_code == 403, refused.text
+    assert missing.status_code == 404, missing.text
+    await pw.db.refresh(suggestion)
+    assert suggestion.status == "pending"
