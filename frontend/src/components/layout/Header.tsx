@@ -142,11 +142,23 @@ function DevPersonPicker({
   // native control slotted into a custom element. The dropdown re-emits the
   // change itself, with the value in `detail`.
   const ref = useRef<HTMLElement>(null);
+  // The dropdown also emits `change` when its options are rebuilt (the
+  // people list loading), and picking now reloads the app as that person.
+  // Only a change that follows the user's own click or key counts.
+  const userIsPicking = useRef(false);
+  useNlddEvent(ref, 'pointerdown', () => {
+    userIsPicking.current = true;
+  });
+  useNlddEvent(ref, 'keydown', () => {
+    userIsPicking.current = true;
+  });
   useNlddEvent(ref, 'change', (event) => {
+    if (!userIsPicking.current) return;
+    userIsPicking.current = false;
     const value =
       (event as CustomEvent<{ value?: string }>).detail?.value ??
       (event.target as HTMLSelectElement | null)?.value;
-    if (value !== undefined) onPick(value || null);
+    if (value !== undefined && value !== (currentPerson?.id ?? '')) onPick(value || null);
   });
 
   // The selected person is mirrored onto the <select> rather than passed as

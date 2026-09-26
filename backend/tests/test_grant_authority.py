@@ -1093,3 +1093,18 @@ async def test_admin_seed_skips_address_added_to_own_profile(tree: Tree):
         select(PersonRole.role_id).where(PersonRole.person_id == tree.member.id)
     )
     assert "super_admin" not in set(roles)
+
+
+async def test_refusal_names_who_decides(tree: Tree):
+    async with client_as(tree.db, tree.editor) as c:
+        other = await c.post(
+            f"/api/people/{tree.member.id}/organisaties", json=_placement(tree.sibling)
+        )
+        self_ = await c.post(
+            f"/api/people/{tree.editor.id}/organisaties", json=_placement(tree.sibling)
+        )
+    assert other.status_code == 403
+    assert tree.directie_manager.naam in other.json()["detail"]
+    assert tree.sibling.naam in other.json()["detail"]
+    assert self_.status_code == 403
+    assert "plaatsingsverzoek" in self_.json()["detail"]

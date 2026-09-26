@@ -209,14 +209,33 @@ async def require_can_place(
         db, perm_ctx, person
     ):
         return
+    ask = await _who_decides(db, eenheid)
     if ending:
         raise _forbidden(
-            "Alleen de persoon zelf of een leidinggevende kan deze plaatsing beëindigen"
+            "Alleen de persoon zelf of een leidinggevende kan deze plaatsing "
+            f"beëindigen. {ask}"
+        )
+    if person.id == perm_ctx.person_id:
+        raise _forbidden(
+            f"Je kunt jezelf niet in {eenheid.naam} plaatsen. Dien een "
+            "plaatsingsverzoek in; een leidinggevende beslist."
         )
     raise _forbidden(
-        "Alleen een leidinggevende van deze eenheid kan hier iemand plaatsen. "
-        "Wie zelf bij een team wil, dient een plaatsingsverzoek in."
+        f"Alleen een leidinggevende kan iemand in {eenheid.naam} plaatsen. {ask}"
     )
+
+
+async def _who_decides(db: AsyncSession, eenheid: OrganisatieEenheid) -> str:
+    """A sentence naming whom to ask about members of *eenheid*."""
+    ids = await member_manager_ids(db, eenheid.id)
+    names = sorted(
+        (await db.scalars(select(Person.naam).where(Person.id.in_(ids)))).all()
+    )
+    if not names:
+        return "Vraag het aan een systeembeheerder."
+    if len(names) == 1:
+        return f"Vraag het aan {names[0]}."
+    return f"Vraag het aan {', '.join(names[:-1])} of {names[-1]}."
 
 
 async def require_can_decide_placement_request(
