@@ -869,7 +869,7 @@ async def get_optional_user(
         if not is_public_path(request.url.path):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
+                detail="Niet ingelogd",
             )
     return person
 

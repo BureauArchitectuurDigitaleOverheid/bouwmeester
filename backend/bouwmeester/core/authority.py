@@ -546,6 +546,27 @@ def _require_known_rol(resource_type: str, rol: str) -> None:
         )
 
 
+async def _grant_reaches_caller(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    target_person_id: UUID | None,
+    target_eenheid_id: UUID | None,
+) -> bool:
+    """True if a grant to this person or eenheid would benefit the caller.
+
+    An eenheid grant counts for every member of that eenheid
+    (``ResourcePermissionRepository.get_roles_for_person_resource``).
+    """
+    if perm_ctx.person_id is None:
+        return False
+    if target_person_id is not None:
+        return target_person_id == perm_ctx.person_id
+    if target_eenheid_id is not None:
+        return target_eenheid_id in await get_membership_ids(db, perm_ctx.person_id)
+    return False
+
+
 async def _require_grant_authority(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -554,12 +575,14 @@ async def _require_grant_authority(
     resource_id: UUID,
     owner_rol: bool,
     target_person_id: UUID | None,
+    target_eenheid_id: UUID | None,
 ) -> None:
     """Authority to hand out (or change) a rol on a resource.
 
     - an eigenaar of the resource may hand out any rol;
     - otherwise ``resource_permission:manage`` must be effective on one of
-      the eenheden that own the resource, and not for yourself;
+      the eenheden that own the resource, and not for yourself (a grant to
+      an eenheid you are a member of reaches you too);
     - a resource without such an eenheid only has its eigenaars, except that
       corpus nodes (tenant-wide today) take non-owner stakeholders, yourself
       included, from anyone with ``resource_permission:manage``.
@@ -578,7 +601,12 @@ async def _require_grant_authority(
         if perm_ctx.has_permission("resource_permission:manage"):
             return
         raise _forbidden("Onvoldoende rechten")
-    if target_person_id is not None and target_person_id == perm_ctx.person_id:
+    if await _grant_reaches_caller(
+        db,
+        perm_ctx,
+        target_person_id=target_person_id,
+        target_eenheid_id=target_eenheid_id,
+    ):
         raise _forbidden("Je kunt jezelf geen rol op dit item geven")
     for eenheid_id in eenheid_ids:
         rights = await rights_on_eenheid(db, perm_ctx, eenheid_id)
@@ -617,9 +645,10 @@ async def require_can_grant_resource_role(
     resource_type: str,
     resource_id: UUID,
     rol: str,
-    target_person_id: UUID | None,
+    target_person_id: UUID | None = None,
+    target_eenheid_id: UUID | None = None,
 ) -> None:
-    """Guard giving *rol* on a resource to a person (or an eenheid)."""
+    """Guard giving *rol* on a resource to a person or an eenheid."""
     _require_known_rol(resource_type, rol)
     await _require_grant_authority(
         db,
@@ -628,6 +657,7 @@ async def require_can_grant_resource_role(
         resource_id=resource_id,
         owner_rol=rol == "eigenaar",
         target_person_id=target_person_id,
+        target_eenheid_id=target_eenheid_id,
     )
 
 
@@ -656,4 +686,5 @@ async def require_can_change_resource_role(
         resource_id=grant.resource_id,
         owner_rol="eigenaar" in {grant.rol, new_rol},
         target_person_id=grant.person_id,
+        target_eenheid_id=grant.organisatie_eenheid_id,
     )

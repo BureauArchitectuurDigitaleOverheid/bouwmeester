@@ -574,7 +574,7 @@ async def add_eenheid(
         resource_type="opdracht",
         resource_id=id,
         rol=data.rol,
-        target_person_id=None,
+        target_eenheid_id=data.eenheid_id,
     )
 
     try:

@@ -858,6 +858,32 @@ async def test_editor_cannot_make_self_opdracht_owner(tree: Tree):
     assert other.status_code == 201, other.text
 
 
+async def test_editor_cannot_make_own_team_opdracht_owner(tree: Tree):
+    """A grant to your own eenheid reaches you, so it counts as a self-grant."""
+    from bouwmeester.models.opdracht import Opdracht
+
+    opdracht = Opdracht(
+        id=uuid.uuid4(),
+        type="opdracht",
+        titel="Onderzoek",
+        begrotingsjaar=2026,
+        opdrachtgever_id=tree.team.id,
+    )
+    tree.db.add(opdracht)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        own_team = await c.post(
+            f"/api/opdrachten/{opdracht.id}/eenheden",
+            json={"eenheid_id": str(tree.team.id), "rol": "eigenaar"},
+        )
+        other_team = await c.post(
+            f"/api/opdrachten/{opdracht.id}/eenheden",
+            json={"eenheid_id": str(tree.sibling.id), "rol": "betrokken"},
+        )
+    assert own_team.status_code == 403
+    assert other_team.status_code == 201, other_team.text
+
+
 def test_ai_matches_grant_nothing():
     from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS
     from bouwmeester.services.opdracht_matching_service import AI_GRANTED_ROL
