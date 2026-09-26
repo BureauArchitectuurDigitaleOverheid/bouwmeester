@@ -228,6 +228,49 @@ async def test_suggested_edge_is_reviewed_as_part_of_its_item(world):
     assert allowed.status_code == 200, allowed.text
 
 
+# (who, item node, target node, expected status of approve)
+APPROVE_CASES = [
+    # review rights and write access on the item's node
+    ("team_editor", "node_team", "node_elders", 200),
+    # write access on the target end suffices too, like any edge
+    ("team_editor", "node_free", "node_team", 200),
+    # ministry_admin reviews in its directie but writes no nodes
+    ("ministry_admin", "node_directie", "node_team", 403),
+]
+
+
+@pytest.mark.parametrize(
+    ("who", "node", "target", "expected"),
+    APPROVE_CASES,
+    ids=[f"{c[0]}-{c[1]}-{c[2]}" for c in APPROVE_CASES],
+)
+async def test_approving_a_suggested_edge_needs_edge_create(
+    world, who, node, target, expected
+):
+    ministry_admin = await make_person(world.db, "Ministeriebeheerder")
+    await place(world.db, ministry_admin, world.org["directie"])
+    await grant_role(world.db, ministry_admin, "ministry_admin", world.org["directie"])
+    world.person["ministry_admin"] = ministry_admin
+    item = await _item(world, node)
+    edge_type = await world.db.scalar(
+        select(Edge.edge_type_id).where(Edge.id == world.res["edge_team_directie"])
+    )
+    suggested = SuggestedEdge(
+        parlementair_item_id=item.id,
+        target_node_id=world.res[target],
+        edge_type_id=edge_type,
+        confidence=0.9,
+    )
+    world.db.add(suggested)
+    await world.db.flush()
+    async with client_as(world.db, world.person[who]) as c:
+        approve = await c.put(f"/api/parlementair/edges/{suggested.id}/approve")
+        # rejecting creates nothing: reviewing the item is enough
+        reject = await c.put(f"/api/parlementair/edges/{suggested.id}/reject")
+    assert approve.status_code == expected, approve.text
+    assert reject.status_code == 200, reject.text
+
+
 async def test_fcc_push_is_decided_on_the_opdracht(world):
     """Pushing one opdracht needs fcc:sync where the opdracht lives.
 
@@ -490,3 +533,38 @@ async def test_suggestion_buttons_ask_authz(world, slash, who, allowed):
         )
     assert (result["ephemeral_text"] != _NO_WRITE) is allowed, result
     assert (suggested.status == "approved_new") is allowed
+
+
+@pytest.mark.parametrize(
+    ("who", "action", "allowed"),
+    [
+        ("init_viewer", "reject_suggestion", False),
+        ("role_only", "reject_suggestion", True),  # contributor: initiatief:update
+        ("init_viewer", "link_lead_to_suggestion", False),
+        ("role_only", "link_lead_to_suggestion", True),
+    ],
+)
+async def test_suggested_lead_review_is_initiatief_update(
+    world, slash, who, action, allowed
+):
+    suggested = SuggestedLead(
+        source_post_id=_mm_id(),
+        source_channel_id=slash["channel"],
+        initiatief_id=world.res["initiatief"],
+        proposed_title="Gemeente",
+        match_existing_lead_id=world.res["lead"],
+        status="pending",
+    )
+    world.db.add(suggested)
+    await world.db.flush()
+    ctx = await _ctx(world, who)
+    decision = await can(
+        world.db, ctx, "suggested_lead:update", "suggested_lead", suggested.id
+    )
+    assert decision is allowed
+    service = MattermostSlashService(world.db)
+    context = {"suggested_lead_id": str(suggested.id)}
+    with patch.object(MattermostSlashService, "_update_thread_post", AsyncMock()):
+        result = await service.handle_action(slash["mm"][who], action, context)
+    assert (result["ephemeral_text"] != _NO_WRITE) is allowed, result
+    assert (suggested.status != "pending") is allowed

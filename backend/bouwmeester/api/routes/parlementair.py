@@ -394,9 +394,10 @@ async def approve_edge(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
-    # The edge starts at the item's node, on which the reviewer has rights:
-    # write access on one end suffices for an edge.
+    # Reviewing is parlementair:review; creating the edge is what creating any
+    # edge needs (write access on one end), decided on the suggestion itself.
     suggested_edge = await _require_can_review_edge(db, perm_ctx, edge_id)
+    await require(db, perm_ctx, "suggested_edge:update", "suggested_edge", edge_id)
     suggested_edge_repo = SuggestedEdgeRepository(db)
     item = await db.get(ParlementairItem, suggested_edge.parlementair_item_id)
     if item is None or item.corpus_node_id is None:

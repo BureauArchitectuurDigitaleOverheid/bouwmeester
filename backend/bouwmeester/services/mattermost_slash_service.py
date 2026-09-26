@@ -730,7 +730,7 @@ class MattermostSlashService:
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
         if not await self._may(
-            person_id, "lead:create", "initiatief", suggested.initiatief_id
+            person_id, "suggested_lead:update", "suggested_lead", suggested.id
         ):
             return _action_msg(_NO_WRITE)
 
@@ -805,7 +805,9 @@ class MattermostSlashService:
         # cross-initiatief-leak via een geknoeide context of LLM-suggestie.
         if lead.initiatief_id != suggested.initiatief_id:
             return _action_msg("Lead hoort niet bij dit initiatief.")
-        if not await self._may(person_id, "lead_activity:create", "lead", lead.id):
+        if not await self._may(
+            person_id, "suggested_lead:update", "suggested_lead", suggested.id
+        ) or not await self._may(person_id, "lead_activity:create", "lead", lead.id):
             return _action_msg(_NO_WRITE)
 
         self.session.add(
@@ -845,7 +847,7 @@ class MattermostSlashService:
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
         if not await self._may(
-            person_id, "initiatief:update", "initiatief", suggested.initiatief_id
+            person_id, "suggested_lead:update", "suggested_lead", suggested.id
         ):
             return _action_msg(_NO_WRITE)
 

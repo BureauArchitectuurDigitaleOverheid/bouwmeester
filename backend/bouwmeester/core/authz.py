@@ -59,7 +59,13 @@ parlementair_abonnement  scope: initiatief or lead           <parent>:update
 mattermost_channel_link  scope: initiatief or lead           <parent>:update
 github_link            scope: initiatief or lead             <parent>:update
 stakeholder_assessment scope: corpus_node or initiatief      <parent>:update
+suggested_edge         corpus_node (item node or target)     node:update
+suggested_lead         initiatief                            initiatief:update
 ====================== ===================================== ==============
+
+Suggestions: approving a suggested edge creates an edge, so it is decided
+exactly like ``edge:create`` on either end (``suggested_edge:update``).
+Reviewing a suggested lead (approve or reject) is ``initiatief:update``.
 
 Edges: an edge is a relation of both nodes, so the editors of either end may
 maintain it; the other end only has to exist (the corpus is readable
@@ -117,9 +123,11 @@ from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
+from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
 from bouwmeester.models.shared_access import SharedAccess
 from bouwmeester.models.stakeholder_assessment import StakeholderAssessment
+from bouwmeester.models.suggested_lead import SuggestedLead
 from bouwmeester.models.tag import Tag
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
@@ -273,6 +281,24 @@ async def _locate_lead(
     )
 
 
+async def _locate_suggested_edge(
+    db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+) -> _Location | None:
+    # The edge it proposes runs from the item's politieke_input node (once
+    # there is one) to the target node, so it has the same parents as an edge.
+    row = await _row(
+        db,
+        ParlementairItem.corpus_node_id,
+        SuggestedEdge.target_node_id,
+        where=(SuggestedEdge.id == rid)
+        & (ParlementairItem.id == SuggestedEdge.parlementair_item_id),
+    )
+    if row is None:
+        return None
+    ends = [node_id for node_id in row if node_id is not None]
+    return _Location(parents=tuple(("corpus_node", node_id) for node_id in ends))
+
+
 # The delegation table; see the module docstring for the same in prose.
 DELEGATIONS: dict[str, Delegation] = {
     "edge": Delegation(("corpus_node",), _locate_edge, delete_verb="delete"),
@@ -306,6 +332,11 @@ DELEGATIONS: dict[str, Delegation] = {
     "github_link": Delegation(("initiatief", "lead"), _scope_columns(GitHubLink)),
     "stakeholder_assessment": Delegation(
         ("corpus_node", "initiatief"), _scope_columns(StakeholderAssessment)
+    ),
+    "suggested_edge": Delegation(("corpus_node",), _locate_suggested_edge),
+    "suggested_lead": Delegation(
+        ("initiatief",),
+        _parent_column(SuggestedLead, "initiatief", SuggestedLead.initiatief_id),
     ),
 }
 
