@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
-    apply_initiatief_filter,
+    apply_lead_filter,
 )
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
@@ -244,7 +244,7 @@ class GraphRepository:
 
         # -- 1. Visible leads --
         leads_stmt = select(Lead)
-        leads_stmt = apply_initiatief_filter(leads_stmt, Lead.initiatief_id, init_ctx)
+        leads_stmt = apply_lead_filter(leads_stmt, init_ctx)
         if initiatief_id is not None:
             leads_stmt = leads_stmt.where(Lead.initiatief_id == initiatief_id)
         leads_result = await self.session.execute(leads_stmt)

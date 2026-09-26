@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.initiatief_context import InitiatiefContext, apply_lead_filter
 from bouwmeester.core.org_context import OrgContext, org_filter_sql_clause
 from bouwmeester.core.query_utils import escape_like
+from bouwmeester.models.lead import Lead
 from bouwmeester.utils.tiptap import tiptap_to_plain
 
 
@@ -20,6 +22,7 @@ class SearchRepository:
         result_types: list[str] | None = None,
         limit: int = 50,
         org_ctx: OrgContext | None = None,
+        init_ctx: InitiatiefContext | None = None,
     ) -> list[dict]:
         """Search across all entity types using stored tsvector + GIN indexes.
 
@@ -152,8 +155,16 @@ class SearchRepository:
                 WHERE {_where(tc)}
             """)
 
+        lead_filter = ""
         if "lead" in active_types:
             tc = entity_title_cols["lead"]
+            if init_ctx is not None and not init_ctx.is_admin:
+                # The one lead visibility rule, not the org filter of nodes.
+                visible = await self.session.scalars(
+                    apply_lead_filter(select(Lead.id), init_ctx)
+                )
+                visible_lead_ids = [str(lid) for lid in visible.all()]
+                lead_filter = " AND id = ANY(:visible_lead_ids)"
             sub_queries.append(f"""
                 SELECT
                     id,
@@ -163,7 +174,7 @@ class SearchRepository:
                     description,
                     {_score(tc)} AS score
                 FROM lead
-                WHERE {_where(tc)}{_org_sql()}
+                WHERE {_where(tc)}{lead_filter}
             """)
 
         if not sub_queries:
@@ -181,6 +192,8 @@ class SearchRepository:
             "limit": limit,
             "ilike_pattern": f"%{escape_like(query.strip())}%",
         }
+        if lead_filter:
+            params["visible_lead_ids"] = visible_lead_ids
         if (
             org_ctx is not None
             and org_ctx.is_authenticated

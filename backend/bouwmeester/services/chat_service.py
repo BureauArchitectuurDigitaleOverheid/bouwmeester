@@ -1083,7 +1083,10 @@ async def _execute_read_tool(
             query = args.get("query", "")
             node_type = args.get("node_type")
             results = await repo.full_text_search(
-                query, result_types=["corpus_node"], limit=10
+                query,
+                result_types=["corpus_node"],
+                limit=10,
+                org_ctx=await _build_chat_org_context(db, person_id),
             )
             if node_type:
                 results = [r for r in results if r.get("subtitle") == node_type]

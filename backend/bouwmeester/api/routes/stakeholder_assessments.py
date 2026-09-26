@@ -7,15 +7,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
-from bouwmeester.api.routes.initiatief import _require_access
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.initiatief_context import require_initiatief_read
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
 )
-from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.repositories.stakeholder_assessment import (
     StakeholderAssessmentRepository,
 )
@@ -61,9 +60,7 @@ async def _check_scope_read_access(
     (``stakeholder_assessment`` delegates to its scope there).
     """
     if scope_type == "initiatief":
-        repo = InitiatiefRepository(db)
-        require_found(await repo.get_by_id(scope_id), "Initiatief")
-        await _require_access(repo, scope_id, current_user, perm_ctx, "viewer")
+        await require_initiatief_read(db, perm_ctx, scope_id)
         return
     if scope_type == "corpus_node":
         # The corpus is readable tenant-wide by anyone holding node:read.

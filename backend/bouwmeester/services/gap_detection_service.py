@@ -10,6 +10,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.resource_permission import ResourcePermission
@@ -142,9 +143,12 @@ class GapDetectionService:
 
         return gaps, completed_count, len(BELEIDSKOMPAS_STEPS), llm_result
 
-    async def corpus_gap_overview(self) -> list[CorpusGapSummaryItem]:
-        """Quick overview of completeness for all dossier nodes."""
+    async def corpus_gap_overview(
+        self, org_ctx: OrgContext | None = None
+    ) -> list[CorpusGapSummaryItem]:
+        """Quick overview of completeness for the dossiers *org_ctx* sees."""
         stmt = select(CorpusNode).where(CorpusNode.node_type == "dossier")
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         dossiers = result.scalars().all()
 

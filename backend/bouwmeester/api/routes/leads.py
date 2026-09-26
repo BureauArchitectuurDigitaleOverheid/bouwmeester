@@ -17,6 +17,7 @@ from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
+    require_lead_read,
 )
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.core.storage import (
@@ -116,30 +117,15 @@ _WRITE_LEAD = requires("lead:update", "lead", path_param="lead_id")
 async def get_visible_lead(
     lead_id: UUID,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> Lead:
-    """Dependency for reads: the lead, or 404 when its initiatief is not visible.
+    """Dependency for reads: the lead, or 404 when the caller does not see it.
 
-    Leads without initiatief are visible to every authenticated user (the
-    same rule as ``apply_initiatief_filter`` for lists).  Visibility never
+    Same rule as the lists (``core.initiatief_context``).  Visibility never
     grants writing: writes go through ``core.authz``.
     """
-    lead = await db.get(Lead, lead_id)
-    visible = lead is not None and (
-        init_ctx.is_admin
-        or (
-            init_ctx.is_authenticated
-            and (
-                lead.initiatief_id is None
-                or lead.initiatief_id in init_ctx.visible_initiatief_ids
-            )
-        )
-    )
-    if not visible:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Lead niet gevonden"
-        )
-    return lead
+    return await require_lead_read(db, perm_ctx, lead_id, init_ctx)
 
 
 async def get_lead_or_404(db: AsyncSession, lead_id: UUID) -> Lead:
