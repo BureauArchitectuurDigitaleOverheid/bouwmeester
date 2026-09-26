@@ -223,9 +223,8 @@ _WRITE_AUTHZ_DEPS = {
 
 # Calls that decide a write when made in the route body or in one of its
 # dependencies (other helpers are not followed): ``authz.require`` and the
-# guards of ``core.authority`` (``require_can_*``, and the eenheid guard that
-# delegates to ``authz.require``).
-_WRITE_AUTHZ_CALLS = {"require", "require_permission_on_eenheid"}
+# guards of ``core.authority`` (``require_can_*``).
+_WRITE_AUTHZ_CALLS = {"require"}
 _WRITE_AUTHZ_CALL_PREFIX = "require_can_"
 
 # Write routes that need no resource decision.  One line of reason each.

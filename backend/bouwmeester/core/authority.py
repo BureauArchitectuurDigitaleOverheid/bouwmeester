@@ -24,7 +24,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import can, require, rights_on_eenheid
+from bouwmeester.core.authz import can, rights_on_eenheid
 from bouwmeester.core.permissions import (
     RESOURCE_ROLE_PERMISSIONS,
     PermissionContext,
@@ -51,24 +51,6 @@ MEMBER_MANAGER_ROLES = frozenset({"unit_manager", "ministry_admin"})
 
 def _forbidden(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
-
-
-# ---------------------------------------------------------------------------
-# Rights on an eenheid
-# ---------------------------------------------------------------------------
-
-
-async def require_permission_on_eenheid(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    perm: str,
-    eenheid_id: UUID,
-) -> None:
-    """403 unless *perm* is effective on *eenheid_id* (not just anywhere).
-
-    Kept for its callers; the decision itself lives in ``core.authz``.
-    """
-    await require(db, perm_ctx, perm, "organisatie_eenheid", eenheid_id)
 
 
 # ---------------------------------------------------------------------------

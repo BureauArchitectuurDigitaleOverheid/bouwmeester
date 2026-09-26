@@ -137,8 +137,8 @@ async def test_assessment_on_initiatief_requires_access(
 ):
     """Eigenaar-toegang vereist voor mutations op een initiatief."""
     init = await _create_initiatief(db_session)
-    # In dev-mode (geen OIDC) is current_user None → _resolve_access_level
-    # geeft 'eigenaar' terug. Test dat het endpoint *werkt* met dat pad.
+    # In dev mode (no OIDC) every request is allowed; this checks that the
+    # endpoint works on that path.
     resp = await client.post(
         "/api/stakeholder-assessments",
         json={
