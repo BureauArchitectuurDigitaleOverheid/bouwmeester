@@ -5,10 +5,11 @@
  * Everything the design system DOES have an opinion about lives in its
  * components: layout is nldd-container, type is nldd-text and nldd-title,
  * color is an attribute. What is left here is line-box behaviour (how text
- * clips and wraps), image fitting, and a few one-offs. Those are properties of
- * a box, not of a design, which is why no component owns them.
+ * clips and wraps), flex sizing nldd-container does not expose, hover states,
+ * and a few layouts that belong to one component (the task board, the
+ * relatiematrix). Those last ones are scoped by name and not for reuse.
  *
- * Each class below does exactly one thing. This is not a utility framework and
+ * Each utility does exactly one thing. This is not a utility framework and
  * must not grow into one. Before adding a class, check that no nldd-*
  * attribute does the job.
  */
@@ -74,7 +75,7 @@
 /* # Hover-dim
  *
  * A clickable image thumbnail (a chat attachment preview opening a lightbox)
- * dims slightly on hover as its only affordance — it has no visible chrome
+ * dims slightly on hover as its only affordance: it has no visible chrome
  * of its own to change state. No nldd component wraps an arbitrary thumbnail
  * this way.
  */
@@ -131,6 +132,14 @@
  */
 .shrink-0 {
   flex-shrink: 0;
+}
+
+/* Pushes a single child to the end of a row without affecting its siblings.
+ * nldd-container's alignment attributes apply to all children at once, so a
+ * "last item flush right, rest left" row still needs this on the light-DOM
+ * child. */
+.margin-left-auto {
+  margin-left: auto;
 }
 
 /* # A control that must keep its labels whole
@@ -206,7 +215,7 @@
   white-space: nowrap;
 }
 
-/* # Hover-reveal within a group
+/* # Hover effects within a group
  *
  * `group` marks the hoverable ancestor (a row, a card); `group-hover-reveal`
  * is the child that stays invisible until that ancestor is hovered or has
@@ -235,14 +244,6 @@
   .group:focus-within .group-hover-reveal-above-sm {
     opacity: 1;
   }
-}
-
-/* Pushes a single child to the end of a row without affecting its siblings —
- * nldd-container's alignment attributes apply to all children at once, so a
- * "last item flush right, rest left" row still needs this on the light-DOM
- * child. */
-.margin-left-auto {
-  margin-left: auto;
 }
 
 /* A dark tint that fades in over an image thumbnail on hover/focus of the
@@ -283,7 +284,7 @@
  *
  * The opposite direction from `hidden-below-sm-block`: visible below `sm`
  * (the card list), hidden from `sm` up (the table takes over). See
- * OpdrachtenPage's opdrachten list — nldd-table's own `sm-columns` collapses
+ * OpdrachtenPage's opdrachten list: nldd-table's own `sm-columns` collapses
  * tracks rather than swapping to an entirely different layout, so the two
  * views are separate markup and this pair of classes picks which one shows.
  */
@@ -322,9 +323,9 @@
   text-decoration: underline;
 }
 
-/* # Surfaces
+/* # Hover tint
  *
- * A treatment our own markup still needs, on a design-system token rather
+ * A hover background for our own markup, on a design-system token rather
  * than a fixed grey. A class and not inline style, because it describes a
  * :hover state and a style attribute cannot express one.
  */
@@ -525,7 +526,7 @@
   font-weight: 500;
 }
 
-/* Row/cell hover highlight — `.group` is the `<tr>`, this is any cell that
+/* Row/cell hover highlight: `.group` is the `<tr>`, this is any cell that
  * should shade along with the hovered row (row header included). */
 .group:hover .group-hover-bg {
   background-color: var(--semantics-surfaces-tinted-background-color);
