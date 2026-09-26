@@ -210,6 +210,7 @@ function ScoreSelect({
     <nldd-form-field label={label}>
       <Select
         aria-label={label}
+        size="sm"
         value={value == null ? '' : String(value)}
         onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
         disabled={disabled}
@@ -247,6 +248,7 @@ function HoudingSelect({
     <nldd-form-field label="Houding">
       <Select
         aria-label="Houding"
+        size="sm"
         value={value ?? ''}
         onChange={(e) =>
           onChange(e.target.value === '' ? null : (e.target.value as StakeholderHouding))

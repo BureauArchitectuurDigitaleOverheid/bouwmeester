@@ -702,6 +702,7 @@ export function PersonEditForm({
               </nldd-container>
               <Select
                 aria-label="Type telefoonnummer"
+                width="140px"
                 value={newPhoneLabel}
                 onChange={(e) => setNewPhoneLabel(e.target.value)}
                 options={PHONE_LABEL_OPTIONS}
