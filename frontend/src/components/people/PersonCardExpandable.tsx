@@ -482,7 +482,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
  *  its own click before it reaches the card's expand handler. */
 /**
  * End or delete one placement. Asked per placement: the backend decides by
- * the person and the eenheid (`person:place`).
+ * the person and the eenheid (`person:place`, ending: your own is fine).
  */
 function PlacementActions({ personId, placement }: { personId: string; placement: PersonOrganisatie }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -492,6 +492,7 @@ function PlacementActions({ personId, placement }: { personId: string; placement
     type: 'person',
     id: personId,
     eenheidId: placement.organisatie_eenheid_id,
+    ending: true,
   });
   if (!allowed) return null;
   return (

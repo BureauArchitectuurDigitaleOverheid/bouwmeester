@@ -87,6 +87,36 @@ describe('authz batcher', () => {
     });
   });
 
+  it('sends revoke, assign-anywhere and placement questions with backend property names', async () => {
+    answerAll(() => true);
+    const decide = createAuthzBatcher();
+
+    await Promise.all([
+      decide({
+        action: 'resource_role:revoke',
+        resource: { type: 'initiatief', id: 'i1', rol: 'eigenaar', targetPersonId: 'p1' },
+      }),
+      decide({ action: 'role:assign', resource: { type: 'role', anywhere: true, targetPersonId: 'p1' } }),
+      decide({ action: 'person:place', resource: { type: 'person', eenheidId: 'e1', contact: true } }),
+      decide({ action: 'person:place', resource: { type: 'person', id: 'p1', eenheidId: 'e1', ending: true } }),
+    ]);
+
+    expect(sentBodies()[0]).toEqual({
+      evaluations: [
+        {
+          action: 'resource_role:revoke',
+          resource: { type: 'initiatief', id: 'i1', properties: { rol: 'eigenaar', target_person_id: 'p1' } },
+        },
+        { action: 'role:assign', resource: { type: 'role', properties: { anywhere: true, target_person_id: 'p1' } } },
+        { action: 'person:place', resource: { type: 'person', properties: { eenheid_id: 'e1', contact: true } } },
+        {
+          action: 'person:place',
+          resource: { type: 'person', id: 'p1', properties: { eenheid_id: 'e1', ending: true } },
+        },
+      ],
+    });
+  });
+
   it('starts a new request for questions asked after the previous tick', async () => {
     answerAll(() => true);
     const decide = createAuthzBatcher();

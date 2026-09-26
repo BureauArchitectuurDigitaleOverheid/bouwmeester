@@ -19,7 +19,6 @@ import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { useCan } from '@/hooks/useCan';
-import { useCanRemoveGrant } from '@/hooks/useCanRemoveGrant';
 
 /**
  * The "Mensen" tab: who works on the initiatief (members and eenheden, which
@@ -130,8 +129,9 @@ function Members({
 }
 
 /**
- * One member. Changing the rol needs the authority to hand out eigenaar;
- * removing is the grant decision, which also lets you leave yourself.
+ * One member. Changing the rol needs the authority to hand out eigenaar
+ * (and never demotes the last one); removing is the backend's revoke
+ * decision, which lets you leave yourself and keeps the last eigenaar.
  */
 function MemberRow({
   initiatiefId,
@@ -148,10 +148,12 @@ function MemberRow({
   onRemove: () => void;
   onSetRole: (rol: 'eigenaar' | 'contributor') => void;
 }) {
-  const canRemove = useCanRemoveGrant(
-    { resourceType: 'initiatief', resourceId: initiatiefId, rol: member.rol, personId: member.person_id },
-    { lastEigenaar },
-  );
+  const { allowed: canRemove } = useCan('resource_role:revoke', {
+    type: 'initiatief',
+    id: initiatiefId,
+    rol: member.rol,
+    targetPersonId: member.person_id,
+  });
   const isEigenaar = member.rol === 'eigenaar';
   return (
     <nldd-list-item>

@@ -36,7 +36,6 @@ import {
   useRemoveTagFromLead,
 } from '@/hooks/useLeads';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { useCanRemoveGrant } from '@/hooks/useCanRemoveGrant';
 import { useCan } from '@/hooks/useCan';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
@@ -1203,13 +1202,13 @@ interface ContactRowProps {
 // tag beside the name it could take the whole row on a phone and leave the
 // name zero wide, one letter per line. As the name's second line it wraps.
 function ContactRow({ leadId, contact, onRemove }: ContactRowProps) {
-  // A contact is a grant on the lead: removing it is the backend's grant
+  // A contact is a grant on the lead: removing it is the backend's revoke
   // decision (yourself always), not the right to edit the lead.
-  const canRemove = useCanRemoveGrant({
-    resourceType: 'lead',
-    resourceId: leadId,
+  const { allowed: canRemove } = useCan('resource_role:revoke', {
+    type: 'lead',
+    id: leadId,
     rol: contact.rol,
-    personId: contact.person_id,
+    targetPersonId: contact.person_id,
   });
   const naam = contact.person_naam;
   const expertise = contact.person_expertise;

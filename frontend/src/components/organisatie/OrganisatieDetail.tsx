@@ -264,10 +264,13 @@ export function OrganisatieDetail({
     id: selectedId,
   });
   const { allowed: canAddChild } = useCan('org:create', { type: 'organisatie_eenheid', eenheidId: selectedId });
-  // "Persoon toevoegen" creates a person (tenant-wide) or links an existing
-  // one here, which is a placement.
-  const { allowed: canCreatePerson } = useCan('people:create', { type: 'person' });
-  const { allowed: canPlace } = useCan('person:place', { type: 'person', eenheidId: selectedId });
+  // "Persoon toevoegen" places a new or existing contact here; placing an
+  // account is refused on submit unless the caller manages the eenheid.
+  const { allowed: canPlaceContact } = useCan('person:place', {
+    type: 'person',
+    eenheidId: selectedId,
+    contact: true,
+  });
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
   const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;
@@ -374,12 +377,12 @@ export function OrganisatieDetail({
       </div>
 
       {/* Action buttons */}
-      {(canAddChild || canCreatePerson || canPlace || isSuperAdmin) && (
+      {(canAddChild || canPlaceContact || isSuperAdmin) && (
         <nldd-container layout="wrap" gap="8">
           {canAddChild && (
             <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={onAddChild} text="Subeenheid toevoegen" />
           )}
-          {(canCreatePerson || canPlace) && (
+          {canPlaceContact && (
             <NlddButton variant="secondary" size="sm" startIcon="person" onClick={onAddPerson} text="Persoon toevoegen" />
           )}
           {isSuperAdmin && (

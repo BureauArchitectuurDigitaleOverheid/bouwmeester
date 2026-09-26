@@ -27,7 +27,7 @@ export type AuthzResourceType =
   | 'stakeholder_assessment'
   | 'suggested_edge'
   | 'suggested_lead'
-  // Only for the grant action `role:assign`.
+  // Only for the grant actions `role:assign` and `role:revoke`.
   | 'role';
 
 /**
@@ -38,8 +38,14 @@ export interface AuthzResource {
   type: AuthzResourceType;
   id?: string;
   eenheidId?: string;
-  /** Without `id`: is there any eenheid where the caller may create this? */
+  /**
+   * Without `id`: is there any eenheid where the caller may create this?
+   * With `role:assign` and no `roleId`: may the caller assign any role.
+   */
   anywhere?: boolean;
+  /** `person:place`: ending a placement, or placing a contact without account. */
+  ending?: boolean;
+  contact?: boolean;
   /** Grant actions: the rol (resource role) or role handed out ... */
   rol?: string;
   roleId?: string;
@@ -52,6 +58,8 @@ export function authzProperties(resource: AuthzResource): Record<string, string 
   const props: Record<string, string | boolean | undefined> = {
     eenheid_id: resource.eenheidId,
     anywhere: resource.anywhere || undefined,
+    ending: resource.ending || undefined,
+    contact: resource.contact || undefined,
     rol: resource.rol,
     role_id: resource.roleId,
     target_person_id: resource.targetPersonId,

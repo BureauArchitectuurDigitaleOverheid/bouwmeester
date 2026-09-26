@@ -69,7 +69,7 @@ import {
 } from '@/types';
 import { formatCurrency, calculateUtilization } from '@/utils/format';
 import { NlddButton } from '@/components/nldd/NlddButton';
-import { useCan } from '@/hooks/useCan';
+import { useCan, useCanEach } from '@/hooks/useCan';
 import { useCanCreateTask } from '@/hooks/useTasks';
 
 interface OpdrachtDetailModalProps {
@@ -116,6 +116,20 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
   const canCreateTask = useCanCreateTask();
 
   const members = opdracht?.members ?? [];
+  // Removing a contact is the backend's revoke decision per person (every
+  // rol they hold here, as the route removes them all).
+  const memberRevokes = useMemo(
+    () =>
+      opdrachtId
+        ? (opdracht?.members ?? []).map((m) => ({
+            type: 'opdracht' as const,
+            id: opdrachtId,
+            targetPersonId: m.person_id,
+          }))
+        : [],
+    [opdrachtId, opdracht?.members],
+  );
+  const { allowed: canRemoveMember } = useCanEach('resource_role:revoke', memberRevokes);
   const eenheden = opdracht?.eenheden ?? [];
 
   const availablePeopleOptions = useMemo(() => {
@@ -477,7 +491,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
               <nldd-container gap="12">
                 {members.length > 0 && (
                   <nldd-list variant="box-tinted" dividers="always">
-                    {members.map((member) => (
+                    {members.map((member, i) => (
                       <nldd-list-item key={member.person_id}>
                         {/* `full`: a fit-content cell measures its content, and a
                             container measures its parent, so the two wait on
@@ -504,7 +518,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                           />
                         </nldd-cell>
                         <nldd-spacer-cell size="12" />
-                        {canManageContacts && (
+                        {canRemoveMember[i] && (
                           <NlddIconButton
                             icon="trash"
                             variant="neutral-transparent"

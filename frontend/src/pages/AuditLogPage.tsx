@@ -217,9 +217,21 @@ function DetailCell({
   );
 }
 
+/**
+ * The feed needs `audit:read` from a system role (a scoped role would show
+ * other eenheden' activity), so the page and its request wait for that.
+ */
 export function AuditLogPage() {
   const { person, oidcConfigured, loading } = useAuth();
-  const { hasPermission } = usePermissions();
+  const { hasSystemPermission } = usePermissions();
+  if (loading) return null;
+  if ((oidcConfigured && !person) || !hasSystemPermission('audit:read')) {
+    return <Navigate to="/" replace />;
+  }
+  return <AuditLog />;
+}
+
+function AuditLog() {
   const [page, setPage] = useState(0);
   const [category, setCategory] = useState('');
   const { openNodeDetail } = useNodeDetail();
@@ -245,11 +257,6 @@ export function AuditLogPage() {
     const detail = (e as CustomEvent<{ page?: number }>).detail;
     if (detail?.page) setPage(detail.page - 1);
   });
-
-  if (loading) return null;
-  if (oidcConfigured && (!person || !hasPermission('audit:read'))) {
-    return <Navigate to="/" replace />;
-  }
 
   return (
     <nldd-container gap="24">

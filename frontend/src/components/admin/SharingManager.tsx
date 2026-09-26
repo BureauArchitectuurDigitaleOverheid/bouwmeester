@@ -1,7 +1,6 @@
 import { useState, useMemo, useRef } from 'react';
 import { useSharing, useCreateSharing, useDeleteSharing } from '@/hooks/useSharing';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useEenhedenAllowed, useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import type { SharingGrantCreate } from '@/hooks/useSharing';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
@@ -33,7 +32,6 @@ const INITIAL_FORM: SharingGrantCreate & { mode: ShareMode } = {
 export function SharingManager() {
   const { data: shares, isLoading } = useSharing();
   const { data: eenheden } = useOrganisatieFlat();
-  const { managesEenheid } = usePermissions();
   const createSharing = useCreateSharing();
   const deleteSharing = useDeleteSharing();
 
@@ -63,11 +61,12 @@ export function SharingManager() {
     () => [...(eenheden ?? [])].sort((a, b) => a.naam.localeCompare(b.naam)),
     [eenheden],
   );
-  // Sharing needs org:manage on the source: only eenheden this person manages.
-  const sourceEenheden = useMemo(
-    () => sortedEenheden.filter((e) => managesEenheid(e.id)),
-    [sortedEenheden, managesEenheid],
-  );
+  // Sharing (and unsharing) needs org:manage on the source eenheid, as the
+  // backend decides it. A shared item's eenheid is not known here: the
+  // backend decides that one on submit.
+  const { eenheden: manageable } = useEenhedenAllowed('org:manage');
+  const manageableIds = new Set(manageable.map((e) => e.id));
+  const sourceEenheden = sortedEenheden.filter((e) => manageableIds.has(e.id));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -263,7 +262,7 @@ export function SharingManager() {
               hide-below="lg"
             />
             <nldd-text-cell>
-              {confirmDeleteId === share.id ? (
+              {share.source_eenheid_id && !manageableIds.has(share.source_eenheid_id) ? null : confirmDeleteId === share.id ? (
                 <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <NlddButton
                     text="Ja"

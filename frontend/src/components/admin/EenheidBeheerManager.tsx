@@ -6,8 +6,7 @@ import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
-import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useEenhedenAllowed } from '@/hooks/useOrganisatie';
 import {
   useInitiatieven,
   useInitiatievenForEenheid,
@@ -36,14 +35,9 @@ const ROL_OPTIONS = Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) =
 }));
 
 export function EenheidBeheerManager() {
-  const { data: organisatie = [], isLoading } = useOrganisatieFlat();
-  const { managesEenheid } = usePermissions();
-  // Module toggles need org:manage on the eenheid: only offer the ones this
-  // person manages (everything for a super_admin).
-  const allEenheden = useMemo(
-    () => organisatie.filter((e) => managesEenheid(e.id)),
-    [organisatie, managesEenheid],
-  );
+  // Module toggles need org:manage on the eenheid (as does reading them):
+  // only offer the eenheden where the backend allows it.
+  const { eenheden: allEenheden, isLoading } = useEenhedenAllowed('org:manage');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLElement>(null);
