@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { Icon } from '@/components/nldd/Icon';
-import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
+import { Select } from '@/components/common/Select';
+import { useNlddEvent } from '@/components/nldd/events';
 import { useEdgeSchemaRules, useCreateEdgeSchemaRule, useDeleteEdgeSchemaRule } from '@/hooks/useEdgeTypes';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
@@ -23,6 +23,37 @@ const SCHEMA_NODE_TYPES = [
 
 const EDGE_TYPE_IDS = Object.keys(EDGE_TYPE_VOCABULARY);
 
+/**
+ * One matrix cell: an on/off rule, so a toggle button (aria-pressed) rather
+ * than a plain button. The label names the pair and relation type; the
+ * pressed state says whether the rule exists.
+ */
+function RuleToggle({
+  active,
+  label,
+  disabled,
+  onToggle,
+}: {
+  active: boolean;
+  label: string;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'change', onToggle);
+  return (
+    <nldd-toggle-button
+      ref={ref}
+      variant="icon"
+      icon={active ? 'check-mark' : 'close'}
+      size="sm"
+      accessible-label={label}
+      selected={active ? true : undefined}
+      disabled={disabled ? true : undefined}
+    />
+  );
+}
+
 export function EdgeSchemaManager() {
   const { data: rules, isLoading } = useEdgeSchemaRules();
   const createRule = useCreateEdgeSchemaRule();
@@ -30,14 +61,6 @@ export function EdgeSchemaManager() {
   const { edgeLabel } = useVocabulary();
 
   const [selectedEdgeType, setSelectedEdgeType] = useState(EDGE_TYPE_IDS[0] ?? '');
-  const edgeTypeRef = useRef<HTMLElement>(null);
-  useNlddEvent(edgeTypeRef, 'change', (e) => setSelectedEdgeType(eventValue(e)));
-  // The selected option is written to the DOM property, not passed as a JSX
-  // `value`. React would read that as a controlled field and warn that it has
-  // no onChange, because the handler sits on the nldd-dropdown around it: the
-  // element stops the native change event and re-dispatches its own.
-  const edgeSelectRef = useRef<HTMLSelectElement>(null);
-  useNlddValue(edgeSelectRef, selectedEdgeType);
 
   // Build a lookup: `${from}_${to}_${edgeType}` -> rule.id
   const ruleMap = useMemo(() => {
@@ -63,11 +86,7 @@ export function EdgeSchemaManager() {
   };
 
   if (isLoading) {
-    return (
-      <nldd-container padding="32">
-        <LoadingSpinner />
-      </nldd-container>
-    );
+    return <LoadingSpinner padding="32" />;
   }
 
   const ruleCount = rules?.length ?? 0;
@@ -81,17 +100,15 @@ export function EdgeSchemaManager() {
       </nldd-text>
 
       {/* Edge type selector */}
-      <nldd-form-field label="Relatietype">
-        <nldd-dropdown ref={edgeTypeRef} width="320px">
-          <select ref={edgeSelectRef}>
-            {EDGE_TYPE_IDS.map((id) => (
-              <option key={id} value={id}>
-                {edgeLabel(id)}
-              </option>
-            ))}
-          </select>
-        </nldd-dropdown>
-      </nldd-form-field>
+      {/* Always has a value, so required: otherwise Select labels it optional. */}
+      <Select
+        label="Relatietype"
+        width="320px"
+        value={selectedEdgeType}
+        onChange={(e) => setSelectedEdgeType(e.target.value)}
+        options={EDGE_TYPE_IDS.map((id) => ({ value: id, label: edgeLabel(id) }))}
+        required
+      />
 
       {/*
         This is a from-type x to-type cross-tab matrix (10x10 toggle cells), not
@@ -162,33 +179,12 @@ export function EdgeSchemaManager() {
                     const isActive = ruleMap.has(key);
                     return (
                       <td key={toType} style={{ padding: '8px', textAlign: 'center' }}>
-                        <button
-                          onClick={() => handleToggle(fromType, toType)}
+                        <RuleToggle
+                          active={isActive}
+                          label={`${NODE_TYPE_LABELS[fromType]} → ${NODE_TYPE_LABELS[toType]}: ${edgeLabel(selectedEdgeType)}`}
                           disabled={createRule.isPending || deleteRule.isPending}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: '28px',
-                            width: '28px',
-                            borderRadius: '4px',
-                            border: 'none',
-                            cursor: 'pointer',
-                            background: isActive
-                              ? 'var(--primitives-color-success-100)'
-                              : 'var(--primitives-color-neutral-50)',
-                            color: isActive
-                              ? 'var(--primitives-color-success-700)'
-                              : 'var(--primitives-color-neutral-400)',
-                          }}
-                          title={
-                            isActive
-                              ? `${NODE_TYPE_LABELS[fromType]} → ${NODE_TYPE_LABELS[toType]}: ${edgeLabel(selectedEdgeType)} (klik om te verwijderen)`
-                              : `${NODE_TYPE_LABELS[fromType]} → ${NODE_TYPE_LABELS[toType]}: ${edgeLabel(selectedEdgeType)} (klik om toe te voegen)`
-                          }
-                        >
-                          <Icon name={isActive ? 'check-mark' : 'close'} size={isActive ? 'md' : 'sm'} />
-                        </button>
+                          onToggle={() => handleToggle(fromType, toType)}
+                        />
                       </td>
                     );
                   })}

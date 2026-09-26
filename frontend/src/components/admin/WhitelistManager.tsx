@@ -4,6 +4,7 @@ import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 export function WhitelistManager() {
   const { data: emails, isLoading } = useWhitelist();
@@ -31,12 +32,13 @@ export function WhitelistManager() {
   };
 
   if (isLoading) {
-    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
+    return <LoadingSpinner padding="32" />;
   }
 
   return (
     <nldd-container gap="16">
       {/* Add form */}
+      <nldd-form>
       <form onSubmit={handleAdd}>
         <nldd-container layout="row" gap="8">
           <nldd-container width="fit-content" className="row-fill">
@@ -58,6 +60,7 @@ export function WhitelistManager() {
           />
         </nldd-container>
       </form>
+      </nldd-form>
 
       {/* Email list */}
       <nldd-table

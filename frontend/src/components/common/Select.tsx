@@ -13,11 +13,16 @@ interface SelectOption {
   label: string;
 }
 
-interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
   label?: string;
   error?: string;
   options: SelectOption[];
   placeholder?: string;
+  /** nldd-dropdown size. Replaces the native `size` (visible rows), which a
+   *  dropdown never wants. */
+  size?: 'xs' | 'sm' | 'md';
+  /** Fixed width as a CSS length; without it the dropdown fills its container. */
+  width?: string;
 }
 
 /** Id linking the field's `unmet` to the validation item that explains it. */
@@ -54,6 +59,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       onChange,
       name,
       value,
+      size,
+      width,
       ...props
     },
     ref,
@@ -92,6 +99,8 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       <nldd-dropdown
         ref={dropdownRef}
         className={className}
+        {...(size ? { size } : {})}
+        {...(width ? { width } : {})}
         {...(disabled ? { disabled: true } : {})}
         {...(error ? { invalid: true, unmet: ERROR_ID } : {})}
       >

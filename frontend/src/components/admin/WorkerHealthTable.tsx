@@ -1,5 +1,6 @@
 import { useWorkerHealth, type WorkerHealth, type WorkerHeartbeat } from '@/hooks/useAdmin';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 const LOOP_LABELS: Record<string, string> = {
   parlementair: 'Parlementaire import',
@@ -73,7 +74,7 @@ export function WorkerHealthTable() {
   const { data, isLoading, error } = useWorkerHealth();
 
   if (isLoading) {
-    return <nldd-text size="sm" color="secondary">Workers laden…</nldd-text>;
+    return <LoadingSpinner size="sm" padding="16" />;
   }
   if (error) {
     return (

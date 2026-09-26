@@ -113,6 +113,13 @@ export function AddEdgeForm({ open, onClose, sourceNodeId, sourceNodeType }: Add
         </>
       }
     >
+      {/*
+        Submit/cancel live in Modal's `footer`, a sibling of `children`, not
+        a descendant of nldd-form, so nldd-form-actions cannot reach them
+        from here. Wrapping the body still gets autofill and label-alignment
+        inheritance for the fields.
+      */}
+      <nldd-form>
       <form onSubmit={handleSubmit}>
         <nldd-container gap="16">
           <CreatableSelect
@@ -143,6 +150,7 @@ export function AddEdgeForm({ open, onClose, sourceNodeId, sourceNodeType }: Add
           />
         </nldd-container>
       </form>
+      </nldd-form>
     </Modal>
   );
 }
