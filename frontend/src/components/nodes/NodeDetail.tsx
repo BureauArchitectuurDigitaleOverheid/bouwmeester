@@ -124,8 +124,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const { allowed: canDelete } = useCan('node:delete', nodeResource);
   const { allowed: canAddTag } = useCan('tag:create', nodeResource);
   const { allowed: canRemoveTag } = useCan('tag:delete', nodeResource);
-  // Betrokkenen are resource roles: a grant, decided by core.authority.
-  const { allowed: canManageStakeholders } = useCan('resource_permission:manage', nodeResource);
+  // Betrokkenen are resource roles: a grant, decided by core.authority. The
+  // default rol of the add form stands for the section; the backend decides
+  // each change on submit.
+  const { allowed: canManageStakeholders } = useCan('resource_role:grant', { ...nodeResource, rol: 'betrokken' });
 
   const { data: allTags } = useTags();
   const existingTagIds = new Set(nodeTags?.map((nt) => nt.tag.id) ?? []);

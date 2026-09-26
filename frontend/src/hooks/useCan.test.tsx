@@ -58,6 +58,34 @@ describe('authz batcher', () => {
     });
   });
 
+  it('sends grant and anywhere questions with backend property names', async () => {
+    answerAll(() => true);
+    const decide = createAuthzBatcher();
+
+    await Promise.all([
+      decide({ action: 'task:create', resource: { type: 'task', anywhere: true } }),
+      decide({
+        action: 'resource_role:grant',
+        resource: { type: 'lead', id: 'l1', rol: 'opdrachtgever', targetPersonId: 'p1' },
+      }),
+      decide({ action: 'role:assign', resource: { type: 'role', roleId: 'editor', eenheidId: 'e1' } }),
+    ]);
+
+    expect(sentBodies()[0]).toEqual({
+      evaluations: [
+        { action: 'task:create', resource: { type: 'task', properties: { anywhere: true } } },
+        {
+          action: 'resource_role:grant',
+          resource: { type: 'lead', id: 'l1', properties: { rol: 'opdrachtgever', target_person_id: 'p1' } },
+        },
+        {
+          action: 'role:assign',
+          resource: { type: 'role', properties: { eenheid_id: 'e1', role_id: 'editor' } },
+        },
+      ],
+    });
+  });
+
   it('starts a new request for questions asked after the previous tick', async () => {
     answerAll(() => true);
     const decide = createAuthzBatcher();

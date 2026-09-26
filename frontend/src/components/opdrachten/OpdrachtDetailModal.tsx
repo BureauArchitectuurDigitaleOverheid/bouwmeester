@@ -107,8 +107,12 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
   const opdrachtResource = opdrachtId ? ({ type: 'opdracht', id: opdrachtId } as const) : null;
   const { allowed: canUpdate } = useCan('opdracht:update', opdrachtResource);
   const { allowed: canDelete } = useCan('opdracht:delete', opdrachtResource);
-  // Contacts and eenheden are resource roles: a grant, decided by core.authority.
-  const { allowed: canManageContacts } = useCan('resource_permission:manage', opdrachtResource);
+  // Contacts and eenheden are resource roles: a grant, decided by
+  // core.authority (the default rol of the add form stands for the section).
+  const { allowed: canManageContacts } = useCan(
+    'resource_role:grant',
+    opdrachtResource && { ...opdrachtResource, rol: 'betrokken' },
+  );
   const canCreateTask = useCanCreateTask();
 
   const members = opdracht?.members ?? [];

@@ -1,10 +1,10 @@
 import { skipToken, useQueries, useQuery, type QueryClient, type UseQueryOptions } from '@tanstack/react-query';
-import { decide, type AuthzResource } from '@/api/authz';
+import { authzProperties, decide, type AuthzResource } from '@/api/authz';
 
 const AUTHZ_KEY = ['authz'] as const;
 
 export function authzQueryKey(action: string, resource: AuthzResource) {
-  return [...AUTHZ_KEY, action, resource.type, resource.id ?? null, resource.eenheidId ?? null] as const;
+  return [...AUTHZ_KEY, action, resource.type, resource.id ?? null, authzProperties(resource)] as const;
 }
 
 // Decisions change rarely; a mutation refreshes them anyway (see below).
@@ -40,16 +40,25 @@ export function useCan(
   return { allowed: query.data === true, isLoading: query.isPending };
 }
 
+/** `useCan` for a list: one decision per resource, in order (`false` while loading). */
+export function useCanEach(
+  action: string,
+  resources: AuthzResource[],
+): { allowed: boolean[]; isLoading: boolean } {
+  const results = useQueries({ queries: resources.map((r) => decisionQuery(action, r)) });
+  return {
+    allowed: results.map((q) => q.data === true),
+    isLoading: results.some((q) => q.isPending),
+  };
+}
+
 /** `useCan` for a bulk action: allowed only when allowed on every resource. */
 export function useCanAll(
   action: string,
   resources: AuthzResource[],
 ): { allowed: boolean; isLoading: boolean } {
-  const results = useQueries({ queries: resources.map((r) => decisionQuery(action, r)) });
-  return {
-    allowed: results.length > 0 && results.every((q) => q.data === true),
-    isLoading: results.some((q) => q.isPending),
-  };
+  const { allowed, isLoading } = useCanEach(action, resources);
+  return { allowed: allowed.length > 0 && allowed.every(Boolean), isLoading };
 }
 
 /** Drop every cached decision; active ones refetch in one batched request. */

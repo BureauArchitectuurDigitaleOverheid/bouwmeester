@@ -20,7 +20,11 @@ export type AuthzResourceType =
   | 'parlementair_abonnement'
   | 'mattermost_channel_link'
   | 'github_link'
-  | 'stakeholder_assessment';
+  | 'stakeholder_assessment'
+  | 'suggested_edge'
+  | 'suggested_lead'
+  // Only for the grant action `role:assign`.
+  | 'role';
 
 /**
  * What an action is about: an existing resource (`id`), or one about to be
@@ -30,6 +34,27 @@ export interface AuthzResource {
   type: AuthzResourceType;
   id?: string;
   eenheidId?: string;
+  /** Without `id`: is there any eenheid where the caller may create this? */
+  anywhere?: boolean;
+  /** Grant actions: the rol (resource role) or role handed out ... */
+  rol?: string;
+  roleId?: string;
+  /** ... and to whom; omitted means someone other than the caller. */
+  targetPersonId?: string;
+}
+
+/** The `properties` of a resource on the wire, in the backend's names. */
+export function authzProperties(resource: AuthzResource): Record<string, string | boolean> {
+  const props: Record<string, string | boolean | undefined> = {
+    eenheid_id: resource.eenheidId,
+    anywhere: resource.anywhere || undefined,
+    rol: resource.rol,
+    role_id: resource.roleId,
+    target_person_id: resource.targetPersonId,
+  };
+  return Object.fromEntries(
+    Object.entries(props).filter((entry): entry is [string, string | boolean] => entry[1] !== undefined && entry[1] !== ''),
+  );
 }
 
 export interface AuthzEvaluation {
@@ -46,12 +71,13 @@ interface EvaluationsResponse {
 export const MAX_EVALUATIONS = 50;
 
 function toWire({ action, resource }: AuthzEvaluation) {
+  const properties = authzProperties(resource);
   return {
     action,
     resource: {
       type: resource.type,
       ...(resource.id ? { id: resource.id } : {}),
-      ...(resource.eenheidId ? { properties: { eenheid_id: resource.eenheidId } } : {}),
+      ...(Object.keys(properties).length > 0 ? { properties } : {}),
     },
   };
 }

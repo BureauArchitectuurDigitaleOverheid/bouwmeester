@@ -257,9 +257,9 @@ export function OrganisatieDetail({
 }: OrganisatieDetailProps) {
   const { data: eenheid, isLoading } = useOrganisatieEenheid(selectedId);
   const { isSuperAdmin } = usePermissions();
-  // Editing, dissolving and adding below this eenheid all need org:manage on
-  // it (held here or higher up); the backend decides, managers included.
-  const { allowed: canManage } = useCan('org:manage', { type: 'organisatie_eenheid', id: selectedId });
+  // Editing, deleting and adding below this eenheid need org:update on it
+  // (held here or higher up: managers and ministry admins); the backend decides.
+  const { allowed: canManage } = useCan('org:update', { type: 'organisatie_eenheid', id: selectedId });
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
   const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;

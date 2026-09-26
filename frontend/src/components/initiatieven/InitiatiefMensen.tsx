@@ -27,11 +27,15 @@ import { useCan } from '@/hooks/useCan';
  * stakeholders follow the right to update the initiatief.
  */
 export function InitiatiefMensen({ initiatief }: { initiatief: InitiatiefDetail }) {
-  const { allowed: canManage } = useCan('resource_permission:manage', { type: 'initiatief', id: initiatief.id });
+  const resource = { type: 'initiatief', id: initiatief.id } as const;
+  // Adding a member hands out the default rol; making someone eigenaar is
+  // a stronger grant, asked separately.
+  const { allowed: canManage } = useCan('resource_role:grant', { ...resource, rol: 'contributor' });
+  const { allowed: canGrantOwner } = useCan('resource_role:grant', { ...resource, rol: 'eigenaar' });
 
   return (
     <nldd-container gap="32">
-      <Members initiatief={initiatief} canManage={canManage} />
+      <Members initiatief={initiatief} canManage={canManage} canGrantOwner={canGrantOwner} />
       <Eenheden initiatief={initiatief} canManage={canManage} />
       <nldd-container gap="8">
         <SectionHeading icon="person" text="Stakeholders" />
@@ -41,7 +45,15 @@ export function InitiatiefMensen({ initiatief }: { initiatief: InitiatiefDetail 
   );
 }
 
-function Members({ initiatief, canManage }: { initiatief: InitiatiefDetail; canManage: boolean }) {
+function Members({
+  initiatief,
+  canManage,
+  canGrantOwner,
+}: {
+  initiatief: InitiatiefDetail;
+  canManage: boolean;
+  canGrantOwner: boolean;
+}) {
   const addMemberMutation = useAddInitiatiefMember();
   const removeMemberMutation = useRemoveInitiatiefMember();
   const updateRoleMutation = useUpdateInitiatiefMemberRole();
@@ -84,12 +96,14 @@ function Members({ initiatief, canManage }: { initiatief: InitiatiefDetail; canM
                 {canManage && (
                   <div className="hug">
                     {member.rol === 'eigenaar' ? (
-                      eigenaarCount > 1 && (
+                      eigenaarCount > 1 && canGrantOwner && (
                         <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'contributor')} text="Maak bijdrager" />
                       )
                     ) : (
                       <>
-                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
+                        {canGrantOwner && (
+                          <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
+                        )}
                         <NlddIconButton
                           icon="close"
                           accessibleLabel={`${member.person_naam} verwijderen`}

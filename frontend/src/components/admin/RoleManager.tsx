@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople, useMergePersons } from '@/hooks/usePeople';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCan, useCanEach } from '@/hooks/useCan';
+import type { AuthzResourceType } from '@/api/authz';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { formatFunctie } from '@/types';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
@@ -32,14 +34,13 @@ function AssignmentRow({
   assignment,
   onRevoke,
   revoking,
-  canRevoke,
 }: {
   assignment: PersonRoleAssignment;
   onRevoke: (id: string) => void;
   revoking: boolean;
-  canRevoke: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { allowed: canRevoke } = useCan('role:revoke', { type: 'role', id: assignment.id });
 
   return (
     <nldd-table-row>
@@ -124,13 +125,6 @@ function PersonRolesPanel({
   const selectedRole = roles?.find((r) => r.id === selectedRoleId);
   const isSystemLevel = selectedRole?.level === 'system';
 
-  // Determine the caller's max role rank for filtering
-  const myMaxRank = useMemo(() => {
-    if (isSuperAdmin) return 999;
-    const myRoleIds = authPerson?.roles?.map((r) => r.role_id) ?? [];
-    return Math.max(0, ...(roles ?? []).filter((r) => myRoleIds.includes(r.id)).map((r) => r.rank));
-  }, [isSuperAdmin, authPerson?.roles, roles]);
-
   // Offer only eenheden where the backend will accept the assignment: the
   // ones this person manages (and everything below), or all of them for a
   // system-wide role.
@@ -140,13 +134,23 @@ function PersonRolesPanel({
     return orgUnits.filter((u) => managesEenheid(u.id));
   }, [orgUnits, hasSystemPermission, managesEenheid]);
 
-  // Filter roles to those the user can assign (rank < myMaxRank)
-  const assignableRoles = useMemo(() => {
-    if (!roles) return [];
-    if (isSuperAdmin) return roles;
-    // System roles are super_admin-only; the backend refuses them otherwise.
-    return roles.filter((r) => r.level !== 'system' && r.rank < myMaxRank);
-  }, [roles, myMaxRank, isSuperAdmin]);
+  // Offer the roles the backend would let this person assign here: to this
+  // person, in the chosen eenheid (a system role has none).
+  const roleQuestions = useMemo(
+    () =>
+      (roles ?? []).map((r) => ({
+        type: 'role' as const,
+        roleId: r.id,
+        eenheidId: r.level === 'system' ? undefined : selectedOrgId || undefined,
+        targetPersonId: personId,
+      })),
+    [roles, selectedOrgId, personId],
+  );
+  const { allowed: roleAllowed } = useCanEach('role:assign', roleQuestions);
+  const assignableRoles = useMemo(
+    () => (roles ?? []).filter((_, i) => roleAllowed[i]),
+    [roles, roleAllowed],
+  );
 
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,23 +211,14 @@ function PersonRolesPanel({
             <nldd-text-cell text="Tot" size="sm" hide-below="lg" />
             <nldd-text-cell />
           </nldd-table-row>
-          {assignments.map((a) => {
-            const roleRank = roles?.find((r) => r.id === a.role_id)?.rank ?? 0;
-            // Stepping down from your own role is always allowed, except
-            // super_admin; anyone else's role needs a higher rank.
-            const canRevoke = isSelf
-              ? a.role_id !== 'super_admin'
-              : isSuperAdmin || roleRank < myMaxRank;
-            return (
-              <AssignmentRow
-                key={a.id}
-                assignment={a}
-                onRevoke={handleRevoke}
-                revoking={revokeRole.isPending}
-                canRevoke={canRevoke}
-              />
-            );
-          })}
+          {assignments.map((a) => (
+            <AssignmentRow
+              key={a.id}
+              assignment={a}
+              onRevoke={handleRevoke}
+              revoking={revokeRole.isPending}
+            />
+          ))}
         </nldd-table>
       ) : (
         <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
@@ -244,6 +239,23 @@ function PersonRolesPanel({
         <form onSubmit={handleAssign}>
           <nldd-container gap="12">
           <nldd-container layout="grid" column-count={2} gap="12">
+            {/* Org unit selector first (hidden for system roles): which
+                roles may be assigned depends on the eenheid. */}
+            {!isSystemLevel && (
+              <Select
+                size="sm"
+                label="Organisatie-eenheid"
+                value={selectedOrgId}
+                onChange={(e) => {
+                  setSelectedOrgId(e.target.value);
+                  setSelectedRoleId('');
+                }}
+                placeholder="Kies een eenheid..."
+                options={scopedOrgUnits.map((unit) => ({ value: unit.id, label: unit.naam }))}
+                required={!!selectedRoleId}
+              />
+            )}
+
             {/* Role selector */}
             <Select
               size="sm"
@@ -263,19 +275,6 @@ function PersonRolesPanel({
               }))}
               required
             />
-
-            {/* Org unit selector (hidden for system roles) */}
-            {!isSystemLevel && (
-              <Select
-                size="sm"
-                label="Organisatie-eenheid"
-                value={selectedOrgId}
-                onChange={(e) => setSelectedOrgId(e.target.value)}
-                placeholder="Kies een eenheid..."
-                options={scopedOrgUnits.map((unit) => ({ value: unit.id, label: unit.naam }))}
-                required={!!selectedRoleId}
-              />
-            )}
 
             {/* Start date */}
             <nldd-form-field label="Startdatum" optional>
@@ -340,6 +339,12 @@ function ResourcePermissionRow({
   removing: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const { allowed: canRemove } = useCan('resource_role:grant', {
+    type: rp.resource_type as AuthzResourceType,
+    id: rp.resource_id,
+    rol: rp.rol,
+    targetPersonId: rp.person_id,
+  });
 
   return (
     <nldd-table-row>
@@ -352,7 +357,7 @@ function ResourcePermissionRow({
       />
       <nldd-text-cell text={rp.rol} color="secondary" size="sm" />
       <nldd-text-cell>
-        {confirmDelete ? (
+        {!canRemove ? null : confirmDelete ? (
           <nldd-container layout="row" gap="4" vertical-alignment="center">
             <NlddButton
               text="Ja"
@@ -427,8 +432,6 @@ function useResourceOptions(resourceType: string) {
 }
 
 function PersonResourcePermissionsSection({ personId }: { personId: string }) {
-  const { hasPermission } = usePermissions();
-  const canManageRp = hasPermission('resource_permission:manage');
   const { data: perms } = usePersonResourcePermissions(personId);
   const removeRp = useRemovePersonResourcePermission(personId);
   const queryClient = useQueryClient();
@@ -439,6 +442,17 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
   const [selectedRol, setSelectedRol] = useState('');
 
   const resourceOptions = useResourceOptions(selectedResourceType);
+  const { allowed: canGrant } = useCan(
+    'resource_role:grant',
+    selectedResourceType && selectedResourceId && selectedRol
+      ? {
+          type: selectedResourceType as AuthzResourceType,
+          id: selectedResourceId,
+          rol: selectedRol,
+          targetPersonId: personId,
+        }
+      : null,
+  );
 
   const addPermission = useMutationWithError({
     mutationFn: (data: {
@@ -515,7 +529,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
         <nldd-text size="sm" color="secondary">Geen resource permissies.</nldd-text>
       )}
 
-      {!canManageRp ? null : !showForm ? (
+      {!showForm ? (
         <NlddButton
           text="Resource permissie toevoegen"
           startIcon="plus"
@@ -569,12 +583,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
               text="Toevoegen"
               startIcon="plus"
               size="sm"
-              disabled={
-                addPermission.isPending ||
-                !selectedResourceType ||
-                !selectedResourceId ||
-                !selectedRol
-              }
+              disabled={addPermission.isPending || !canGrant}
             />
             <NlddButton
               type="button"

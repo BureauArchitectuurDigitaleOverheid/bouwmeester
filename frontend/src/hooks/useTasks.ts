@@ -4,7 +4,6 @@ import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import { useToast } from '@/contexts/ToastContext';
 import { useCan } from '@/hooks/useCan';
-import { usePermissions } from '@/hooks/usePermissions';
 import type { Task, TaskCreate, TaskUpdate, TaskFilters } from '@/types';
 
 export function useTasks(filters?: TaskFilters) {
@@ -124,12 +123,14 @@ export function useReorderSubtasks() {
 }
 
 /**
- * May the user create a task here? For a node the backend decides; without
- * one the form asks for a node or an eenheid, so holding `task:create`
- * anywhere is the honest pre-check (the backend decides on submit).
+ * May the user create a task here? On a node the backend decides for that
+ * node; without one the form asks for a node or an eenheid, so the question
+ * is whether there is any eenheid where the user may create a task.
  */
 export function useCanCreateTask(nodeId?: string | null): boolean {
-  const { hasPermission } = usePermissions();
-  const onNode = useCan('task:create', nodeId ? { type: 'corpus_node', id: nodeId } : null);
-  return nodeId ? onNode.allowed : hasPermission('task:create');
+  const { allowed } = useCan(
+    'task:create',
+    nodeId ? { type: 'corpus_node', id: nodeId } : { type: 'task', anywhere: true },
+  );
+  return allowed;
 }
