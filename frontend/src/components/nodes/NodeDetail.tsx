@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
@@ -35,7 +35,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { formatDate } from '@/utils/dates';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { NlddButton } from '@/components/nldd/NlddButton';
-import { useCan } from '@/hooks/useCan';
+import { useCan, useCanEach } from '@/hooks/useCan';
 
 /** A tag chip: `nldd-token`, removable (its `dismiss` event bridged) when given `onDismiss`. */
 function NlddTagToken({ text, onDismiss }: { text: string; onDismiss?: () => void }) {
@@ -128,6 +128,19 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   // default rol of the add form stands for the section; the backend decides
   // each change on submit.
   const { allowed: canManageStakeholders } = useCan('resource_role:grant', { ...nodeResource, rol: 'betrokken' });
+  // Removing one is the backend's revoke decision per person: leaving
+  // yourself is allowed, the last eigenaar stays.
+  const stakeholderRevokes = useMemo(
+    () =>
+      (stakeholders ?? []).map((s) => ({
+        type: 'corpus_node' as const,
+        id: nodeId,
+        rol: s.rol,
+        targetPersonId: s.person.id,
+      })),
+    [stakeholders, nodeId],
+  );
+  const { allowed: canRemoveStakeholder } = useCanEach('resource_role:revoke', stakeholderRevokes);
 
   const { data: allTags } = useTags();
   const existingTagIds = new Set(nodeTags?.map((nt) => nt.tag.id) ?? []);
@@ -583,7 +596,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   instead of a fixed 192px select squeezing the name. */}
               {stakeholders && stakeholders.length > 0 ? (
                 <nldd-container gap="8">
-                  {stakeholders.map((s) => (
+                  {stakeholders.map((s, i) => (
                     <nldd-container key={s.id} layout="wrap" gap="8" vertical-alignment="center">
                       <nldd-container width="fit-content" className="grow" min-width="240px">
                         <PersonCardExpandable person={s.person} />
@@ -604,7 +617,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                             options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                           />
                         </nldd-container>
-                        {canManageStakeholders && (
+                        {canRemoveStakeholder[i] && (
                           <NlddIconButton
                             icon="trash"
                             variant="critical-transparent"
