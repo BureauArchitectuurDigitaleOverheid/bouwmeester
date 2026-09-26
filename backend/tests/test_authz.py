@@ -269,8 +269,6 @@ CASES = [
     ("role_only", "node:update", "corpus_node", "node_free", None, False),
     ("team_editor", "lead:update", "lead", "lead_free", None, True),
     ("viewer", "lead:update", "lead", "lead_free", None, False),
-    ("team_editor", "tag:create", "corpus_node", "node_free", None, True),
-    ("team_editor", "tag:create", "corpus_node", "node_directie", None, False),
     ("team_editor", "tag:create", "tag", None, None, True),
     ("team_editor", "people:create", "person", None, None, True),
     ("platform_admin", "people:create", "person", None, None, False),

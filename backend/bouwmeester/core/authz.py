@@ -916,7 +916,7 @@ async def _resolve(
             return decision
 
     # Synced eenheden belong to their sync.
-    if own_domain and loc.read_only and not perm_ctx.is_super_admin:
+    if own_domain and verb != "read" and loc.read_only and not perm_ctx.is_super_admin:
         return False
 
     # 1. System level.
