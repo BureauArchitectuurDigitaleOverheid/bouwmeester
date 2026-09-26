@@ -154,10 +154,11 @@ def apply_org_filter(stmt, column, ctx: OrgContext | None):
     from bouwmeester.models.corpus_node import CorpusNode
     from bouwmeester.models.task import Task
 
-    parent = column.parent
-    if parent.class_ is CorpusNode:
+    parent = getattr(column, "parent", None)  # the mapper or alias, if ORM
+    model = getattr(parent, "class_", None)
+    if model is CorpusNode:
         return apply_node_filter(stmt, ctx, parent.entity)
-    if parent.class_ is Task:
+    if model is Task:
         return apply_task_filter(stmt, ctx, parent.entity)
     if ctx is None or ctx.is_admin:
         return stmt
@@ -230,7 +231,8 @@ def apply_opdracht_filter(stmt, ctx: OrgContext | None):
     if ctx is None or ctx.is_admin:
         return stmt
     if "opdracht" not in ctx.readable_modules:
-        return stmt.where(false())
+        # Module off: only what a resource role on the opdracht itself gives.
+        return stmt.where(Opdracht.id.in_(ctx.role_opdracht_ids))
     visible = _visible_ids(ctx)
     return stmt.where(
         or_(

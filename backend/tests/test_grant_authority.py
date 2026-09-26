@@ -590,7 +590,8 @@ async def test_only_owner_grants_on_unlinked_initiatief(tree: Tree):
             f"/api/resource-permissions/initiatief/{initiatief.id}",
             json={"person_id": str(tree.member.id), "rol": "viewer"},
         )
-    assert resp.status_code == 403
+    # the initiatief is not visible to them: refused as if missing
+    assert resp.status_code == 404
 
 
 async def _link_initiatief(
@@ -734,7 +735,7 @@ async def test_grants_are_listed_only_where_you_may_grant(tree: Tree):
         refused = await c.get(url)
     async with client_as(tree.db, tree.editor) as c:
         allowed = await c.get(url)
-    assert refused.status_code == 403
+    assert refused.status_code == 404  # not visible to them either
     assert allowed.status_code == 200, allowed.text
 
 
@@ -1289,7 +1290,8 @@ async def test_initiatief_member_route_uses_the_same_rules(tree: Tree):
             f"/api/initiatieven/{initiatief.id}/members",
             json={"person_id": str(tree.directie_manager.id), "rol": "eigenaar"},
         )
-    assert resp.status_code == 403
+    # the initiatief is not visible to them: refused as if missing
+    assert resp.status_code == 404
 
 
 async def test_manager_links_own_staff_to_external_org(tree: Tree):
