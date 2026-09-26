@@ -1,5 +1,6 @@
 """Schemas for the AuthZEN-shaped evaluation endpoint (``/api/authz``)."""
 
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -28,6 +29,12 @@ class AuthzResourceProperties(BaseModel):
     rol: str | None = Field(default=None, max_length=50)
     role_id: str | None = Field(default=None, max_length=50)
     target_person_id: UUID | None = None
+    # Grant actions on a resource: the eenheid a rol goes to, instead of a
+    # person.
+    target_eenheid_id: UUID | None = None
+    # ``org:create``: the type of the new eenheid (an internal type needs the
+    # permission on the parent in ``eenheid_id``).
+    eenheid_type: str | None = Field(default=None, max_length=100)
 
 
 class AuthzResource(BaseModel):
@@ -65,3 +72,19 @@ class AuthzDecision(BaseModel):
 
 class AuthzEvaluationsResponse(BaseModel):
     evaluations: list[AuthzDecision]
+
+
+# The actions ``GET /api/authz/eenheden`` answers.
+EenheidAction = Literal[
+    "org:manage", "org:update", "org:create", "people:assign_role", "person:place"
+]
+
+
+class AuthzEenhedenResponse(BaseModel):
+    """The eenheden where the caller may do an action.
+
+    ``all``: everywhere (a system role); ``ids`` may then be empty.
+    """
+
+    all: bool
+    ids: list[UUID]

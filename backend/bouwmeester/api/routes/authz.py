@@ -11,26 +11,36 @@ is ``false``.  See :func:`evaluate` for the list.
 """
 
 from collections.abc import Awaitable, Callable
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_can_end_eenheid
 from bouwmeester.core import authority
-from bouwmeester.core.authz import RESOURCE_TYPES, can, can_anywhere, prefetch
+from bouwmeester.core.authz import (
+    RESOURCE_TYPES,
+    can,
+    can_anywhere,
+    eenheid_ids_where,
+    prefetch,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.role import PersonRole, Role
-from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
+from bouwmeester.repositories.org_tree import get_subtree_ids
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.authz import (
     AuthzDecision,
+    AuthzEenhedenResponse,
     AuthzEvaluation,
     AuthzEvaluationsRequest,
     AuthzEvaluationsResponse,
     AuthzResourceProperties,
+    EenheidAction,
 )
 
 router = APIRouter(prefix="/authz", tags=["authz"])
@@ -51,6 +61,7 @@ async def _grant_resource_role(
         resource_id=ev.resource.id,
         rol=props.rol,
         target_person_id=props.target_person_id,
+        target_eenheid_id=props.target_eenheid_id,
     )
 
 
@@ -133,11 +144,7 @@ async def _set_manager(
 async def _dissolve(
     db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
 ) -> None:
-    eenheid = await _eenheid(db, ev)
-    manager = await OrganisatieEenheidRepository(db).get_current_manager_id(eenheid.id)
-    await authority.require_can_dissolve_eenheid(
-        db, perm_ctx, eenheid, has_manager=manager is not None
-    )
+    await require_can_end_eenheid(db, perm_ctx, await _eenheid(db, ev))
 
 
 async def _place(
@@ -164,12 +171,17 @@ async def _place(
 async def _revoke_resource_role(
     db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
 ) -> None:
-    """Removing a person's rol on a resource, as the grant routes decide it."""
+    """Removing a rol of a person or an eenheid, as the grant routes decide it."""
     props = ev.resource.properties or _NO_PROPERTIES
-    if ev.resource.id is None or props.target_person_id is None:
+    if ev.resource.id is None or (
+        (props.target_person_id is None) == (props.target_eenheid_id is None)
+    ):
         raise HTTPException(422)
     grants = await ResourcePermissionRepository(db).find_grants(
-        ev.resource.type, ev.resource.id, person_id=props.target_person_id
+        ev.resource.type,
+        ev.resource.id,
+        person_id=props.target_person_id,
+        eenheid_id=props.target_eenheid_id,
     )
     grants = [g for g in grants if props.rol is None or g.rol == props.rol]
     if not grants:
@@ -211,6 +223,10 @@ async def _evaluate(
     try:
         if props.anywhere and resource.id is None:
             return await can_anywhere(db, perm_ctx, ev.action, resource.type)
+        if props.eenheid_type is not None and resource.id is None:
+            # A new eenheid of this type below ``eenheid_id`` (or at the top).
+            place = {"parent_id": props.eenheid_id, "type": props.eenheid_type}
+            return await can(db, perm_ctx, ev.action, resource.type, place=place)
         return await can(
             db,
             perm_ctx,
@@ -255,11 +271,15 @@ async def evaluate(
 
     - ``{action: "<perm>", resource: {type, id}}``: an existing resource.
     - ``{action, resource: {type, properties: {eenheid_id}}}``: creating one
-      in that eenheid (no eenheid: where no eenheid applies).  For a
-      sub-eenheid: ``org:create`` on ``organisatie_eenheid`` with the parent
-      as ``eenheid_id``.  A child on an existing parent is asked on the
-      parent: ``task:create`` on a ``corpus_node``, ``lead:create`` on an
-      ``initiatief``.
+      in that eenheid (no eenheid: where no eenheid applies).  A child on
+      an existing parent is asked on the parent: ``task:create`` on a
+      ``corpus_node``, ``lead:create`` on an ``initiatief``.
+    - A new eenheid: ``org:create`` on ``organisatie_eenheid`` with
+      ``properties.eenheid_type`` and optional ``properties.eenheid_id``
+      (the parent).  An internal type needs ``org:create`` on the parent
+      (no parent: system roles only); an external type is free for anyone
+      holding ``org:create`` somewhere.  Without ``eenheid_type`` and with
+      ``eenheid_id``: an internal eenheid below it.
     - ``properties.anywhere: true`` (no id): is there any eenheid where the
       caller may create this?  For generic create buttons (a task, a lead
       without initiatief).
@@ -267,13 +287,14 @@ async def evaluate(
     Grant actions (``core.authority`` guards, the same the routes call):
 
     - ``resource_role:grant``, resource ``{type, id}``, ``properties.rol``,
-      optional ``properties.target_person_id``: hand out a rol on a resource
-      (add a member, contact, betrokkene).  Without a target: to someone
-      other than the caller.
-    - ``resource_role:revoke``, resource ``{type, id}``,
-      ``properties.target_person_id``, optional ``properties.rol`` (none:
-      every rol of that person): remove it.  Leaving yourself is allowed,
-      removing the last eigenaar is not.
+      optional ``properties.target_person_id`` or
+      ``properties.target_eenheid_id``: hand out a rol on a resource to a
+      person or an eenheid (add a member, contact, betrokkene, partner
+      eenheid).  Without a target: to a person other than the caller.
+    - ``resource_role:revoke``, resource ``{type, id}``, exactly one of
+      ``properties.target_person_id`` and ``properties.target_eenheid_id``,
+      optional ``properties.rol`` (none: every rol of that holder): remove
+      it.  Leaving yourself is allowed, removing the last eigenaar is not.
     - ``role:assign``, resource ``{type: "role"}``, ``properties.role_id``,
       optional ``properties.eenheid_id`` (none: a system role) and
       ``properties.target_person_id``.  With ``properties.anywhere: true``
@@ -284,7 +305,8 @@ async def evaluate(
     - ``eenheid:set_manager``, resource ``{type: "organisatie_eenheid", id}``,
       optional ``properties.target_person_id`` (none: clear or name someone
       else).
-    - ``eenheid:dissolve``, resource ``{type: "organisatie_eenheid", id}``.
+    - ``eenheid:dissolve``, resource ``{type: "organisatie_eenheid", id}``:
+      ending it (``geldig_tot``) or deleting it, the same guard.
     - ``person:place``, resource ``{type: "person", id?}``,
       ``properties.eenheid_id``, optional ``properties.ending`` (end the
       placement) and ``properties.contact`` (no id: a contact without
@@ -296,3 +318,86 @@ async def evaluate(
         for evaluation in data.evaluations
     ]
     return AuthzEvaluationsResponse(evaluations=decisions)
+
+
+# ---------------------------------------------------------------------------
+# Where may the caller do this? (``GET /api/authz/eenheden``)
+# ---------------------------------------------------------------------------
+
+# Each returns the eenheden where the action is allowed, or None for all.
+EenhedenWhere = Callable[[AsyncSession, PermissionContext], Awaitable[set[UUID] | None]]
+
+
+def _org_where(permission: str) -> EenhedenWhere:
+    async def where(db: AsyncSession, perm_ctx: PermissionContext) -> set[UUID] | None:
+        return await eenheid_ids_where(db, perm_ctx, permission)
+
+    return where
+
+
+async def _assign_role_where(
+    db: AsyncSession, perm_ctx: PermissionContext
+) -> set[UUID] | None:
+    """Where ``people:assign_role`` holds for ``core.authority``'s role guard.
+
+    Through an organisational role on the eenheid or above it (system roles
+    other than super_admin do not count there).
+    """
+    if perm_ctx.is_super_admin:
+        return None
+    return await get_subtree_ids(
+        db,
+        [
+            eid
+            for eid, perms in perm_ctx.scoped_permissions.items()
+            if "people:assign_role" in perms
+        ],
+    )
+
+
+async def _place_where(
+    db: AsyncSession, perm_ctx: PermissionContext
+) -> set[UUID] | None:
+    """Where the caller may place another person's account (``require_can_place``).
+
+    ``people:update`` somewhere, and managing the eenheid or one above it.
+    """
+    if not perm_ctx.has_permission("people:update"):
+        return set()
+    return await authority.managed_subtree_ids(db, perm_ctx)
+
+
+_EENHEDEN_WHERE: dict[str, EenhedenWhere] = {
+    "org:manage": _org_where("org:manage"),
+    "org:update": _org_where("org:update"),
+    "org:create": _org_where("org:create"),
+    "people:assign_role": _assign_role_where,
+    "person:place": _place_where,
+}
+
+
+@router.get("/eenheden", response_model=AuthzEenhedenResponse)
+async def eenheden_allowed(
+    action: EenheidAction = Query(...),
+    db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+) -> AuthzEenhedenResponse:
+    """The eenheden where the caller may do *action*, for pickers and admin lists.
+
+    The same decision as asking the evaluation endpoint per eenheid:
+
+    - ``org:update``, ``org:manage``: on the eenheid itself (synced eenheden
+      are read-only, so they are left out);
+    - ``org:create``: creating an internal eenheid below it (external ones
+      are free, ask ``org:create`` with an ``eenheid_type``);
+    - ``people:assign_role``: some role may be assigned there;
+    - ``person:place``: another person's account may be placed there.
+
+    ``{"all": true}`` means everywhere (a system role); ``ids`` is then
+    empty.  A role on an eenheid applies below it, so ``ids`` holds whole
+    subtrees.
+    """
+    if not perm_ctx.is_authenticated:
+        return AuthzEenhedenResponse(all=False, ids=[])
+    ids = await _EENHEDEN_WHERE[action](db, perm_ctx)
+    return AuthzEenhedenResponse(all=ids is None, ids=sorted(ids or (), key=str))

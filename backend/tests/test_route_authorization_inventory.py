@@ -37,6 +37,10 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/tasks/inbox": "self-scoped via effective_person_id",
     "/api/activity/inbox": "self-scoped via effective_person_id in handler",
     "/api/roles/my-permissions": "self-scoped (caller's own roles + perms)",
+    "/api/authz/eenheden": (
+        "self-scoped: where the caller's own rights hold, decided by can() "
+        "and core.authority (test_authz_evaluations pins it per eenheid)"
+    ),
     "/api/org-placements/my-requests": "self-scoped via current_user.id filter",
     "/api/chat/{conversation_id}": "self-scoped via current_user.id in handler",
     "/api/chat/attachments/{attachment_id}/preview": "owner-check in handler",

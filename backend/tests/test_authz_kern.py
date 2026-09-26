@@ -245,21 +245,32 @@ async def test_synced_eenheid_is_read_only_in_authz(world):
 
 
 @pytest.mark.parametrize(
-    ("who", "expected"), [("team_editor", True), ("viewer", False)]
+    ("who", "eenheid_type", "parent", "expected"),
+    [
+        # an external eenheid (a stakeholder) goes anywhere
+        ("team_editor", "gemeente", "elders", True),
+        ("viewer", "gemeente", "elders", False),
+        # an internal one only below an eenheid where you hold org:create
+        ("team_editor", "team", "elders", False),
+        ("team_editor", "team", "team", True),
+        ("afd_editor", "team", "team", True),
+    ],
 )
-async def test_evaluation_answers_create_sub_eenheid(world, who, expected):
+async def test_evaluation_answers_create_sub_eenheid(
+    world, who, eenheid_type, parent, expected
+):
+    parent_id = world.org[parent].id
     question = ask(
-        "org:create", "organisatie_eenheid", eenheid_id=world.org["elders"].id
+        "org:create",
+        "organisatie_eenheid",
+        eenheid_id=parent_id,
+        eenheid_type=eenheid_type,
     )
     async with client_as(world.db, world.person[who]) as c:
         resp = await c.post("/api/authz/evaluations", json={"evaluations": [question]})
         created = await c.post(
             "/api/organisatie",
-            json={
-                "naam": "Stakeholder",
-                "type": "directie",
-                "parent_id": str(world.org["elders"].id),
-            },
+            json={"naam": "Nieuw", "type": eenheid_type, "parent_id": str(parent_id)},
         )
     assert resp.json() == {"evaluations": [{"decision": expected}]}
     assert created.status_code == (201 if expected else 403), created.text
