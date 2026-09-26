@@ -6,11 +6,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_can_end_eenheid, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_create_eenheid,
-    require_can_dissolve_eenheid,
     require_can_move_eenheid,
     require_can_set_manager,
 )
@@ -76,9 +75,7 @@ async def _check_structural_changes(
             db, perm_ctx, eenheid_id=current.id, new_manager_id=data.manager_id
         )
     if "geldig_tot" in fields and data.geldig_tot != current.geldig_tot:
-        await require_can_dissolve_eenheid(
-            db, perm_ctx, current, has_manager=current_manager is not None
-        )
+        await require_can_end_eenheid(db, perm_ctx, current)
 
 
 async def _enrich_with_managers(
@@ -271,16 +268,24 @@ async def create_organisatie(
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
-    Anyone with org:manage may pick any parent (or none) — stakeholder
-    eenheden often live outside the caller's own ministry. The aanmaker
-    is granted an eigenaar resource-permission so they can edit/delete
-    their creation later, even if it falls outside their org scope.
+    An external eenheid (a stakeholder) may go under any parent (or none)
+    for anyone with org:create somewhere: stakeholder eenheden often live
+    outside the caller's own ministry.  An internal one becomes part of the
+    organisation and needs org:create on its parent.  The aanmaker is
+    granted an eigenaar resource-permission so they can edit/delete their
+    creation later, even if it falls outside their org scope.
     """
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
+    # An internal eenheid needs org:create on its parent; an external one
+    # (a stakeholder) can go anywhere (``core.authz``).
     await require(
-        db, perm_ctx, "org:create", "organisatie_eenheid", eenheid_id=data.parent_id
+        db,
+        perm_ctx,
+        "org:create",
+        "organisatie_eenheid",
+        place={"parent_id": data.parent_id, "type": data.type},
     )
     await require_can_create_eenheid(
         db, perm_ctx, parent_id=data.parent_id, manager_id=data.manager_id
@@ -386,10 +391,8 @@ async def delete_organisatie(
     """Delete an org unit. Fails if it has children or members."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
-    # Deleting needs no members and no sub-eenheden (checked below), so the
-    # only right it can take away is the manager's role.
-    if await repo.get_current_manager_id(id) is not None:
-        await require_can_set_manager(db, perm_ctx, eenheid_id=id, new_manager_id=None)
+    # Deleting is never laxer than ending the eenheid (``geldig_tot``).
+    await require_can_end_eenheid(db, perm_ctx, eenheid)
     if await repo.has_children(id):
         raise HTTPException(
             status_code=409,

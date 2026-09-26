@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import get_child_or_404
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
@@ -51,17 +51,16 @@ def _to_response(post: InitiatiefUpdatePost) -> InitiatiefUpdatePostResponse:
 
 async def _load_post(
     db: AsyncSession, initiatief_id: UUID, post_id: UUID
-) -> InitiatiefUpdatePost | None:
-    stmt = (
-        select(InitiatiefUpdatePost)
-        .where(
-            InitiatiefUpdatePost.id == post_id,
-            InitiatiefUpdatePost.initiatief_id == initiatief_id,
-        )
-        .options(selectinload(InitiatiefUpdatePost.published_by))
+) -> InitiatiefUpdatePost:
+    """The post *post_id* of this initiatief, or 404."""
+    return await get_child_or_404(
+        db,
+        InitiatiefUpdatePost,
+        post_id,
+        (InitiatiefUpdatePost.initiatief_id, initiatief_id),
+        selectinload(InitiatiefUpdatePost.published_by),
+        name="Update",
     )
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
 
 
 @router.get(
@@ -123,7 +122,7 @@ async def edit_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    post = await _load_post(db, initiatief_id, post_id)
     payload = data.model_dump(exclude_unset=True)
     for key, value in payload.items():
         setattr(post, key, value)
@@ -144,7 +143,7 @@ async def publish_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    post = await _load_post(db, initiatief_id, post_id)
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
     await db.flush()
@@ -163,7 +162,7 @@ async def unpublish_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    post = await _load_post(db, initiatief_id, post_id)
     # Keep published_by_id as audit trail of last publisher; republishing
     # overwrites it again.
     post.published_at = None
@@ -183,6 +182,6 @@ async def delete_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_DELETE_POST),
 ) -> None:
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    post = await _load_post(db, initiatief_id, post_id)
     await db.delete(post)
     await db.flush()

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import get_child_or_404, require_found
 from bouwmeester.api.routes.leads import _robust_parse_json
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
@@ -71,19 +71,16 @@ def _to_response(post: LeadUpdatePost) -> LeadUpdatePostResponse:
     )
 
 
-async def _load_post(
-    db: AsyncSession, lead_id: UUID, post_id: UUID
-) -> LeadUpdatePost | None:
-    stmt = (
-        select(LeadUpdatePost)
-        .where(
-            LeadUpdatePost.id == post_id,
-            LeadUpdatePost.lead_id == lead_id,
-        )
-        .options(selectinload(LeadUpdatePost.published_by))
+async def _load_post(db: AsyncSession, lead_id: UUID, post_id: UUID) -> LeadUpdatePost:
+    """The post *post_id* of this lead, or 404."""
+    return await get_child_or_404(
+        db,
+        LeadUpdatePost,
+        post_id,
+        (LeadUpdatePost.lead_id, lead_id),
+        selectinload(LeadUpdatePost.published_by),
+        name="Update",
     )
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
 
 
 async def _build_lead_context(db: AsyncSession, lead: Lead) -> str:
@@ -450,7 +447,7 @@ async def edit_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
-    post = require_found(await _load_post(db, lead_id, post_id), "Update")
+    post = await _load_post(db, lead_id, post_id)
     payload = data.model_dump(exclude_unset=True)
     for key, value in payload.items():
         if key in {"mail_to", "mail_cc"} and value is not None:
@@ -473,7 +470,7 @@ async def publish_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
-    post = require_found(await _load_post(db, lead_id, post_id), "Update")
+    post = await _load_post(db, lead_id, post_id)
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
     await db.flush()
@@ -493,7 +490,7 @@ async def unpublish_update(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
-    post = require_found(await _load_post(db, lead_id, post_id), "Update")
+    post = await _load_post(db, lead_id, post_id)
     post.published_at = None
     await db.flush()
     await db.refresh(post)
@@ -513,7 +510,6 @@ async def delete_update(
     _authz=Depends(_DELETE_POST),
 ) -> None:
     post = await _load_post(db, lead_id, post_id)
-    require_found(post, "Update")
     await db.delete(post)
     await db.flush()
 
@@ -532,7 +528,7 @@ async def download_update_eml(
     _authz=Depends(_READ_LEAD),
 ) -> Response:
     """Stream a .eml that opens as an editable draft in Outlook (Windows)."""
-    post = require_found(await _load_post(db, lead_id, post_id), "Update")
+    post = await _load_post(db, lead_id, post_id)
 
     body_html = markdown_to_html(post.body_internal or "")
     eml_bytes = build_outlook_draft_eml(

@@ -1,14 +1,19 @@
 """Shared API dependencies and utilities."""
 
 import logging
+from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.authority import require_can_dissolve_eenheid
 from bouwmeester.core.authz import require
 from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 
@@ -55,6 +60,45 @@ def require_found[T](obj: T | None, name: str = "Resource") -> T:
             detail=f"{name} niet gevonden",
         )
     return obj
+
+
+async def get_child_or_404[T](
+    db: AsyncSession,
+    model: type[T],
+    child_id: UUID,
+    parent: tuple[Any, UUID],
+    *options: Any,
+    name: str = "Resource",
+) -> T:
+    """The *model* row *child_id* under ``parent = (column, parent_id)``, or 404.
+
+    For sub-records addressed through their parent in the path: the route
+    decided access on that parent, so a child of another parent is missing.
+    """
+    column, parent_id = parent
+    stmt = (
+        select(model)
+        .where(model.id == child_id, column == parent_id)  # type: ignore[attr-defined]
+        .options(*options)
+    )
+    return require_found((await db.execute(stmt)).scalar_one_or_none(), name)
+
+
+async def require_can_end_eenheid(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid: OrganisatieEenheid
+) -> None:
+    """Guard ending an eenheid: dissolving it (``geldig_tot``) or deleting it.
+
+    ``org:update`` on the eenheid (``core.authz``) and the dissolve guard of
+    ``core.authority`` (ending it ends its manager's role), so a hard
+    delete is never laxer than ending it.  The evaluation endpoint's
+    ``eenheid:dissolve`` asks this too.
+    """
+    await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
+    manager = await OrganisatieEenheidRepository(db).get_current_manager_id(eenheid.id)
+    await require_can_dissolve_eenheid(
+        db, perm_ctx, eenheid, has_manager=manager is not None
+    )
 
 
 def require_deleted(deleted: bool, name: str = "Resource") -> None:

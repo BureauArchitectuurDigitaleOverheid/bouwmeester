@@ -1,4 +1,7 @@
-"""Editors can create stakeholder eenheden anywhere in the tree.
+"""Editors can create stakeholder (external) eenheden anywhere in the tree.
+
+An internal eenheid (ministerie down to team) is part of the organisation
+and needs org:create on its parent; see the last tests.
 
 Covers the scenario from the lead-stakeholder flow: a Bewerker (editor
 role) without ministry_admin needs to add an org unit for a counterpart
@@ -82,7 +85,7 @@ async def test_editor_creates_top_level_eenheid(editor_setup):
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "CJIB", "type": "ministerie"},
+        json={"naam": "CJIB", "type": "zbo"},
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
@@ -97,7 +100,7 @@ async def test_editor_creates_eenheid_under_foreign_parent(editor_setup):
         "/api/organisatie",
         json={
             "naam": "CJIB",
-            "type": "directie",
+            "type": "gemeente",
             "parent_id": str(s["org_other"].id),
         },
     )
@@ -112,7 +115,7 @@ async def test_aanmaker_gets_eigenaar_resource_permission(
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "Stakeholder X", "type": "directie"},
+        json={"naam": "Stakeholder X", "type": "gemeente"},
     )
     assert resp.status_code == 201
     new_id = uuid.UUID(resp.json()["id"])
@@ -134,7 +137,7 @@ async def test_aanmaker_can_update_own_eenheid_outside_scope(editor_setup):
     s = editor_setup
     create = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "CJIB", "type": "ministerie"},
+        json={"naam": "CJIB", "type": "zbo"},
     )
     new_id = create.json()["id"]
 
@@ -161,7 +164,7 @@ async def test_aanmaker_can_delete_own_eenheid_outside_scope(editor_setup):
     s = editor_setup
     create = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "Tijdelijk", "type": "directie"},
+        json={"naam": "Tijdelijk", "type": "gemeente"},
     )
     new_id = create.json()["id"]
 
@@ -183,3 +186,26 @@ async def test_editor_has_org_create_but_not_org_manage(
     perms = await RoleRepository(db_session).get_role_permission_ids("editor")
     assert "org:create" in perms
     assert "org:manage" not in perms
+
+
+async def test_editor_cannot_create_internal_eenheid_outside_scope(editor_setup):
+    """An internal eenheid under a foreign parent, or at the top, is refused."""
+    s = editor_setup
+    under_foreign = await s["client"].post(
+        "/api/organisatie",
+        json={
+            "naam": "Afdeling",
+            "type": "afdeling",
+            "parent_id": str(s["org_other"].id),
+        },
+    )
+    top_level = await s["client"].post(
+        "/api/organisatie", json={"naam": "Ministerie", "type": "ministerie"}
+    )
+    under_own = await s["client"].post(
+        "/api/organisatie",
+        json={"naam": "Team", "type": "team", "parent_id": str(s["org_own"].id)},
+    )
+    assert under_foreign.status_code == 403, under_foreign.text
+    assert top_level.status_code == 403, top_level.text
+    assert under_own.status_code == 201, under_own.text
