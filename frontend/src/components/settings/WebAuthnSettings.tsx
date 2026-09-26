@@ -156,7 +156,7 @@ export function WebAuthnSettings() {
         confirmLabel="Verwijderen"
         variant="danger"
       >
-        <p>Weet je zeker dat je deze passkey wilt verwijderen?</p>
+        Weet je zeker dat je deze passkey wilt verwijderen?
       </ConfirmDialog>
     </nldd-card>
   );

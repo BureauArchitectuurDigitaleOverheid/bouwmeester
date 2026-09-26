@@ -176,8 +176,9 @@ export function SamenwerkingsverbandenPage() {
       {showForm && (
         <nldd-card>
           <nldd-container gap="16" padding="24">
-            <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+            <nldd-container layout="row" gap="8" vertical-alignment="center">
               <nldd-title size={4}><h3>Nieuw samenwerkingsverband</h3></nldd-title>
+              <nldd-spacer size="flexible" direction="horizontal" />
               <NlddIconButton
                 icon="close"
                 accessibleLabel="Sluiten"
@@ -186,6 +187,7 @@ export function SamenwerkingsverbandenPage() {
                 onClick={resetForm}
               />
             </nldd-container>
+            <nldd-form>
             <form onSubmit={handleSubmit}>
               <nldd-container gap="16">
                 <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="16">
@@ -230,6 +232,7 @@ export function SamenwerkingsverbandenPage() {
                 </nldd-container>
               </nldd-container>
             </form>
+            </nldd-form>
           </nldd-container>
         </nldd-card>
       )}

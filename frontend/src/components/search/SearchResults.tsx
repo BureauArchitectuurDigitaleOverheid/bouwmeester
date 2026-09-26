@@ -183,32 +183,33 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
         {result.highlights &&
           result.highlights.length > 0 &&
           (compact ? (
-            // Sanitized <mark> HTML injected via dangerouslySetInnerHTML: this
-            // stays a plain <p>, not nldd-text, since setting innerHTML
-            // directly on a custom element bypasses its slot rendering.
-            // italic and line-clamp-1 also have no nldd-text equivalent.
-            <p
-              className="line-clamp-1"
-              style={{ fontSize: '12px', color: 'var(--primitives-color-neutral-700)', fontStyle: 'italic' }}
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(result.highlights[0], {
-                  ALLOWED_TAGS: ['mark'],
-                }),
-              }}
-            />
-          ) : (
-            <nldd-container gap="2">
-              {result.highlights.map((h, i) => (
-                // Same dangerouslySetInnerHTML/italic reasoning as above.
-                <p
-                  key={i}
-                  style={{ fontSize: '12px', color: 'var(--primitives-color-neutral-700)', fontStyle: 'italic' }}
+            // Sanitized <mark> HTML goes on an inner span, not on nldd-text:
+            // setting innerHTML on the custom element itself would bypass its
+            // slot rendering. line-clamp has no nldd-text equivalent.
+            <div className="line-clamp-1">
+              <nldd-text size="xs" color="secondary">
+                <span
                   dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(h, {
+                    __html: DOMPurify.sanitize(result.highlights[0], {
                       ALLOWED_TAGS: ['mark'],
                     }),
                   }}
                 />
+              </nldd-text>
+            </div>
+          ) : (
+            <nldd-container gap="2">
+              {result.highlights.map((h, i) => (
+                // Same inner-span reasoning as above.
+                <nldd-text key={i} size="xs" color="secondary">
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(h, {
+                        ALLOWED_TAGS: ['mark'],
+                      }),
+                    }}
+                  />
+                </nldd-text>
               ))}
             </nldd-container>
           ))}
@@ -287,7 +288,7 @@ export function SearchResultsList({ query, data, isLoading, isFetched, onResultC
   if (query.length < 2 && !isFetched) {
     return (
       <nldd-container gap="12" horizontal-alignment="center" padding="48">
-        <nldd-icon name="magnifier" size="40" style={{ opacity: 0.3 }} aria-hidden="true" />
+        <nldd-icon name="magnifier" size="40" color="secondary-content" aria-hidden="true" />
         <nldd-text size="sm" color="secondary" horizontal-alignment="center">
           Voer minimaal 2 tekens in om te zoeken.
         </nldd-text>
@@ -333,15 +334,11 @@ export function GroupedListboxRows({
               the function doc above), so this can't be an nldd-container
               either — the list's listbox logic queries `:scope > nldd-list-item`
               and any wrapper here is invisible to it the same way a div is. The
-              10px size has no nldd-text step (xxs is 11-12px), so this label
-              stays a plain span. */}
+              padding stays on the plain div. */}
           <div style={{ paddingInline: '20px', paddingTop: '12px', paddingBottom: '4px' }} role="presentation">
-            <span
-              className="uppercase tracking-wider"
-              style={{ fontSize: '10px', fontWeight: 600, color: 'var(--primitives-color-neutral-700)' }}
-            >
+            <nldd-text size="xs" weight="medium" color="secondary">
               {SEARCH_RESULT_TYPE_LABELS[resultType as SearchResultType]} ({groupResults.length})
-            </span>
+            </nldd-text>
           </div>
           {groupResults.map((result) => (
             <ResultItem

@@ -4,6 +4,7 @@ import { formatOrganisatieType } from '@/types';
 import type { OrganisatieEenheidTreeNode } from '@/types';
 import { CreatableSelect } from './CreatableSelect';
 import type { SelectOption } from './CreatableSelect';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface CascadingOrgSelectProps {
   value: string;
@@ -203,9 +204,7 @@ export function CascadingOrgSelect({
             {label}
           </nldd-text>
         )}
-        <nldd-text size="xs" color="secondary">
-          Laden...
-        </nldd-text>
+        <LoadingSpinner size="sm" />
       </nldd-container>
     );
   }

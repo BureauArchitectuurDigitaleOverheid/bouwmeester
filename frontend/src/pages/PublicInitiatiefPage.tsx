@@ -107,7 +107,7 @@ export function PublicInitiatiefPage() {
         <nldd-container gap="16">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-icon name="circle-filled-small" size="16" color={accentIcon} />
-            <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <nldd-text size="xs" weight="medium" color="secondary">
               Community
             </nldd-text>
           </nldd-container>
@@ -126,15 +126,11 @@ export function PublicInitiatiefPage() {
         <nldd-container gap="48">
           {data.casussen.length > 0 && (
             <section>
-              <nldd-container
-                layout="row"
-                gap="8"
-                horizontal-alignment="left"
-                style={{ alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '24px' }}
-              >
+              <nldd-container layout="row" gap="8" vertical-alignment="bottom" padding-bottom="24">
                 <nldd-title size={4}>
                   <h2>Lopende casussen</h2>
                 </nldd-title>
+                <nldd-spacer size="flexible" direction="horizontal" />
                 <nldd-text size="sm" color="secondary">
                   {data.casussen.length} {data.casussen.length === 1 ? 'casus' : 'casussen'}
                 </nldd-text>
@@ -148,14 +144,11 @@ export function PublicInitiatiefPage() {
           )}
 
           <section>
-            <nldd-container
-              layout="row"
-              gap="8"
-              style={{ alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '24px' }}
-            >
+            <nldd-container layout="row" gap="8" vertical-alignment="bottom" padding-bottom="24">
               <nldd-title size={4}>
                 <h2>Updates</h2>
               </nldd-title>
+              <nldd-spacer size="flexible" direction="horizontal" />
               {data.updates.length > 0 && (
                 <nldd-text size="sm" color="secondary">
                   {data.updates.length} {data.updates.length === 1 ? 'bericht' : 'berichten'}
@@ -177,14 +170,11 @@ export function PublicInitiatiefPage() {
       </nldd-simple-section>
 
       <nldd-page-footer width="768px">
-        <nldd-container
-          layout="row"
-          gap="8"
-          style={{ alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}
-        >
+        <nldd-container layout="wrap" gap="8" vertical-alignment="center">
           <nldd-text size="sm" color="secondary">
             Publieke pagina van <strong>{data.naam}</strong>
           </nldd-text>
+          <nldd-spacer size="flexible" direction="horizontal" />
           <nldd-text size="xs" color="secondary">
             Gepubliceerd via Bouwmeester
           </nldd-text>
@@ -210,9 +200,7 @@ function UpdateCard({
 
   return (
     <nldd-card>
-      {/* position: relative + the accent bar below are a decorative left accent
-          rail; there is no nldd primitive for one, so it stays a plain
-          positioned div painted from the initiative's category token. */}
+      {/* Left accent rail: nldd-card/nldd-box have no accent edge, so it stays a positioned div. */}
       <div style={{ position: 'relative' }}>
         <nldd-container padding="24" sm-padding-inline="32" sm-padding-block="28">
           <div
@@ -263,7 +251,7 @@ function CasusCard({
       <nldd-container padding="20">
         <nldd-container layout="row" gap="8" vertical-alignment="center" padding-bottom="8">
           <nldd-icon name="circle-filled-small" size="16" color={accentIcon} />
-          <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <nldd-text size="xs" weight="medium" color="secondary">
             Casus
           </nldd-text>
         </nldd-container>
@@ -278,7 +266,8 @@ function CasusCard({
           </nldd-container>
         )}
         {casus.updates.length > 0 && (
-          <nldd-container gap="12" padding-top="16" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <nldd-container gap="12" padding-top="16">
+            <nldd-divider />
             {casus.updates.map((u, idx) => (
               <div key={idx}>
                 <nldd-container layout="row" gap="8" vertical-alignment="center">
@@ -322,11 +311,13 @@ function PublicMessage({ title, body }: { title: string; body: string }) {
   return (
     <nldd-app-view background="tinted">
       <nldd-simple-section horizontal-alignment="center" vertical-alignment="center" height="100dvh">
-        <nldd-container gap="12" horizontal-alignment="center" style={{ textAlign: 'center' }}>
+        <nldd-container gap="12" horizontal-alignment="center">
           <nldd-title size={2}>
             <h2>{title}</h2>
           </nldd-title>
-          <nldd-text color="secondary">{body}</nldd-text>
+          <nldd-text color="secondary" horizontal-alignment="center">
+            {body}
+          </nldd-text>
         </nldd-container>
       </nldd-simple-section>
     </nldd-app-view>

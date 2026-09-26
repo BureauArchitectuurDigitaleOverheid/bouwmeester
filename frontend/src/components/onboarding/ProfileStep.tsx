@@ -57,7 +57,7 @@ function EmailRow({
   useNlddEvent(ref, 'input', (e) => onChange(eventValue(e)));
 
   return (
-    <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
+    <nldd-container layout="row" gap="8" vertical-alignment="center">
       <nldd-text-field ref={ref} type="email" value={email} placeholder="E-mailadres" autocomplete="email" width="full" />
       <NlddIconButton
         icon="close"
@@ -86,7 +86,7 @@ function PhoneRow({
   useNlddEvent(ref, 'input', (e) => onChangeNumber(eventValue(e)));
 
   return (
-    <nldd-container layout="row" gap="8" style={{ alignItems: 'center' }}>
+    <nldd-container layout="row" gap="8" vertical-alignment="center">
       <nldd-text-field ref={ref} type="tel" value={phone.phone_number} placeholder="Telefoonnummer" autocomplete="tel" width="full" />
       <Select
         value={phone.label}
@@ -188,8 +188,8 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
   useNlddEvent(naamFieldRef, 'input', (e) => setNaam(eventValue(e)));
 
   return (
-    <div>
-      <nldd-text size="sm" color="secondary" style={{ marginBottom: '16px', display: 'block' }}>
+    <nldd-container gap="16">
+      <nldd-text size="sm" color="secondary">
         Vul je profiel aan om aan de slag te gaan.
       </nldd-text>
 
@@ -297,6 +297,6 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
           )}
         </nldd-container>
       </nldd-container>
-    </div>
+    </nldd-container>
   );
 }

@@ -23,6 +23,7 @@ export function ChatPanel() {
   }, [chatOpen, setChatOpen]);
 
   return (
+    // nldd-container has no height attribute; the panel must fill its pane.
     <nldd-container gap="0" style={{ height: '100%' }}>
       <ChatHeader />
       <ChatMessageList />
