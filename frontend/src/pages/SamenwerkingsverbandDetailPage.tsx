@@ -30,6 +30,7 @@ import {
   type SamenwerkingsverbandUpdate,
 } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 /** True when the click asked for something other than plain navigation. */
 function isModifiedClick(event: MouseEvent): boolean {
@@ -63,6 +64,10 @@ export function SamenwerkingsverbandDetailPage() {
   const updateLidMutation = useUpdateLid();
   const removeLidMutation = useRemoveLid();
   const { data: people = [] } = usePeople();
+  const swvResource = id ? ({ type: 'samenwerkingsverband', id } as const) : null;
+  // Members are maintained as an update of the group itself.
+  const { allowed: canUpdate } = useCan('samenwerkingsverband:update', swvResource);
+  const { allowed: canDelete } = useCan('samenwerkingsverband:delete', swvResource);
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<SamenwerkingsverbandUpdate>({});
@@ -233,14 +238,18 @@ export function SamenwerkingsverbandDetailPage() {
           <>
           <nldd-spacer direction="horizontal" size="flexible" />
           <div className="hug">
-            <NlddButton variant="neutral-transparent" size="sm" startIcon="pencil" onClick={startEdit} text="Bewerken" />
-            <NlddButton
-              variant="neutral-transparent"
-              size="sm"
-              startIcon="trash"
-              onClick={() => setConfirmDelete(true)}
-              text="Verwijderen"
-            />
+            {canUpdate && (
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="pencil" onClick={startEdit} text="Bewerken" />
+            )}
+            {canDelete && (
+              <NlddButton
+                variant="neutral-transparent"
+                size="sm"
+                startIcon="trash"
+                onClick={() => setConfirmDelete(true)}
+                text="Verwijderen"
+              />
+            )}
           </div>
           </>
         )}
@@ -339,7 +348,9 @@ export function SamenwerkingsverbandDetailPage() {
             <nldd-container width="fit-content" className="row-fill">
               <nldd-title size={4}><h2>Leden</h2></nldd-title>
             </nldd-container>
-            <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddLid(true)} text="Toevoegen" />
+            {canUpdate && (
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddLid(true)} text="Toevoegen" />
+            )}
           </nldd-container>
 
           {showAddLid && (
@@ -452,24 +463,28 @@ export function SamenwerkingsverbandDetailPage() {
               return (
                 <nldd-list-item key={lid.id} className="group">
                   <nldd-text-cell text={lid.person_naam} supporting-text={details} width="full" />
-                  <nldd-cell className="group-hover-reveal-above-sm">
-                    <NlddIconButton
-                      icon="pencil"
-                      accessibleLabel="Bewerken"
-                      variant="neutral-transparent"
-                      size="sm"
-                      onClick={() => startEditLid(lid)}
-                    />
-                  </nldd-cell>
-                  <nldd-cell className="group-hover-reveal-above-sm">
-                    <NlddIconButton
-                      icon="close"
-                      accessibleLabel="Verwijderen"
-                      variant="neutral-transparent"
-                      size="sm"
-                      onClick={() => setConfirmRemoveLidId(lid.id)}
-                    />
-                  </nldd-cell>
+                  {canUpdate && (
+                    <>
+                      <nldd-cell className="group-hover-reveal-above-sm">
+                        <NlddIconButton
+                          icon="pencil"
+                          accessibleLabel="Bewerken"
+                          variant="neutral-transparent"
+                          size="sm"
+                          onClick={() => startEditLid(lid)}
+                        />
+                      </nldd-cell>
+                      <nldd-cell className="group-hover-reveal-above-sm">
+                        <NlddIconButton
+                          icon="close"
+                          accessibleLabel="Verwijderen"
+                          variant="neutral-transparent"
+                          size="sm"
+                          onClick={() => setConfirmRemoveLidId(lid.id)}
+                        />
+                      </nldd-cell>
+                    </>
+                  )}
                 </nldd-list-item>
               );
             })}

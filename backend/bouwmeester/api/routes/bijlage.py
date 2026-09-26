@@ -9,13 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
     check_resource_org_scope,
     get_org_context,
 )
-from bouwmeester.core.permissions import require_permission
 from bouwmeester.core.storage import (
     BRON_ALLOWED_CONTENT_TYPES,
     blob_available,
@@ -57,11 +57,9 @@ async def upload_bijlage(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("node:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(requires("node:update", "corpus_node", path_param="node_id")),
 ) -> BronBijlageResponse:
     """Upload a file attachment to a bron node. Replaces existing attachment."""
-    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db, load_bijlage=True)
 
     content_type = file.content_type or ""
@@ -154,11 +152,9 @@ async def delete_bijlage(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("node:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(requires("node:update", "corpus_node", path_param="node_id")),
 ) -> None:
     """Delete a bron node's file attachment (DB record and stored file)."""
-    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))

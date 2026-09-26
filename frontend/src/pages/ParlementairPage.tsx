@@ -21,6 +21,7 @@ import {
 } from '@/types';
 import type { ReprocessResult } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { usePermissions } from '@/hooks/usePermissions';
 
 const REPROCESS_TYPES = ['toezegging', 'motie', 'kamervraag'] as const;
 
@@ -196,6 +197,8 @@ export function ParlementairPage() {
   };
 
   const eitherPending = triggerImport.isPending || reprocess.isPending;
+  // Importing and reprocessing touch every kamerstuk: system roles only.
+  const canImport = usePermissions().hasSystemPermission('parlementair:import');
 
   return (
     <nldd-container gap="24">
@@ -222,6 +225,7 @@ export function ParlementairPage() {
             </nldd-container>
           </nldd-container>
         </nldd-toolbar-item>
+        {canImport && (
         <nldd-toolbar-item slot="end">
           <NlddButton
             id={reprocessMenuTriggerId}
@@ -240,6 +244,8 @@ export function ParlementairPage() {
           </nldd-menu>
           <nldd-menu-item slot="overflow" text="Herverwerk kamerstukken" icon="undo" />
         </nldd-toolbar-item>
+        )}
+        {canImport && (
         <nldd-toolbar-item slot="end" priority={2}>
           <NlddButton
             startIcon="refresh"
@@ -251,6 +257,7 @@ export function ParlementairPage() {
           />
           <nldd-menu-item slot="overflow" text="Importeer nieuwe kamerstukken" icon="refresh" />
         </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {/* Status tabs */}

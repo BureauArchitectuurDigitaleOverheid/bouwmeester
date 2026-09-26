@@ -3,10 +3,13 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.initiatief_context import InitiatiefContext
+from bouwmeester.core.initiatief_context import (
+    InitiatiefContext,
+    apply_initiatief_filter,
+)
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.core.slug import is_valid_slug, slugify
 from bouwmeester.models.initiatief import Initiatief
@@ -16,7 +19,6 @@ from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.initiatief import (
-    EENHEID_ROL_RANK,
     InitiatiefCreate,
     InitiatiefSettingsUpdate,
     InitiatiefUpdate,
@@ -38,8 +40,7 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
             escaped = escape_like(search)
             pattern = f"%{escaped}%"
             stmt = stmt.where(Initiatief.naam.ilike(pattern, escape="\\"))
-        if init_ctx and not init_ctx.is_admin and init_ctx.is_authenticated:
-            stmt = stmt.where(Initiatief.id.in_(init_ctx.visible_initiatief_ids))
+        stmt = apply_initiatief_filter(stmt, init_ctx)
         stmt = stmt.order_by(Initiatief.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -309,139 +310,19 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         await self.session.flush()
         return True
 
-    async def list_eenheden(self, initiatief_id: UUID) -> list[ResourcePermission]:
-        """List eenheid-scoped permissions for an initiatief."""
+    async def list_for_eenheid(
+        self, eenheid_id: UUID, init_ctx: InitiatiefContext | None = None
+    ) -> list[ResourcePermission]:
+        """List the eenheid's links to the initiatieven the caller sees."""
         stmt = (
             select(ResourcePermission)
-            .where(
-                ResourcePermission.resource_type == "initiatief",
-                ResourcePermission.resource_id == initiatief_id,
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-            )
-            .options(selectinload(ResourcePermission.eenheid))
-            .order_by(ResourcePermission.created_at)
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
-    async def list_for_eenheid(self, eenheid_id: UUID) -> list[ResourcePermission]:
-        """List all initiatief permissions for a given eenheid."""
-        stmt = (
-            select(ResourcePermission)
+            .join(Initiatief, Initiatief.id == ResourcePermission.resource_id)
             .where(
                 ResourcePermission.resource_type == "initiatief",
                 ResourcePermission.organisatie_eenheid_id == eenheid_id,
             )
             .order_by(ResourcePermission.created_at.desc())
         )
+        stmt = apply_initiatief_filter(stmt, init_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    # -----------------------------------------------------------------------
-    # Access checks
-    # -----------------------------------------------------------------------
-
-    async def is_member(self, initiatief_id: UUID, person_id: UUID) -> bool:
-        """Check if person has access (direct or via eenheid)."""
-        # Direct person permission
-        direct = select(ResourcePermission.person_id).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == initiatief_id,
-            ResourcePermission.person_id == person_id,
-        )
-        result = await self.session.execute(direct)
-        if result.scalar_one_or_none() is not None:
-            return True
-
-        # Via eenheid membership
-        from datetime import date
-
-        from bouwmeester.models.person_organisatie import (
-            PersonOrganisatieEenheid,
-        )
-
-        today = date.today()
-        eenheid_stmt = (
-            select(ResourcePermission.id)
-            .join(
-                PersonOrganisatieEenheid,
-                PersonOrganisatieEenheid.organisatie_eenheid_id
-                == ResourcePermission.organisatie_eenheid_id,
-            )
-            .where(
-                ResourcePermission.resource_type == "initiatief",
-                ResourcePermission.resource_id == initiatief_id,
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-                PersonOrganisatieEenheid.person_id == person_id,
-                PersonOrganisatieEenheid.start_datum <= today,
-                or_(
-                    PersonOrganisatieEenheid.eind_datum.is_(None),
-                    PersonOrganisatieEenheid.eind_datum >= today,
-                ),
-            )
-        )
-        result = await self.session.execute(eenheid_stmt)
-        return result.scalar_one_or_none() is not None
-
-    async def count_eigenaren(self, initiatief_id: UUID) -> int:
-        """Count eigenaren (person-scoped) for an initiatief."""
-        from sqlalchemy import func
-
-        stmt = (
-            select(func.count())
-            .select_from(ResourcePermission)
-            .where(
-                ResourcePermission.resource_type == "initiatief",
-                ResourcePermission.resource_id == initiatief_id,
-                ResourcePermission.person_id.isnot(None),
-                ResourcePermission.rol == "eigenaar",
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one()
-
-    async def get_member_role(self, initiatief_id: UUID, person_id: UUID) -> str | None:
-        """Get the direct (person-scoped) role on an initiatief."""
-        stmt = select(ResourcePermission.rol).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == initiatief_id,
-            ResourcePermission.person_id == person_id,
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def get_eenheid_access_level(
-        self, initiatief_id: UUID, person_id: UUID
-    ) -> str | None:
-        """Get highest access via eenheid membership on an initiatief."""
-        from datetime import date
-
-        from bouwmeester.models.person_organisatie import (
-            PersonOrganisatieEenheid,
-        )
-
-        today = date.today()
-        stmt = (
-            select(ResourcePermission.rol)
-            .join(
-                PersonOrganisatieEenheid,
-                PersonOrganisatieEenheid.organisatie_eenheid_id
-                == ResourcePermission.organisatie_eenheid_id,
-            )
-            .where(
-                ResourcePermission.resource_type == "initiatief",
-                ResourcePermission.resource_id == initiatief_id,
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-                PersonOrganisatieEenheid.person_id == person_id,
-                PersonOrganisatieEenheid.start_datum <= today,
-                or_(
-                    PersonOrganisatieEenheid.eind_datum.is_(None),
-                    PersonOrganisatieEenheid.eind_datum >= today,
-                ),
-            )
-        )
-        result = await self.session.execute(stmt)
-        roles = result.scalars().all()
-        if not roles:
-            return None
-        return max(roles, key=lambda r: EENHEID_ROL_RANK.get(r, 0))

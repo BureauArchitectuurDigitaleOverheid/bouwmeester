@@ -369,17 +369,19 @@ async def test_dienst_counts_as_internal(tree: Tree):
     assert resp.status_code == 403
 
 
-async def test_editor_can_rename_visible_eenheid(tree: Tree):
+async def test_renaming_needs_rights_on_the_eenheid_not_visibility(tree: Tree):
+    """Unchanged structural fields do not trip the guards; seeing is not editing."""
+    body = {
+        "naam": "Team met nieuwe naam",
+        "parent_id": str(tree.directie.id),
+        "manager_id": None,
+    }
     async with client_as(tree.db, tree.editor) as c:
-        resp = await c.put(
-            f"/api/organisatie/{tree.team.id}",
-            json={
-                "naam": "Team met nieuwe naam",
-                "parent_id": str(tree.directie.id),
-                "manager_id": None,
-            },
-        )
-    assert resp.status_code == 200, resp.text
+        editor = await c.put(f"/api/organisatie/{tree.team.id}", json=body)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        manager = await c.put(f"/api/organisatie/{tree.team.id}", json=body)
+    assert editor.status_code == 403
+    assert manager.status_code == 200, manager.text
 
 
 async def test_two_active_managers_do_not_break_edits(tree: Tree):

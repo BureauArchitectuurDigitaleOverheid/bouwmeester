@@ -79,6 +79,5 @@ export function usePermissions() {
     hasSystemPermission,
     managesEenheid,
     isSuperAdmin,
-    permissions,
   };
 }

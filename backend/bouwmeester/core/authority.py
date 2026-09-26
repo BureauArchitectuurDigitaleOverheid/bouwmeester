@@ -5,8 +5,9 @@ people in an eenheid, naming a manager, moving an eenheid, assigning roles,
 editing someone's identity, and granting roles on a resource.  Routes and
 services call these guards instead of composing their own checks.
 
-Two layers sit below this module: ``core.permissions`` resolves what a
-person holds (roles and permissions per eenheid) and ``core.org_context``
+Three layers sit below this module: ``core.permissions`` resolves what a
+person holds (roles and permissions per eenheid), ``core.authz`` decides
+whether a person may do an action on a resource, and ``core.org_context``
 decides what a person can see.  Seeing an eenheid never implies authority
 over it.
 
@@ -17,13 +18,13 @@ on E or on any ancestor of E.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.authz import can, rights_on_eenheid
 from bouwmeester.core.permissions import (
     RESOURCE_ROLE_PERMISSIONS,
     PermissionContext,
@@ -50,64 +51,6 @@ MEMBER_MANAGER_ROLES = frozenset({"unit_manager", "ministry_admin"})
 
 def _forbidden(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
-
-
-# ---------------------------------------------------------------------------
-# Rights on an eenheid
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class EenheidRights:
-    """Roles and permissions a person effectively holds on one eenheid."""
-
-    roles: frozenset[str]
-    permissions: frozenset[str]
-    is_super_admin: bool
-
-    def has(self, perm: str) -> bool:
-        return self.is_super_admin or perm in self.permissions
-
-    def has_role(self, *roles: str) -> bool:
-        return self.is_super_admin or bool(self.roles & set(roles))
-
-
-async def rights_on_eenheid(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    eenheid_id: UUID,
-    *,
-    include_system_roles: bool = True,
-) -> EenheidRights:
-    """Resolve what *perm_ctx* may do on *eenheid_id*, inheriting downward.
-
-    ``include_system_roles=False`` leaves out system roles other than
-    super_admin, for decisions that belong to the organisation rather than
-    to platform operators (who manages whom).
-    """
-    if perm_ctx.is_super_admin:
-        return EenheidRights(frozenset(), frozenset(), is_super_admin=True)
-
-    roles: set[str] = set(perm_ctx.system_roles) if include_system_roles else set()
-    permissions: set[str] = (
-        set(perm_ctx.system_permissions) if include_system_roles else set()
-    )
-    for eid in await get_self_and_ancestor_ids(db, eenheid_id):
-        roles.update(perm_ctx.scoped_roles.get(eid, ()))
-        permissions |= perm_ctx.scoped_permissions.get(eid, set())
-    return EenheidRights(frozenset(roles), frozenset(permissions), False)
-
-
-async def require_permission_on_eenheid(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    perm: str,
-    eenheid_id: UUID,
-) -> None:
-    """403 unless *perm* is effective on *eenheid_id* (not just anywhere)."""
-    rights = await rights_on_eenheid(db, perm_ctx, eenheid_id)
-    if not rights.has(perm):
-        raise _forbidden("Onvoldoende rechten voor deze organisatie-eenheid")
 
 
 # ---------------------------------------------------------------------------
@@ -400,10 +343,17 @@ async def require_can_assign_role(
     *,
     role: Role,
     eenheid_id: UUID | None,
-    target_person_id: UUID,
+    target_person_id: UUID | None,
 ) -> None:
-    """Guard granting *role* to a person: authority, and never to yourself."""
-    if not perm_ctx.is_super_admin and target_person_id == perm_ctx.person_id:
+    """Guard granting *role* to a person: authority, and never to yourself.
+
+    ``target_person_id=None`` asks about someone else (for the frontend).
+    """
+    if (
+        not perm_ctx.is_super_admin
+        and target_person_id is not None
+        and target_person_id == perm_ctx.person_id
+    ):
         raise _forbidden("Je kunt jezelf geen rol toekennen")
     await _require_role_authority(db, perm_ctx, role=role, eenheid_id=eenheid_id)
 
@@ -585,6 +535,36 @@ async def _grant_reaches_caller(
 # an owning eenheid, anyone who manages resource roles may keep them current.
 _UNSCOPED_CONTACT_TYPES = frozenset({"corpus_node", "opdracht"})
 
+# Resource types without an eigenaar role: whoever may edit the resource
+# keeps its roles current.  The rols listed here give that edit right
+# themselves, so they are handed out only by an editor, never to themselves
+# (a grant never exceeds what the grantor holds).
+_EDITOR_GRANTED_TYPES: dict[str, tuple[str, frozenset[str]]] = {
+    "lead": ("lead:update", frozenset({"opdrachtgever"})),
+}
+
+
+async def _require_editor_grant_authority(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    resource_type: str,
+    resource_id: UUID,
+    rols: frozenset[str],
+    target_person_id: UUID | None,
+    target_eenheid_id: UUID | None,
+) -> None:
+    edit_perm, editor_rols = _EDITOR_GRANTED_TYPES[resource_type]
+    if not await can(db, perm_ctx, edit_perm, resource_type, resource_id):
+        raise _forbidden("Alleen wie dit item mag bewerken, kan hier rollen toekennen")
+    if rols & editor_rols and await _grant_reaches_caller(
+        db,
+        perm_ctx,
+        target_person_id=target_person_id,
+        target_eenheid_id=target_eenheid_id,
+    ):
+        raise _forbidden("Je kunt jezelf geen rol op dit item geven")
+
 
 async def _require_grant_authority(
     db: AsyncSession,
@@ -592,11 +572,11 @@ async def _require_grant_authority(
     *,
     resource_type: str,
     resource_id: UUID,
-    owner_rol: bool,
+    rols: frozenset[str],
     target_person_id: UUID | None,
     target_eenheid_id: UUID | None,
 ) -> None:
-    """Authority to hand out (or change) a rol on a resource.
+    """Authority to hand out (or change) *rols* on a resource.
 
     - an eigenaar of the resource may hand out any rol;
     - otherwise ``resource_permission:manage`` must be effective on one of
@@ -605,10 +585,24 @@ async def _require_grant_authority(
     - a resource without such an eenheid only has its eigenaars, except that
       corpus nodes and opdrachten (both mostly without an eenheid today, the
       latter because FCC does not fill one) take non-owner contacts, yourself
-      included, from anyone with ``resource_permission:manage``.
+      included, from anyone with ``resource_permission:manage``;
+    - a type in ``_EDITOR_GRANTED_TYPES`` (leads) has no eigenaar: its
+      editors decide, see there.
     """
     if perm_ctx.is_super_admin:
         return
+    if resource_type in _EDITOR_GRANTED_TYPES:
+        await _require_editor_grant_authority(
+            db,
+            perm_ctx,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            rols=rols,
+            target_person_id=target_person_id,
+            target_eenheid_id=target_eenheid_id,
+        )
+        return
+    owner_rol = "eigenaar" in rols
     if perm_ctx.person_id is not None and await check_resource_permission(
         db, perm_ctx.person_id, resource_type, resource_id, "resource_permission:manage"
     ):
@@ -675,7 +669,7 @@ async def require_can_grant_resource_role(
         perm_ctx,
         resource_type=resource_type,
         resource_id=resource_id,
-        owner_rol=rol == "eigenaar",
+        rols=frozenset({rol}),
         target_person_id=target_person_id,
         target_eenheid_id=target_eenheid_id,
     )
@@ -730,7 +724,7 @@ async def require_can_change_resource_role(
         perm_ctx,
         resource_type=grant.resource_type,
         resource_id=grant.resource_id,
-        owner_rol="eigenaar" in {grant.rol, new_rol},
+        rols=frozenset(r for r in (grant.rol, new_rol) if r is not None),
         target_person_id=grant.person_id,
         target_eenheid_id=grant.organisatie_eenheid_id,
     )

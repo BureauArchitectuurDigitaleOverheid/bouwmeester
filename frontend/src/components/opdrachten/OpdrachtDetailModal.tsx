@@ -69,6 +69,8 @@ import {
 } from '@/types';
 import { formatCurrency, calculateUtilization } from '@/utils/format';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
+import { useCanCreateTask } from '@/hooks/useTasks';
 
 interface OpdrachtDetailModalProps {
   opdrachtId: string | null;
@@ -101,6 +103,17 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
   const removeEenheidMutation = useRemoveOpdrachtEenheid();
   const updateEenheidRolMutation = useUpdateOpdrachtEenheidRol();
   const matchContactsMutation = useMatchOpdrachtContacts();
+
+  const opdrachtResource = opdrachtId ? ({ type: 'opdracht', id: opdrachtId } as const) : null;
+  const { allowed: canUpdate } = useCan('opdracht:update', opdrachtResource);
+  const { allowed: canDelete } = useCan('opdracht:delete', opdrachtResource);
+  // Contacts and eenheden are resource roles: a grant, decided by
+  // core.authority (the default rol of the add form stands for the section).
+  const { allowed: canManageContacts } = useCan(
+    'resource_role:grant',
+    opdrachtResource && { ...opdrachtResource, rol: 'betrokken' },
+  );
+  const canCreateTask = useCanCreateTask();
 
   const members = opdracht?.members ?? [];
   const eenheden = opdracht?.eenheden ?? [];
@@ -233,22 +246,26 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
             onClose={onClose}
             actions={
               <>
-                <NlddButton
-                  variant="secondary"
-                  size="sm"
-                  startIcon="pencil"
-                  onClick={() => setShowEdit(true)}
-                  disabled={!opdracht}
-                  text="Bewerken"
-                />
-                <NlddButton
-                  variant="destructive"
-                  size="sm"
-                  startIcon="trash"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={!opdracht}
-                  text="Verwijderen"
-                />
+                {canUpdate && (
+                  <NlddButton
+                    variant="secondary"
+                    size="sm"
+                    startIcon="pencil"
+                    onClick={() => setShowEdit(true)}
+                    disabled={!opdracht}
+                    text="Bewerken"
+                  />
+                )}
+                {canDelete && (
+                  <NlddButton
+                    variant="destructive"
+                    size="sm"
+                    startIcon="trash"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={!opdracht}
+                    text="Verwijderen"
+                  />
+                )}
               </>
             }
           />
@@ -445,14 +462,16 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
               count={members.length}
               separated
               action={
-                <NlddButton
-                  variant="neutral-transparent"
-                  size="sm"
-                  startIcon="sparkles"
-                  onClick={handleMatchContacts}
-                  disabled={matchContactsMutation.isPending}
-                  text={matchContactsMutation.isPending ? 'Matchen...' : 'Matchen'}
-                />
+                canUpdate && (
+                  <NlddButton
+                    variant="neutral-transparent"
+                    size="sm"
+                    startIcon="sparkles"
+                    onClick={handleMatchContacts}
+                    disabled={matchContactsMutation.isPending}
+                    text={matchContactsMutation.isPending ? 'Matchen...' : 'Matchen'}
+                  />
+                )
               }
             >
               <nldd-container gap="12">
@@ -478,24 +497,28 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                         <nldd-cell width="144px">
                           <Select
                             value={member.rol}
+                            disabled={!canManageContacts}
                             aria-label="Rol van dit contact"
                             onChange={(e) => handleUpdateMemberRole(member.person_id, e.target.value)}
                             options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                           />
                         </nldd-cell>
                         <nldd-spacer-cell size="12" />
-                        <NlddIconButton
-                          icon="trash"
-                          variant="neutral-transparent"
-                          size="sm"
-                          accessibleLabel="Verwijderen"
-                          onClick={() => handleRemoveMember(member.person_id)}
-                        />
+                        {canManageContacts && (
+                          <NlddIconButton
+                            icon="trash"
+                            variant="neutral-transparent"
+                            size="sm"
+                            accessibleLabel="Verwijderen"
+                            onClick={() => handleRemoveMember(member.person_id)}
+                          />
+                        )}
                       </nldd-list-item>
                     ))}
                   </nldd-list>
                 )}
 
+                {canManageContacts && (
                 <nldd-container width="full">
                   <CreatableSelect
                     value={addMemberValue}
@@ -508,6 +531,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     emptyMessage="Geen personen gevonden"
                   />
                 </nldd-container>
+                )}
               </nldd-container>
             </DetailSection>
 
@@ -541,24 +565,28 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                         <nldd-cell width="144px">
                           <Select
                             value={eenheid.rol}
+                            disabled={!canManageContacts}
                             aria-label="Rol van deze eenheid"
                             onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
                             options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                           />
                         </nldd-cell>
                         <nldd-spacer-cell size="12" />
-                        <NlddIconButton
-                          icon="trash"
-                          variant="neutral-transparent"
-                          size="sm"
-                          accessibleLabel="Verwijderen"
-                          onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
-                        />
+                        {canManageContacts && (
+                          <NlddIconButton
+                            icon="trash"
+                            variant="neutral-transparent"
+                            size="sm"
+                            accessibleLabel="Verwijderen"
+                            onClick={() => handleRemoveEenheid(eenheid.eenheid_id)}
+                          />
+                        )}
                       </nldd-list-item>
                     ))}
                   </nldd-list>
                 )}
 
+                {canManageContacts && (
                 <nldd-container width="full">
                   <CreatableSelect
                     value={addEenheidValue}
@@ -571,6 +599,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     emptyMessage="Geen eenheden gevonden"
                   />
                 </nldd-container>
+                )}
               </nldd-container>
             </DetailSection>
 
@@ -581,13 +610,15 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
               count={tasks.length}
               separated
               action={
-                <NlddButton
-                  variant="neutral-transparent"
-                  size="sm"
-                  startIcon="plus"
-                  onClick={() => setShowTaskCreate(true)}
-                  text="Taak"
-                />
+                canCreateTask && (
+                  <NlddButton
+                    variant="neutral-transparent"
+                    size="sm"
+                    startIcon="plus"
+                    onClick={() => setShowTaskCreate(true)}
+                    text="Taak"
+                  />
+                )
               }
             >
               <RelatedItemsList

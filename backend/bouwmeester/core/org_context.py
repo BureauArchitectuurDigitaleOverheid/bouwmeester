@@ -16,10 +16,15 @@ from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.authz import write_eenheid_ids
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
-from bouwmeester.repositories.org_tree import get_ancestor_ids, get_membership_ids
+from bouwmeester.repositories.org_tree import (
+    get_ancestor_ids,
+    get_membership_ids,
+    get_subtree_ids,
+)
 from bouwmeester.repositories.resource_scope import resolve_resource_eenheid_id
 
 logger = logging.getLogger(__name__)
@@ -53,6 +58,8 @@ async def build_org_context(
     - Own memberships (active plaatsingen)
     - Parent chain (walking up from each own eenheid)
     - Managed sub-trees (walking down from eenheden where person is manager)
+    - Writable sub-trees (walking down from eenheden where a scoped role
+      grants a write permission, see ``core.authz.write_eenheid_ids``)
 
     Pass an existing *perm_ctx* (a ``PermissionContext``) to avoid a
     redundant ``build_permission_context`` call when the caller already
@@ -83,8 +90,10 @@ async def build_org_context(
     parent_ids = await get_ancestor_ids(db, own_ids)
     managed_ids = managed_eenheid_ids(perm_ctx)
     managed_subtree = await managed_subtree_ids(db, perm_ctx) or set()
+    # Rights inherit downward (core.authz), so what you can write you see.
+    writable_subtree = await get_subtree_ids(db, write_eenheid_ids(perm_ctx))
 
-    all_visible = set(own_ids) | parent_ids | managed_subtree
+    all_visible = set(own_ids) | parent_ids | managed_subtree | writable_subtree
 
     # Query shared access grants targeting the user's eenheden
     from bouwmeester.repositories.shared_access import SharedAccessRepository
@@ -181,6 +190,22 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
+    """Whether something in *eenheid_id* is visible: ``apply_org_filter`` for one row.
+
+    Something without an eenheid is visible to every authenticated user.
+    """
+    if org_ctx.is_admin:
+        return True
+    if not org_ctx.is_authenticated:
+        return eenheid_id is None
+    return (
+        eenheid_id is None
+        or eenheid_id in org_ctx.visible_eenheid_ids
+        or eenheid_id in org_ctx.shared_eenheid_ids
+    )
+
+
 def check_org_scope(
     eenheid_id: UUID | None,
     org_ctx: OrgContext,
@@ -198,14 +223,9 @@ def check_org_scope(
         allow_none: If ``True`` (default), ``None`` eenheid_id is always
             allowed.  Set to ``False`` to require an eenheid.
     """
-    if eenheid_id is None:
-        if allow_none:
-            return
+    if eenheid_id is None and not allow_none:
         raise HTTPException(status_code=403, detail="Organisatie-eenheid is verplicht")
-    if org_ctx.is_admin:
-        return
-    all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-    if eenheid_id not in all_visible:
+    if not sees_eenheid(org_ctx, eenheid_id):
         raise HTTPException(
             status_code=403,
             detail="Geen toegang tot deze organisatie-eenheid",

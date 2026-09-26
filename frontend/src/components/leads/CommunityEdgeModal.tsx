@@ -13,6 +13,8 @@ import { STAKEHOLDER_ROL_LABELS, LEAD_CONTACT_ROL_LABELS } from '@/types';
 import { queryKeys } from '@/hooks/queryKeys';
 import { routeConnection, type ConnectionRoute } from '@/utils/communityEdgeRouting';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCanEach } from '@/hooks/useCan';
+import type { AuthzResource } from '@/api/authz';
 
 const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
   ([value, label]) => ({ value, label }),
@@ -21,6 +23,43 @@ const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).m
 const STAKEHOLDER_ROLLEN: SelectOption[] = Object.entries(STAKEHOLDER_ROL_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
+
+/**
+ * What the backend is asked before a connection is offered: one action on
+ * one or more resources, allowed when any of them allows it (an edge needs
+ * write access on either end).
+ */
+function routeQuestion(
+  route: ConnectionRoute | null,
+  contactRol: string,
+  stakeholderRol: string,
+): { action: string; resources: AuthzResource[] } {
+  switch (route?.kind) {
+    case 'lead_contact':
+      return {
+        action: 'resource_role:grant',
+        resources: [{ type: 'lead', id: route.leadId, rol: contactRol, targetPersonId: route.personId }],
+      };
+    case 'lead_node':
+    case 'lead_org':
+      return { action: 'lead:update', resources: [{ type: 'lead', id: route.leadId }] };
+    case 'corpus_edge':
+      return {
+        action: 'edge:create',
+        resources: [
+          { type: 'corpus_node', id: route.fromNodeId },
+          { type: 'corpus_node', id: route.toNodeId },
+        ],
+      };
+    case 'node_stakeholder':
+      return {
+        action: 'resource_role:grant',
+        resources: [{ type: 'corpus_node', id: route.nodeId, rol: stakeholderRol, targetPersonId: route.personId }],
+      };
+    default:
+      return { action: '', resources: [] };
+  }
+}
 
 interface Props {
   pendingConnection: Connection | null;
@@ -47,6 +86,14 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
     if (!pendingConnection?.source || !pendingConnection?.target) return null;
     return routeConnection(pendingConnection.source, pendingConnection.target);
   }, [pendingConnection]);
+
+  const question = useMemo(
+    () => routeQuestion(route, selectedRole, selectedStakeholderRole),
+    [route, selectedRole, selectedStakeholderRole],
+  );
+  const decisions = useCanEach(question.action, question.resources);
+  const allowed = decisions.allowed.some(Boolean);
+  const refused = !decisions.isLoading && !allowed;
 
   const edgeTypeOptions: SelectOption[] = useMemo(
     () =>
@@ -146,7 +193,7 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
   }[route.kind];
 
   const canSubmit = (() => {
-    if (route.kind === 'invalid') return false;
+    if (route.kind === 'invalid' || !allowed) return false;
     if (route.kind === 'corpus_edge') return !!selectedEdgeType;
     return true;
   })();
@@ -170,6 +217,12 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
     >
       {route.kind === 'invalid' && (
         <nldd-text size="sm" color="secondary">{route.reason}</nldd-text>
+      )}
+
+      {route.kind !== 'invalid' && refused && (
+        <nldd-text size="sm" color="secondary">
+          Je hebt geen rechten om deze koppeling te maken.
+        </nldd-text>
       )}
 
       {route.kind === 'lead_contact' && (

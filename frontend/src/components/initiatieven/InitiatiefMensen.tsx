@@ -18,30 +18,42 @@ import type { InitiatiefDetail } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * The "Mensen" tab: who works on the initiatief (members and eenheden, which
  * both grant access) and who has a stake in it (stakeholders, which grant
- * nothing). Only an eigenaar changes membership; contributors can assess
- * stakeholders.
+ * nothing). Membership is a grant, decided by the backend's grant authority;
+ * stakeholders follow the right to update the initiatief.
  */
 export function InitiatiefMensen({ initiatief }: { initiatief: InitiatiefDetail }) {
-  const isEigenaar = initiatief.access_level === 'eigenaar';
-  const canEdit = isEigenaar || initiatief.access_level === 'contributor';
+  const resource = { type: 'initiatief', id: initiatief.id } as const;
+  // Adding a member hands out the default rol; making someone eigenaar is
+  // a stronger grant, asked separately.
+  const { allowed: canManage } = useCan('resource_role:grant', { ...resource, rol: 'contributor' });
+  const { allowed: canGrantOwner } = useCan('resource_role:grant', { ...resource, rol: 'eigenaar' });
 
   return (
     <nldd-container gap="32">
-      <Members initiatief={initiatief} isEigenaar={isEigenaar} />
-      <Eenheden initiatief={initiatief} isEigenaar={isEigenaar} />
+      <Members initiatief={initiatief} canManage={canManage} canGrantOwner={canGrantOwner} />
+      <Eenheden initiatief={initiatief} canManage={canManage} />
       <nldd-container gap="8">
         <SectionHeading icon="person" text="Stakeholders" />
-        <StakeholderTab scopeType="initiatief" scopeId={initiatief.id} readOnly={!canEdit} />
+        <StakeholderTab scopeType="initiatief" scopeId={initiatief.id} />
       </nldd-container>
     </nldd-container>
   );
 }
 
-function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isEigenaar: boolean }) {
+function Members({
+  initiatief,
+  canManage,
+  canGrantOwner,
+}: {
+  initiatief: InitiatiefDetail;
+  canManage: boolean;
+  canGrantOwner: boolean;
+}) {
   const addMemberMutation = useAddInitiatiefMember();
   const removeMemberMutation = useRemoveInitiatiefMember();
   const updateRoleMutation = useUpdateInitiatiefMemberRole();
@@ -81,15 +93,17 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
                     {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
                   </Badge>
                 </nldd-container>
-                {isEigenaar && (
+                {canManage && (
                   <div className="hug">
                     {member.rol === 'eigenaar' ? (
-                      eigenaarCount > 1 && (
+                      eigenaarCount > 1 && canGrantOwner && (
                         <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'contributor')} text="Maak bijdrager" />
                       )
                     ) : (
                       <>
-                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
+                        {canGrantOwner && (
+                          <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
+                        )}
                         <NlddIconButton
                           icon="close"
                           accessibleLabel={`${member.person_naam} verwijderen`}
@@ -112,7 +126,7 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
         </nldd-list>
       )}
 
-      {isEigenaar && (
+      {canManage && (
         <nldd-container layout="row" gap="8" vertical-alignment="top">
           <nldd-container width="fit-content" className="row-fill">
             <CreatableSelect
@@ -142,7 +156,7 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
   );
 }
 
-function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isEigenaar: boolean }) {
+function Eenheden({ initiatief, canManage }: { initiatief: InitiatiefDetail; canManage: boolean }) {
   const addEenheidMutation = useAddInitiatiefEenheid();
   const removeEenheidMutation = useRemoveInitiatiefEenheid();
   const updateEenheidRolMutation = useUpdateInitiatiefEenheidRol();
@@ -163,7 +177,7 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
   };
 
   // Without an eigenaar to add one, an empty list is only noise.
-  if (!isEigenaar && initiatief.eenheden.length === 0) return null;
+  if (!canManage && initiatief.eenheden.length === 0) return null;
 
   return (
     <nldd-container gap="8">
@@ -187,13 +201,13 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
                     each other at the row's edge. */}
                 <nldd-container
                   layout="row"
-                  width={isEigenaar ? '200px' : '120px'}
+                  width={canManage ? '200px' : '120px'}
                   className="shrink-0"
                   gap="6"
                   vertical-alignment="center"
                   horizontal-alignment="right"
                 >
-                  {isEigenaar ? (
+                  {canManage ? (
                     <nldd-container width="160px">
                       <Select
                         value={eenheid.rol}
@@ -214,7 +228,7 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
                   ) : (
                     <nldd-tag color="neutral" size="sm" text={INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol} />
                   )}
-                  {isEigenaar && (
+                  {canManage && (
                     <NlddIconButton
                       icon="close"
                       accessibleLabel={`${eenheid.eenheid_naam} verwijderen`}
@@ -235,7 +249,7 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
         </nldd-list>
       )}
 
-      {isEigenaar && (
+      {canManage && (
         <nldd-container layout="row" gap="8" vertical-alignment="top">
           <nldd-container width="fit-content" className="row-fill">
             <CreatableSelect

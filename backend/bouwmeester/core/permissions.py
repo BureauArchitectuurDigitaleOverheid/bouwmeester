@@ -67,7 +67,7 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "contactpersoon": set(),
     },
     "organisatie_eenheid": {
-        "eigenaar": {"org:manage", "resource_permission:manage"},
+        "eigenaar": {"org:manage", "org:update", "resource_permission:manage"},
     },
 }
 
@@ -86,6 +86,8 @@ class PermissionContext:
     # Per-eenheid resolved permissions for scoped checks
     scoped_permissions: dict[UUID, set[str]] = field(default_factory=dict)
     is_super_admin: bool = False
+    # Per-request memo for ``core.authz`` (decisions, ancestor chains).
+    authz_cache: dict = field(default_factory=dict, repr=False, compare=False)
 
     def has_permission(self, perm: str) -> bool:
         """Check if the user has a permission (any scope)."""
@@ -97,7 +99,7 @@ class PermissionContext:
         """Check if a system-level role grants the permission.
 
         For tenant-wide actions; rights on one eenheid are resolved in
-        ``core.authority.rights_on_eenheid`` (with inheritance).
+        ``core.authz.rights_on_eenheid`` (with inheritance).
         """
         return self.is_super_admin or perm in self.system_permissions
 

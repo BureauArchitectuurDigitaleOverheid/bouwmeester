@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useInitiatief } from '@/hooks/useInitiatieven';
+import { useCan } from '@/hooks/useCan';
 import { initiatiefIconColor } from '@/components/initiatieven/initiatiefColors';
 import { InitiatiefLeads } from '@/components/initiatieven/InitiatiefLeads';
 import { InitiatiefUpdates } from '@/components/initiatieven/InitiatiefUpdates';
@@ -15,7 +16,6 @@ import {
   isInitiatiefTab,
   type InitiatiefTab,
 } from '@/utils/initiatiefRoutes';
-import type { InitiatiefDetail } from '@/types';
 import { richTextToPlain } from '@/utils/richtext';
 
 const TAB_LABELS: Record<InitiatiefTab, string> = {
@@ -31,9 +31,7 @@ const TAB_LABELS: Record<InitiatiefTab, string> = {
  * daily, updates weekly, people and signals now and then, settings once.
  * A viewer changes nothing, so has no settings tab.
  */
-function visibleTabs(initiatief: InitiatiefDetail): InitiatiefTab[] {
-  const canEdit =
-    initiatief.access_level === 'eigenaar' || initiatief.access_level === 'contributor';
+function visibleTabs(canEdit: boolean): InitiatiefTab[] {
   const tabs: InitiatiefTab[] = ['leads', 'updates', 'mensen', 'signalen'];
   if (canEdit) tabs.push('instellingen');
   return tabs;
@@ -47,8 +45,10 @@ function visibleTabs(initiatief: InitiatiefDetail): InitiatiefTab[] {
 export function InitiatiefPage() {
   const { id, tab } = useParams<{ id: string; tab?: string }>();
   const { data: initiatief, isLoading, isError } = useInitiatief(id);
+  const canEdit = useCan('initiatief:update', id ? { type: 'initiatief', id } : null);
 
-  if (isLoading) {
+  // Wait for the decision before redirecting away from a tab it may allow.
+  if (isLoading || (tab === 'instellingen' && canEdit.isLoading)) {
     return (
       <nldd-container layout="row" horizontal-alignment="center" padding="48">
         <LoadingSpinner />
@@ -65,7 +65,7 @@ export function InitiatiefPage() {
     );
   }
 
-  const tabs = visibleTabs(initiatief);
+  const tabs = visibleTabs(canEdit.allowed);
   const activeTab: InitiatiefTab | null = tab === undefined ? 'leads' : isInitiatiefTab(tab) ? tab : null;
   if (!activeTab || !tabs.includes(activeTab)) {
     return <Navigate to={initiatiefPath(id)} replace />;

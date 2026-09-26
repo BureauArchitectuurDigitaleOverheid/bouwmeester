@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
-    apply_initiatief_filter,
+    apply_lead_filter,
 )
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
@@ -77,7 +77,7 @@ class LeadRepository(BaseRepository[Lead]):
         self, id: UUID, init_ctx: InitiatiefContext | None = None
     ) -> Lead | None:
         stmt = select(Lead).where(Lead.id == id).options(*_lead_options())
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -100,7 +100,7 @@ class LeadRepository(BaseRepository[Lead]):
                 selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
             )
         )
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -165,7 +165,7 @@ class LeadRepository(BaseRepository[Lead]):
                     Lead.next_action_date <= today + timedelta(days=7),
                 )
 
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
 
         # Sorting
         sort_columns = {
@@ -326,7 +326,7 @@ class LeadRepository(BaseRepository[Lead]):
         stmt = select(Lead).where(or_(*conditions)).options(*_lead_options())
         if exclude_id:
             stmt = stmt.where(Lead.id != exclude_id)
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
         stmt = stmt.order_by(func.similarity(Lead.title, title).desc()).limit(5)
 
         result = await self.session.execute(stmt)
@@ -461,7 +461,7 @@ class LeadRepository(BaseRepository[Lead]):
             lead_stmt = lead_stmt.where(Lead.created_at >= dt_from)
         if dt_to is not None:
             lead_stmt = lead_stmt.where(Lead.created_at <= dt_to)
-        lead_stmt = apply_initiatief_filter(lead_stmt, Lead.initiatief_id, init_ctx)
+        lead_stmt = apply_lead_filter(lead_stmt, init_ctx)
         result = await self.session.execute(lead_stmt)
         leads = list(result.scalars().all())
 
@@ -536,7 +536,7 @@ class LeadRepository(BaseRepository[Lead]):
         initiatief_id: UUID | None = None,
     ) -> dict:
         def scoped(stmt):
-            stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+            stmt = apply_lead_filter(stmt, init_ctx)
             if initiatief_id is not None:
                 stmt = stmt.where(Lead.initiatief_id == initiatief_id)
             return stmt

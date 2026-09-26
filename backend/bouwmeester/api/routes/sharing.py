@@ -6,10 +6,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authority import require_permission_on_eenheid
+from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
-from bouwmeester.core.permissions import PermissionContext, require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+)
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.shared_access import SharedAccessRepository
 from bouwmeester.schema.shared_access import (
@@ -64,41 +68,37 @@ async def list_shares(
     return [_to_response(s) for s in shares]
 
 
-async def _require_share_authority(
-    db: AsyncSession,
-    perm: PermissionContext,
-    source_eenheid_id: UUID | None,
-    source_node_id: UUID | None,
-) -> None:
-    """Sharing (or unsharing) needs org:manage on every source eenheid.
+async def _share_source_eenheden(
+    db: AsyncSession, source_eenheid_id: UUID | None, source_node_id: UUID | None
+) -> list[UUID | None]:
+    """The eenheden a share gives away; ``[None]`` for a tenant-wide source.
 
-    Being able to see an eenheid is not enough: that would let a member of
-    a team share its whole directorate onward.  A source without any eenheid
-    is tenant-wide, so only a system role may share it.
+    Sharing (or unsharing) needs org:manage on every one of them: seeing an
+    eenheid is not enough, or a team member could share its whole
+    directorate onward.  ``authz`` decides org:manage without an eenheid by
+    system roles only.
     """
-    eenheid_ids = [source_eenheid_id] if source_eenheid_id else []
+    eenheid_ids: list[UUID | None] = [source_eenheid_id] if source_eenheid_id else []
     if source_node_id is not None:
         node = await db.get(CorpusNode, source_node_id)
         if node is None:
             raise HTTPException(404, "Item niet gevonden")
         if node.organisatie_eenheid_id:
             eenheid_ids.append(node.organisatie_eenheid_id)
-    if not eenheid_ids and not perm.has_system_permission("org:manage"):
-        raise HTTPException(403, "Alleen systeembeheerders delen dit")
-    for eenheid_id in eenheid_ids:
-        await require_permission_on_eenheid(db, perm, "org:manage", eenheid_id)
+    return eenheid_ids or [None]
 
 
 @router.post("", response_model=SharedAccessResponse)
 async def create_share(
     data: SharedAccessCreate,
-    perm: PermissionContext = Depends(require_permission("org:manage")),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a shared access grant."""
-    await _require_share_authority(
-        db, perm, data.source_eenheid_id, data.source_node_id
-    )
+    for eenheid_id in await _share_source_eenheden(
+        db, data.source_eenheid_id, data.source_node_id
+    ):
+        await require(db, perm, "org:manage", "organisatie_eenheid", eenheid_id)
 
     from bouwmeester.models.shared_access import SharedAccess
 
@@ -151,7 +151,7 @@ async def create_share(
 @router.delete("/{share_id}")
 async def revoke_share(
     share_id: UUID,
-    _perm: PermissionContext = Depends(require_permission("org:manage")),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke a shared access grant."""
@@ -161,9 +161,10 @@ async def revoke_share(
     if share is None:
         raise HTTPException(404, "Share not found")
 
-    await _require_share_authority(
-        db, _perm, share.source_eenheid_id, share.source_node_id
-    )
+    for eenheid_id in await _share_source_eenheden(
+        db, share.source_eenheid_id, share.source_node_id
+    ):
+        await require(db, perm, "org:manage", "organisatie_eenheid", eenheid_id)
 
     repo = SharedAccessRepository(db)
     await repo.delete(share_id)
@@ -171,7 +172,7 @@ async def revoke_share(
     await log_activity(
         db,
         None,
-        _perm.person_id,
+        perm.person_id,
         "sharing.revoked",
         details={"share_id": str(share_id)},
     )

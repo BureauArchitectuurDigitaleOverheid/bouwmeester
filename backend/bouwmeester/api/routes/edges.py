@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import can, require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, check_org_scope, get_org_context
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.schema.edge import EdgeCreate, EdgeResponse, EdgeUpdate, EdgeWithNodes
@@ -60,7 +61,7 @@ async def create_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("edge:create")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> EdgeResponse:
     """Create a directed edge between two nodes. Returns 409 if duplicate."""
@@ -70,18 +71,17 @@ async def create_edge(
     if not from_node or not to_node:
         raise HTTPException(status_code=422, detail="from_node or to_node not found")
 
-    # Org scope: ensure user can access both nodes
+    # An edge belongs to both nodes: write access on either end suffices,
+    # and you must be able to see what you link to (visibility, not rights).
+    if not await can(db, perm_ctx, "edge:create", "corpus_node", from_node.id):
+        await require(db, perm_ctx, "edge:create", "corpus_node", to_node.id)
     check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
     check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
-    if from_node and to_node:
-        error = await EdgeSchemaService(db).validate_edge(
-            from_node.node_type, to_node.node_type, data.edge_type_id
-        )
-        if error:
-            raise HTTPException(
-                status_code=422,
-                detail=error,
-            )
+    error = await EdgeSchemaService(db).validate_edge(
+        from_node.node_type, to_node.node_type, data.edge_type_id
+    )
+    if error:
+        raise HTTPException(status_code=422, detail=error)
 
     repo = EdgeRepository(db)
     try:
@@ -94,14 +94,8 @@ async def create_edge(
 
     resolved_id, resolved_naam = await resolve_actor(current_user, actor_id, db)
 
-    # Notify stakeholders of both nodes (from_node/to_node already fetched above)
-    if not from_node:
-        from_node = await db.get(CorpusNode, data.from_node_id)
-    if not to_node:
-        to_node = await db.get(CorpusNode, data.to_node_id)
-    if from_node and to_node:
-        notif_svc = NotificationService(db)
-        await notif_svc.notify_edge_created(from_node, to_node, actor_id=resolved_id)
+    notif_svc = NotificationService(db)
+    await notif_svc.notify_edge_created(from_node, to_node, actor_id=resolved_id)
 
     await ActivityService(db).log_event(
         "edge.created",
@@ -110,9 +104,9 @@ async def create_edge(
         edge_id=edge.id,
         details={
             "from_node_id": str(data.from_node_id),
-            "from_node_title": from_node.title if from_node else None,
+            "from_node_title": from_node.title,
             "to_node_id": str(data.to_node_id),
-            "to_node_title": to_node.title if to_node else None,
+            "to_node_title": to_node.title,
             "edge_type": data.edge_type_id,
         },
     )
@@ -140,21 +134,13 @@ async def update_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("edge:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(requires("edge:update", "edge")),
 ) -> EdgeResponse:
     """Update edge weight, description, or type."""
     repo = EdgeRepository(db)
-
-    # Fetch edge and enforce org scope on its connected nodes
-    existing = await repo.get(id)
-    require_found(existing, "Edge")
+    existing = require_found(await repo.get(id), "Edge")
     from_node = await db.get(CorpusNode, existing.from_node_id)
     to_node = await db.get(CorpusNode, existing.to_node_id)
-    if from_node:
-        check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
-    if to_node:
-        check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
 
     # If edge_type_id is changing, validate against schema rules
     if data.edge_type_id is not None:
@@ -188,18 +174,13 @@ async def delete_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("edge:delete")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(requires("edge:delete", "edge")),
 ) -> None:
     """Delete an edge permanently."""
     repo = EdgeRepository(db)
     edge = require_found(await repo.get(id), "Edge")
     from_node = await db.get(CorpusNode, edge.from_node_id)
     to_node = await db.get(CorpusNode, edge.to_node_id)
-    if from_node:
-        check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
-    if to_node:
-        check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
     edge_details = {
         "from_node_id": str(edge.from_node_id),
         "from_node_title": from_node.title if from_node else None,

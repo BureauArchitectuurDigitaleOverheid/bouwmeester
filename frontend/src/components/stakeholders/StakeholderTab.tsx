@@ -5,6 +5,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Select } from '@/components/common/Select';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { useCan } from '@/hooks/useCan';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   useStakeholderAssessments,
@@ -24,7 +25,6 @@ import type {
 interface StakeholderTabProps {
   scopeType: StakeholderScopeType;
   scopeId: string;
-  readOnly?: boolean;
 }
 
 const HOUDING_OPTIONS: StakeholderHouding[] = [
@@ -58,11 +58,11 @@ const HOUDING_BADGE_COLOR: Record<StakeholderHouding, EntityColor> = {
   voorstander: 'groen',
 };
 
-export function StakeholderTab({
-  scopeType,
-  scopeId,
-  readOnly = false,
-}: StakeholderTabProps) {
+export function StakeholderTab({ scopeType, scopeId }: StakeholderTabProps) {
+  // Assessments are written with the rights on their scope, so one decision
+  // on the scope covers adding, editing and removing them.
+  const { allowed: canWrite } = useCan('stakeholder_assessment:create', { type: scopeType, id: scopeId });
+  const readOnly = !canWrite;
   const { data: assessments = [], isLoading } = useStakeholderAssessments(
     scopeType,
     scopeId,

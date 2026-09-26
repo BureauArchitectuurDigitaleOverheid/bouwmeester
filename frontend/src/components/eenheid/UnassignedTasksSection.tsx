@@ -4,6 +4,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { Icon } from '@/components/nldd/Icon';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useUpdateTask } from '@/hooks/useTasks';
+import { useCan } from '@/hooks/useCan';
 import { useOrganisatieFlat, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { buildPersonOptions } from '@/utils/personOptions';
@@ -91,6 +92,7 @@ function DisclosureHeader({ icon, label, count, open, onToggle }: DisclosureHead
 function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: { task: Task; showPersonAssign: boolean; selectedEenheidId: string; personOptions: SelectOption[] }) {
   const { openTaskDetail } = useTaskDetail();
   const updateTask = useUpdateTask();
+  const { allowed: canUpdate } = useCan('task:update', { type: 'task', id: task.id });
   const { data: eenheden } = useOrganisatieFlat();
 
   const isOverdue = task.due_date && checkOverdue(task.due_date);
@@ -173,6 +175,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           own width="full" above (nldd-container has no flex-shrink
           attribute). The two selects below keep their md-breakpoint caveat
           from the outer row: nldd-container's width is not responsive. */}
+      {canUpdate && (
       <nldd-container layout="row" gap="8" vertical-alignment="center" className="shrink-0">
         <div className="unassigned-task-field">
           <CreatableSelect
@@ -193,6 +196,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           </div>
         )}
       </nldd-container>
+      )}
     </div>
   );
 }

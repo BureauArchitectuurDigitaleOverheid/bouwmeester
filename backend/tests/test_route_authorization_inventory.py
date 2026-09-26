@@ -1,4 +1,8 @@
-"""Regression guard: every API GET route must declare an authz dependency.
+"""Regression guard: every API route must declare its authorization.
+
+GET routes need an authz dependency (visibility or permission).  Write
+routes (POST/PUT/PATCH/DELETE) need the decision point in ``core/authz.py``
+or a guard built on it; see the second half of this module.
 
 Walks the FastAPI app's route table and fails the build if a GET route
 under ``/api/`` lacks one of the recognised authz dependencies (or is
@@ -15,6 +19,10 @@ Endpoints that are *known* to lack authz but are not yet fixed live in
 fails if a known-debt entry is no longer present (so we can't silently
 re-introduce a regression on a fixed route either).
 """
+
+import ast
+import inspect
+import textwrap
 
 from fastapi.routing import APIRoute
 
@@ -57,7 +65,7 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/skill.md": "skill markdown bundle, no PII",
     "/api/roles": "globale rol-definitielijst, ministerie-breed referentiedata",
     # Org-chart is bewust ministerie-breed leesbaar binnen de tenant.
-    # Mutaties hebben wel require_permission("org:manage") + check_org_scope.
+    # Mutations go through core.authz (org:manage on the eenheid) and core.authority.
     "/api/organisatie": "org-chart is ministerie-breed by design",
     "/api/organisatie/search": "org-chart, ministerie-breed",
     "/api/organisatie/tree-children": "org-chart, ministerie-breed (lazy-load van children)",  # noqa: E501
@@ -74,9 +82,6 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     # gevoelige interne contactdata.
     "/api/externe-organisaties": "externe org-referentie, publieke NL-data",
     "/api/externe-organisaties/{id}": "externe org-referentie, publieke NL-data",
-    # LLM corpus-gaps geeft ministerie-brede dossier-overview voor
-    # planningsdoeleinden; geen gevoelige PII.
-    "/api/llm/corpus-gaps": "ministerie-brede planningsdata, geen PII",
     # Graph endpoints bouwen op CorpusNode dat al via apply_org_filter
     # gescopeerd is (zie nodes/list_nodes en repository).
     "/api/graph/search": "bouwt op CorpusNode (al gefilterd via PR #263)",
@@ -117,6 +122,7 @@ _AUTHZ_DEP_NAMES = {
     "get_initiatief_context",
     "get_admin_user",  # AdminUser annotation
     "effective_person_id",
+    "_authz_requires",  # core.authz.requires
 }
 
 
@@ -197,4 +203,159 @@ def test_known_debt_is_still_unauthorized(_test_app):
     assert not stale, (
         "These routes no longer exist — remove them from _KNOWN_DEBT:\n"
         + "\n".join(f"  - {p}" for p in stale)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Write routes: every POST/PUT/PATCH/DELETE asks core.authz (or a guard on it)
+# ---------------------------------------------------------------------------
+
+_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+# Dependencies that decide a write: the authz factory, system-only
+# permissions and the admin users.
+_WRITE_AUTHZ_DEPS = {
+    "requires.<locals>._authz_requires",
+    "require_system_permission.<locals>._check",
+    "get_admin_user",
+    "get_super_admin_user",
+}
+
+# Calls that decide a write when made in the route body or in one of its
+# dependencies (other helpers are not followed): ``authz.require`` and the
+# guards of ``core.authority`` (``require_can_*``).
+_WRITE_AUTHZ_CALLS = {"require"}
+_WRITE_AUTHZ_CALL_PREFIX = "require_can_"
+
+# Write routes that need no resource decision.  One line of reason each.
+_WRITE_ALLOWLIST: dict[str, str] = {
+    "POST /api/authz/evaluations": "read-only: the caller's own rights via can()",
+    "POST /api/auth/onboarding": "self-scoped: own onboarding state",
+    "POST /api/auth/onboarding/dismiss": "self-scoped: own onboarding state",
+    "POST /api/auth/onboarding/refresh": "self-scoped: own onboarding state",
+    "POST /api/auth/request-access": "access request by the caller themselves",
+    "POST /api/org-placements/request": "own placement request; a manager decides",
+    "POST /api/chat": "own conversation; write tools ask authz in chat_service",
+    "POST /api/chat/confirm": "own conversation; tools ask authz in chat_service",
+    "POST /api/chat/upload": "own chat attachment",
+    "POST /api/llm/gap-analysis": "no mutation: reads a dossier the caller can see",
+    "POST /api/llm/kompas-guidance": "no mutation: reads a dossier the caller can see",
+    "POST /api/llm/suggest-tags": "no mutation: advice on text in the request",
+    "POST /api/leads/parse-intake": (
+        "no mutation: LLM parse of text in the request; creating the lead is "
+        "decided on POST /api/leads"
+    ),
+    "POST /api/initiatieven": (
+        "personal initiatief: the creator becomes its eigenaar, the payload "
+        "grants nothing else (test_authz_initiatief pins that)"
+    ),
+    "POST /api/mattermost/link-code": "self-scoped: link own Mattermost account",
+    "DELETE /api/mattermost/link": "self-scoped: unlink own Mattermost account",
+    "POST /api/mattermost/slash": "authenticated via shared secret",
+    "POST /api/mattermost/verify-link": "public link verification, rate limited",
+    "POST /api/notifications/send": "direct message; sender must be the caller",
+    "POST /api/notifications/{id}/react": "self-scoped: thread participant",
+    "POST /api/notifications/{id}/reply": "self-scoped: own notification",
+    "PUT /api/notifications/{id}/read": "self-scoped: own notification",
+    "PUT /api/notifications/read-all": "self-scoped: own notifications",
+    "POST /api/webauthn/authenticate/options": "public authn ceremony",
+    "POST /api/webauthn/authenticate/verify": "public authn ceremony",
+    "POST /api/webauthn/register/options": "self-scoped: own credential",
+    "POST /api/webauthn/register/verify": "self-scoped: own credential",
+    "DELETE /api/webauthn/credentials/{credential_id}": "self-scoped: own credential",
+}
+
+# Write routes not yet on core.authz, grouped by file with the check they use
+# today.  Migrating a route means removing it here (the second test below
+# insists).  Never add to this list.
+_WRITE_KNOWN_DEBT: set[str] = set()
+
+
+def _called_names(fn) -> set[str]:
+    """Names of every function called in *fn*'s source (``f()`` and ``x.f()``)."""
+    try:
+        source = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError):
+        return set()
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                names.add(node.func.id)
+            elif isinstance(node.func, ast.Attribute):
+                names.add(node.func.attr)
+    return names
+
+
+def _decides(names: set[str]) -> bool:
+    # A local wrapper such as ``_require_can_place`` counts as its guard.
+    return bool(names & _WRITE_AUTHZ_CALLS) or any(
+        n.lstrip("_").startswith(_WRITE_AUTHZ_CALL_PREFIX) for n in names
+    )
+
+
+def _write_route_is_authorized(route: APIRoute) -> bool:
+    """True if the route depends on or calls a write decision."""
+    callables = [route.endpoint]
+
+    def _walk(deps) -> bool:
+        for dep in deps:
+            call = getattr(dep, "call", None)
+            if call is not None:
+                if getattr(call, "__qualname__", "") in _WRITE_AUTHZ_DEPS:
+                    return True
+                callables.append(call)
+            if _walk(getattr(dep, "dependencies", [])):
+                return True
+        return False
+
+    if _walk(route.dependant.dependencies):
+        return True
+    return any(_decides(_called_names(fn)) for fn in callables)
+
+
+def _write_routes(app) -> dict[str, APIRoute]:
+    return {
+        f"{method} {route.path}": route
+        for route in app.routes
+        if isinstance(route, APIRoute) and route.path.startswith("/api/")
+        for method in route.methods & _WRITE_METHODS
+    }
+
+
+def test_all_write_routes_ask_authz(_test_app):
+    """Fail if a write route decides nothing through core.authz.
+
+    Fix a failure with ``Depends(requires(...))`` or an ``authz.require(...)``
+    call, never by adding to ``_WRITE_KNOWN_DEBT``.  Truly self-scoped routes
+    go in ``_WRITE_ALLOWLIST`` with a reason.
+    """
+    offenders = sorted(
+        key
+        for key, route in _write_routes(_test_app).items()
+        if key not in _WRITE_ALLOWLIST
+        and key not in _WRITE_KNOWN_DEBT
+        and not _write_route_is_authorized(route)
+    )
+    assert not offenders, (
+        "Write routes without an authz decision; use core.authz "
+        "(requires/require) or a core.authority guard:\n"
+        + "\n".join(f"  - {k}" for k in offenders)
+    )
+
+
+def test_write_known_debt_is_still_debt(_test_app):
+    """Fail when a debt route has been migrated or no longer exists."""
+    routes = _write_routes(_test_app)
+    fixed = sorted(
+        key
+        for key in _WRITE_KNOWN_DEBT
+        if key in routes and _write_route_is_authorized(routes[key])
+    )
+    stale = sorted((_WRITE_KNOWN_DEBT | set(_WRITE_ALLOWLIST)) - set(routes))
+    assert not fixed, "Migrated; remove from _WRITE_KNOWN_DEBT:\n" + "\n".join(
+        f"  - {k}" for k in fixed
+    )
+    assert not stale, "No longer exist; remove from the lists:\n" + "\n".join(
+        f"  - {k}" for k in stale
     )

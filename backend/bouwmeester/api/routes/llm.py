@@ -6,12 +6,18 @@ supports that level (i.e. VLAM). Only parliamentary data is PUBLIC.
 """
 
 import logging
+from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import (
+    OrgContext,
+    check_resource_org_scope,
+    get_org_context,
+)
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.llm import (
     CorpusGapOverviewResponse,
@@ -28,6 +34,17 @@ from bouwmeester.services.llm.base import DataSensitivity
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/llm", tags=["llm"])
+
+
+async def _require_visible_dossier(
+    db: AsyncSession, dossier_id: str, org_ctx: OrgContext
+) -> None:
+    """The analysis reads the dossier: ask what ``GET /nodes/{id}`` asks."""
+    try:
+        node_id = UUID(dossier_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Ongeldige dossier_id")
+    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
 
 
 @router.post("/suggest-tags", response_model=TagSuggestionResponse)
@@ -64,8 +81,10 @@ async def gap_analysis(
     request: GapAnalysisRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> GapAnalysisResponse:
     """Analyze completeness of a dossier against the Beleidskompas model."""
+    await _require_visible_dossier(db, request.dossier_id, org_ctx)
     from bouwmeester.services.gap_detection_service import GapDetectionService
 
     llm_service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
@@ -88,12 +107,13 @@ async def gap_analysis(
 async def corpus_gap_overview(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> CorpusGapOverviewResponse:
-    """Overview of completeness for all dossier nodes."""
+    """Completeness of the dossiers the caller sees (as in ``GET /nodes``)."""
     from bouwmeester.services.gap_detection_service import GapDetectionService
 
     gap_service = GapDetectionService(db)
-    items = await gap_service.corpus_gap_overview()
+    items = await gap_service.corpus_gap_overview(org_ctx)
     return CorpusGapOverviewResponse(items=items, total=len(items))
 
 
@@ -102,8 +122,10 @@ async def kompas_guidance(
     request: KompasGuidanceRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> KompasGuidanceResponse:
     """Suggest existing nodes to link for incomplete Beleidskompas steps."""
+    await _require_visible_dossier(db, request.dossier_id, org_ctx)
     from bouwmeester.services.edge_suggestion_service import EdgeSuggestionService
 
     service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
@@ -116,5 +138,6 @@ async def kompas_guidance(
         step_node_types=request.step_node_types,
         step_description=request.step_description,
         max_candidates=request.max_candidates,
+        org_ctx=org_ctx,
     )
     return KompasGuidanceResponse(suggestions=suggestions)
