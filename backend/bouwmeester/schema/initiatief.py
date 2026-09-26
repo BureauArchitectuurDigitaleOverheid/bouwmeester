@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Canonical eenheid-rol type — used in schemas, routes, and repository
 InitiatiefEenheidRol = Literal["eigenaar", "contributor", "viewer"]
-EENHEID_ROL_RANK: dict[str, int] = {"eigenaar": 3, "contributor": 2, "viewer": 1}
 
 # The closed set of nldd-tag color names an Initiatief.kleur may hold, the same
 # set LeadColumn.color uses (schema.lead_column.LEAD_COLUMN_COLORS): five

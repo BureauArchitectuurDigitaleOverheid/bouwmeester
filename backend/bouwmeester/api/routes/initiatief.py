@@ -12,19 +12,20 @@ from bouwmeester.core.authority import (
     require_can_change_grants,
     require_can_grant_resource_role,
 )
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.initiatief_context import (
+    ACCESS_LEVEL_PERMISSIONS,
     InitiatiefContext,
     get_initiatief_context,
+    initiatief_access_level,
 )
 from bouwmeester.core.permissions import (
     PermissionContext,
-    build_permission_context,
     get_permission_context,
 )
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import (
-    EENHEID_ROL_RANK,
     InitiatiefCreate,
     InitiatiefDetailResponse,
     InitiatiefEenheidCreate,
@@ -43,68 +44,24 @@ from bouwmeester.services.activity_service import log_activity
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
 
 
-async def _resolve_access_level(
-    repo: InitiatiefRepository,
-    initiatief_id: UUID,
-    user: OptionalUser,
-    perm_ctx: PermissionContext | None = None,
-) -> str | None:
-    """Return the highest access level the user has on this initiatief.
-
-    Collects levels from all sources and returns the maximum:
-    - Super admin / system RBAC permissions
-    - Direct membership via ResourcePermission
-    - Eenheid membership via resource_permission (eenheid-scoped)
-    """
-    if not user:
-        return "eigenaar"  # dev mode, no OIDC
-    if perm_ctx is None:
-        perm_ctx = await build_permission_context(repo.session, user)
-    if perm_ctx.is_super_admin:
-        return "eigenaar"
-
-    levels: list[str] = []
-
-    # System RBAC permissions
-    if perm_ctx.has_permission("initiatief:delete"):
-        levels.append("eigenaar")
-    elif perm_ctx.has_permission("initiatief:update"):
-        levels.append("contributor")
-
-    # Direct membership
-    direct_role = await repo.get_member_role(initiatief_id, user.id)
-    if direct_role:
-        levels.append(direct_role)
-
-    # Eenheid membership
-    eenheid_role = await repo.get_eenheid_access_level(initiatief_id, user.id)
-    if eenheid_role:
-        levels.append(eenheid_role)
-
-    if not levels:
-        return None
-    return max(levels, key=lambda r: EENHEID_ROL_RANK.get(r, 0))
-
-
 async def _require_access(
     repo: InitiatiefRepository,
     initiatief_id: UUID,
     user: OptionalUser,
-    perm_ctx: PermissionContext | None,
+    perm_ctx: PermissionContext,
     required_level: str,
 ) -> None:
-    """Raise 403 unless user has at least the required access level."""
-    level = await _resolve_access_level(repo, initiatief_id, user, perm_ctx)
-    if level is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Geen toegang tot dit initiatief",
-        )
-    if EENHEID_ROL_RANK.get(level, 0) < EENHEID_ROL_RANK.get(required_level, 0):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Onvoldoende rechten voor deze actie",
-        )
+    """Deprecated: only stakeholder_assessments still calls this.
+
+    Delete once that route asks ``core.authz`` itself.
+    """
+    await require(
+        repo.session,
+        perm_ctx,
+        dict(ACCESS_LEVEL_PERMISSIONS)[required_level],
+        "initiatief",
+        initiatief_id,
+    )
 
 
 @router.get("", response_model=list[InitiatiefListItemResponse])
@@ -135,6 +92,12 @@ async def create_initiatief(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> InitiatiefResponse:
+    """Any logged-in user may start a personal initiatief.
+
+    The creator becomes its eigenaar through a person-level resource role;
+    the payload carries nothing else that grants access.  Linking an eenheid
+    afterwards goes through the grant routes (``core.authority``).
+    """
     repo = InitiatiefRepository(db)
     created_by_id = current_user.id if current_user else None
     initiatief = await repo.create(data, created_by_id=created_by_id)
@@ -153,15 +116,14 @@ async def create_initiatief(
 @router.get("/{id}", response_model=InitiatiefDetailResponse)
 async def get_initiatief(
     id: UUID,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefDetailResponse:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
-    # Resolve access level (also serves as the membership check)
-    access_level = await _resolve_access_level(repo, id, current_user, perm_ctx)
-    if access_level is None and current_user:
+    # The access level doubles as the read check; 404 hides existence.
+    access_level = await initiatief_access_level(db, perm_ctx, id)
+    if access_level is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Initiatief niet gevonden",
@@ -211,10 +173,9 @@ async def update_initiatief(
     data: InitiatiefUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(requires("initiatief:update", "initiatief")),
 ) -> InitiatiefResponse:
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "contributor")
     initiatief = require_found(await repo.update(id, data), "Initiatief")
 
     await log_activity(
@@ -234,11 +195,11 @@ async def update_initiatief_settings(
     data: InitiatiefSettingsUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    # Eigenaar only: initiatief:delete is what only an eigenaar-level role has.
+    _authz=Depends(requires("initiatief:delete", "initiatief")),
 ) -> InitiatiefResponse:
     """Update settings (slug, toggles, score-labels). Eigenaar only."""
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
     initiatief = require_found(await repo.update_settings(id, data), "Initiatief")
 
     await log_activity(
@@ -260,10 +221,9 @@ async def delete_initiatief(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(requires("initiatief:delete", "initiatief")),
 ) -> None:
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")
     initiatief_naam = initiatief.naam
 

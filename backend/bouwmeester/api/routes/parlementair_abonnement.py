@@ -1,10 +1,12 @@
 """API-routes voor parlementaire abonnementen op zoektermen.
 
-Autorisatie loopt via toegang tot het initiatief, niet via een apart
-beheerdersrecht. Wie een initiatief mag zien, mag bepalen wat het volgt:
+Autorisatie loopt via het initiatief, niet via een apart beheerdersrecht:
 een zoekterm toevoegen is geen systeembeheer maar onderdeel van het werk
 aan dat initiatief. Een beheerdersrecht zou betekenen dat elke nieuwe term
-langs een beheerder moet, en dan gebeurt het niet.
+langs een beheerder moet, en dan gebeurt het niet. Lezen mag wie het
+initiatief mag lezen; wijzigen wie het initiatief mag bijwerken
+(``core.authz`` delegeert ``parlementair_abonnement:*`` naar
+``initiatief:update``). Zien is geen schrijven.
 """
 
 import logging
@@ -15,11 +17,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import (
-    InitiatiefContext,
-    get_initiatief_context,
-)
+from bouwmeester.core.initiatief_context import require_initiatief_read
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.parlementair_abonnement import (
@@ -55,26 +56,6 @@ router = APIRouter(prefix="/initiatieven", tags=["parlementair-abonnement"])
 # vijf minuten haalt niemand bij de hand, en begrenst het ergste geval nog
 # steeds tot ~36 verzoeken per minuut.
 _suggestie_limiter = InMemoryRateLimiter(window=300, max_requests=20)
-
-
-async def _require_initiatief_toegang(
-    db: AsyncSession, ctx: InitiatiefContext, initiatief_id: UUID
-) -> Initiatief:
-    """Geef het initiatief terug, of 404 als de gebruiker het niet mag zien.
-
-    Bewust 404 en geen 403: het bestaan van een initiatief is zelf al
-    informatie.
-    """
-    if not ctx.is_authenticated:
-        raise HTTPException(status_code=401, detail="Niet ingelogd")
-
-    initiatief = await db.get(Initiatief, initiatief_id)
-    if initiatief is None:
-        raise HTTPException(status_code=404, detail="Initiatief niet gevonden")
-
-    if not ctx.is_admin and initiatief_id not in ctx.visible_initiatief_ids:
-        raise HTTPException(status_code=404, detail="Initiatief niet gevonden")
-    return initiatief
 
 
 def _client_sleutel(request: Request) -> str:
@@ -137,10 +118,10 @@ async def list_abonnementen(
     initiatief_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[AbonnementMetTellingResponse]:
     """Welke zoektermen dit initiatief volgt, met wat ze opleveren."""
-    await _require_initiatief_toegang(db, ctx, initiatief_id)
+    await require_initiatief_read(db, perm_ctx, initiatief_id)
 
     repo = ParlementairAbonnementRepository(db)
     abonnementen = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
@@ -158,11 +139,14 @@ async def create_abonnement(
     payload: AbonnementCreate,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(
+        requires(
+            "parlementair_abonnement:create", "initiatief", path_param="initiatief_id"
+        )
+    ),
     actor_id: UUID | None = None,
 ) -> AbonnementMetTellingResponse:
     """Volg een nieuwe zoekterm voor dit initiatief."""
-    await _require_initiatief_toegang(db, ctx, initiatief_id)
 
     repo = ParlementairAbonnementRepository(db)
     bestaand = await repo.get_by_term(SCOPE_INITIATIEF, initiatief_id, payload.term)
@@ -222,7 +206,11 @@ async def suggereer_zoektermen(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(
+        requires(
+            "parlementair_abonnement:create", "initiatief", path_param="initiatief_id"
+        )
+    ),
 ) -> list[SuggestieResponse]:
     """Stel extra zoektermen voor bij wat dit initiatief al volgt.
 
@@ -236,7 +224,7 @@ async def suggereer_zoektermen(
     een server van derden, dus het hoort een bewuste handeling te zijn en
     niet iets wat een pagina bij het laden doet.
     """
-    initiatief = await _require_initiatief_toegang(db, ctx, initiatief_id)
+    initiatief = await db.get(Initiatief, initiatief_id)
 
     # Eén aanroep kost een LLM-call plus negen verzoeken aan een server
     # van derden. Zonder limiet kan iedereen met toegang tot één
@@ -328,10 +316,15 @@ async def update_abonnement(
     payload: AbonnementUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(
+        requires(
+            "parlementair_abonnement:update",
+            "parlementair_abonnement",
+            path_param="abonnement_id",
+        )
+    ),
 ) -> AbonnementMetTellingResponse:
     """Zet een term aan of uit, of pas de notitie aan."""
-    await _require_initiatief_toegang(db, ctx, initiatief_id)
 
     repo = ParlementairAbonnementRepository(db)
     abonnement = await repo.get(abonnement_id)
@@ -362,11 +355,16 @@ async def delete_abonnement(
     abonnement_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(
+        requires(
+            "parlementair_abonnement:delete",
+            "parlementair_abonnement",
+            path_param="abonnement_id",
+        )
+    ),
     actor_id: UUID | None = None,
 ) -> None:
     """Stop met volgen. De treffers verdwijnen mee (cascade)."""
-    await _require_initiatief_toegang(db, ctx, initiatief_id)
 
     repo = ParlementairAbonnementRepository(db)
     abonnement = await repo.get(abonnement_id)
@@ -393,10 +391,10 @@ async def get_signaalcontext(
     initiatief_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> SignaalcontextResponse:
     """De interne context die de prompts gebruiken."""
-    await _require_initiatief_toegang(db, ctx, initiatief_id)
+    await require_initiatief_read(db, perm_ctx, initiatief_id)
 
     tekst = await SignaalcontextRepository(db).tekst_voor(
         SCOPE_INITIATIEF, initiatief_id
@@ -413,7 +411,9 @@ async def zet_signaalcontext(
     payload: SignaalcontextUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: OptionalUser = None,
-    ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(
+        requires("initiatief:update", "initiatief", path_param="initiatief_id")
+    ),
     actor_id: UUID | None = None,
 ) -> SignaalcontextResponse:
     """Schrijf of wis de context.
@@ -422,8 +422,6 @@ async def zet_signaalcontext(
     wordt vaak bijgesteld, en dan staat een dossier in de log in plaats
     van een gebeurtenis.
     """
-    await _require_initiatief_toegang(db, ctx, initiatief_id)
-
     rij = await SignaalcontextRepository(db).zet(
         SCOPE_INITIATIEF, initiatief_id, payload.tekst
     )
