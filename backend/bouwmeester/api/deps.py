@@ -1,9 +1,16 @@
 """Shared API dependencies and utilities."""
 
 import logging
+from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
 from pydantic import BaseModel, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bouwmeester.core.authz import require
+from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.repositories.tag import TagRepository
+from bouwmeester.schema.tag import TagCreate
 
 logger = logging.getLogger(__name__)
 
@@ -81,3 +88,27 @@ def validate_list[T: BaseModel](
                 exc_info=True,
             )
     return results
+
+
+async def resolve_tag_to_link(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    tag_id: UUID | None,
+    tag_name: str | None,
+) -> UUID:
+    """The tag to link, by id or by name; a new name needs ``tag:create``.
+
+    Linking an existing tag is part of editing the item; a new name adds to
+    the shared vocabulary, which is a permission of its own.
+    """
+    if tag_id is not None:
+        return tag_id
+    if not tag_name:
+        raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
+    repo = TagRepository(db)
+    existing = await repo.get_by_name(tag_name)
+    if existing is not None:
+        return existing.id
+    await require(db, perm_ctx, "tag:create", "tag")
+    return (await repo.create(TagCreate(name=tag_name))).id

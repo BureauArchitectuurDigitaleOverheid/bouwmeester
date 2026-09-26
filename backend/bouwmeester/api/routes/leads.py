@@ -9,7 +9,12 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found, validate_list
+from bouwmeester.api.deps import (
+    require_deleted,
+    require_found,
+    resolve_tag_to_link,
+    validate_list,
+)
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_change_resource_role,
@@ -66,7 +71,7 @@ from bouwmeester.schema.lead import (
     LeadUpdate,
 )
 from bouwmeester.schema.notification import NotificationCreate
-from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse, TagCreate
+from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
@@ -952,30 +957,16 @@ async def add_tag_to_lead(
     data: LeadTagCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    perm_ctx: PermissionContext = Depends(_WRITE_LEAD),
 ) -> LeadTagResponse:
-    """Add a tag to a lead.
-
-    Creates the tag if tag_name is given and it doesn't exist.
-    """
+    """Add a tag to a lead; a new tag_name also needs ``tag:create``."""
     from bouwmeester.repositories.tag import TagRepository
 
     lead = await get_lead_or_404(db, lead_id)
-
+    tag_id = await resolve_tag_to_link(
+        db, perm_ctx, tag_id=data.tag_id, tag_name=data.tag_name
+    )
     tag_repo = TagRepository(db)
-
-    if data.tag_name and not data.tag_id:
-        existing = await tag_repo.get_by_name(data.tag_name)
-        if existing:
-            tag_id = existing.id
-        else:
-            new_tag = await tag_repo.create(TagCreate(name=data.tag_name))
-            tag_id = new_tag.id
-    elif data.tag_id:
-        tag_id = data.tag_id
-    else:
-        raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
-
     lead_tag = await tag_repo.add_tag_to_lead(lead_id, tag_id)
 
     await log_activity(

@@ -10,6 +10,7 @@ import uuid
 from dataclasses import dataclass
 
 import pytest
+from sqlalchemy import select
 
 from bouwmeester.core.authz import can
 from bouwmeester.core.initiatief_context import build_initiatief_context
@@ -450,6 +451,31 @@ async def test_contact_is_a_grant(lw, who, lead, contact, rol, expected):
     async with client_as(lw.w.db, lw.w.person[who]) as c:
         resp = await c.post(f"/api/leads/{lw.id(lead)}/contacts", json=body)
     assert resp.status_code == expected, resp.text
+
+
+async def test_tagging_with_a_new_name_needs_tag_create(lw):
+    """The opdrachtgever edits the lead but holds no tag:create anywhere."""
+    from bouwmeester.models.tag import Tag
+
+    lw.w.db.add(Tag(name="Bestaande tag"))
+    await lw.w.db.flush()
+    url = f"/api/leads/{lw.id('lead')}/tags"
+    async with client_as(lw.w.db, lw.w.person["opdrachtgever"]) as c:
+        new = await c.post(url, json={"tag_name": "Gloednieuw"})
+        existing = await c.post(url, json={"tag_name": "Bestaande tag"})
+    async with client_as(lw.w.db, lw.w.person["role_only"]) as c:
+        # a contributor on the initiatief holds no tag:create either
+        contributor_new = await c.post(url, json={"tag_name": "Ook nieuw"})
+    async with client_as(lw.w.db, lw.w.person["team_editor"]) as c:
+        editor_new = await c.post(
+            f"/api/leads/{lw.id('lead_free')}/tags", json={"tag_name": "Nieuw"}
+        )
+    assert new.status_code == 403, new.text
+    assert existing.status_code == 201, existing.text
+    assert contributor_new.status_code == 403, contributor_new.text
+    assert editor_new.status_code == 201, editor_new.text
+    names = set((await lw.w.db.scalars(select(Tag.name))).all())
+    assert "Gloednieuw" not in names and "Nieuw" in names
 
 
 @pytest.mark.parametrize(

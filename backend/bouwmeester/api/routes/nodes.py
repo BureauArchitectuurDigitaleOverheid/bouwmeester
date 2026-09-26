@@ -5,7 +5,12 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found, validate_list
+from bouwmeester.api.deps import (
+    require_deleted,
+    require_found,
+    resolve_tag_to_link,
+    validate_list,
+)
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_change_resource_role,
@@ -55,7 +60,7 @@ from bouwmeester.schema.person import (
     NodeStakeholderResponse,
     NodeStakeholderUpdate,
 )
-from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse, TagCreate
+from bouwmeester.schema.tag import NodeTagCreate, NodeTagResponse
 from bouwmeester.schema.task import TaskResponse
 from bouwmeester.services.activity_service import (
     ActivityService,
@@ -567,32 +572,17 @@ async def add_tag_to_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("tag:create", "corpus_node")),
+    perm_ctx: PermissionContext = Depends(requires("tag:create", "corpus_node")),
 ) -> NodeTagResponse:
-    """Add a tag to a node.
-
-    Creates the tag if tag_name is given and it doesn't exist.
-    """
+    """Add a tag to a node; a new tag_name also needs tenant-wide ``tag:create``."""
     from bouwmeester.repositories.tag import TagRepository
 
     service = NodeService(db)
     require_found(await service.get(id), "Node")
-
+    tag_id = await resolve_tag_to_link(
+        db, perm_ctx, tag_id=data.tag_id, tag_name=data.tag_name
+    )
     tag_repo = TagRepository(db)
-
-    # If tag_name is given, find or create tag
-    if data.tag_name and not data.tag_id:
-        existing = await tag_repo.get_by_name(data.tag_name)
-        if existing:
-            tag_id = existing.id
-        else:
-            new_tag = await tag_repo.create(TagCreate(name=data.tag_name))
-            tag_id = new_tag.id
-    elif data.tag_id:
-        tag_id = data.tag_id
-    else:
-        raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
-
     node_tag = await tag_repo.add_tag_to_node(id, tag_id)
     tag = await tag_repo.get_by_id(tag_id)
 
