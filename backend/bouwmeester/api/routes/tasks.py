@@ -31,39 +31,12 @@ from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.task_rules import require_task_create, require_task_links
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 _READ_TASK = requires("task:read", "task")
 _UPDATE_TASK = requires("task:update", "task")
-
-
-async def _require_links(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    data: TaskCreate | TaskUpdate,
-) -> None:
-    """Every record a task body links to must be one the caller may use.
-
-    The node and the parlementair item must be visible, the opdracht too; a
-    parent task is changed by adding a subtask, so it needs task:update.
-    Only fields sent in the body are checked.
-    """
-    sent = data.model_fields_set
-    if "node_id" in sent and data.node_id is not None:
-        await require(db, perm_ctx, "node:read", "corpus_node", data.node_id)
-    if "opdracht_id" in sent and data.opdracht_id is not None:
-        await require(db, perm_ctx, "opdracht:read", "opdracht", data.opdracht_id)
-    if "parent_id" in sent and data.parent_id is not None:
-        await require(db, perm_ctx, "task:update", "task", data.parent_id)
-    if "parlementair_item_id" in sent and data.parlementair_item_id is not None:
-        await require(
-            db,
-            perm_ctx,
-            "parlementair:read",
-            "parlementair_item",
-            data.parlementair_item_id,
-        )
 
 
 @router.get("", response_model=list[TaskResponse])
@@ -119,9 +92,7 @@ async def create_task(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> TaskResponse:
     """Create a task linked to a node. Notifies assignee and team manager."""
-    await _require_links(db, perm_ctx, data)
-    # A task belongs to its eenheid, or to its node when it has none.
-    await require(db, perm_ctx, "task:create", "task", place=data)
+    await require_task_create(db, perm_ctx, data)
     repo = TaskRepository(db)
     task = await repo.create(data)
 
@@ -305,7 +276,7 @@ async def update_task(
     # Capture old state before update
     old_task = require_found(await repo.get(id), "Task")
 
-    await _require_links(db, perm_ctx, data)
+    await require_task_links(db, perm_ctx, data)
     await require_move(
         db, perm_ctx, "task", old_task, data.model_dump(exclude_unset=True)
     )
