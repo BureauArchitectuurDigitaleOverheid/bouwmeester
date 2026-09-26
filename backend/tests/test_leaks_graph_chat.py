@@ -317,3 +317,143 @@ async def test_chat_add_tag_is_node_update(world):
             node_id = world.res[node]
             expected = await can(world.db, ctx, "node:update", "corpus_node", node_id)
             assert (refusal is None) is expected, (who, node)
+
+
+# ---------------------------------------------------------------------------
+# M8 / M11b: Mattermost slash commands
+# ---------------------------------------------------------------------------
+
+
+def _mm_id() -> str:
+    return uuid.uuid4().hex[:26]
+
+
+@pytest.fixture
+async def mm(world: World) -> dict[str, str]:
+    """A Mattermost account for everyone in ``world``, plus an outsider in Elders."""
+    from bouwmeester.models.mattermost_user import MattermostUser
+
+    outsider = await make_person(world.db, "Buitenstaander")
+    await place(world.db, outsider, world.org["elders"])
+    world.person["outsider"] = outsider
+    ids = {}
+    for who, person in world.person.items():
+        ids[who] = _mm_id()
+        world.db.add(
+            MattermostUser(
+                person_id=person.id,
+                mattermost_user_id=ids[who],
+                mattermost_username=who,
+            )
+        )
+    await world.db.flush()
+    return ids
+
+
+async def _slash(w: World, mm_ids: dict, who: str, text: str, channel=None) -> str:
+    from bouwmeester.services.mattermost_slash_service import MattermostSlashService
+
+    result = await MattermostSlashService(w.db).handle_command(
+        mm_ids[who], text, channel_id=channel or _mm_id(), channel_name="kanaal"
+    )
+    return result["text"]
+
+
+async def test_slash_status_does_not_find_an_invisible_dossier(world, mm):
+    hidden = await _slash(world, mm, "viewer", "status elders")
+    seen = await _slash(world, mm, "outsider", "status elders")
+    assert hidden.startswith("Geen dossier gevonden"), hidden
+    assert str(world.res["node_elders"]) in seen
+
+
+async def test_slash_status_counts_only_visible_tasks(world, mm):
+    from bouwmeester.models.task import Task
+
+    world.db.add(
+        Task(
+            title="Taak elders",
+            node_id=world.res["node_directie"],
+            organisatie_eenheid_id=world.org["elders"].id,
+            status="open",
+        )
+    )
+    await world.db.flush()
+    viewer = await _slash(world, mm, "viewer", "status Directiedossier")
+    admin = await _slash(world, mm, "super_admin", "status Directiedossier")
+    assert "Totaal taken: 1" in viewer, viewer
+    assert "Totaal taken: 2" in admin, admin
+
+
+@pytest.fixture
+async def linked_channel(world: World) -> str:
+    from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
+
+    channel = _mm_id()
+    world.db.add(
+        MattermostChannelLink(
+            channel_id=channel,
+            channel_name="kanaal",
+            channel_display_name="kanaal",
+            scope_type="initiatief",
+            scope_id=world.res["initiatief"],
+        )
+    )
+    await world.db.flush()
+    return channel
+
+
+async def test_slash_kanaal_names_the_initiatief_only_to_who_sees_it(
+    world, mm, linked_channel
+):
+    from bouwmeester.models.initiatief import Initiatief
+
+    naam = (await world.db.get(Initiatief, world.res["initiatief"])).naam
+    outsider = await _slash(world, mm, "outsider", "kanaal", linked_channel)
+    member = await _slash(world, mm, "afd_editor", "kanaal", linked_channel)
+    assert naam not in outsider
+    assert naam in member
+
+
+# (open channel?, member?, Mattermost reachable?, linked?)
+KOPPEL_CASES = [
+    (True, False, True, True),
+    (False, True, True, True),
+    (False, False, True, False),
+    (False, True, False, False),
+]
+
+
+@pytest.mark.parametrize(("is_open", "member", "reachable", "linked"), KOPPEL_CASES)
+async def test_slash_koppel_private_channel_needs_membership(
+    world, mm, is_open, member, reachable, linked
+):
+    from unittest.mock import AsyncMock, patch
+
+    from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.repositories.mattermost_channel_link import (
+        MattermostChannelLinkRepository,
+    )
+    from bouwmeester.services.mattermost_service import (
+        MattermostService,
+        MattermostUnavailableError,
+    )
+
+    naam = (await world.db.get(Initiatief, world.res["initiatief"])).naam
+    channel = _mm_id()
+    down = MattermostUnavailableError("weg")
+    with (
+        patch.object(
+            MattermostService,
+            "is_open_channel",
+            AsyncMock(return_value=is_open, side_effect=None if reachable else down),
+        ),
+        patch.object(
+            MattermostService, "is_member_of_channel", AsyncMock(return_value=member)
+        ) as is_member,
+    ):
+        # role_only is contributor on the initiatief: may link it.
+        await _slash(world, mm, "role_only", f"koppel initiatief {naam}", channel)
+    link = await MattermostChannelLinkRepository(world.db).get_by_channel_id(channel)
+    assert (link is not None) is linked
+    if not is_open and reachable:
+        assert is_member.await_args.args == (channel, mm["role_only"])

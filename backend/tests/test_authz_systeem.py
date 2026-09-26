@@ -440,8 +440,17 @@ def _mm_id() -> str:
 
 
 @pytest.fixture
-async def slash(world):
-    """A linked channel of the initiatief, plus someone who only sees it."""
+async def slash(world, monkeypatch):
+    """A linked channel of the initiatief, plus someone who only sees it.
+
+    Channel membership is not what these tests are about: every channel
+    counts as one the caller may link (see test_leaks_graph_chat.py).
+    """
+    from bouwmeester.services import mattermost_slash_service
+
+    monkeypatch.setattr(
+        mattermost_slash_service, "channel_link_refusal", AsyncMock(return_value=None)
+    )
     init_viewer = await make_person(world.db, "Initiatiefkijker")
     world.db.add(
         ResourcePermission(
