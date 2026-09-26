@@ -17,6 +17,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
+from tests.factories import make_org
 
 
 @pytest.fixture
@@ -183,11 +184,12 @@ async def test_add_organisatie_requires_people_manage(
     people_authz_setup, db_session: AsyncSession
 ):
     s = people_authz_setup
+    gemeente = await make_org(db_session, "Gemeente", "gemeente")
     async with _make_client(s["app"], db_session, s["person"], {"people:read"}) as ac:
         resp = await ac.post(
             f"/api/people/{s['target'].id}/organisaties",
             json={
-                "organisatie_eenheid_id": str(uuid.uuid4()),
+                "organisatie_eenheid_id": str(gemeente.id),
                 "start_datum": "2025-01-01",
             },
         )

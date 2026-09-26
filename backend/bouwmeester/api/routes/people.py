@@ -12,6 +12,8 @@ from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    CONFIRMED_PLACEMENT_BRON,
+    placement_bron,
     require_can_delete_person,
     require_can_edit_person,
     require_can_place,
@@ -603,7 +605,7 @@ async def add_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonOrganisatieResponse:
     """Place a person in an org unit. Returns 409 if already active in that unit."""
     _, eenheid = await _require_can_place(db, perm_ctx, id, data.organisatie_eenheid_id)
@@ -628,6 +630,7 @@ async def add_person_organisatie(
         organisatie_eenheid_id=data.organisatie_eenheid_id,
         dienstverband=data.dienstverband,
         start_datum=data.start_datum,
+        bron=await placement_bron(db, perm_ctx, eenheid.id),
     )
     db.add(placement)
     await db.flush()
@@ -668,7 +671,7 @@ async def update_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonOrganisatieResponse:
     """Update an org placement (e.g. set eind_datum to end placement)."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -690,6 +693,12 @@ async def update_person_organisatie(
 
     for key, value in update_data.items():
         setattr(placement, key, value)
+    if not ending and placement.bron == CONFIRMED_PLACEMENT_BRON:
+        # Reopened or changed by someone else than a manager: no longer
+        # confirmed (see ``hold_unconfirmed_placements``).
+        placement.bron = await placement_bron(
+            db, perm_ctx, placement.organisatie_eenheid_id
+        )
     await db.flush()
     await db.refresh(placement)
 
@@ -727,7 +736,7 @@ async def delete_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     """Delete an org placement permanently."""
     stmt = select(PersonOrganisatieEenheid).where(

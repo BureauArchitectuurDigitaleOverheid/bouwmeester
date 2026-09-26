@@ -19,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
-from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.role import PersonRoleRepository, RoleRepository
 
 logger = logging.getLogger(__name__)
@@ -289,26 +288,6 @@ async def get_super_admin_user(
 
 AdminUser = Annotated[Person | None, Depends(get_admin_user)]
 SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
-
-
-async def check_resource_permission(
-    db: AsyncSession,
-    person_id: UUID,
-    resource_type: str,
-    resource_id: UUID,
-    required_perm: str,
-) -> bool:
-    """Check if a person has a resource-level permission."""
-    rp_repo = ResourcePermissionRepository(db)
-    roles = await rp_repo.get_roles_for_person_resource(
-        person_id, resource_type, resource_id
-    )
-    type_mappings = RESOURCE_ROLE_PERMISSIONS.get(resource_type, {})
-    for rol in roles:
-        granted = type_mappings.get(rol, set())
-        if required_perm in granted:
-            return True
-    return False
 
 
 def require_permission(*perms: str):

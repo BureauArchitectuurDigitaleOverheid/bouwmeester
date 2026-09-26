@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    CONFIRMED_PLACEMENT_BRON,
     can_manage_members,
     managed_subtree_ids,
     require_can_decide_placement_request,
@@ -254,6 +255,7 @@ async def approve_placement(
         organisatie_eenheid_id=req.organisatie_eenheid_id,
         dienstverband=req.dienstverband,
         start_datum=date.today(),
+        bron=CONFIRMED_PLACEMENT_BRON,
     )
     db.add(placement)
     await db.flush()
