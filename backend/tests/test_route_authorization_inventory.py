@@ -245,7 +245,10 @@ _WRITE_ALLOWLIST: dict[str, str] = {
     "POST /api/llm/gap-analysis": "no mutation: advice on text in the request",
     "POST /api/llm/kompas-guidance": "no mutation: advice on text in the request",
     "POST /api/llm/suggest-tags": "no mutation: advice on text in the request",
-    "POST /api/leads/parse-intake": "no mutation: parses text in the request",
+    "POST /api/leads/parse-intake": (
+        "no mutation: LLM parse of text in the request; creating the lead is "
+        "decided on POST /api/leads"
+    ),
     "POST /api/initiatieven": (
         "personal initiatief: the creator becomes its eigenaar, the payload "
         "grants nothing else (test_authz_initiatief pins that)"
@@ -281,33 +284,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "POST /api/import/edges",
     "POST /api/import/nodes",
     "POST /api/import/politieke-inputs",
-    # lead_update.py: _check_lead_access
-    "POST /api/leads/{lead_id}/updates",
-    "POST /api/leads/{lead_id}/updates/parse",
-    "PUT /api/leads/{lead_id}/updates/{post_id}",
-    "DELETE /api/leads/{lead_id}/updates/{post_id}",
-    "POST /api/leads/{lead_id}/updates/{post_id}/publish",
-    "POST /api/leads/{lead_id}/updates/{post_id}/unpublish",
-    # leads.py: _check_lead_access / _check_initiatief_access
-    "POST /api/leads",
-    "PUT /api/leads/{lead_id}",
-    "DELETE /api/leads/{lead_id}",
-    "POST /api/leads/merge",
-    "POST /api/leads/reorder",
-    "POST /api/leads/{lead_id}/move",
-    "POST /api/leads/{lead_id}/activities",
-    "DELETE /api/leads/{lead_id}/activities/{activity_id}",
-    "POST /api/leads/{lead_id}/attachments",
-    "DELETE /api/leads/{lead_id}/attachments/{attachment_id}",
-    "POST /api/leads/{lead_id}/contacts",
-    "DELETE /api/leads/{lead_id}/contacts/{contact_id}",
-    "POST /api/leads/{lead_id}/github-links",
-    "PATCH /api/leads/{lead_id}/github-links/{link_id}",
-    "DELETE /api/leads/{lead_id}/github-links/{link_id}",
-    "POST /api/leads/{lead_id}/nodes",
-    "DELETE /api/leads/{lead_id}/nodes/{link_id}",
-    "POST /api/leads/{lead_id}/tags",
-    "DELETE /api/leads/{lead_id}/tags/{tag_id}",
     # opdrachten.py: require_permission + check_resource_org_scope
     "POST /api/opdrachten",
     "PUT /api/opdrachten/{id}",
