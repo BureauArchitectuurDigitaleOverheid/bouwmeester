@@ -39,7 +39,9 @@ export function usePersonFormSubmit(
                 start_datum: todayISO(),
               },
             },
-            { onSettled: onDone },
+            // Only close on success: a refusal (no authority over the
+            // eenheid) should leave the form open with the error toast.
+            { onSuccess: onDone },
           );
         } else {
           onDone();

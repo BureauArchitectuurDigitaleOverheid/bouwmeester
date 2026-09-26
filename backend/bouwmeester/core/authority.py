@@ -29,13 +29,11 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     check_resource_permission,
 )
-from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
     OrganisatieEenheid,
 )
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.org_tree import (
@@ -127,6 +125,27 @@ async def can_manage_members(
     return rights.has_role(*MEMBER_MANAGER_ROLES)
 
 
+async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
+    """People who may decide about the members of *eenheid_id*.
+
+    Everyone holding a manager role on the eenheid or on any eenheid above
+    it: the same set ``can_manage_members`` lets through.
+    """
+    from datetime import date
+
+    chain = await get_self_and_ancestor_ids(db, eenheid_id)
+    today = date.today()
+    result = await db.execute(
+        select(PersonRole.person_id).where(
+            PersonRole.organisatie_eenheid_id.in_(chain),
+            PersonRole.role_id.in_(MEMBER_MANAGER_ROLES),
+            PersonRole.start_datum <= today,
+            (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
+        )
+    )
+    return set(result.scalars().all())
+
+
 def managed_eenheid_ids(perm_ctx: PermissionContext) -> list[UUID]:
     """Eenheden on which the person holds a manager role directly."""
     return [
@@ -184,44 +203,20 @@ async def require_can_place(
         return
     if perm_ctx.has_permission("people:update") and not await is_account(db, person):
         return
+    # Linking your own staff to an external organisation (a detachering) is
+    # the person's manager's call: it grants nothing inside the organisation.
+    if eenheid.type not in INTERNAL_EENHEID_TYPES and await _manages_person(
+        db, perm_ctx, person
+    ):
+        return
+    if ending:
+        raise _forbidden(
+            "Alleen de persoon zelf of een leidinggevende kan deze plaatsing beëindigen"
+        )
     raise _forbidden(
         "Alleen een leidinggevende van deze eenheid kan hier iemand plaatsen. "
-        "Dien een plaatsingsverzoek in."
+        "Wie zelf bij een team wil, dient een plaatsingsverzoek in."
     )
-
-
-async def hold_placements_for_approval(db: AsyncSession, person: Person) -> int:
-    """Turn a contact's placements in the internal organisation into requests.
-
-    Called when a contact becomes an account (its first login).  Contacts
-    may be placed by anyone, so those placements were never approved; now
-    that they would grant access, each becomes a pending placement request
-    for a manager of the eenheid.  Links to external organisations stay.
-    Returns the number of requests created.
-    """
-    result = await db.execute(
-        select(PersonOrganisatieEenheid)
-        .join(
-            OrganisatieEenheid,
-            OrganisatieEenheid.id == PersonOrganisatieEenheid.organisatie_eenheid_id,
-        )
-        .where(
-            PersonOrganisatieEenheid.person_id == person.id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
-            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
-        )
-    )
-    placements = list(result.scalars().all())
-    for placement in placements:
-        db.add(
-            OrgPlacementRequest(
-                person_id=person.id,
-                organisatie_eenheid_id=placement.organisatie_eenheid_id,
-                dienstverband=placement.dienstverband,
-            )
-        )
-        await db.delete(placement)
-    return len(placements)
 
 
 async def require_can_decide_placement_request(
@@ -541,7 +536,7 @@ async def require_can_delete_person(
 def _require_known_rol(resource_type: str, rol: str) -> None:
     if rol not in RESOURCE_ROLE_PERMISSIONS.get(resource_type, {}):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Onbekende rol '{rol}' voor {resource_type}",
         )
 
@@ -567,6 +562,11 @@ async def _grant_reaches_caller(
     return False
 
 
+# Resource types whose non-owner roles are contact administration: without
+# an owning eenheid, anyone who manages resource roles may keep them current.
+_UNSCOPED_CONTACT_TYPES = frozenset({"corpus_node", "opdracht"})
+
+
 async def _require_grant_authority(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -584,7 +584,8 @@ async def _require_grant_authority(
       the eenheden that own the resource, and not for yourself (a grant to
       an eenheid you are a member of reaches you too);
     - a resource without such an eenheid only has its eigenaars, except that
-      corpus nodes (tenant-wide today) take non-owner stakeholders, yourself
+      corpus nodes and opdrachten (both mostly without an eenheid today, the
+      latter because FCC does not fill one) take non-owner contacts, yourself
       included, from anyone with ``resource_permission:manage``.
     """
     if perm_ctx.is_super_admin:
@@ -597,7 +598,7 @@ async def _require_grant_authority(
     found, eenheid_ids = await get_authority_eenheid_ids(db, resource_type, resource_id)
     if not found:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Item niet gevonden")
-    if resource_type == "corpus_node" and not eenheid_ids and not owner_rol:
+    if resource_type in _UNSCOPED_CONTACT_TYPES and not eenheid_ids and not owner_rol:
         if perm_ctx.has_permission("resource_permission:manage"):
             return
         raise _forbidden("Onvoldoende rechten")
@@ -659,6 +660,32 @@ async def require_can_grant_resource_role(
         target_person_id=target_person_id,
         target_eenheid_id=target_eenheid_id,
     )
+
+
+async def require_can_change_grants(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    resource_type: str,
+    resource_id: UUID,
+    person_id: UUID | None = None,
+    eenheid_id: UUID | None = None,
+    new_rol: str | None,
+) -> None:
+    """Guard changing or removing every grant of a person or eenheid on a resource.
+
+    For routes that address a grant by (resource, person) or (resource,
+    eenheid) rather than by its id.
+    """
+    from bouwmeester.repositories.resource_permission import (
+        ResourcePermissionRepository,
+    )
+
+    grants = await ResourcePermissionRepository(db).find_grants(
+        resource_type, resource_id, person_id=person_id, eenheid_id=eenheid_id
+    )
+    for grant in grants:
+        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=new_rol)
 
 
 async def require_can_change_resource_role(

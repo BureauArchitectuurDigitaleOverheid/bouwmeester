@@ -25,6 +25,7 @@ import {
 } from '@/hooks/usePeople';
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, formatFunctie } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
+import { errorDetail } from '@/api/client';
 import { matchEmailOrganisatie } from '@/api/people';
 import { usePermissions } from '@/hooks/usePermissions';
 
@@ -462,8 +463,9 @@ export function PersonEditForm({
         data: { email: newEmail.trim() },
       });
       setNewEmail('');
-    } catch {
-      setNewEmailError('Ongeldig of bestaand e-mailadres');
+    } catch (error) {
+      // The backend says why: taken, invalid, or not yours to change.
+      setNewEmailError(errorDetail(error) || 'Ongeldig of bestaand e-mailadres');
     }
   };
 
@@ -488,8 +490,8 @@ export function PersonEditForm({
       });
       setNewPhone('');
       setNewPhoneLabel('werk');
-    } catch {
-      setNewPhoneError('Ongeldig of bestaand telefoonnummer');
+    } catch (error) {
+      setNewPhoneError(errorDetail(error) || 'Ongeldig of bestaand telefoonnummer');
     }
   };
 

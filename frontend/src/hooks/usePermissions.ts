@@ -5,9 +5,10 @@ import { apiGet } from '@/api/client';
 import { useCallback, useMemo } from 'react';
 
 interface MyPermissionsResponse {
-  roles: unknown[];
+  roles: { role_id: string }[];
   permissions: string[];
   system_permissions?: string[];
+  managed_subtree_ids?: string[];
 }
 
 export function usePermissions() {
@@ -46,15 +47,19 @@ export function usePermissions() {
     [permissions],
   );
 
-  // Dev mode (no OIDC) has no user and the backend allows everything.
-  const isSuperAdmin = !oidcConfigured || (person?.is_admin ?? false);
+  // Dev mode (no OIDC): with a person picked, the backend applies that
+  // person's rights; without one it allows everything.
+  const isSuperAdmin = oidcConfigured
+    ? (person?.is_admin ?? false)
+    : !devPersonId || (devPerms?.roles ?? []).some((r) => r.role_id === 'super_admin');
 
   // Eenheden whose members this person manages, with the same inheritance
   // the backend applies (the eenheid itself or anything above it).
-  const managedSubtree = useMemo(
-    () => new Set(person?.managed_subtree_ids ?? []),
-    [person?.managed_subtree_ids],
-  );
+  const managedSubtree = useMemo(() => {
+    if (oidcConfigured) return new Set(person?.managed_subtree_ids ?? []);
+    if (!devPersonId) return new Set(['*']);
+    return new Set(devPerms?.managed_subtree_ids ?? []);
+  }, [oidcConfigured, person?.managed_subtree_ids, devPersonId, devPerms?.managed_subtree_ids]);
   const managesEenheid = useCallback(
     (eenheidId: string): boolean =>
       isSuperAdmin || managedSubtree.has('*') || managedSubtree.has(eenheidId),

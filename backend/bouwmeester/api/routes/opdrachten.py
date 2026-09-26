@@ -4,14 +4,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    require_can_change_resource_role,
+    require_can_change_grants,
     require_can_grant_resource_role,
 )
 from bouwmeester.core.database import get_db
@@ -404,25 +403,6 @@ async def remove_node_koppeling(
 # ---------------------------------------------------------------------------
 
 
-async def _opdracht_grants(
-    db: AsyncSession,
-    opdracht_id: UUID,
-    *,
-    person_id: UUID | None = None,
-    eenheid_id: UUID | None = None,
-) -> list[ResourcePermission]:
-    """The grants a member or eenheid route is about to change."""
-    stmt = select(ResourcePermission).where(
-        ResourcePermission.resource_type == "opdracht",
-        ResourcePermission.resource_id == opdracht_id,
-    )
-    if person_id is not None:
-        stmt = stmt.where(ResourcePermission.person_id == person_id)
-    if eenheid_id is not None:
-        stmt = stmt.where(ResourcePermission.organisatie_eenheid_id == eenheid_id)
-    return list((await db.execute(stmt)).scalars().all())
-
-
 @router.post(
     "/{id}/members",
     response_model=OpdrachtMemberResponse,
@@ -488,8 +468,14 @@ async def remove_member(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = OpdrachtRepository(db)
-    for grant in await _opdracht_grants(db, id, person_id=person_id):
-        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=None)
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="opdracht",
+        resource_id=id,
+        person_id=person_id,
+        new_rol=None,
+    )
     if not await repo.remove_member(id, person_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -518,8 +504,14 @@ async def update_member_role(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtMemberResponse:
     repo = OpdrachtRepository(db)
-    for grant in await _opdracht_grants(db, id, person_id=person_id):
-        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=data.rol)
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="opdracht",
+        resource_id=id,
+        person_id=person_id,
+        new_rol=data.rol,
+    )
     member = await repo.update_member_role(id, person_id, data.rol)
     if member is None:
         raise HTTPException(
@@ -619,8 +611,14 @@ async def remove_eenheid(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = OpdrachtRepository(db)
-    for grant in await _opdracht_grants(db, id, eenheid_id=eenheid_id):
-        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=None)
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="opdracht",
+        resource_id=id,
+        eenheid_id=eenheid_id,
+        new_rol=None,
+    )
     if not await repo.remove_eenheid(id, eenheid_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -649,8 +647,14 @@ async def update_eenheid_rol(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtEenheidResponse:
     repo = OpdrachtRepository(db)
-    for grant in await _opdracht_grants(db, id, eenheid_id=eenheid_id):
-        await require_can_change_resource_role(db, perm_ctx, grant, new_rol=data.rol)
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="opdracht",
+        resource_id=id,
+        eenheid_id=eenheid_id,
+        new_rol=data.rol,
+    )
     rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
     if rp is None:
         raise HTTPException(

@@ -68,7 +68,8 @@ export function useAssignRole() {
     mutationFn: (data: AssignRoleInput) =>
       apiPost<PersonRoleAssignment>('/api/roles/assign', data),
     errorMessage: 'Fout bij toewijzen van rol',
-    invalidateKeys: [queryKeys.admin.roleAssignmentsAll()],
+    // A role can make someone manager: the org chart shows that too.
+    invalidateKeys: [queryKeys.admin.roleAssignmentsAll(), queryKeys.organisatie.all],
   });
 }
 
@@ -77,6 +78,6 @@ export function useRevokeRole() {
     mutationFn: (assignmentId: string) =>
       apiDelete(`/api/roles/assignments/${assignmentId}`),
     errorMessage: 'Fout bij intrekken van rol',
-    invalidateKeys: [queryKeys.admin.roleAssignmentsAll()],
+    invalidateKeys: [queryKeys.admin.roleAssignmentsAll(), queryKeys.organisatie.all],
   });
 }

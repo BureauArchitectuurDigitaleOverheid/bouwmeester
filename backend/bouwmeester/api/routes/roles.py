@@ -8,7 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authority import require_can_assign_role, require_can_revoke_role
+from bouwmeester.core.authority import (
+    managed_subtree_ids,
+    require_can_assign_role,
+    require_can_revoke_role,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
     build_permission_context,
@@ -98,10 +102,12 @@ async def my_permissions(
     system: list[str] = []
     if not perm_ctx.is_super_admin:
         system = sorted(perm_ctx.system_permissions)
+    managed = await managed_subtree_ids(db, perm_ctx)
     return MyPermissionsResponse(
         roles=roles,
         permissions=sorted(perm_ctx.effective_permissions),
         system_permissions=system,
+        managed_subtree_ids=["*"] if managed is None else sorted(map(str, managed)),
     )
 
 

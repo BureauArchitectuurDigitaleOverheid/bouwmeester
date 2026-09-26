@@ -43,6 +43,15 @@ export class ApiError extends Error {
   }
 }
 
+/** The backend's `detail` message of a failed request, or '' when absent. */
+export function errorDetail(error: unknown): string {
+  if (error instanceof ApiError && error.body) {
+    const body = error.body as Record<string, unknown>;
+    if (typeof body.detail === 'string') return body.detail;
+  }
+  return '';
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let body: unknown;

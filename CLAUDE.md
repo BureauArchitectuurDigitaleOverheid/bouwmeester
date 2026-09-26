@@ -217,6 +217,10 @@ Anything that changes *who has access to what* goes through a `require_can_*` gu
 - Tree walks for access (`repositories/org_tree.py`) read `OrganisatieEenheid.parent_id`; internal org types live in `INTERNAL_EENHEID_TYPES`.
 - Tests: `tests/test_grant_authority.py`, built on `tests/factories.py`.
 
+### Testing rights locally
+
+Local dev has no identity provider. Without a pick in the header's person picker every request is allowed; after picking someone, the backend (dev mode only, via the `bm_dev_person` cookie) runs every request with that person's real roles and memberships. `just seed` gives managers, `ministry_admin`s, editors and viewers across a real tree to pick from.
+
 ## Pull requests
 
 - Always branch from the latest remote main: `git fetch origin && git checkout -b <branch> origin/main`

@@ -139,6 +139,9 @@ async def list_pending(
     managed = await managed_subtree_ids(db, perm_ctx)
     if managed is not None:
         stmt = stmt.where(OrgPlacementRequest.organisatie_eenheid_id.in_(managed))
+    if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
+        # Nobody decides their own request, so it does not belong in the list.
+        stmt = stmt.where(OrgPlacementRequest.person_id != perm_ctx.person_id)
     result = await db.execute(stmt)
     requests = list(result.scalars().all())
     return [_to_response(r) for r in requests]
@@ -227,6 +230,19 @@ async def approve_placement(
         requester_id=req.person_id,
         eenheid_id=req.organisatie_eenheid_id,
     )
+
+    already = await db.scalar(
+        select(PersonOrganisatieEenheid.id).where(
+            PersonOrganisatieEenheid.person_id == req.person_id,
+            PersonOrganisatieEenheid.organisatie_eenheid_id
+            == req.organisatie_eenheid_id,
+            PersonOrganisatieEenheid.eind_datum.is_(None),
+        )
+    )
+    if already is not None:
+        raise HTTPException(
+            status_code=409, detail="Deze persoon is al ingedeeld bij deze eenheid"
+        )
 
     req.status = "approved"
     req.decided_at = datetime.now(UTC)

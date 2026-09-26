@@ -329,7 +329,7 @@ def require_permission(*perms: str):
         if perm_ctx.is_super_admin:
             return perm_ctx
         if not perm_ctx.has_any_permission(*perms):
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
+            raise HTTPException(status_code=403, detail="Onvoldoende rechten")
         return perm_ctx
 
     return _check

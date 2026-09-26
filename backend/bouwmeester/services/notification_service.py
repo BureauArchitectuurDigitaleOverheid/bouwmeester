@@ -571,21 +571,17 @@ class NotificationService:
     async def notify_placement_request(
         self, person_naam: str, eenheid_id: UUID, eenheid_naam: str
     ) -> list[Notification]:
-        """Notify the team manager and all admins about a placement request."""
+        """Notify everyone who may decide the request, and all admins.
+
+        That is every manager of the eenheid or of an eenheid above it
+        (``core.authority.member_manager_ids``), not just the direct one.
+        """
+        from bouwmeester.core.authority import member_manager_ids
+
         notifications: list[Notification] = []
         notified_ids: set[UUID] = set()
 
-        # Resolve manager from person_role
-        from bouwmeester.repositories.organisatie_eenheid import (
-            OrganisatieEenheidRepository,
-        )
-
-        manager = await OrganisatieEenheidRepository(self.session).get_unit_manager(
-            eenheid_id
-        )
-        manager_id = manager.id if manager else None
-
-        if manager_id:
+        for manager_id in await member_manager_ids(self.session, eenheid_id):
             notified_ids.add(manager_id)
             data = NotificationCreate(
                 person_id=manager_id,

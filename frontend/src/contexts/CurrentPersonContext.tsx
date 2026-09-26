@@ -5,6 +5,15 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Person } from '@/types';
 
 const STORAGE_KEY = 'current-person-id';
+// Read by the backend in dev mode only: requests then run with this person's
+// rights instead of "everything allowed".
+const DEV_PERSON_COOKIE = 'bm_dev_person';
+
+function writeDevPersonCookie(id: string | null) {
+  document.cookie = id
+    ? `${DEV_PERSON_COOKIE}=${id}; path=/; SameSite=Lax`
+    : `${DEV_PERSON_COOKIE}=; path=/; max-age=0; SameSite=Lax`;
+}
 
 interface CurrentPersonContextValue {
   /** The active person (the SSO-linked user, or the dev-mode selection). */
@@ -31,7 +40,9 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
   // Dev mode only: localStorage-backed person selection.
   const [devPersonId, setDevPersonIdState] = useState<string | null>(() => {
     if (!oidcConfigured) {
-      return localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY);
+      writeDevPersonCookie(stored);
+      return stored;
     }
     return null;
   });
@@ -46,6 +57,9 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.removeItem(STORAGE_KEY);
       }
+      writeDevPersonCookie(id);
+      // Every cached answer belonged to the previous person.
+      window.location.reload();
     },
     [oidcConfigured],
   );

@@ -1,9 +1,10 @@
 """Add person.oidc_email and make emails unique regardless of case
 
 ``person.oidc_email`` holds the email claim of the most recent OIDC login.
-WebAuthn logins check the whitelist against it instead of the editable
-``person.email``.  It is filled for everyone who has logged in before, from
-their default address, so passkey users keep working after the deploy.
+WebAuthn logins and the admin seed trust it instead of the editable
+``person.email``.  It is left empty and fills itself on each person's next
+SSO login: copying it from an address anyone could edit before this change
+would trust exactly what it is meant to replace.
 
 Emails are stored lower-case from now on and ``person_email`` gets a unique
 index on ``lower(email)``, so two people can no longer hold the same address
@@ -34,18 +35,6 @@ def upgrade() -> None:
         "person_email",
         [sa.text("lower(email)")],
         unique=True,
-    )
-
-    op.execute(
-        """
-        UPDATE person
-        SET oidc_email = pe.email
-        FROM person_email pe
-        WHERE pe.person_id = person.id
-          AND pe.is_default
-          AND person.oidc_subject IS NOT NULL
-          AND person.oidc_email IS NULL
-        """
     )
 
 

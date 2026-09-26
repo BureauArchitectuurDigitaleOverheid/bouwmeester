@@ -30,6 +30,7 @@ from bouwmeester.core.permissions import PermissionContext, get_admin_user
 from bouwmeester.middleware.auth_required import is_public_path
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -963,9 +964,9 @@ async def test_managed_subtree_in_org_context(tree: Tree):
     assert tree.dg.id not in ctx.managed_subtree_ids
 
 
-async def test_first_login_puts_contact_placements_up_for_approval(tree: Tree):
+async def test_first_login_keeps_placements(tree: Tree):
+    """A manager who placed a new hire before their first login keeps it."""
     await place(tree.db, tree.contact, tree.team)
-    await place(tree.db, tree.contact, tree.gemeente)
     email = await _email_of(tree.db, tree.contact)
 
     person = await get_or_create_person(
@@ -973,15 +974,109 @@ async def test_first_login_puts_contact_placements_up_for_approval(tree: Tree):
     )
 
     assert person.id == tree.contact.id
-    assert await _placement_of(tree.db, tree.contact, tree.team) is None
-    assert await _placement_of(tree.db, tree.contact, tree.gemeente) is not None
-    request = await tree.db.scalar(
-        select(OrgPlacementRequest).where(
-            OrgPlacementRequest.person_id == tree.contact.id,
-            OrgPlacementRequest.organisatie_eenheid_id == tree.team.id,
+    assert await _placement_of(tree.db, tree.contact, tree.team) is not None
+
+
+async def _opdracht(db: AsyncSession, **eenheden) -> Opdracht:
+    opdracht = Opdracht(
+        id=uuid.uuid4(),
+        type="opdracht",
+        titel="Onderzoek",
+        begrotingsjaar=2026,
+        **eenheden,
+    )
+    db.add(opdracht)
+    await db.flush()
+    return opdracht
+
+
+async def test_contacts_on_opdracht_without_eenheid(tree: Tree):
+    """FCC imports leave the eenheden empty; contacts stay manageable."""
+    opdracht = await _opdracht(tree.db)
+    async with client_as(tree.db, tree.editor) as c:
+        contact = await c.post(
+            f"/api/opdrachten/{opdracht.id}/members",
+            json={"person_id": str(tree.member.id), "rol": "contactpersoon"},
+        )
+        owner = await c.post(
+            f"/api/opdrachten/{opdracht.id}/members",
+            json={"person_id": str(tree.member.id), "rol": "eigenaar"},
+        )
+    assert contact.status_code == 201, contact.text
+    assert owner.status_code == 403
+
+
+async def test_opdrachtnemer_team_answers_for_opdracht(tree: Tree):
+    opdracht = await _opdracht(tree.db, opdrachtnemer_eenheid_id=tree.team.id)
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.post(
+            f"/api/opdrachten/{opdracht.id}/members",
+            json={"person_id": str(tree.member.id), "rol": "betrokken"},
+        )
+    assert resp.status_code == 201, resp.text
+
+
+async def test_initiatief_member_route_uses_the_same_rules(tree: Tree):
+    """A manager elsewhere is no eigenaar of every initiatief any more."""
+    initiatief = await _initiatief(tree.db)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/initiatieven/{initiatief.id}/members",
+            json={"person_id": str(tree.directie_manager.id), "rol": "eigenaar"},
+        )
+    assert resp.status_code == 403
+
+
+async def test_manager_links_own_staff_to_external_org(tree: Tree):
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/people/{tree.member.id}/organisaties",
+            json=_placement(tree.gemeente),
+        )
+    assert resp.status_code == 201, resp.text
+
+
+async def test_ending_someone_elses_placement_says_so(tree: Tree):
+    placement = await _placement_of(tree.db, tree.editor, tree.team)
+    async with client_as(tree.db, tree.member) as c:
+        resp = await c.put(
+            f"/api/people/{tree.editor.id}/organisaties/{placement.id}",
+            json={"eind_datum": str(date.today())},
+        )
+    assert resp.status_code == 403
+    assert "beëindigen" in resp.json()["detail"]
+
+
+async def test_every_manager_above_hears_of_a_request(tree: Tree):
+    from bouwmeester.models.notification import Notification
+    from bouwmeester.services.notification_service import NotificationService
+
+    await NotificationService(tree.db).notify_placement_request(
+        person_naam="Nieuw", eenheid_id=tree.team.id, eenheid_naam="Team"
+    )
+    notified = set(
+        await tree.db.scalars(
+            select(Notification.person_id).where(
+                Notification.type == "placement_request"
+            )
         )
     )
-    assert request is not None and request.status == "pending"
+    assert {tree.directie_manager.id, tree.ministry_admin.id} <= notified
+    assert tree.editor.id not in notified
+
+
+async def test_own_request_is_not_in_own_approval_list(tree: Tree):
+    own = await _request(tree.db, tree.directie_manager, tree.team)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.get("/api/org-placements/pending")
+    assert str(own.id) not in {r["id"] for r in resp.json()}
+
+
+async def test_approving_an_existing_placement_conflicts(tree: Tree):
+    req = await _request(tree.db, tree.member, tree.team)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(f"/api/org-placements/{req.id}/approve")
+    assert resp.status_code == 409
 
 
 async def test_admin_seed_skips_address_added_to_own_profile(tree: Tree):

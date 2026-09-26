@@ -61,6 +61,16 @@ async def get_authority_eenheid_ids(
             lead.organisatie_eenheid_id
         ] if lead.organisatie_eenheid_id else []
 
+    if resource_type == "opdracht":
+        from bouwmeester.models.opdracht import Opdracht
+
+        opdracht = await db.get(Opdracht, resource_id)
+        if opdracht is None:
+            return False, []
+        # The client and the team doing the work both answer for it.
+        owners = [opdracht.opdrachtgever_id, opdracht.opdrachtnemer_eenheid_id]
+        return True, [eid for eid in owners if eid is not None]
+
     found, eenheid_id = await resolve_resource_eenheid_id(
         db, resource_type, resource_id
     )

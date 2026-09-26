@@ -304,15 +304,10 @@ async def get_or_create_person(
     # Person is not already bound to another identity.
     if email_owner is not None and email_verified:
         if email_owner.oidc_subject is None:
-            from bouwmeester.core.authority import hold_placements_for_approval
-
             email_owner.oidc_subject = sub
             email_owner.oidc_email = email
             if name and not email_owner.naam:
                 email_owner.naam = name
-            # Until now this was a contact that anyone could place; from now
-            # on its placements grant access, so a manager approves them.
-            await hold_placements_for_approval(db, email_owner)
             await db.flush()
             await db.refresh(email_owner)
             return email_owner
@@ -789,12 +784,27 @@ async def _touch_last_seen(db: AsyncSession, person: Person) -> None:
         del _last_seen_updated[oldest]
 
 
+# Cookie set by the frontend's dev-mode person picker.  Only read when no
+# identity provider is configured, which Settings refuses outside local dev.
+DEV_PERSON_COOKIE = "bm_dev_person"
+
+
+async def _dev_person(request: Request, db: AsyncSession) -> Person | None:
+    raw = request.cookies.get(DEV_PERSON_COOKIE)
+    if not raw:
+        return None
+    try:
+        return await db.get(Person, UUID(raw))
+    except ValueError:
+        return None
+
+
 async def _resolve_user(
     request: Request,
     db: AsyncSession,
     settings: Settings,
 ) -> Person | None:
-    """Common auth chain: API key → WebAuthn session → OIDC.
+    """Common auth chain: API key → WebAuthn session → OIDC (or dev pick).
 
     Returns the authenticated :class:`Person` or ``None`` if no valid
     authentication method was found.
@@ -811,9 +821,13 @@ async def _resolve_user(
         await _touch_last_seen(db, person)
         return person
 
-    # 3. OIDC auth.
+    # 3. No identity provider: local development.  The person picked in the
+    # frontend's dev picker stands in for a login, so local testing runs with
+    # that person's real rights.  Without a pick everything is allowed.
     if not settings.OIDC_ISSUER:
-        return None
+        return await _dev_person(request, db)
+
+    # 4. OIDC auth.
 
     claims = await _validate_token(request, settings)
     if claims is None:
