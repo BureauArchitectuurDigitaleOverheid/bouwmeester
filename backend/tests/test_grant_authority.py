@@ -1108,3 +1108,31 @@ async def test_refusal_names_who_decides(tree: Tree):
     assert tree.sibling.naam in other.json()["detail"]
     assert self_.status_code == 403
     assert "plaatsingsverzoek" in self_.json()["detail"]
+
+
+async def _resolve_with_dev_cookie(tree: Tree, oidc_issuer: str):
+    from bouwmeester.core.auth import DEV_PERSON_COOKIE, _resolve_user
+
+    request = SimpleNamespace(cookies={DEV_PERSON_COOKIE: str(tree.editor.id)})
+    settings = SimpleNamespace(OIDC_ISSUER=oidc_issuer)
+    with (
+        patch(
+            "bouwmeester.core.auth._person_from_api_key", AsyncMock(return_value=None)
+        ),
+        patch(
+            "bouwmeester.core.auth._person_from_webauthn_session",
+            AsyncMock(return_value=None),
+        ),
+        patch("bouwmeester.core.auth._validate_token", AsyncMock(return_value=None)),
+    ):
+        return await _resolve_user(request, tree.db, settings)
+
+
+async def test_dev_person_cookie_is_ignored_with_oidc(tree: Tree):
+    """With an identity provider the dev picker's cookie means nothing."""
+    assert await _resolve_with_dev_cookie(tree, "https://idp.example") is None
+
+
+async def test_dev_person_cookie_acts_as_that_person_locally(tree: Tree):
+    person = await _resolve_with_dev_cookie(tree, "")
+    assert person is not None and person.id == tree.editor.id
