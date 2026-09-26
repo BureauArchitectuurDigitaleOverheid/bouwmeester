@@ -71,7 +71,7 @@ def _editable_person(*, identity: bool):
 
     async def _load(
         id: UUID,
-        perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+        perm_ctx: PermissionContext = Depends(get_permission_context),
         db: AsyncSession = Depends(get_db),
     ) -> Person:
         person = require_found(await db.get(Person, id), "Person")
@@ -502,9 +502,9 @@ async def delete_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:manage")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
-    """Delete a person permanently."""
+    """Delete a person permanently (``require_can_delete_person`` decides)."""
     repo = PersonRepository(db)
     person = require_found(await repo.get(id), "Person")
     await require_can_delete_person(db, perm_ctx, person)

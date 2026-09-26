@@ -361,9 +361,7 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-            # Build org context once: it derives the managed eenheden and
-            # the managed subtree without duplicate queries.
-            managed_subtree_ids_list: list[str] = []
+            # Build org context once: it derives the managed eenheden.
             org_ctx = None
             if person_id:
                 person_for_org = await db.get(Person, UUID(person_id))
@@ -371,13 +369,6 @@ async def auth_status(
                     org_ctx = await build_org_context(
                         db, person_for_org, perm_ctx=perm_ctx
                     )
-
-                    if org_ctx.is_admin:
-                        managed_subtree_ids_list = ["*"]
-                    else:
-                        managed_subtree_ids_list = [
-                            str(eid) for eid in org_ctx.managed_subtree_ids
-                        ]
 
                     # Managed eenheden details (from org context)
                     if org_ctx.managed_eenheid_ids:
@@ -451,8 +442,6 @@ async def auth_status(
                 "placement_denied": placement_denied,
                 "roles": roles_list,
                 "permissions": permissions_list,
-                # Eenheden whose members this person manages ("*" = all).
-                "managed_subtree_ids": managed_subtree_ids_list,
                 "system_permissions": system_permissions_list,
             }
         except Exception:
