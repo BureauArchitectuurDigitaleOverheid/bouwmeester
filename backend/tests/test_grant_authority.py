@@ -39,7 +39,14 @@ from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole
-from tests.factories import client_as, grant_role, make_org, make_person, place
+from tests.factories import (
+    YESTERDAY,
+    client_as,
+    grant_role,
+    make_org,
+    make_person,
+    place,
+)
 
 
 @dataclass
@@ -1152,6 +1159,56 @@ async def test_contact_placement_waits_for_a_manager_at_first_login(tree: Tree):
         )
     )
     assert notified is not None
+
+
+def _migration(name: str):
+    import importlib.util
+    from pathlib import Path
+
+    import bouwmeester.migrations
+
+    versions = Path(bouwmeester.migrations.__file__).parent / "versions"
+    spec = importlib.util.spec_from_file_location(name, versions / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
+    """A manager's placement from before the fix survives the first login."""
+    from sqlalchemy import text
+
+    below_team = await make_org(tree.db, "Stichting", "stichting", tree.team)
+    ended = await make_person(tree.db, "Vertrokken", account=False)
+    for person, org in (
+        (tree.contact, tree.team),
+        (tree.contact, below_team),
+        (tree.contact, tree.gemeente),
+        (ended, tree.team),
+    ):
+        await place(tree.db, person, org)
+    (await _placement_of(tree.db, ended, tree.team)).eind_datum = YESTERDAY
+    await tree.db.flush()
+
+    migration = _migration("7c1e5a9d3b20_confirm_existing_placements")
+    await tree.db.execute(text(migration.CONFIRM_SQL))
+
+    async def bron(person: Person, org: OrganisatieEenheid) -> str:
+        return await tree.db.scalar(
+            select(PersonOrganisatieEenheid.bron).where(
+                PersonOrganisatieEenheid.person_id == person.id,
+                PersonOrganisatieEenheid.organisatie_eenheid_id == org.id,
+            )
+        )
+
+    assert await bron(tree.contact, tree.team) == "leidinggevende"
+    assert await bron(tree.contact, below_team) == "leidinggevende"
+    assert await bron(tree.contact, tree.gemeente) == "handmatig"
+    assert await bron(ended, tree.team) == "handmatig"
+
+    await _first_login(tree, tree.contact)
+    assert await _placement_of(tree.db, tree.contact, tree.team) is not None
+    assert await _pending_requests(tree, tree.contact) == set()
 
 
 async def test_reopened_contact_placement_is_no_longer_confirmed(tree: Tree):
