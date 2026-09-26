@@ -303,14 +303,7 @@ export function Header() {
           // toolbar can still be full of controls, and the name then slid in
           // behind the logout button. At 1280 there is room for both, and
           // below that the avatar carries the identity on its own.
-          <nldd-container
-            slot="toolbar"
-            layout="row"
-            width="fit-content"
-            className="shrink-0"
-            gap="8"
-            vertical-alignment="center"
-          >
+          <div className="hug hug-gap-8" slot="toolbar">
             <nldd-avatar
               size="24"
               {...(currentPerson ? { name: currentPerson.naam } : { icon: 'person' })}
@@ -323,7 +316,7 @@ export function Header() {
                 </nldd-text>
               </ShowAbove>
             )}
-          </nldd-container>
+          </div>
         )}
 
         {/* Logout button */}

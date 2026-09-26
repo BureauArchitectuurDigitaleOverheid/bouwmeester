@@ -45,7 +45,12 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
   // has no people of its own, so there the count is of the units under it.
   const count =
     node.bron === 'synthetisch' ? node.children.length : getTotalPersonenCount(node);
+  // The type leads the supporting line. It used to be a tag at the end of
+  // the row, and a tag never shrinks: on a phone "Directoraat-Generaal" took
+  // 149px and left the name 25px, one letter per line. On the second line it
+  // wraps with the rest.
   const supportingText = [
+    formatOrganisatieType(node.type),
     node.manager?.naam,
     count > 0 ? `${count} ${node.bron === 'synthetisch' ? 'onderdelen' : 'personen'}` : null,
   ]
@@ -202,16 +207,6 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             </Badge>
           )}
 
-          {/* The type reads neutral, not in a color per type. The tree already
-              carries the hierarchy in its indentation, so a filled color block
-              on every row competed with the names for both attention and
-              width while saying what the position in the tree had said
-              already. Neutral keeps it readable as a label without it being
-              the loudest thing in the row. */}
-          <Badge variant="gray" className="row-badge-first-line">
-            {formatOrganisatieType(node.type)}
-          </Badge>
-
           {/* Add child button — niet voor synthetische groepen */}
           {node.bron !== 'synthetisch' ? (
             <nldd-list-item-segment
@@ -220,9 +215,10 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               accessible-label="Subeenheid toevoegen"
               // group/group-hover reveal-on-row-hover has no nldd
               // equivalent; `group` itself lives on the parent
-              // nldd-list-item above. group-hover-reveal is the real CSS
-              // backing this in utilities.css.
-              className="group-hover-reveal"
+              // nldd-list-item above. `-above-sm` because a touch screen
+              // has no hover: plain group-hover-reveal left this button
+              // invisible on a phone.
+              className="group-hover-reveal-above-sm"
             >
               <Icon name="Plus" size="xs" />
             </nldd-list-item-segment>

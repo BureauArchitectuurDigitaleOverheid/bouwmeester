@@ -58,6 +58,17 @@ const MEASURES_PARENT = new Set(['nldd-container', 'nldd-segmented-control']);
  */
 const SIZES_TO_CONTENT = new Set(['nldd-toolbar-item']);
 
+// Rows that are composed of cells, and the controls that fill whatever width
+// they get unless told otherwise.
+const ROWS = new Set(['nldd-list-item', 'nldd-table-row', 'nldd-list-item-segment']);
+const FILLS_BY_DEFAULT = new Set([
+  'nldd-dropdown',
+  'nldd-text-field',
+  'nldd-combo-box',
+  'nldd-search-field',
+  'nldd-date-field',
+]);
+
 const iconNames = new Set();
 {
   const iconDir = path.join(pkgRoot, 'dist/components/content/icon');
@@ -79,6 +90,51 @@ const files = [];
 })(SRC);
 
 const problems = [];
+
+/**
+ * Whether a non-nldd element (a <div>, a <button>, a React component) is still
+ * open at `to`, counting from `from`. The structural checks track nldd-* tags
+ * only, so this tells a real parent/child pair from one with something in
+ * between that is the actual flex item.
+ */
+function hasElementBetween(src, from, to) {
+  if (from === undefined) return false;
+  const text = src.slice(from, to);
+  const tag = /<(\/?)([A-Za-z][\w.-]*)/g;
+  const open = [];
+  let m;
+  while ((m = tag.exec(text))) {
+    const before = text.slice(Math.max(0, m.index - 1), m.index);
+    // A `<` after a word character or `)` is a comparison or a generic, not JSX.
+    if (/[\w)\]]/.test(before)) continue;
+    let i = tag.lastIndex;
+    let depth = 0;
+    let quote = null;
+    for (; i < text.length; i++) {
+      const c = text[i];
+      if (quote) {
+        if (c === quote && text[i - 1] !== '\\') quote = null;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === '`') quote = c;
+      else if (c === '{') depth++;
+      else if (c === '}') depth--;
+      else if (c === '>' && depth === 0) break;
+    }
+    if (i >= text.length) break;
+    const name = m[2];
+    const selfClosing = text[i - 1] === '/';
+    tag.lastIndex = i + 1;
+    if (name.startsWith('nldd-')) continue;
+    if (m[1]) {
+      const at = open.lastIndexOf(name);
+      if (at !== -1) open.length = at;
+    } else if (!selfClosing) {
+      open.push(name);
+    }
+  }
+  return open.length > 0;
+}
 
 for (const file of files) {
   const source = readFileSync(file, 'utf8');
@@ -252,6 +308,10 @@ for (const file of files) {
   // check beats a false accusation.
   /** The open tag's attributes, per stack depth, for the collapse check below. */
   const attrsByDepth = [];
+  /** Per open element: its nldd-container children that take 100% width. */
+  const fullWidthKids = [];
+  /** Per open element: where its opening tag ends in the source. */
+  const openIndexByDepth = [];
 
   const openTagCount = (source.match(/<nldd-[a-z-]+/g) ?? []).length;
   const scannedCount = [...scanTags(source)].filter((m) => !m[1]).length;
@@ -262,6 +322,38 @@ for (const file of files) {
     const selfClosing = rawAttrs.trimEnd().endsWith('/');
     const attrText = rawAttrs;
     if (closing) {
+      // A container's children are all known once it closes.
+      //
+      // An nldd-container without a width is 100% wide, and so is one with
+      // width="full". In a `wrap` container every such child takes a line of
+      // its own: "Aangemaakt" and "5 verbindingen" stacked on two lines with
+      // room to spare. In a `row` two of them split the row evenly: half a
+      // phone screen for three icon buttons, the other half for the title,
+      // which then broke every few words. It happened on five screens.
+      //
+      // Give the child that should only be as wide as its content
+      // `width="fit-content"` with `shrink-0`, and the one that should take
+      // the rest `row-fill` (or keep it at 100% as the only one).
+      const depth = stack.length - 1;
+      const kids = fullWidthKids[depth] ?? [];
+      const layout = (attrsByDepth[depth] ?? '').match(/\blayout="([a-z]+)"/)?.[1];
+      if (stackIsReliable && stack[depth] === 'nldd-container') {
+        if (layout === 'wrap') {
+          for (const line of kids) {
+            problems.push(
+              `${rel}:${line} <nldd-container> at full width inside a wrap: it takes a ` +
+                'line of its own. Give it width="fit-content" and shrink-0.',
+            );
+          }
+        } else if (layout === 'row' && kids.length >= 2) {
+          problems.push(
+            `${rel}:${kids[0]} ${kids.length} full-width <nldd-container>s in one row ` +
+              `(lines ${kids.join(', ')}) split it evenly. Size the one that should ` +
+              'fit its content with width="fit-content" and shrink-0.',
+          );
+        }
+      }
+      fullWidthKids[depth] = [];
       stack.pop();
       continue;
     }
@@ -312,29 +404,65 @@ for (const file of files) {
     // a two-letter block, a heading set one letter per line, and a row of
     // controls hanging over the edge of the popover it belonged in.
     //
-    // It needs one of three: `row-fill` (grow into what is left), `shrink-0` /
-    // `keep-label-width` (never give way), or an explicit `min-width`. Without
-    // one the attribute does the opposite of what the call site wants.
-    //
-    // Only inside a row. In a stack the container is a block that fills its
-    // parent anyway, and `fit-content` there is a deliberate shrink-wrap
-    // around something with a width of its own, like a progress bar.
+    // And it never measures its content at all: the container's layout box
+    // is `container-type: inline-size`, which ignores what is inside it, so
+    // `fit-content` is 0px. `shrink-0` and `keep-label-width` were accepted
+    // here once and turned out to keep it at exactly that 0px (measured,
+    // 2026-09-26). What works: `row-fill` (grow into what is left), or an
+    // explicit non-zero `min-width`. For a group that should be as wide as its
+    // content, use a plain element with the `hug` class instead.
     if (
       stackIsReliable &&
       tag === 'nldd-container' &&
-      /\bwidth="fit-content"/.test(attrText) &&
-      /\blayout="row"/.test(attrsByDepth[stack.length - 1] ?? '')
+      /\bwidth="fit-content"/.test(attrText)
     ) {
-      const guarded =
-        /\bclassName="[^"]*\b(row-fill|shrink-0|keep-label-width)\b/.test(attrText) ||
-        /\bmin-width="/.test(attrText);
+      const rowFill = /\bclassName="[^"]*\brow-fill\b/.test(attrText);
+      const floor = /\bmin-width="(?!0(px)?")/.test(attrText);
+      // row-fill's `min-width: 0` is outer CSS and beats the attribute, so
+      // the two together leave no floor at all. `grow` is row-fill without it.
+      if (rowFill && floor) {
+        const line = source.slice(0, m.index).split('\n').length;
+        problems.push(
+          `${rel}:${line} row-fill cancels this container's min-width (its min-width: 0 wins). ` +
+            'Use className="grow" to keep the floor.',
+        );
+      }
+      const guarded = rowFill || floor;
       if (!guarded) {
         const line = source.slice(0, m.index).split('\n').length;
         problems.push(
-          `${rel}:${line} <nldd-container width="fit-content"> without row-fill, ` +
-            'shrink-0 or min-width: it collapses to zero or to its narrowest word.',
+          `${rel}:${line} <nldd-container width="fit-content"> is 0px wide (it never measures ` +
+            'its content). Use row-fill, a non-zero min-width, or a plain element with class "hug".',
         );
       }
+    }
+
+    // A field control bare in a list or table row. A row is made of cells:
+    // text cells share the width that is left, so an element that fills its
+    // space by default takes that space from them. An nldd-dropdown without
+    // `width` did exactly that in the eenheden beheer: on a phone the name
+    // cell next to it was one character wide and "RegelRecht" came out as a
+    // column of letters. Put the control in an `nldd-cell`, and give a
+    // dropdown a `width`.
+    if (stackIsReliable && ROWS.has(stack[stack.length - 1]) && FILLS_BY_DEFAULT.has(tag)) {
+      const line = source.slice(0, m.index).split('\n').length;
+      problems.push(
+        `${rel}:${line} <${tag}> directly in <${stack[stack.length - 1]}>: it fills the row ` +
+          'and squeezes the text cells. Put it in an <nldd-cell> (a dropdown with a width).',
+      );
+    }
+    if (
+      stackIsReliable &&
+      tag === 'nldd-dropdown' &&
+      stack[stack.length - 1] === 'nldd-cell' &&
+      ROWS.has(stack[stack.length - 2]) &&
+      !/\bwidth="/.test(attrText)
+    ) {
+      const line = source.slice(0, m.index).split('\n').length;
+      problems.push(
+        `${rel}:${line} <nldd-dropdown> in a row cell without width: it stretches ` +
+          'to fill the row. Give it a width.',
+      );
     }
 
     // A container sitting directly inside a card, without padding of its own.
@@ -366,8 +494,24 @@ for (const file of files) {
       }
     }
 
+    if (
+      tag === 'nldd-container' &&
+      stack[stack.length - 1] === 'nldd-container' &&
+      (!/\b(min-width|max-width|width)="/.test(attrText) || /\bwidth="full"/.test(attrText)) &&
+      !/\bclassName="[^"]*\b(row-fill|shrink-0|keep-label-width)\b/.test(attrText) &&
+      // The stack only holds nldd-* tags. A <div> or <button> in between (an
+      // attachment chip, a thumbnail button) is the real flex item, and the
+      // container inside it is sized by that element, not by the wrap.
+      !hasElementBetween(source, openIndexByDepth[stack.length - 1], m.index)
+    ) {
+      const depth = stack.length - 1;
+      (fullWidthKids[depth] ??= []).push(source.slice(0, m.index).split('\n').length);
+    }
+
     if (!selfClosing) {
       attrsByDepth[stack.length] = attrText;
+      openIndexByDepth[stack.length] = m.index + m[0].length;
+      fullWidthKids[stack.length] = [];
       stack.push(tag);
     }
   }

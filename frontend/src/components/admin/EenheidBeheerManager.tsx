@@ -209,7 +209,7 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
         )}
 
         {!initiativeLoading && initiatieven && initiatieven.length > 0 && (
-          <nldd-list variant="box-base" dividers="always" accessible-label="Gekoppelde initiatieven">
+          <nldd-list type="form" variant="box-base" dividers="always" accessible-label="Gekoppelde initiatieven">
             {initiatieven.map((link) => (
               <InitiatiefRow
                 key={link.initiatief_id}
@@ -260,7 +260,7 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
         )}
 
         {!modulesLoading && moduleConfig && (
-          <nldd-list variant="box-base" dividers="always" accessible-label="Modules per eenheid">
+          <nldd-list type="form" variant="box-base" dividers="always" accessible-label="Modules per eenheid">
             {moduleConfig.modules.map((mod) => {
               const isInherited = mod.inherited_from !== null && !mod.enabled;
               const label = moduleLabels?.[mod.module] ?? mod.module;
@@ -306,23 +306,32 @@ function InitiatiefRow({
   const rolSelectRef = useRef<HTMLSelectElement>(null);
   useNlddValue(rolSelectRef, rol);
 
+  // Every control sits in a cell of its own. A bare nldd-dropdown in the row
+  // stretches to fill it (that is its default without `width`), which on a
+  // phone left the name cell one character wide: "RegelRecht" came out as a
+  // column of letters. The dropdown gets a fixed width; the name takes the
+  // rest and wraps as words.
   return (
     <nldd-list-item>
       <nldd-text-cell text={naam} />
-      <nldd-dropdown ref={rolRef} size="sm">
-        <select ref={rolSelectRef} aria-label={`Rol van ${naam}`}>
-          {Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-      </nldd-dropdown>
-      <NlddIconButton
-        icon="close"
-        accessibleLabel={`${naam} ontkoppelen`}
-        variant="neutral-transparent"
-        size="xs"
-        onClick={onRemove}
-      />
+      <nldd-cell width="fit-content">
+        <nldd-dropdown ref={rolRef} size="sm" width="128px">
+          <select ref={rolSelectRef} aria-label={`Rol van ${naam}`}>
+            {Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </nldd-dropdown>
+      </nldd-cell>
+      <nldd-cell width="fit-content">
+        <NlddIconButton
+          icon="close"
+          accessibleLabel={`${naam} ontkoppelen`}
+          variant="neutral-transparent"
+          size="xs"
+          onClick={onRemove}
+        />
+      </nldd-cell>
     </nldd-list-item>
   );
 }
@@ -354,12 +363,14 @@ function ModuleRow({
         supporting-text={description || undefined}
         overline={isInherited ? `Overgenomen van ${inheritedFromNaam}` : undefined}
       />
-      <nldd-switch
-        ref={switchRef}
-        checked={enabled ? true : undefined}
-        disabled={isInherited || disabled ? true : undefined}
-        accessible-label={`${label} inschakelen`}
-      />
+      <nldd-cell width="fit-content">
+        <nldd-switch
+          ref={switchRef}
+          checked={enabled ? true : undefined}
+          disabled={isInherited || disabled ? true : undefined}
+          accessible-label={`${label} inschakelen`}
+        />
+      </nldd-cell>
     </nldd-list-item>
   );
 }

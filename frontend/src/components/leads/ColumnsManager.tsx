@@ -363,7 +363,7 @@ function ColumnRow({
             </nldd-text>
           </nldd-container>
 
-          <nldd-container layout="row" gap="4">
+          <div className="hug">
             <NlddIconButton
               icon="chevron-up"
               accessibleLabel="Omhoog"
@@ -388,7 +388,7 @@ function ColumnRow({
               disabled={!canDelete}
               onClick={onDelete}
             />
-          </nldd-container>
+          </div>
         </nldd-container>
 
         <nldd-container layout="wrap" gap="12" padding-left="4">

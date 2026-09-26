@@ -339,25 +339,25 @@ function LeadInboxRow({
                   </nldd-text>
                 )}
                 {lead.contact_names.length > 0 && (
-                  <nldd-container layout="row" gap="2" vertical-alignment="center" title={lead.contact_names.join(', ')}>
+                  <div className="hug hug-gap-2 hug-truncate" title={lead.contact_names.join(', ')}>
                     <nldd-icon name="users" size="16" aria-hidden="true" />
                     <nldd-text size="xs" color="secondary">
                       {lead.contact_names[0]}
                       {lead.contact_names.length > 1 && ` +${lead.contact_names.length - 1}`}
                     </nldd-text>
-                  </nldd-container>
+                  </div>
                 )}
                 {lead.next_action_date && (
-                  <nldd-container layout="row" gap="2" vertical-alignment="center">
+                  <div className="hug hug-gap-2">
                     <nldd-icon name="calendar" size="16" aria-hidden="true" />
                     <nldd-text size="xs" color="secondary">{formatDateShort(lead.next_action_date)}</nldd-text>
-                  </nldd-container>
+                  </div>
                 )}
                 {lead.attachment_count > 0 && (
-                  <nldd-container layout="row" gap="2" vertical-alignment="center">
+                  <div className="hug hug-gap-2">
                     <nldd-icon name="paperclip" size="16" aria-hidden="true" />
                     <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
-                  </nldd-container>
+                  </div>
                 )}
                 <nldd-text size="xs" color="secondary">{timeAgo(lead.created_at)}</nldd-text>
               </nldd-container>

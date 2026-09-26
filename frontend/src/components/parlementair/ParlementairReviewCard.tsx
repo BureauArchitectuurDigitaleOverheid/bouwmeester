@@ -401,22 +401,32 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             </Badge>
             <nldd-text size="xs" color="secondary">{item.bron === 'tweede_kamer' ? 'Tweede Kamer' : 'Eerste Kamer'}</nldd-text>
             <nldd-text size="xs" color="secondary">{item.zaak_nummer}</nldd-text>
+            {/* `hug`: as containers at the default 100% each date took a line
+                of its own in this wrap row instead of sitting beside the
+                badges. */}
             {item.datum && (
-              <nldd-container layout="row" gap="2" vertical-alignment="center">
+              <div className="hug hug-gap-2">
                 <Icon name="calendar" size="xs" />
                 <nldd-text size="xs" color="secondary">{formatDateLong(item.datum)}</nldd-text>
-              </nldd-container>
+              </div>
             )}
             {item.deadline && (
-              <nldd-container layout="row" gap="2" vertical-alignment="center">
+              <div className="hug hug-gap-2">
                 <Icon name="calendar" size="xs" />
                 <nldd-text size="xs" color="warning">
                   Deadline: {formatDateLong(item.deadline)}
                 </nldd-text>
-              </nldd-container>
+              </div>
             )}
             {item.ministerie && (
               <nldd-text size="xs" color="secondary">{item.ministerie}</nldd-text>
+            )}
+            {/* The count is metadata too. Beside the title it took a third of
+                the header on a phone, and the title wrapped every few words. */}
+            {item.suggested_edges && item.suggested_edges.length > 0 && (
+              <nldd-text size="xs" color="secondary">
+                {pendingEdges.length} te beoordelen
+              </nldd-text>
             )}
           </nldd-container>
           <nldd-container layout="row" gap="8" vertical-alignment="center">
@@ -428,14 +438,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           <nldd-text size="xs" color="secondary">Zaak: {item.titel}</nldd-text>
         </nldd-container>
 
-        <nldd-container layout="row" gap="8" vertical-alignment="center">
-          {item.suggested_edges && item.suggested_edges.length > 0 && (
-            <nldd-text size="xs" color="secondary">
-              {pendingEdges.length} te beoordelen
-            </nldd-text>
-          )}
+        {/* Only the chevron, at its own width. It used to sit in a container
+            without a width, which is 100%: beside the content column that
+            split the header 50/50, and on a phone the text stopped halfway
+            the card with the chevron floating in the middle. */}
+        <div className="hug">
           <Icon name={expanded ? 'chevron-up' : 'chevron-down'} size="md" />
-        </nldd-container>
+        </div>
       </nldd-container>
 
       {expanded && (
@@ -495,7 +504,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               <nldd-text
                 size="sm"
                 color="secondary"
-                className="whitespace-pre-wrap surface-tinted"
+                className="surface-tinted"
                 style={{
                   borderRadius: 'var(--primitives-corner-radius-md)',
                   padding: '12px',
@@ -503,7 +512,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   overflowY: 'auto',
                 }}
               >
-                {item.document_tekst}
+                {/* pre-wrap on the text, not the nldd-text host: there it
+                    leaks into the shadow template and indents the first line. */}
+                <span style={{ whiteSpace: 'pre-wrap' }}>{item.document_tekst}</span>
               </nldd-text>
             </nldd-container>
           )}
@@ -593,7 +604,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       </nldd-container>
 
                       {/* Actions on the right */}
-                      <nldd-container layout="row" gap="2" vertical-alignment="center" padding-top="4">
+                      <div className="hug hug-gap-2" style={{ paddingTop: '4px' }}>
                         {edge.status === 'pending' && (
                           <>
                             <NlddIconButton
@@ -621,7 +632,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                             onClick={() => resetEdge.mutate(edge.id)}
                           />
                         )}
-                      </nldd-container>
+                      </div>
                     </nldd-container>
                   </nldd-list-item>
                 ))}

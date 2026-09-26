@@ -54,6 +54,11 @@ function ClickableListItem({ onClick, children }: { onClick: () => void; childre
   );
 }
 
+/** "13-02-2026 — heden" for an open record, both dates for a closed one. */
+function historyPeriod(van: string, tot: string | null | undefined): string {
+  return `${formatDate(van)} — ${tot ? formatDate(tot) : 'heden'}`;
+}
+
 type TabId = 'overview' | 'connections' | 'stakeholders' | 'tasks' | 'activity';
 
 const tabs: { id: TabId; label: string }[] = [
@@ -163,14 +168,37 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
 
   return (
     <nldd-container gap="24">
-      {/* Back button */}
-      <NlddButton
-        variant="neutral-transparent"
-        size="sm"
-        text="Terug naar corpus"
-        startIcon="arrow-left"
-        onClick={() => navigate(corpusUrl)}
-      />
+      {/* Back button and the node's own actions on one line, which wraps as
+          a whole on a phone. The actions used to sit in the title's `end`
+          slot, where a long title pushed them past the edge of the screen:
+          all that showed of "Verwijder" was a sliver of red. */}
+      <nldd-container layout="wrap" width="full" gap="8" vertical-alignment="center">
+        {/* Both hug their content, so the line wraps once they no longer
+            fit side by side. The link used to be row-fill, whose basis is 0:
+            the line never wrapped and the link was squeezed instead. */}
+        <div className="hug">
+          <NlddButton
+            variant="neutral-transparent"
+            size="sm"
+            text="Terug naar corpus"
+            startIcon="arrow-left"
+            onClick={() => navigate(corpusUrl)}
+          />
+        </div>
+        <div className="hug hug-gap-8 margin-left-auto">
+          <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>
+            Bewerken
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            icon="trash"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            Verwijder
+          </Button>
+        </div>
+      </nldd-container>
 
       {/* Header */}
       <nldd-container gap="8">
@@ -187,31 +215,18 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             straight to the h3 section headings below. */}
         <nldd-title size={1}>
           <h2>{node.title}</h2>
-          <span slot="end">
-            <nldd-container layout="row" gap="8" vertical-alignment="center">
-              <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>
-                Bewerken
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                icon="trash"
-                onClick={() => setShowDeleteConfirm(true)}
-              >
-                Verwijder
-              </Button>
-            </nldd-container>
-          </span>
         </nldd-title>
+        {/* Each item as wide as its text, so they sit side by side while they
+            fit. At the container's default 100% each took a line of its own. */}
         <nldd-container layout="wrap" gap="16" vertical-alignment="center">
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
+          <div className="hug">
             <Icon name="calendar" size="xs" />
             <nldd-text size="xs" color="secondary">Aangemaakt: {formatDate(node.created_at)}</nldd-text>
-          </nldd-container>
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
+          </div>
+          <div className="hug">
             <Icon name="link" size="xs" />
             <nldd-text size="xs" color="secondary">{node.edge_count ?? 0} verbindingen</nldd-text>
-          </nldd-container>
+          </div>
           {parlementairItem?.document_url && (
             <nldd-link
               href={parlementairItem.document_url}
@@ -551,14 +566,62 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         )}
 
         {activeTab === 'stakeholders' && (
-          <nldd-container gap="16">
-            <nldd-title size={3}><h3>Betrokkenen ({stakeholders?.length ?? 0})</h3></nldd-title>
+          // Two sections of equal rank (who is involved, and how they stand)
+          // with the same heading size, each with its content first and its
+          // input after. The add form is a quiet block under the list rather
+          // than a card with a heading as loud as the section's own.
+          <nldd-container gap="32">
+            <nldd-container gap="16">
+              <nldd-title size={3}><h3>Betrokkenen ({stakeholders?.length ?? 0})</h3></nldd-title>
 
-            {/* Add stakeholder form */}
-            <Card>
-              <nldd-title size={4}><h4>Betrokkene toevoegen</h4></nldd-title>
-              <nldd-container layout="row" gap="12" vertical-alignment="bottom">
-                <nldd-container width="full">
+              {/* Stakeholder list. A row wraps on a phone: the person keeps
+                  the full width and the role and delete button move under it,
+                  instead of a fixed 192px select squeezing the name. */}
+              {stakeholders && stakeholders.length > 0 ? (
+                <nldd-container gap="8">
+                  {stakeholders.map((s) => (
+                    <nldd-container key={s.id} layout="wrap" gap="8" vertical-alignment="center">
+                      <nldd-container width="fit-content" className="grow" min-width="240px">
+                        <PersonCardExpandable person={s.person} />
+                      </nldd-container>
+                      <div className="hug hug-gap-8">
+                        <nldd-container width="160px">
+                          <Select
+                            value={s.rol}
+                            aria-label={`Rol van ${s.person.naam}`}
+                            onChange={(e) => {
+                              updateStakeholder.mutate({
+                                nodeId,
+                                stakeholderId: s.id,
+                                data: { rol: e.target.value },
+                              });
+                            }}
+                            options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
+                          />
+                        </nldd-container>
+                        <NlddIconButton
+                          icon="trash"
+                          variant="critical-transparent"
+                          size="sm"
+                          accessibleLabel={`${s.person.naam} verwijderen`}
+                          onClick={() => setRemoveStakeholderId({ id: s.id, naam: s.person.naam })}
+                        />
+                      </div>
+                    </nldd-container>
+                  ))}
+                </nldd-container>
+              ) : (
+                <nldd-text size="sm" color="secondary">
+                  Er zijn nog geen personen gekoppeld aan deze node.
+                </nldd-text>
+              )}
+
+              {/* Add form. Persoon gets a line of its own, so the select and
+                  its "Nieuwe persoon aanmaken" option have room; Rol and the
+                  button share the next line and wrap together on a phone. */}
+              <Card>
+                <nldd-container gap="12">
+                  <nldd-title size={6}><h4>Betrokkene toevoegen</h4></nldd-title>
                   <CreatableSelect
                     label="Persoon"
                     value={newStakeholderPersonId}
@@ -576,81 +639,42 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                     }}
                     createLabel="Nieuwe persoon aanmaken"
                   />
-                </nldd-container>
-                <nldd-container width="192px">
-                  <Select
-                    label="Rol"
-                    value={newStakeholderRol}
-                    onChange={(e) => setNewStakeholderRol(e.target.value)}
-                    options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
-                  />
-                </nldd-container>
-                <Button
-                  icon="plus"
-                  disabled={!newStakeholderPersonId || addStakeholder.isPending}
-                  onClick={() => {
-                    addStakeholder.mutate(
-                      { nodeId, data: { person_id: newStakeholderPersonId, rol: newStakeholderRol } },
-                      {
-                        onSuccess: () => {
-                          setNewStakeholderPersonId('');
-                          setNewStakeholderRol('betrokken');
-                        },
-                      },
-                    );
-                  }}
-                >
-                  Toevoegen
-                </Button>
-              </nldd-container>
-            </Card>
-
-            {/* Stakeholder list */}
-            {stakeholders && stakeholders.length > 0 ? (
-              <nldd-container gap="8">
-                {stakeholders.map((s) => (
-                  <nldd-container key={s.id} layout="row" gap="12" vertical-alignment="center">
-                    <nldd-container width="full">
-                      <PersonCardExpandable
-                        person={s.person}
-                      />
-                    </nldd-container>
-                    <nldd-container width="192px">
+                  <nldd-container layout="wrap" gap="12" vertical-alignment="bottom">
+                    <nldd-container width="fit-content" className="grow" min-width="160px">
                       <Select
-                        value={s.rol}
-                        aria-label="Rol van de stakeholder"
-                        onChange={(e) => {
-                          updateStakeholder.mutate({
-                            nodeId,
-                            stakeholderId: s.id,
-                            data: { rol: e.target.value },
-                          });
-                        }}
+                        label="Rol"
+                        value={newStakeholderRol}
+                        onChange={(e) => setNewStakeholderRol(e.target.value)}
                         options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                       />
                     </nldd-container>
-                    <NlddIconButton
-                      icon="trash"
-                      variant="critical-transparent"
-                      size="sm"
-                      accessibleLabel="Verwijderen"
-                      onClick={() => setRemoveStakeholderId({ id: s.id, naam: s.person.naam })}
-                    />
+                    <div className="hug hug-stack">
+                      <Button
+                        icon="plus"
+                        disabled={!newStakeholderPersonId || addStakeholder.isPending}
+                        onClick={() => {
+                          addStakeholder.mutate(
+                            { nodeId, data: { person_id: newStakeholderPersonId, rol: newStakeholderRol } },
+                            {
+                              onSuccess: () => {
+                                setNewStakeholderPersonId('');
+                                setNewStakeholderRol('betrokken');
+                              },
+                            },
+                          );
+                        }}
+                      >
+                        Toevoegen
+                      </Button>
+                    </div>
                   </nldd-container>
-                ))}
-              </nldd-container>
-            ) : (
-              <EmptyState
-                title="Geen betrokkenen"
-                description="Er zijn nog geen personen gekoppeld aan deze node."
-              />
-            )}
-
-            <nldd-divider />
+                </nldd-container>
+              </Card>
+            </nldd-container>
 
             <nldd-container gap="8">
-              <nldd-title size={4}><h4>Belang, houding &amp; invloed</h4></nldd-title>
-              <nldd-text size="xs" color="secondary">
+              <nldd-title size={3}><h3>Belang, houding &amp; invloed</h3></nldd-title>
+              <nldd-text size="sm" color="secondary">
                 Inschatting per stakeholder, los van rol. Aparte assessment voor
                 analyse-doeleinden.
               </nldd-text>
@@ -668,6 +692,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Title history */}
             <Card>
               <nldd-title size={3}><h3>Titelgeschiedenis</h3></nldd-title>
+              <nldd-spacer size="8" />
               {titleHistory && titleHistory.length > 0 ? (
                 <nldd-list dividers="never">
                   {titleHistory.map((record, idx) => (
@@ -685,15 +710,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                                 : 'between'
                         }
                       />
-                      <nldd-text-cell text={record.title} />
+                      <nldd-spacer-cell size="8" />
                       <nldd-text-cell
-                        color="secondary"
-                        horizontal-alignment="right"
-                        text={
-                          record.geldig_tot
-                            ? `${formatDate(record.geldig_van)} — ${formatDate(record.geldig_tot)}`
-                            : `${formatDate(record.geldig_van)} — heden`
-                        }
+                        text={record.title}
+                        supporting-text={historyPeriod(record.geldig_van, record.geldig_tot)}
                       />
                     </nldd-list-item>
                   ))}
@@ -706,6 +726,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             {/* Status history */}
             <Card>
               <nldd-title size={3}><h3>Statusgeschiedenis</h3></nldd-title>
+              <nldd-spacer size="8" />
               {statusHistory && statusHistory.length > 0 ? (
                 <nldd-list dividers="never">
                   {statusHistory.map((record, idx) => (
@@ -723,17 +744,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                                 : 'between'
                         }
                       />
-                      <nldd-text-cell>
-                        <Badge variant="gray">{NODE_STATUS_LABELS[record.status as NodeStatus] ?? record.status}</Badge>
-                      </nldd-text-cell>
+                      <nldd-spacer-cell size="8" />
                       <nldd-text-cell
-                        color="secondary"
-                        horizontal-alignment="right"
-                        text={
-                          record.geldig_tot
-                            ? `${formatDate(record.geldig_van)} — ${formatDate(record.geldig_tot)}`
-                            : `${formatDate(record.geldig_van)} — heden`
-                        }
+                        text={NODE_STATUS_LABELS[record.status as NodeStatus] ?? record.status}
+                        supporting-text={historyPeriod(record.geldig_van, record.geldig_tot)}
                       />
                     </nldd-list-item>
                   ))}

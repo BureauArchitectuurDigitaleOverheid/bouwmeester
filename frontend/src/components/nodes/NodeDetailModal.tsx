@@ -186,10 +186,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               </Badge>
               {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
               {node.edge_count != null && (
-                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <div className="hug">
                   <nldd-icon name="link" size="16" aria-hidden="true" />
                   <nldd-text size="sm" color="secondary">{node.edge_count} verbindingen</nldd-text>
-                </nldd-container>
+                </div>
               )}
               {parlementairItem?.document_url && (
                 <nldd-link
@@ -204,8 +204,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             {/* Eigenaar / stakeholders compact row */}
             {stakeholders && stakeholders.length > 0 && (
               <nldd-container layout="row" gap="16" vertical-alignment="top">
+                {/* Grow, not hug: the content is containers and tags, and a
+                    container adds nothing to a shrink-to-fit parent's width. */}
                 {eigenaren.length > 0 && (
-                  <nldd-container gap="6" min-width="0px" width="fit-content">
+                  <nldd-container width="fit-content" className="row-fill" gap="8">
                     <nldd-container layout="row" gap="4" vertical-alignment="center">
                       <nldd-icon name="users" size="16" aria-hidden="true" />
                       <nldd-text size="xs" weight="bold" color="secondary"><h4>Eigenaar</h4></nldd-text>
@@ -218,7 +220,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                   </nldd-container>
                 )}
                 {otherStakeholders.length > 0 && (
-                  <nldd-container gap="6" min-width="0px" width="fit-content">
+                  <nldd-container width="fit-content" className="row-fill" gap="8">
                     <nldd-text size="xs" weight="bold" color="secondary"><h4>Betrokkenen</h4></nldd-text>
                     <nldd-container layout="wrap" gap="6">
                       {otherStakeholders.slice(0, 6).map((s) => (

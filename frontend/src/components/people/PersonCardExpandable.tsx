@@ -170,21 +170,20 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               </a>
             )}
             {person.functie && !person.is_agent && (
-              // nldd-container's layout has no responsive show/hide (unlike
-              // gap/padding/column-count, which do take sm-/md-/lg- variants),
-              // so hiding it below sm is a utility class. It has to be the
-              // -block variant: `hidden-below-sm` forces `display: inline`
-              // above the breakpoint, which flattens a row container and
-              // collapses its contents to zero width.
-              <nldd-container layout="row" gap="4" vertical-alignment="center" className="hidden-below-sm-block">
-                <Icon name="Briefcase" size="xs" />
-                <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {formatFunctie(person.functie)}
-                </nldd-text>
-              </nldd-container>
+              // Hidden below sm by a wrapper, not on the hug itself: the
+              // hidden-* utilities reset `display` above the breakpoint, and
+              // on the same element that undid hug's inline-flex.
+              <div className="hidden-below-sm-block" style={{ minWidth: 0 }}>
+                <div className="hug hug-truncate" style={{ maxWidth: '100%' }}>
+                  <Icon name="Briefcase" size="xs" />
+                  <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                    {formatFunctie(person.functie)}
+                  </nldd-text>
+                </div>
+              </div>
             )}
             {person.description && person.is_agent && (
-              <nldd-container layout="row" gap="4" vertical-alignment="top">
+              <div className="hug hug-truncate hug-top">
                 <Icon name="Briefcase" size="xs" style={{ marginTop: '2px' }} />
                 <nldd-text
                   size="xs"
@@ -197,11 +196,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 >
                   {richTextToPlain(person.description)}
                 </nldd-text>
-              </nldd-container>
+              </div>
             )}
             {/* Externe links: TK OData, Wikidata */}
             {expanded && (person.tk_persoon_id || person.wikidata_qid) && (
-              <nldd-container layout="row" gap="12">
+              <div className="hug hug-gap-12">
                 {person.tk_persoon_id && (
                   <ExternalRefLink
                     href={`https://www.tweedekamer.nl/kamerleden_en_commissies/alle_kamerleden/${person.tk_persoon_id}`}
@@ -214,7 +213,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                     text={`Wikidata ${person.wikidata_qid} ↗`}
                   />
                 )}
-              </nldd-container>
+              </div>
             )}
           </nldd-container>
         </nldd-container>
@@ -302,14 +301,14 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               {/* Tasks section */}
               <nldd-container>
                 <nldd-container layout="row" gap="12">
-                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <div className="hug">
                     <Icon name="Circle" size="xs" />
                     <nldd-text size="xs" color="secondary">{summary.open_task_count} open</nldd-text>
-                  </nldd-container>
-                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  </div>
+                  <div className="hug">
                     <Icon name="CheckCircle2" size="xs" />
                     <nldd-text size="xs" color="secondary">{summary.done_task_count} afgerond</nldd-text>
-                  </nldd-container>
+                  </div>
                 </nldd-container>
                 {summary.open_tasks.length > 0 && (
                   <nldd-list variant="simple" dividers="never" accessible-label="Open taken">

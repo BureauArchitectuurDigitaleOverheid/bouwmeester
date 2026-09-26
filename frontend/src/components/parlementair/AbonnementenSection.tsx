@@ -364,14 +364,14 @@ function SuggestieLijst({
               : 'Het model vond geen varianten die iets toevoegen aan wat je al volgt.'
           }
         />
-        <nldd-container width="fit-content">
+        <div className="hug hug-stack">
           <nldd-button
             variant="neutral-transparent"
             size="xs"
             text="Sluiten"
             onClick={onSluiten}
           />
-        </nldd-container>
+        </div>
       </nldd-container>
     );
   }

@@ -61,34 +61,24 @@ export function NodeCard({ node }: NodeCardProps) {
       {/* Footer info */}
       <nldd-container layout="row" gap="12" vertical-alignment="center" padding-top="12">
         {node.edge_count !== undefined && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
+          <div className="hug">
             <Icon name="link" size="xs" />
             <nldd-text size="xs" color="secondary">{node.edge_count} verbindingen</nldd-text>
-          </nldd-container>
+          </div>
         )}
         {node.financieel_summary && node.financieel_summary.totaal_budget > 0 && (
-          <nldd-container
-            layout="row"
-            gap="4"
-            vertical-alignment="center"
-            title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}
-          >
+          <div className="hug" title={`Budget: ${formatCurrency(node.financieel_summary.totaal_budget)} — Gerealiseerd: ${formatCurrency(node.financieel_summary.totaal_gerealiseerd)}`}>
             <Icon name="euro-sign" size="xs" />
             <nldd-text size="xs" color="secondary">{formatCurrencyCompact(node.financieel_summary.totaal_budget)}</nldd-text>
-          </nldd-container>
+          </div>
         )}
         {node.node_type === NodeType.DOSSIER && node.beleidskompas_progress && (
-          <nldd-container
-            layout="row"
-            gap="4"
-            vertical-alignment="center"
-            title={`Beleidskompas: ${node.beleidskompas_progress.completed_steps} van ${node.beleidskompas_progress.total_steps} stappen compleet`}
-          >
+          <div className="hug" title={`Beleidskompas: ${node.beleidskompas_progress.completed_steps} van ${node.beleidskompas_progress.total_steps} stappen compleet`}>
             <Icon name="signpost" size="xs" />
             <nldd-text size="xs" weight="medium" color={kompasDone ? 'success' : 'secondary'}>
               {node.beleidskompas_progress.completed_steps}/{node.beleidskompas_progress.total_steps}
             </nldd-text>
-          </nldd-container>
+          </div>
         )}
         <nldd-spacer direction="horizontal" size="flexible" />
         <nldd-text size="xs" color="secondary">{formatDateShort(node.updated_at ?? node.created_at)}</nldd-text>

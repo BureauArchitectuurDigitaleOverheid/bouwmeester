@@ -497,19 +497,18 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
           <nldd-container layout="wrap" gap="8" vertical-alignment="center">
             <nldd-tag text={LEAD_STAGE_LABELS[lead.stage]} color={stageTagColor(lead.stage)} size="sm" />
             {lead.next_action_date && (
-              <nldd-container
-                layout="row"
-                gap="4"
-                vertical-alignment="center"
-                padding="2"
-                padding-inline="8"
-                style={overdue ? { backgroundColor: 'var(--primitives-color-critical-25)', borderRadius: '6px' } : undefined}
+              <div
+                className="hug"
+                style={{
+                  padding: '2px 8px',
+                  ...(overdue ? { backgroundColor: 'var(--primitives-color-critical-25)', borderRadius: '6px' } : {}),
+                }}
               >
                 <nldd-icon name="calendar" size="16" aria-hidden="true" />
                 <nldd-text size="sm" color={overdue ? 'critical' : 'secondary'} weight={overdue ? 'medium' : 'regular'}>
                   {formatDateLong(lead.next_action_date)}
                 </nldd-text>
-              </nldd-container>
+              </div>
             )}
           </nldd-container>
 
@@ -675,8 +674,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                     </nldd-container>
                   )}
                   {lead.public_summary && (
-                    <nldd-text size="sm" color="secondary" style={{ whiteSpace: 'pre-wrap', display: 'block' }}>
-                      {lead.public_summary}
+                    <nldd-text size="sm" color="secondary">
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{lead.public_summary}</span>
                     </nldd-text>
                   )}
                 </nldd-container>
@@ -934,8 +933,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                                 <nldd-text size="xs" weight="medium" color="success">
                                   Uitkomst
                                 </nldd-text>
-                                <nldd-text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-                                  {activity.uitkomst}
+                                <nldd-text size="xs">
+                                  <span style={{ whiteSpace: 'pre-wrap' }}>{activity.uitkomst}</span>
                                 </nldd-text>
                               </nldd-container>
                             </nldd-card>
@@ -946,8 +945,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                                 <nldd-text size="xs" weight="medium" color="warning">
                                   Vervolgacties
                                 </nldd-text>
-                                <nldd-text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-                                  {activity.vervolgacties}
+                                <nldd-text size="xs">
+                                  <span style={{ whiteSpace: 'pre-wrap' }}>{activity.vervolgacties}</span>
                                 </nldd-text>
                               </nldd-container>
                             </nldd-card>
@@ -1259,14 +1258,24 @@ interface ContactRowProps {
   onRemove: () => void;
 }
 
+// Expertise is free text, and a tag never shrinks below its full label. As a
+// tag beside the name it could take the whole row on a phone and leave the
+// name zero wide, one letter per line. As the name's second line it wraps.
 function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
   return (
     <nldd-list-item>
       <nldd-icon-cell icon="person" size="16" />
-      <nldd-text-cell text={naam} width="full" />
-      {expertise && <nldd-tag text={expertise} color="donkerblauw" size="sm" />}
-      <nldd-tag text={rolLabel} color="neutral" size="sm" />
-      <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
+      <nldd-text-cell
+        text={naam}
+        width="full"
+        {...(expertise ? { 'supporting-text': expertise } : {})}
+      />
+      <nldd-cell>
+        <nldd-tag text={rolLabel} color="neutral" size="sm" />
+      </nldd-cell>
+      <nldd-cell>
+        <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
+      </nldd-cell>
     </nldd-list-item>
   );
 }
@@ -1282,8 +1291,12 @@ function LinkedNodeRow({ title, nodeType, onUnlink }: LinkedNodeRowProps) {
     <nldd-list-item>
       <nldd-icon-cell icon="link" size="16" />
       <nldd-text-cell text={title} width="full" />
-      <nldd-tag text={nodeType} color="neutral" size="sm" />
-      <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
+      <nldd-cell>
+        <nldd-tag text={nodeType} color="neutral" size="sm" />
+      </nldd-cell>
+      <nldd-cell>
+        <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
+      </nldd-cell>
     </nldd-list-item>
   );
 }

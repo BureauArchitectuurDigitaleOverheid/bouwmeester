@@ -269,23 +269,23 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
             {/* Financial hero */}
             {budget > 0 && (
               <nldd-container layout="wrap" gap="32" vertical-alignment="bottom">
-                <nldd-container width="fit-content" gap="2">
+                <div className="hug hug-stack hug-gap-2">
                   {/* `nldd-text` has no letter-spacing/uppercase token; this is
                       line-box CSS with no equivalent, so it stays plain. */}
                   <nldd-text size="xs" color="secondary" className="uppercase tracking-wider">Budget</nldd-text>
                   <nldd-text size="lg" weight="bold">{formatCurrency(opdracht.budget)}</nldd-text>
-                </nldd-container>
+                </div>
                 {uitnutting !== null && (
-                  <nldd-container width="fit-content" gap="2">
+                  <div className="hug hug-stack hug-gap-2">
                     <nldd-text size="xs" color="secondary" className="uppercase tracking-wider">Uitnutting</nldd-text>
                     <nldd-text size="lg" weight="bold">{uitnutting.toFixed(1)}%</nldd-text>
-                  </nldd-container>
+                  </div>
                 )}
                 {gerealiseerd > 0 && (
-                  <nldd-container width="fit-content" gap="2">
+                  <div className="hug hug-stack hug-gap-2">
                     <nldd-text size="xs" color="secondary" className="uppercase tracking-wider">Gerealiseerd</nldd-text>
                     <nldd-text size="lg" weight="bold">{formatCurrency(opdracht.gerealiseerd)}</nldd-text>
-                  </nldd-container>
+                  </div>
                 )}
               </nldd-container>
             )}
@@ -442,7 +442,10 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                   <nldd-list variant="box-tinted" dividers="always">
                     {members.map((member) => (
                       <nldd-list-item key={member.person_id}>
-                        <nldd-cell>
+                        {/* `full`: a fit-content cell measures its content, and a
+                            container measures its parent, so the two wait on
+                            each other and the name can end up zero wide. */}
+                        <nldd-cell width="full">
                           <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
                             <NlddActionText
                               text={member.person_naam}
@@ -502,7 +505,10 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                   <nldd-list variant="box-tinted" dividers="always">
                     {eenheden.map((eenheid) => (
                       <nldd-list-item key={eenheid.eenheid_id}>
-                        <nldd-cell>
+                        {/* `full`: a fit-content cell measures its content, and a
+                            container measures its parent, so the two wait on
+                            each other and the name can end up zero wide. */}
+                        <nldd-cell width="full">
                           <nldd-container layout="row" gap="8" vertical-alignment="center" min-width="0px">
                             <NlddActionText
                               text={eenheid.eenheid_naam}

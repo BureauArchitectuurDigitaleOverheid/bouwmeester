@@ -266,7 +266,7 @@ function PostRow({
           )}
         </nldd-container>
         {canEdit && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
+          <div className="hug">
             <NlddIconButton
               icon="pencil"
               accessibleLabel="Bewerken"
@@ -298,7 +298,7 @@ function PostRow({
               size="sm"
               onClick={onDelete}
             />
-          </nldd-container>
+          </div>
         )}
       </nldd-container>
     </nldd-list-item>

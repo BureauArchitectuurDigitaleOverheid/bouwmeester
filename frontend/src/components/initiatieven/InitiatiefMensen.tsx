@@ -82,7 +82,7 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
                   </Badge>
                 </nldd-container>
                 {isEigenaar && (
-                  <nldd-container layout="row" gap="4" vertical-alignment="center">
+                  <div className="hug">
                     {member.rol === 'eigenaar' ? (
                       eigenaarCount > 1 && (
                         <Button variant="ghost" size="sm" onClick={() => setRole(member.person_id, 'contributor')}>
@@ -108,7 +108,7 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
                         />
                       </>
                     )}
-                  </nldd-container>
+                  </div>
                 )}
               </nldd-container>
             </nldd-list-item>
