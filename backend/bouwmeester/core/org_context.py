@@ -190,6 +190,22 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
+    """Whether something in *eenheid_id* is visible: ``apply_org_filter`` for one row.
+
+    Something without an eenheid is visible to every authenticated user.
+    """
+    if org_ctx.is_admin:
+        return True
+    if not org_ctx.is_authenticated:
+        return eenheid_id is None
+    return (
+        eenheid_id is None
+        or eenheid_id in org_ctx.visible_eenheid_ids
+        or eenheid_id in org_ctx.shared_eenheid_ids
+    )
+
+
 def check_org_scope(
     eenheid_id: UUID | None,
     org_ctx: OrgContext,
@@ -207,14 +223,9 @@ def check_org_scope(
         allow_none: If ``True`` (default), ``None`` eenheid_id is always
             allowed.  Set to ``False`` to require an eenheid.
     """
-    if eenheid_id is None:
-        if allow_none:
-            return
+    if eenheid_id is None and not allow_none:
         raise HTTPException(status_code=403, detail="Organisatie-eenheid is verplicht")
-    if org_ctx.is_admin:
-        return
-    all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-    if eenheid_id not in all_visible:
+    if not sees_eenheid(org_ctx, eenheid_id):
         raise HTTPException(
             status_code=403,
             detail="Geen toegang tot deze organisatie-eenheid",

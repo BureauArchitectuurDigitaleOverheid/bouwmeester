@@ -18,12 +18,18 @@ about its parent with the child's permission
 child permission on a parent is decided as write access on that parent.
 
 Rule of the model: seeing never implies writing, and a permission only
-counts where it holds.  ``core.org_context`` still decides visibility (read
-up the line, shares); this module decides actions.  ``core.authority``
-builds on it for decisions about grants.
+counts where it holds.  ``core.org_context`` and ``core.initiatief_context``
+decide visibility (read up the line, shares); this module decides actions
+and asks them for reads.  ``core.authority`` builds on it for decisions
+about grants.
 
 Resolution order (first match wins; every step can only allow):
 
+0. Reads are visibility, not rights: ``<type>:read`` on an existing
+   corpus_node, task, edge, opdracht, initiatief or lead is answered by
+   ``core.org_context`` / ``core.initiatief_context``, the rule lists and
+   details apply (``_READ_IS_VISIBILITY``).  A sub-record in the delegation
+   table is readable when its parent is.  Only this step decides such reads.
 1. super_admin, or *permission* from a system-level role.
 2. A resource role on the resource itself (``ResourcePermission``, direct or
    through an eenheid the person is placed in), mapped through
@@ -113,6 +119,7 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
 )
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.github_link import GitHubLink
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
@@ -122,6 +129,7 @@ from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
@@ -489,6 +497,120 @@ async def _resource_roles(
     return perm_ctx.authz_cache[key]
 
 
+# ---------------------------------------------------------------------------
+# Reads: visibility, not rights
+# ---------------------------------------------------------------------------
+
+
+async def _contexts(db: AsyncSession, perm_ctx: PermissionContext):
+    """The caller's org and initiatief visibility, built once per request."""
+    from bouwmeester.core.initiatief_context import build_initiatief_context
+    from bouwmeester.core.org_context import build_org_context
+    from bouwmeester.models.person import Person
+
+    key = ("visibility",)
+    if key not in perm_ctx.authz_cache:
+        person = (
+            await db.get(Person, perm_ctx.person_id) if perm_ctx.person_id else None
+        )
+        org_ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
+        init_ctx = await build_initiatief_context(
+            db, person, perm_ctx=perm_ctx, org_ctx=org_ctx
+        )
+        perm_ctx.authz_cache[key] = (org_ctx, init_ctx)
+    return perm_ctx.authz_cache[key]
+
+
+async def _sees_in_eenheid(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    model: Any,
+    column: Any,
+    resource_id: UUID,
+    permission: str | None = None,
+) -> bool:
+    from bouwmeester.core.org_context import sees_eenheid
+
+    if permission is not None and not perm_ctx.has_permission(permission):
+        return False  # the route also asks require_permission(<type>:read)
+    row = await _row(db, column, where=model.id == resource_id)
+    org_ctx, _ = await _contexts(db, perm_ctx)
+    return row is not None and sees_eenheid(org_ctx, row[0])
+
+
+async def _sees_node(db: AsyncSession, perm_ctx: PermissionContext, rid: UUID) -> bool:
+    return await _sees_in_eenheid(
+        db, perm_ctx, CorpusNode, CorpusNode.organisatie_eenheid_id, rid
+    )
+
+
+async def _sees_task(db: AsyncSession, perm_ctx: PermissionContext, rid: UUID) -> bool:
+    return await _sees_in_eenheid(
+        db, perm_ctx, Task, Task.organisatie_eenheid_id, rid, "task:read"
+    )
+
+
+async def _sees_opdracht(
+    db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+) -> bool:
+    return await _sees_in_eenheid(
+        db, perm_ctx, Opdracht, Opdracht.opdrachtgever_id, rid, "opdracht:read"
+    )
+
+
+async def _sees_edge(db: AsyncSession, perm_ctx: PermissionContext, rid: UUID) -> bool:
+    row = await _row(db, Edge.from_node_id, Edge.to_node_id, where=Edge.id == rid)
+    return row is not None and all([await _sees_node(db, perm_ctx, n) for n in row])
+
+
+async def _sees_initiatief(
+    db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+) -> bool:
+    _, init_ctx = await _contexts(db, perm_ctx)
+    return init_ctx.sees_initiatief(rid)
+
+
+async def _sees_lead(db: AsyncSession, perm_ctx: PermissionContext, rid: UUID) -> bool:
+    lead = await db.get(Lead, rid)
+    _, init_ctx = await _contexts(db, perm_ctx)
+    return lead is not None and init_ctx.sees_lead(lead)
+
+
+# ``<type>:read`` is answered by the visibility modules (``core.org_context``,
+# ``core.initiatief_context``), the same rule lists and details apply.
+# Sub-records in ``DELEGATIONS`` without an entry here read through their
+# parent.
+_READ_IS_VISIBILITY: dict[
+    str, Callable[[AsyncSession, PermissionContext, UUID], Awaitable[bool]]
+] = {
+    "corpus_node": _sees_node,
+    "task": _sees_task,
+    "edge": _sees_edge,
+    "opdracht": _sees_opdracht,
+    "initiatief": _sees_initiatief,
+    "lead": _sees_lead,
+}
+
+
+async def _read_decision(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    resource_type: str,
+    resource_id: UUID,
+    loc: _Location,
+) -> bool | None:
+    """The answer to ``<resource_type>:read``, or None when rights decide."""
+    if resource_type in _READ_IS_VISIBILITY:
+        return await _READ_IS_VISIBILITY[resource_type](db, perm_ctx, resource_id)
+    if resource_type in DELEGATIONS:
+        for parent_type, parent_id in loc.parents:
+            parent_read = f"{_PERM_DOMAIN.get(parent_type, parent_type)}:read"
+            if await _decide(db, perm_ctx, parent_read, parent_type, parent_id, None):
+                return True
+        return False
+    return None
+
+
 async def _holds_on_eenheden(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -566,6 +688,13 @@ async def _resolve(
         loc = await _locate(db, perm_ctx, resource_type, resource_id)
         if loc is None:
             return None
+        # 0. Reading an existing resource is seeing it.
+        if permission == f"{_PERM_DOMAIN.get(resource_type, resource_type)}:read":
+            decision = await _read_decision(
+                db, perm_ctx, resource_type, resource_id, loc
+            )
+            if decision is not None:
+                return decision
 
     # 1. System level.
     if perm_ctx.has_system_permission(permission):

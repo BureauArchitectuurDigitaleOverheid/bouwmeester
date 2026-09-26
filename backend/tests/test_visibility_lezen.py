@@ -264,6 +264,73 @@ async def test_search_finds_leads_by_the_same_rule(rw):
 
 
 # ---------------------------------------------------------------------------
+# authz answers reads with the same visibility
+# ---------------------------------------------------------------------------
+
+# (resource type, read permission, detail route, resource keys)
+READ_TYPES = [
+    (
+        "corpus_node",
+        "node:read",
+        "/api/nodes/{}",
+        (
+            "node_directie",
+            "node_afdeling",
+            "node_team",
+            "node_elders",
+            "node_free",
+            "node_sibling",
+        ),
+    ),
+    ("task", "task:read", "/api/tasks/{}", ("task_team", "task_on_team_node")),
+    (
+        "edge",
+        "edge:read",
+        "/api/edges/{}",
+        ("edge_team_directie", "edge_directie_elders"),
+    ),
+    (
+        "opdracht",
+        "opdracht:read",
+        "/api/opdrachten/{}",
+        ("opdracht_free", "opdracht_directie"),
+    ),
+    ("initiatief", "initiatief:read", "/api/initiatieven/{}", INITIATIEVEN),
+    ("lead", "lead:read", "/api/leads/{}", LEADS),
+]
+
+
+@pytest.mark.parametrize(
+    ("resource_type", "permission", "route", "keys"),
+    READ_TYPES,
+    ids=[t[0] for t in READ_TYPES],
+)
+async def test_can_read_equals_detail_for_everyone(
+    rw, resource_type, permission, route, keys
+):
+    """``can(<type>:read)`` is visibility, so buttons and pages agree."""
+    for who, person in rw.person.items():
+        ctx = await build_permission_context(rw.db, person)
+        async with client_as(rw.db, person) as c:
+            for key in keys:
+                resp = await c.get(route.format(rw.res[key]))
+                decided = await can(rw.db, ctx, permission, resource_type, rw.res[key])
+                assert decided is (resp.status_code == 200), (who, key, resp.text)
+
+
+async def test_sub_records_read_through_their_parent(rw):
+    for who, person in rw.person.items():
+        ctx = await build_permission_context(rw.db, person)
+        column = await can(
+            rw.db, ctx, "lead_column:read", "lead_column", rw.res["lead_column"]
+        )
+        parent = await can(
+            rw.db, ctx, "initiatief:read", "initiatief", rw.res["initiatief"]
+        )
+        assert column is parent, who
+
+
+# ---------------------------------------------------------------------------
 # LLM: kompas guidance and corpus gaps see what GET /nodes sees
 # ---------------------------------------------------------------------------
 
