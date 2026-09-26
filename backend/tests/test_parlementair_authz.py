@@ -335,6 +335,24 @@ async def test_suggestions_hide_target_nodes_the_reader_cannot_see(world: World)
         assert targets == {str(world.res["node_team"])}
 
 
+async def test_suggestions_show_targets_read_through_a_resource_role(world: World):
+    """A target node is shown by the node:read rule, not by its eenheid only."""
+    item = await _review_item(world, "node_team", "node_elders")
+    world.db.add(
+        ResourcePermission(
+            person_id=world.person["viewer"].id,
+            resource_type="corpus_node",
+            resource_id=world.res["node_elders"],
+            rol="betrokken",
+        )
+    )
+    await world.db.flush()
+    async with client_as(world.db, world.person["viewer"]) as c:
+        detail = await c.get(f"/api/parlementair/imports/{item.id}")
+    targets = {e["target_node_id"] for e in detail.json()["suggested_edges"]}
+    assert targets == {str(world.res["node_team"]), str(world.res["node_elders"])}
+
+
 async def test_suggestions_show_every_target_to_super_admin(world: World):
     item = await _review_item(world, "node_team", "node_elders")
     async with client_as(world.db, world.person["super_admin"]) as c:

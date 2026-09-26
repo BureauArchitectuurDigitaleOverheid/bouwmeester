@@ -15,7 +15,7 @@ from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import require_can_name_owner
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context, sees_eenheid
+from bouwmeester.core.org_context import OrgContext, get_org_context, sees_node
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
@@ -85,10 +85,12 @@ def _sees_target(edge: SuggestedEdge, org_ctx: OrgContext) -> bool:
 
     Suggestions embed their target node; ``parlementair:read`` must not
     reveal nodes the org filter hides.  Decided on the loaded row with the
-    same rule as ``node:read``, so a list costs no extra queries.
+    ``node:read`` rule (``sees_node``: eenheid, resource roles, shares), so a
+    list costs no extra queries.
     """
-    return edge.target_node is not None and sees_eenheid(
-        org_ctx, edge.target_node.organisatie_eenheid_id
+    target = edge.target_node
+    return target is not None and sees_node(
+        org_ctx, target.id, target.organisatie_eenheid_id
     )
 
 
