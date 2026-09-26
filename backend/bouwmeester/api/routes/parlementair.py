@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,12 +36,15 @@ from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
 )
+from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.parlementair_item import (
     ParlementairItemResponse,
     SuggestedEdgeResponse,
 )
+from bouwmeester.schema.task import TaskCreate
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.edge_schema_service import EdgeSchemaService
+from bouwmeester.services.task_rules import require_task_create
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +52,8 @@ SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire impor
 
 
 class FollowUpTask(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
     assignee_id: UUID | None = None
     deadline: date | None = None
 
@@ -387,6 +390,21 @@ async def complete_review(
     if person is None:
         raise HTTPException(status_code=404, detail="Eigenaar person not found")
 
+    # Follow-up tasks are new tasks like any other: the POST /tasks rules.
+    follow_ups = [
+        TaskCreate(
+            node_id=item.corpus_node_id,
+            parlementair_item_id=import_id,
+            title=t.title,
+            description=t.description,
+            assignee_id=t.assignee_id,
+            deadline=t.deadline,
+        )
+        for t in body.tasks
+    ]
+    for follow_up in follow_ups:
+        await require_task_create(db, perm_ctx, follow_up)
+
     await _make_sole_person_owner(db, perm_ctx, item.corpus_node_id, body.eigenaar_id)
 
     # Auto-complete existing review tasks before creating new ones
@@ -399,20 +417,9 @@ async def complete_review(
         task.status = "done"
     await db.flush()
 
-    # Create optional follow-up tasks
-    for t in body.tasks:
-        db.add(
-            Task(
-                node_id=item.corpus_node_id,
-                parlementair_item_id=import_id,
-                title=t.title,
-                description=t.description,
-                assignee_id=t.assignee_id,
-                deadline=t.deadline,
-                priority="normaal",
-            )
-        )
-    await db.flush()
+    task_repo = TaskRepository(db)
+    for follow_up in follow_ups:
+        await task_repo.create(follow_up)
 
     # Update item status to reviewed
     item = await repo.update_status(

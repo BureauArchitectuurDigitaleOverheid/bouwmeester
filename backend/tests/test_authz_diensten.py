@@ -15,7 +15,7 @@ from bouwmeester.services.caller import caller_for
 from bouwmeester.services.chat_service import _authorize_write_tool
 from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 from bouwmeester.services.notification_service import NotificationService
-from tests.authz_world import World, make_item
+from tests.authz_world import World, add_directie_admin, make_item
 from tests.factories import client_as
 
 # ---------------------------------------------------------------------------
@@ -181,3 +181,39 @@ async def test_suggested_edge_action_redacts_target(
 
     assert resp.status_code == 200, resp.text
     assert (resp.json()["target_node"] is not None) is shown
+
+
+# ---------------------------------------------------------------------------
+# Completing a parliamentary review
+# ---------------------------------------------------------------------------
+
+
+async def _complete(w: World, who: str, node: str, eigenaar: str, tasks: list):
+    item = await make_item(w, node)
+    async with client_as(w.db, w.person[who]) as c:
+        return await c.post(
+            f"/api/parlementair/imports/{item.id}/complete",
+            json={"eigenaar_id": str(w.person[eigenaar].id), "tasks": tasks},
+        )
+
+
+@pytest.mark.parametrize(("tasks", "expected"), [([], 200), ([{"title": "x"}], 403)])
+async def test_review_follow_up_tasks_need_task_create(world, tasks, expected):
+    """A ministry_admin reviews, but creates no tasks: POST /tasks refuses too."""
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    resp = await _complete(world, "ministry_admin", "node_directie", "manager", tasks)
+    assert resp.status_code == expected, resp.text
+
+
+async def test_reviewer_without_node_update_cannot_own_the_item(world):
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    resp = await _complete(
+        world, "ministry_admin", "node_directie", "ministry_admin", []
+    )
+    assert resp.status_code == 403, resp.text
+
+
+@pytest.mark.xfail(strict=True, reason="needs authority first-owner self rule")
+async def test_reviewer_with_node_update_may_become_first_owner(world):
+    resp = await _complete(world, "team_editor", "node_team", "team_editor", [])
+    assert resp.status_code == 200, resp.text
