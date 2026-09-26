@@ -1,6 +1,10 @@
 import { apiPost } from './client';
 
-/** Resource types the backend decision point (`core/authz.py`) knows. */
+/**
+ * Resource types the evaluation endpoint accepts: mirrored by hand from
+ * backend `schema/authz.py` `EVALUATION_RESOURCE_TYPES`, which is
+ * `core/authz.py` `RESOURCE_TYPES` plus `role`.
+ */
 export type AuthzResourceType =
   | 'corpus_node'
   | 'edge'
@@ -82,20 +86,32 @@ function toWire({ action, resource }: AuthzEvaluation) {
   };
 }
 
-/** Ask the backend for decisions, in order; chunked to the request limit. */
-export async function evaluate(evaluations: AuthzEvaluation[]): Promise<boolean[]> {
+/** One evaluation's answer, or why there is none (its chunk failed). */
+export type EvaluationOutcome = { ok: true; decision: boolean } | { ok: false; error: unknown };
+
+/**
+ * Ask the backend for decisions, in order; chunked to the request limit.
+ *
+ * Chunks settle separately, so one failed request fails only its own
+ * evaluations rather than every control asked about in the same tick.
+ */
+export async function evaluate(evaluations: AuthzEvaluation[]): Promise<EvaluationOutcome[]> {
   const chunks: AuthzEvaluation[][] = [];
   for (let i = 0; i < evaluations.length; i += MAX_EVALUATIONS) {
     chunks.push(evaluations.slice(i, i + MAX_EVALUATIONS));
   }
-  const responses = await Promise.all(
+  const settled = await Promise.allSettled(
     chunks.map((chunk) =>
       apiPost<EvaluationsResponse>('/api/authz/evaluations', {
         evaluations: chunk.map(toWire),
       }),
     ),
   );
-  return responses.flatMap((r) => r.evaluations.map((e) => e.decision));
+  return settled.flatMap((result, i): EvaluationOutcome[] =>
+    result.status === 'fulfilled'
+      ? chunks[i].map((_, j) => ({ ok: true, decision: result.value.evaluations[j]?.decision ?? false }))
+      : chunks[i].map(() => ({ ok: false, error: result.reason })),
+  );
 }
 
 interface Pending {
@@ -117,7 +133,13 @@ export function createAuthzBatcher(send: typeof evaluate = evaluate) {
     const batch = queue;
     queue = [];
     send(batch.map((p) => p.evaluation)).then(
-      (decisions) => batch.forEach((p, i) => p.resolve(decisions[i] ?? false)),
+      (outcomes) =>
+        batch.forEach((p, i) => {
+          const outcome = outcomes[i];
+          if (!outcome) p.resolve(false);
+          else if (outcome.ok) p.resolve(outcome.decision);
+          else p.reject(outcome.error);
+        }),
       (error) => batch.forEach((p) => p.reject(error)),
     );
   }

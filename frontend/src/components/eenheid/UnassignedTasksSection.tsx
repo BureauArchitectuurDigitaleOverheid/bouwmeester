@@ -18,6 +18,7 @@ import {
 import type { Task, Person, OrganisatieEenheidPersonenGroup } from '@/types';
 import { formatFunctie } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { descendantIds } from '@/utils/orgTree';
 
 const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', 'team']);
 
@@ -27,21 +28,6 @@ function flattenPersonenGroup(group: OrganisatieEenheidPersonenGroup): Person[] 
     people.push(...flattenPersonenGroup(child));
   }
   return people;
-}
-
-function getDescendantIds(allUnits: { id: string; parent_id?: string | null }[], parentId: string): Set<string> {
-  const descendants = new Set<string>();
-  const queue = [parentId];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    for (const u of allUnits) {
-      if (u.parent_id === current && !descendants.has(u.id)) {
-        descendants.add(u.id);
-        queue.push(u.id);
-      }
-    }
-  }
-  return descendants;
 }
 
 interface UnassignedTasksSectionProps {
@@ -99,9 +85,9 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
 
   const eenheidOptions: SelectOption[] = useMemo(() => {
     const all = eenheden ?? [];
-    const descendantIds = selectedEenheidId ? getDescendantIds(all, selectedEenheidId) : new Set<string>();
+    const below = selectedEenheidId ? descendantIds(all, [selectedEenheidId]) : new Set<string>();
     const filtered = selectedEenheidId
-      ? all.filter((e) => descendantIds.has(e.id))
+      ? all.filter((e) => below.has(e.id))
       : all;
     return [
       { value: '', label: 'Geen' },

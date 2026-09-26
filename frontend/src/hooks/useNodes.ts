@@ -9,6 +9,7 @@ import {
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { CorpusNodeCreate, CorpusNodeUpdate, NodeType } from '@/types';
+import { CHANGES_RIGHTS, touches } from '@/hooks/useCan';
 
 export function useNodes(nodeType?: NodeType, search?: string, limit?: number) {
   return useQuery({
@@ -35,6 +36,7 @@ export function useCreateNode() {
 
 export function useUpdateNode() {
   return useMutationWithError({
+    meta: touches(({ id }: { id: string }) => ({ type: 'corpus_node', id })),
     mutationFn: ({ id, data, actorId }: { id: string; data: CorpusNodeUpdate; actorId?: string }) => updateNode(id, data, actorId),
     errorMessage: 'Fout bij bijwerken node',
     invalidateKeys: [queryKeys.nodes.details(), queryKeys.nodes.lists()],
@@ -69,6 +71,8 @@ export function useAddNodeStakeholder() {
   const queryClient = useQueryClient();
 
   return useMutationWithError({
+
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ nodeId, data }: { nodeId: string; data: { person_id: string; rol: string } }) =>
       addNodeStakeholder(nodeId, data),
     errorMessage: 'Fout bij toevoegen stakeholder',
@@ -82,6 +86,8 @@ export function useUpdateNodeStakeholder() {
   const queryClient = useQueryClient();
 
   return useMutationWithError({
+
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ nodeId, stakeholderId, data }: { nodeId: string; stakeholderId: string; data: { rol: string } }) =>
       updateNodeStakeholder(nodeId, stakeholderId, data),
     errorMessage: 'Fout bij bijwerken stakeholder',
@@ -95,6 +101,8 @@ export function useRemoveNodeStakeholder() {
   const queryClient = useQueryClient();
 
   return useMutationWithError({
+
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ nodeId, stakeholderId }: { nodeId: string; stakeholderId: string }) =>
       removeNodeStakeholder(nodeId, stakeholderId),
     errorMessage: 'Fout bij verwijderen stakeholder',

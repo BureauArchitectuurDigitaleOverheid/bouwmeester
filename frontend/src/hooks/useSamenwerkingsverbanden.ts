@@ -18,6 +18,7 @@ import type {
   SamenwerkingsverbandLidUpdate,
   SamenwerkingsverbandUpdate,
 } from '@/types';
+import { touches } from '@/hooks/useCan';
 
 export function useSamenwerkingsverbanden(filters?: {
   search?: string;
@@ -48,6 +49,7 @@ export function useCreateSamenwerkingsverband() {
 
 export function useUpdateSamenwerkingsverband() {
   return useMutationWithError({
+    meta: touches(({ id }: { id: string }) => ({ type: 'samenwerkingsverband', id })),
     mutationFn: ({ id, data }: { id: string; data: SamenwerkingsverbandUpdate }) =>
       updateSamenwerkingsverband(id, data),
     errorMessage: 'Fout bij bijwerken samenwerkingsverband',

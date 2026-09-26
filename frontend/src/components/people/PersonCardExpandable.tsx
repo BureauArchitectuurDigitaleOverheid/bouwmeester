@@ -18,7 +18,8 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { formatDateShort, todayISO } from '@/utils/dates';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
-import type { Person } from '@/types';
+import type { Person, PersonOrganisatie } from '@/types';
+import { useCan } from '@/hooks/useCan';
 
 /** Priority -> the five semantic tag colors, for the task dot in the open-tasks list. */
 const PRIORITY_DOT_COLORS: Record<string, 'critical' | 'warning' | 'accent' | 'neutral'> = {
@@ -84,7 +85,6 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const [expanded, setExpanded] = useState(false);
   const { copied, copy } = useCopyToClipboard(1500);
   const [messageOpen, setMessageOpen] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { nodeLabel } = useVocabulary();
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
@@ -93,8 +93,6 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   const { data: lidmaatschappen } = useSamenwerkingsverbandenForPerson(
     expanded ? person.id : null,
   );
-  const endPlacement = useUpdatePersonOrganisatie();
-  const removePlacement = useRemovePersonOrganisatie();
 
   const displayEmail = person.default_email || person.email;
   const handleCopyEmail = (e: React.MouseEvent) => {
@@ -397,62 +395,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                         <Badge color="coolgray">
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>
-                        {showPlacementActions && (
-                          <>
-                          <nldd-spacer direction="horizontal" size="flexible" />
-                          {/* A plain hug, not a row nldd-container: a size
-                              container measures 0px wide beside a spacer. */}
-                          <div className="hug">
-                            {!p.eind_datum && (
-                              <NlddIconButtonInline
-                                icon="check-mark-circle"
-                                accessibleLabel="Team-indeling beëindigen"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  endPlacement.mutate({
-                                    personId: person.id,
-                                    placementId: p.id,
-                                    data: { eind_datum: todayISO() },
-                                  });
-                                }}
-                              />
-                            )}
-                            {confirmDeleteId === p.id ? (
-                              <div className="hug">
-                                <nldd-text size="xs" color="critical">Zeker?</nldd-text>
-                                <NlddTextButtonInline
-                                  text="Ja"
-                                  variant="critical-transparent"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    removePlacement.mutate(
-                                      { personId: person.id, placementId: p.id },
-                                      { onSettled: () => setConfirmDeleteId(null) },
-                                    );
-                                  }}
-                                />
-                                <NlddTextButtonInline
-                                  text="Nee"
-                                  variant="neutral-transparent"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setConfirmDeleteId(null);
-                                  }}
-                                />
-                              </div>
-                            ) : (
-                              <NlddIconButtonInline
-                                icon="close"
-                                accessibleLabel="Team-indeling verwijderen"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setConfirmDeleteId(p.id);
-                                }}
-                              />
-                            )}
-                          </div>
-                          </>
-                        )}
+                        {showPlacementActions && <PlacementActions personId={person.id} placement={p} />}
                       </nldd-container>
                     ))}
                   </nldd-container>
@@ -537,6 +480,78 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
 
 /** Small icon-only action button local to placement rows: neutral, xs, stops
  *  its own click before it reaches the card's expand handler. */
+/**
+ * End or delete one placement. Asked per placement: the backend decides by
+ * the person and the eenheid (`person:place`).
+ */
+function PlacementActions({ personId, placement }: { personId: string; placement: PersonOrganisatie }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const endPlacement = useUpdatePersonOrganisatie();
+  const removePlacement = useRemovePersonOrganisatie();
+  const { allowed } = useCan('person:place', {
+    type: 'person',
+    id: personId,
+    eenheidId: placement.organisatie_eenheid_id,
+  });
+  if (!allowed) return null;
+  return (
+    <>
+      <nldd-spacer direction="horizontal" size="flexible" />
+      {/* A plain hug, not a row nldd-container: a size
+          container measures 0px wide beside a spacer. */}
+      <div className="hug">
+        {!placement.eind_datum && (
+          <NlddIconButtonInline
+            icon="check-mark-circle"
+            accessibleLabel="Team-indeling beëindigen"
+            onClick={(e) => {
+              e.stopPropagation();
+              endPlacement.mutate({
+                personId,
+                placementId: placement.id,
+                data: { eind_datum: todayISO() },
+              });
+            }}
+          />
+        )}
+        {confirmDelete ? (
+          <div className="hug">
+            <nldd-text size="xs" color="critical">Zeker?</nldd-text>
+            <NlddTextButtonInline
+              text="Ja"
+              variant="critical-transparent"
+              onClick={(e) => {
+                e.stopPropagation();
+                removePlacement.mutate(
+                  { personId, placementId: placement.id },
+                  { onSettled: () => setConfirmDelete(false) },
+                );
+              }}
+            />
+            <NlddTextButtonInline
+              text="Nee"
+              variant="neutral-transparent"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDelete(false);
+              }}
+            />
+          </div>
+        ) : (
+          <NlddIconButtonInline
+            icon="close"
+            accessibleLabel="Team-indeling verwijderen"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmDelete(true);
+            }}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
 function NlddIconButtonInline({
   icon,
   accessibleLabel,

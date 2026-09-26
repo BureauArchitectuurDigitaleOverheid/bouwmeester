@@ -39,6 +39,7 @@ import type {
   LeadActivityCreate,
   LeadFilters,
 } from '@/types';
+import { CHANGES_RIGHTS, touches } from '@/hooks/useCan';
 
 export function useLeads(filters?: LeadFilters) {
   return useQuery({
@@ -65,6 +66,7 @@ export function useCreateLead() {
 
 export function useUpdateLead() {
   return useMutationWithError({
+    meta: touches(({ id }: { id: string }) => ({ type: 'lead', id })),
     mutationFn: ({ id, data }: { id: string; data: LeadUpdate }) => updateLead(id, data),
     errorMessage: 'Fout bij bijwerken lead',
     invalidateKeys: [queryKeys.leads.lists(), queryKeys.leads.all, queryKeys.leads.metrics()],
@@ -197,6 +199,7 @@ export function useLeadMetrics(initiatiefId?: string) {
 
 export function useAddLeadContact() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       leadId,
       personId,
@@ -213,6 +216,7 @@ export function useAddLeadContact() {
 
 export function useRemoveLeadContact() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ leadId, contactId }: { leadId: string; contactId: string }) =>
       removeLeadContact(leadId, contactId),
     errorMessage: 'Fout bij verwijderen externe contactpersoon',
@@ -373,6 +377,7 @@ export function useCheckDuplicates(title: string, organization?: string) {
 
 export function useMergeLeads() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) =>
       mergeLeads(sourceId, targetId),
     errorMessage: 'Fout bij samenvoegen leads',

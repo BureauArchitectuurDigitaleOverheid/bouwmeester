@@ -9,6 +9,7 @@ import {
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { OpdrachtCreate, OpdrachtUpdate, OpdrachtNodeCreate, OpdrachtFilters, OpdrachtenSummary } from '@/types';
+import { CHANGES_RIGHTS, touches } from '@/hooks/useCan';
 
 export function useOpdrachten(filters?: OpdrachtFilters) {
   return useQuery({
@@ -42,6 +43,7 @@ export function useCreateOpdracht() {
 
 export function useUpdateOpdracht() {
   return useMutationWithError({
+    meta: touches(({ id }: { id: string }) => ({ type: 'opdracht', id })),
     mutationFn: ({ id, data }: { id: string; data: OpdrachtUpdate }) => updateOpdracht(id, data),
     errorMessage: 'Fout bij bijwerken opdracht',
     invalidateKeys: [queryKeys.opdrachten.all, queryKeys.financieel.all, queryKeys.tasks.lists(), queryKeys.nodes.lists()],
@@ -94,6 +96,7 @@ export function useNodeOpdrachten(nodeId: string | undefined) {
 
 export function useAddOpdrachtMember() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ opdrachtId, personId, rol }: { opdrachtId: string; personId: string; rol?: string }) =>
       addOpdrachtMember(opdrachtId, personId, rol),
     errorMessage: 'Fout bij toevoegen contactpersoon',
@@ -103,6 +106,7 @@ export function useAddOpdrachtMember() {
 
 export function useRemoveOpdrachtMember() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ opdrachtId, personId }: { opdrachtId: string; personId: string }) =>
       removeOpdrachtMember(opdrachtId, personId),
     errorMessage: 'Fout bij verwijderen contactpersoon',
@@ -112,6 +116,7 @@ export function useRemoveOpdrachtMember() {
 
 export function useUpdateOpdrachtMemberRole() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ opdrachtId, personId, rol }: { opdrachtId: string; personId: string; rol: string }) =>
       updateOpdrachtMemberRole(opdrachtId, personId, rol),
     errorMessage: 'Fout bij wijzigen rol',
@@ -123,6 +128,7 @@ export function useUpdateOpdrachtMemberRole() {
 
 export function useAddOpdrachtEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ opdrachtId, eenheidId, rol }: { opdrachtId: string; eenheidId: string; rol?: string }) =>
       addOpdrachtEenheid(opdrachtId, eenheidId, rol),
     errorMessage: 'Fout bij toevoegen eenheid',
@@ -132,6 +138,7 @@ export function useAddOpdrachtEenheid() {
 
 export function useRemoveOpdrachtEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ opdrachtId, eenheidId }: { opdrachtId: string; eenheidId: string }) =>
       removeOpdrachtEenheid(opdrachtId, eenheidId),
     errorMessage: 'Fout bij verwijderen eenheid',
@@ -141,6 +148,7 @@ export function useRemoveOpdrachtEenheid() {
 
 export function useUpdateOpdrachtEenheidRol() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ opdrachtId, eenheidId, rol }: { opdrachtId: string; eenheidId: string; rol: string }) =>
       updateOpdrachtEenheidRol(opdrachtId, eenheidId, rol),
     errorMessage: 'Fout bij wijzigen eenheid-rol',
@@ -152,6 +160,7 @@ export function useUpdateOpdrachtEenheidRol() {
 
 export function useMatchOpdrachtContacts() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (opdrachtId: string) => matchOpdrachtContacts(opdrachtId),
     errorMessage: 'Fout bij matchen contacten',
     invalidateKeys: [queryKeys.opdrachten.all],
@@ -160,6 +169,7 @@ export function useMatchOpdrachtContacts() {
 
 export function useMatchOpdrachtContactsBulk() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (force: boolean) => matchOpdrachtContactsBulk(force),
     errorMessage: 'Fout bij bulk matchen contacten',
     invalidateKeys: [queryKeys.opdrachten.all],

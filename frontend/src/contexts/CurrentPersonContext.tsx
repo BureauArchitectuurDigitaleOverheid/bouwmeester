@@ -31,7 +31,7 @@ const CurrentPersonContext = createContext<CurrentPersonContextValue>({
 });
 
 export function CurrentPersonProvider({ children }: { children: ReactNode }) {
-  const { oidcConfigured, person: authPerson, viewAsNonAdmin } = useAuth();
+  const { oidcConfigured, person: authPerson } = useAuth();
   const { data: people } = usePeople();
 
   // The SSO-linked person ID (from auth context)
@@ -67,13 +67,10 @@ export function CurrentPersonProvider({ children }: { children: ReactNode }) {
   // In SSO mode, use the authenticated person; in dev mode, use localStorage selection.
   const effectiveId = oidcConfigured ? authPersonId : devPersonId;
 
-  const currentPerson = useMemo(() => {
-    const found = (people ?? []).find((p) => p.id === effectiveId) ?? null;
-    if (found && viewAsNonAdmin) {
-      return { ...found, is_admin: false };
-    }
-    return found;
-  }, [people, effectiveId, viewAsNonAdmin]);
+  const currentPerson = useMemo(
+    () => (people ?? []).find((p) => p.id === effectiveId) ?? null,
+    [people, effectiveId],
+  );
 
   const value = useMemo(
     () => ({

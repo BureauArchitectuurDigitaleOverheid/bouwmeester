@@ -78,8 +78,8 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const nodeResource = nodeId ? ({ type: 'corpus_node', id: nodeId } as const) : null;
-  const { allowed: canUpdate } = useCan('node:update', nodeResource);
-  const { allowed: canDelete } = useCan('node:delete', nodeResource);
+  const { allowed: canUpdate, showAction: showUpdate } = useCan('node:update', nodeResource);
+  const { allowed: canDelete, showAction: showDelete } = useCan('node:delete', nodeResource);
   const canCreateTask = useCanCreateTask(nodeId);
   const deleteNode = useDeleteNode();
   const navigate = useNavigate();
@@ -141,13 +141,13 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             onClose={onClose}
             actions={
               <>
-                {canUpdate && (
+                {showUpdate && (
                   <NlddButton
                     variant="secondary"
                     size="sm"
                     startIcon="pencil"
                     onClick={() => setShowEdit(true)}
-                    disabled={!node}
+                    disabled={!node || !canUpdate}
                     text="Bewerken"
                   />
                 )}
@@ -162,13 +162,13 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                   disabled={!node}
                   text="Openen"
                 />
-                {canDelete && (
+                {showDelete && (
                   <NlddButton
                     variant="destructive"
                     size="sm"
                     startIcon="trash"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={!node}
+                    disabled={!node || !canDelete}
                     text="Verwijderen"
                   />
                 )}

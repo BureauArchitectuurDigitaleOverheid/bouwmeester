@@ -25,7 +25,6 @@ const INITIATIEF: InitiatiefDetail = {
   updated_at: null,
   members: [],
   eenheden: [],
-  access_level: 'eigenaar',
 };
 
 const POST = {
@@ -72,7 +71,7 @@ beforeEach(() => {
 });
 
 describe('InitiatiefUpdates write controls', () => {
-  it('hides them when the backend says no, even for an eigenaar in access_level', async () => {
+  it('hides them when the backend says no', async () => {
     backend(false);
     const { container } = renderUpdates();
 

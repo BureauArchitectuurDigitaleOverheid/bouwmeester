@@ -66,8 +66,8 @@ export function SamenwerkingsverbandDetailPage() {
   const { data: people = [] } = usePeople();
   const swvResource = id ? ({ type: 'samenwerkingsverband', id } as const) : null;
   // Members are maintained as an update of the group itself.
-  const { allowed: canUpdate } = useCan('samenwerkingsverband:update', swvResource);
-  const { allowed: canDelete } = useCan('samenwerkingsverband:delete', swvResource);
+  const { allowed: canUpdate, showAction: showUpdate } = useCan('samenwerkingsverband:update', swvResource);
+  const { allowed: canDelete, showAction: showDelete } = useCan('samenwerkingsverband:delete', swvResource);
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState<SamenwerkingsverbandUpdate>({});
@@ -238,15 +238,16 @@ export function SamenwerkingsverbandDetailPage() {
           <>
           <nldd-spacer direction="horizontal" size="flexible" />
           <div className="hug">
-            {canUpdate && (
-              <NlddButton variant="neutral-transparent" size="sm" startIcon="pencil" onClick={startEdit} text="Bewerken" />
+            {showUpdate && (
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="pencil" onClick={startEdit} disabled={!canUpdate} text="Bewerken" />
             )}
-            {canDelete && (
+            {showDelete && (
               <NlddButton
                 variant="neutral-transparent"
                 size="sm"
                 startIcon="trash"
                 onClick={() => setConfirmDelete(true)}
+                disabled={!canDelete}
                 text="Verwijderen"
               />
             )}

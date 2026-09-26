@@ -10,7 +10,7 @@ import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import { NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
@@ -48,7 +48,7 @@ export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   // Exporting reads the whole tenant: system roles only.
   const canExport = usePermissions().hasSystemPermission('import_export:export');
-  const { allowed: canCreate } = useCan('node:create', { type: 'corpus_node' });
+  const { allowed: canCreate, showAction: showCreate } = useCan('node:create', { type: 'corpus_node' });
   const { subscribe } = useGlobalFileDropContext();
   const [droppedFile, setDroppedFile] = useState<File | undefined>(undefined);
 
@@ -248,10 +248,10 @@ export function CorpusPage() {
           <nldd-menu-item slot="overflow" text="Exporteren" icon="download"></nldd-menu-item>
         </nldd-toolbar-item>
         )}
-        {canCreate && (
+        {showCreate && (
           <nldd-toolbar-item slot="end" priority={2}>
-            <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} text="Nieuwe node" compactBelowSm />
-            <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
+            <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} disabled={!canCreate} text="Nieuwe node" compactBelowSm />
+            <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus" disabled={orUndef(!canCreate)}></nldd-menu-item>
           </nldd-toolbar-item>
         )}
       </nldd-toolbar>

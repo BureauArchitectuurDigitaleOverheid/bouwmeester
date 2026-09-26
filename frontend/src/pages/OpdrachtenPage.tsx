@@ -14,7 +14,7 @@ import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import type { SelectOption } from '@/components/common/CreatableSelect';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   OPDRACHT_TYPE_LABELS,
@@ -194,7 +194,7 @@ export function OpdrachtenPage() {
   const { currentPerson } = useCurrentPerson();
   // Matching every opdracht and the FCC sync are tenant-wide: system roles only.
   const { hasSystemPermission } = usePermissions();
-  const { allowed: canCreate } = useCan('opdracht:create', { type: 'opdracht' });
+  const { allowed: canCreate, showAction: showCreate } = useCan('opdracht:create', { type: 'opdracht' });
   const [searchParams, setSearchParams] = useSearchParams();
 
   // API-level filters (sent to backend), seeded from URL params
@@ -400,10 +400,10 @@ export function OpdrachtenPage() {
             <nldd-menu-item slot="overflow" text="FCC Sync" icon="refresh"></nldd-menu-item>
           </nldd-toolbar-item>
         )}
-        {canCreate && (
+        {showCreate && (
           <nldd-toolbar-item slot="end" priority={4}>
-            <NlddButton startIcon="plus" onClick={() => openOpdrachtCreate()} text="Nieuwe opdracht" compactBelowSm />
-            <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
+            <NlddButton startIcon="plus" onClick={() => openOpdrachtCreate()} disabled={!canCreate} text="Nieuwe opdracht" compactBelowSm />
+            <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus" disabled={orUndef(!canCreate)}></nldd-menu-item>
           </nldd-toolbar-item>
         )}
       </nldd-toolbar>

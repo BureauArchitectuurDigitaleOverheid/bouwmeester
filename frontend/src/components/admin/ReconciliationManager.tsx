@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 import {
   listReconciliations,
   mergeReconciliation,
@@ -68,6 +69,7 @@ function ManualMergePanel() {
   );
 
   const mergeMutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: () => manualMerge(sourceId, targetId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation'] });
@@ -233,6 +235,7 @@ export function ReconciliationManager() {
   });
 
   const mergeMutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => mergeReconciliation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation'] });

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiDelete, apiGet } from '@/api/client';
 import { queryKeys } from './queryKeys';
 import { useMutationWithError } from './useMutationWithError';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 interface ResourcePermissionPerson {
   id: string;
@@ -36,6 +37,7 @@ export function usePersonResourcePermissions(personId: string | null) {
 
 export function useRemovePersonResourcePermission(personId: string) {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (rpId: string) => apiDelete(`/api/resource-permissions/${rpId}`),
     errorMessage: 'Fout bij verwijderen permissie',
     invalidateKeys: [queryKeys.admin.personResourcePermissions(personId)],

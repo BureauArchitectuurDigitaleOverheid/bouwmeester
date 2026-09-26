@@ -65,7 +65,8 @@ export function InitiatiefPage() {
     );
   }
 
-  const tabs = visibleTabs(canEdit.allowed);
+  // On a failed decision the tab stays; its controls render disabled.
+  const tabs = visibleTabs(canEdit.showAction);
   const activeTab: InitiatiefTab | null = tab === undefined ? 'leads' : isInitiatiefTab(tab) ? tab : null;
   if (!activeTab || !tabs.includes(activeTab)) {
     return <Navigate to={initiatiefPath(id)} replace />;

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import * as api from '@/api/orgPlacements';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 export function usePendingPlacements() {
   return useQuery({
@@ -12,6 +13,7 @@ export function usePendingPlacements() {
 
 export function useUpdatePlacement() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ id, data }: { id: string; data: api.UpdatePlacementRequest }) =>
       api.updatePlacement(id, data),
     errorMessage: 'Fout bij wijzigen teamverzoek',
@@ -21,6 +23,7 @@ export function useUpdatePlacement() {
 
 export function useApprovePlacement() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => api.approvePlacement(id),
     errorMessage: 'Fout bij goedkeuren teamverzoek',
     // Approving places the person: org chart and people views change.
@@ -30,6 +33,7 @@ export function useApprovePlacement() {
 
 export function useDenyPlacement() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => api.denyPlacement(id),
     errorMessage: 'Fout bij afwijzen teamverzoek',
     invalidateKeys: [queryKeys.orgPlacements.all],

@@ -105,8 +105,8 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
   const matchContactsMutation = useMatchOpdrachtContacts();
 
   const opdrachtResource = opdrachtId ? ({ type: 'opdracht', id: opdrachtId } as const) : null;
-  const { allowed: canUpdate } = useCan('opdracht:update', opdrachtResource);
-  const { allowed: canDelete } = useCan('opdracht:delete', opdrachtResource);
+  const { allowed: canUpdate, showAction: showUpdate } = useCan('opdracht:update', opdrachtResource);
+  const { allowed: canDelete, showAction: showDelete } = useCan('opdracht:delete', opdrachtResource);
   // Contacts and eenheden are resource roles: a grant, decided by
   // core.authority (the default rol of the add form stands for the section).
   const { allowed: canManageContacts } = useCan(
@@ -246,23 +246,23 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
             onClose={onClose}
             actions={
               <>
-                {canUpdate && (
+                {showUpdate && (
                   <NlddButton
                     variant="secondary"
                     size="sm"
                     startIcon="pencil"
                     onClick={() => setShowEdit(true)}
-                    disabled={!opdracht}
+                    disabled={!opdracht || !canUpdate}
                     text="Bewerken"
                   />
                 )}
-                {canDelete && (
+                {showDelete && (
                   <NlddButton
                     variant="destructive"
                     size="sm"
                     startIcon="trash"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={!opdracht}
+                    disabled={!opdracht || !canDelete}
                     text="Verwijderen"
                   />
                 )}

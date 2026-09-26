@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { QueryKey } from '@tanstack/react-query';
+import type { MutationMeta, QueryKey } from '@tanstack/react-query';
 import { useToast } from '@/contexts/ToastContext';
 import { errorDetail } from '@/api/client';
 
@@ -8,6 +8,8 @@ interface MutationWithErrorOptions<TData, TVariables> {
   errorMessage: string;
   invalidateKeys?: QueryKey[];
   onSuccess?: (data: TData, variables: TVariables) => void;
+  /** `CHANGES_RIGHTS` or `touches(...)` from `hooks/useCan`. */
+  meta?: MutationMeta;
 }
 
 /**
@@ -19,12 +21,14 @@ export function useMutationWithError<TData = unknown, TVariables = void>({
   errorMessage,
   invalidateKeys,
   onSuccess: extraOnSuccess,
+  meta,
 }: MutationWithErrorOptions<TData, TVariables>) {
   const queryClient = useQueryClient();
   const { showError } = useToast();
 
   return useMutation({
     mutationFn,
+    meta,
     onError: (error: Error) => {
       console.error(`${errorMessage}:`, error);
       const detail = errorDetail(error);

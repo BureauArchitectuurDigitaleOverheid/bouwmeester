@@ -3,7 +3,7 @@ import { getTasks, getTask, createTask, updateTask, deleteTask, getEenheidOvervi
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import { useToast } from '@/contexts/ToastContext';
-import { useCan } from '@/hooks/useCan';
+import { touches, useCan } from '@/hooks/useCan';
 import type { Task, TaskCreate, TaskUpdate, TaskFilters } from '@/types';
 
 export function useTasks(filters?: TaskFilters) {
@@ -31,6 +31,7 @@ export function useCreateTask() {
 
 export function useUpdateTask() {
   return useMutationWithError({
+    meta: touches(({ id }: { id: string }) => ({ type: 'task', id })),
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) => updateTask(id, data),
     errorMessage: 'Fout bij bijwerken taak',
     invalidateKeys: [queryKeys.tasks.lists(), queryKeys.tasks.workTypes()],

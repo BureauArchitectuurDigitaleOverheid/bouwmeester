@@ -30,7 +30,7 @@ type Tab =
   | 'system';
 
 export function AdminPage() {
-  const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
+  const { person, oidcConfigured, loading } = useAuth();
   const { hasPermission, hasAnyPermission, hasSystemPermission } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as Tab | null;
@@ -94,7 +94,7 @@ export function AdminPage() {
     return null;
   }
 
-  if (viewAsNonAdmin || (oidcConfigured && (!person || (!canAdmin && !isManager)))) {
+  if (oidcConfigured && (!person || (!canAdmin && !isManager))) {
     return <Navigate to="/" replace />;
   }
 

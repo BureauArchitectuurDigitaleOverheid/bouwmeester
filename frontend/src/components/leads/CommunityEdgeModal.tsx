@@ -13,7 +13,7 @@ import { STAKEHOLDER_ROL_LABELS, LEAD_CONTACT_ROL_LABELS } from '@/types';
 import { queryKeys } from '@/hooks/queryKeys';
 import { routeConnection, type ConnectionRoute } from '@/utils/communityEdgeRouting';
 import { NlddButton } from '@/components/nldd/NlddButton';
-import { useCanEach } from '@/hooks/useCan';
+import { useCanAny } from '@/hooks/useCan';
 import type { AuthzResource } from '@/api/authz';
 
 const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
@@ -91,9 +91,8 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
     () => routeQuestion(route, selectedRole, selectedStakeholderRole),
     [route, selectedRole, selectedStakeholderRole],
   );
-  const decisions = useCanEach(question.action, question.resources);
-  const allowed = decisions.allowed.some(Boolean);
-  const refused = !decisions.isLoading && !allowed;
+  const { allowed, isLoading: deciding } = useCanAny(question.action, question.resources);
+  const refused = !deciding && !allowed;
 
   const edgeTypeOptions: SelectOption[] = useMemo(
     () =>

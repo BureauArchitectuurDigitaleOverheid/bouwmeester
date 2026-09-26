@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 import {
   getSyncStatus,
   getSyncLog,
@@ -77,6 +78,7 @@ export function SyncStatusManager() {
   });
 
   const runMutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: async (endpoint: SyncEndpoint) => {
       setBusyEndpoint(endpoint);
       try {
@@ -91,6 +93,7 @@ export function SyncStatusManager() {
   });
 
   const runAllMutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: async () => {
       setBusyEndpoint('all');
       try {
