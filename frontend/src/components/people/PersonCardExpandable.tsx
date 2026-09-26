@@ -153,7 +153,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 title="Klik om e-mail te kopiëren"
                 style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)', overflow: 'hidden' }}
               >
-                <Icon name="Mail" size="xs" />
+                <Icon name="envelope" size="xs" />
                 <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {copied ? 'Gekopieerd!' : displayEmail}
                 </nldd-text>
@@ -165,7 +165,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 onClick={(e) => e.stopPropagation()}
                 style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)' }}
               >
-                <Icon name="Phone" size="xs" />
+                <Icon name="at" size="xs" />
                 <nldd-text size="xs" color="secondary">{person.default_phone}</nldd-text>
               </a>
             )}
@@ -175,7 +175,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               // on the same element that undid hug's inline-flex.
               <div className="hidden-below-sm-block" style={{ minWidth: 0 }}>
                 <div className="hug hug-truncate" style={{ maxWidth: '100%' }}>
-                  <Icon name="Briefcase" size="xs" />
+                  <Icon name="business-suitcase" size="xs" />
                   <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {formatFunctie(person.functie)}
                   </nldd-text>
@@ -184,7 +184,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             )}
             {person.description && person.is_agent && (
               <div className="hug hug-truncate hug-top">
-                <Icon name="Briefcase" size="xs" style={{ marginTop: '2px' }} />
+                <Icon name="business-suitcase" size="xs" style={{ marginTop: '2px' }} />
                 <nldd-text
                   size="xs"
                   color="secondary"
@@ -250,7 +250,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           {person.emails && person.emails.length > 0 && (
             <nldd-container padding-bottom="12">
               <nldd-container layout="row" gap="4" vertical-alignment="center">
-                <Icon name="Mail" size="xs" />
+                <Icon name="envelope" size="xs" />
                 <nldd-text size="xs" color="secondary" weight="medium">E-mailadressen</nldd-text>
               </nldd-container>
               <nldd-container gap="2">
@@ -273,7 +273,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
           {person.phones && person.phones.length > 0 && (
             <nldd-container padding-bottom="12">
               <nldd-container layout="row" gap="4" vertical-alignment="center">
-                <Icon name="Phone" size="xs" />
+                <Icon name="at" size="xs" />
                 <nldd-text size="xs" color="secondary" weight="medium">Telefoonnummers</nldd-text>
               </nldd-container>
               <nldd-container gap="2">
@@ -302,11 +302,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               <nldd-container>
                 <nldd-container layout="row" gap="12">
                   <div className="hug">
-                    <Icon name="Circle" size="xs" />
+                    <Icon name="circle" size="xs" />
                     <nldd-text size="xs" color="secondary">{summary.open_task_count} open</nldd-text>
                   </div>
                   <div className="hug">
-                    <Icon name="CheckCircle2" size="xs" />
+                    <Icon name="check-mark-circle" size="xs" />
                     <nldd-text size="xs" color="secondary">{summary.done_task_count} afgerond</nldd-text>
                   </div>
                 </nldd-container>
@@ -383,7 +383,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               {placements && placements.length > 0 && (
                 <nldd-container>
                   <nldd-container layout="row" gap="4" vertical-alignment="center">
-                    <Icon name="Building2" size="xs" />
+                    <Icon name="apartment-building" size="xs" />
                     <nldd-text size="xs" color="secondary" weight="medium">Teams</nldd-text>
                   </nldd-container>
                   <nldd-container gap="4">
@@ -459,7 +459,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               {lidmaatschappen && lidmaatschappen.length > 0 && (
                 <nldd-container>
                   <nldd-container layout="row" gap="4" vertical-alignment="center">
-                    <Icon name="Handshake" size="xs" />
+                    <Icon name="handshake" size="xs" />
                     <nldd-text size="xs" color="secondary" weight="medium">Samenwerkingsverbanden</nldd-text>
                   </nldd-container>
                   <nldd-container gap="4">

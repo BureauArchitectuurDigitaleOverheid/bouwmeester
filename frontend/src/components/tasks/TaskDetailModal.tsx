@@ -105,7 +105,7 @@ function SubtaskRow({
         accessible-label="Omhoog"
         disabled={orUndef(!canMoveUp || reorderPending)}
       >
-        <Icon name="ChevronUp" size="xs" />
+        <Icon name="chevron-up" size="xs" />
       </nldd-list-item-segment>
       <nldd-list-item-segment
         ref={downRef}
@@ -113,7 +113,7 @@ function SubtaskRow({
         accessible-label="Omlaag"
         disabled={orUndef(!canMoveDown || reorderPending)}
       >
-        <Icon name="ChevronDown" size="xs" />
+        <Icon name="chevron-down" size="xs" />
       </nldd-list-item-segment>
       <nldd-list-item-segment ref={openRef} button width="full">
         <nldd-icon-cell icon={subDone ? 'check-mark-circle' : 'circle'} color={subDone ? 'success' : 'content'} />

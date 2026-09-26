@@ -42,13 +42,13 @@ const NODE_TYPE_ICONS: Record<string, React.ReactNode> = {
   dossier: <Icon name="folder-open" size="lg" />,
   doel: <Icon name="flag" size="lg" />,
   instrument: <Icon name="screwdriver-wrench" size="lg" />,
-  beleidskader: <Icon name="BookOpen" size="lg" />,
-  maatregel: <Icon name="Shield" size="lg" />,
+  beleidskader: <Icon name="book" size="lg" />,
+  maatregel: <Icon name="shield" size="lg" />,
   politieke_input: <Icon name="apartment-building" size="lg" />,
-  probleem: <Icon name="AlertTriangle" size="lg" />,
-  effect: <Icon name="TrendingUp" size="lg" />,
-  beleidsoptie: <Icon name="GitBranch" size="lg" />,
-  bron: <Icon name="FileText" size="lg" />,
+  probleem: <Icon name="exclamation-triangle" size="lg" />,
+  effect: <Icon name="chart-x-y-axis-line" size="lg" />,
+  beleidsoptie: <Icon name="git-branch" size="lg" />,
+  bron: <Icon name="file-text" size="lg" />,
 };
 
 interface NodeDetailModalProps {
