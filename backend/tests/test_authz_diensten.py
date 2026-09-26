@@ -203,16 +203,3 @@ async def test_review_follow_up_tasks_need_task_create(world, tasks, expected):
     await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
     resp = await _complete(world, "ministry_admin", "node_directie", "manager", tasks)
     assert resp.status_code == expected, resp.text
-
-
-async def test_reviewer_without_node_update_cannot_own_the_item(world):
-    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
-    resp = await _complete(
-        world, "ministry_admin", "node_directie", "ministry_admin", []
-    )
-    assert resp.status_code == 403, resp.text
-
-
-async def test_reviewer_with_node_update_may_become_first_owner(world):
-    resp = await _complete(world, "team_editor", "node_team", "team_editor", [])
-    assert resp.status_code == 200, resp.text

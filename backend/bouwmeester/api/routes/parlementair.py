@@ -12,11 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authority import (
-    require_can_change_resource_role,
-    require_can_grant_resource_role,
-    require_can_name_first_owner,
-)
+from bouwmeester.core.authority import require_can_name_owner
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context, sees_eenheid
@@ -323,37 +319,21 @@ async def _make_sole_person_owner(
 ) -> None:
     """Make *person_id* the eigenaar of the node, replacing other people.
 
-    A node without eigenaar gets its first one from the reviewer
-    (``require_can_name_first_owner``, never themselves).  Otherwise naming
-    an eigenaar is a grant like any other: the reviewer must hold what
-    eigenaar gives, and replacing current eigenaars needs the authority to
-    remove them.  Eigenaar grants to an eenheid stay.
+    ``require_can_name_owner`` decides; eigenaar grants to an eenheid stay.
     """
+    await require_can_name_owner(db, perm_ctx, node_id, person_id)
     grants = (
         await db.scalars(
             select(ResourcePermission).where(
                 ResourcePermission.resource_type == "corpus_node",
                 ResourcePermission.resource_id == node_id,
                 ResourcePermission.rol == "eigenaar",
+                ResourcePermission.person_id.isnot(None),
             )
         )
     ).all()
-    owners = [grant for grant in grants if grant.person_id is not None]
-    if any(owner.person_id == person_id for owner in owners):
+    if any(grant.person_id == person_id for grant in grants):
         return
-    if not grants:
-        await require_can_name_first_owner(
-            db, perm_ctx, node_id=node_id, target_person_id=person_id
-        )
-    else:
-        await require_can_grant_resource_role(
-            db,
-            perm_ctx,
-            resource_type="corpus_node",
-            resource_id=node_id,
-            rol="eigenaar",
-            target_person_id=person_id,
-        )
     db.add(
         ResourcePermission(
             person_id=person_id,
@@ -362,10 +342,8 @@ async def _make_sole_person_owner(
             rol="eigenaar",
         )
     )
-    await db.flush()
-    for owner in owners:
-        await require_can_change_resource_role(db, perm_ctx, owner, new_rol=None)
-        await db.delete(owner)
+    for grant in grants:
+        await db.delete(grant)
     await db.flush()
 
 

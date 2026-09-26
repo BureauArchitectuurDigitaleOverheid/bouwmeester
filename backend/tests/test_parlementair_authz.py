@@ -26,7 +26,7 @@ from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.resource_permission import ResourcePermission
-from tests.authz_world import World, add_directie_admin
+from tests.authz_world import World, add_directie_admin, ask, make_item
 from tests.factories import client_as
 
 
@@ -214,89 +214,109 @@ def _complete(w: World, who: str) -> dict:
     return {"eigenaar_id": str(w.person[who].id), "tasks": []}
 
 
-async def test_editor_reviewer_names_first_eigenaar(world: World):
-    """Naming the first eigenaar is the review itself, not a grant."""
-    item = await _review_item(world)
-    async with client_as(world.db, world.person["team_editor"]) as c:
+# Naming the first eigenaar while completing a review:
+# (reviewer, item node, named eigenaar, expected status).
+FIRST_OWNER_CASES = [
+    # the review names someone else who can read the node
+    ("team_editor", "node_team", "viewer", 200),
+    ("ministry_admin", "node_directie", "manager", 200),
+    # a resource role is enough to read the node
+    ("manager", "node_directie", "role_only", 200),
+    # someone who cannot read the node would receive node:delete on it
+    ("team_editor", "node_team", "role_only", 403),
+    # naming yourself only when you already edit the node
+    ("team_editor", "node_team", "team_editor", 200),
+    ("ministry_admin", "node_directie", "ministry_admin", 403),
+]
+
+
+@pytest.mark.parametrize(
+    ("who", "node", "eigenaar", "expected"),
+    FIRST_OWNER_CASES,
+    ids=[f"{c[0]}-{c[2]}" for c in FIRST_OWNER_CASES],
+)
+async def test_review_names_the_first_eigenaar(
+    world: World, who: str, node: str, eigenaar: str, expected: int
+):
+    """The route and ``parlementair:name_owner`` decide alike."""
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    item = await make_item(world, node)
+    target = world.person[eigenaar]
+    async with client_as(world.db, world.person[who]) as c:
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask(
+                        "parlementair:name_owner",
+                        "corpus_node",
+                        item.corpus_node_id,
+                        target_person_id=target.id,
+                    )
+                ]
+            },
+        )
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(world, "viewer"),
+            json={"eigenaar_id": str(target.id), "tasks": []},
         )
-    assert resp.status_code == 200, resp.text
-    assert await _owners(world, item.corpus_node_id) == {world.person["viewer"].id}
+    assert asked.json()["evaluations"][0]["decision"] is (expected == 200)
+    assert resp.status_code == expected, resp.text
+    named = {target.id} if expected == 200 else set()
+    assert await _owners(world, item.corpus_node_id) == named
 
 
-async def test_reviewer_who_edits_the_node_names_self_eigenaar(world: World):
-    """Claiming a node you already edit hands you nothing you lacked."""
+# Replacing the current eigenaars while completing a review:
+# (reviewer, current eigenaars, expected status).
+REPLACE_OWNER_CASES = [
+    # an editor holds no node:delete, so cannot hand out eigenaar
+    ("team_editor", ("afd_editor",), 403),
+    # two eigenaars used to crash the review with a 500
+    ("manager", ("team_editor", "afd_editor"), 200),
+]
+
+
+@pytest.mark.parametrize(("who", "owners", "expected"), REPLACE_OWNER_CASES)
+async def test_review_replaces_the_eigenaars(
+    world: World, who: str, owners: tuple[str, ...], expected: int
+):
+    """The route and ``parlementair:name_owner`` decide alike."""
     item = await _review_item(world)
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        resp = await c.post(
-            f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(world, "team_editor"),
-        )
-    assert resp.status_code == 200, resp.text
-    assert await _owners(world, item.corpus_node_id) == {world.person["team_editor"].id}
-
-
-async def test_reviewer_without_node_update_cannot_name_self_eigenaar(world: World):
-    """A ministry_admin reviews but does not edit nodes: no self-grant."""
-    await add_directie_admin(world, "org_admin", "Directiebeheerder")
-    own, other = await _review_item(world), await _review_item(world)
-    async with client_as(world.db, world.person["org_admin"]) as c:
-        named_self = await c.post(
-            f"/api/parlementair/imports/{own.id}/complete",
-            json=_complete(world, "org_admin"),
-        )
-        named_other = await c.post(
-            f"/api/parlementair/imports/{other.id}/complete",
-            json=_complete(world, "viewer"),
-        )
-    assert named_self.status_code == 403, named_self.text
-    assert await _owners(world, own.corpus_node_id) == set()
-    assert named_other.status_code == 200, named_other.text
-
-
-async def test_reviewer_cannot_replace_eigenaar_without_grant_authority(world: World):
-    """Replacing an eigenaar needs node:delete, which an editor lacks."""
-    item = await _review_item(world)
-    world.db.add(
-        ResourcePermission(
-            person_id=world.person["afd_editor"].id,
-            resource_type="corpus_node",
-            resource_id=item.corpus_node_id,
-            rol="eigenaar",
-        )
-    )
-    await world.db.flush()
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        resp = await c.post(
-            f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(world, "viewer"),
-        )
-    assert resp.status_code == 403
-    assert await _owners(world, item.corpus_node_id) == {world.person["afd_editor"].id}
-
-
-async def test_review_replaces_several_eigenaars(world: World):
-    """Two eigenaars used to crash the review with a 500."""
-    item = await _review_item(world)
-    for who in ("team_editor", "afd_editor"):
+    for owner in owners:
         world.db.add(
             ResourcePermission(
-                person_id=world.person[who].id,
+                person_id=world.person[owner].id,
                 resource_type="corpus_node",
                 resource_id=item.corpus_node_id,
                 rol="eigenaar",
             )
         )
     await world.db.flush()
-    async with client_as(world.db, world.person["manager"]) as c:
+    viewer = world.person["viewer"]
+    async with client_as(world.db, world.person[who]) as c:
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask(
+                        "parlementair:name_owner",
+                        "corpus_node",
+                        item.corpus_node_id,
+                        target_person_id=viewer.id,
+                    )
+                ]
+            },
+        )
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
             json=_complete(world, "viewer"),
         )
-    assert resp.status_code == 200, resp.text
-    assert await _owners(world, item.corpus_node_id) == {world.person["viewer"].id}
+    assert asked.json()["evaluations"][0]["decision"] is (expected == 200)
+    assert resp.status_code == expected, resp.text
+    kept = {world.person[o].id for o in owners}
+    assert await _owners(world, item.corpus_node_id) == (
+        {viewer.id} if expected == 200 else kept
+    )
 
 
 async def test_suggestions_hide_target_nodes_the_reader_cannot_see(world: World):

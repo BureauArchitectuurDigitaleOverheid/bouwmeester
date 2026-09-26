@@ -1078,17 +1078,64 @@ async def test_external_eenheid_with_internal_part_is_not_free_to_move(tree: Tre
 
 
 async def test_sharing_needs_authority_over_the_source(tree: Tree):
+    """The route and ``eenheid:share`` decide alike."""
+    from tests.authz_world import ask
+
     share = {"target_eenheid_id": str(tree.gemeente.id), "access_level": "read"}
+    sources = [tree.team, tree.ministerie]
     async with client_as(tree.db, tree.ministry_admin) as c:
-        inside = await c.post(
-            "/api/sharing", json={**share, "source_eenheid_id": str(tree.team.id)}
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask(
+                        "eenheid:share",
+                        "organisatie_eenheid",
+                        source.id,
+                        target_eenheid_id=tree.gemeente.id,
+                    )
+                    for source in sources
+                ]
+            },
         )
-        outside = await c.post(
-            "/api/sharing",
-            json={**share, "source_eenheid_id": str(tree.ministerie.id)},
-        )
+        inside, outside = [
+            await c.post(
+                "/api/sharing", json={**share, "source_eenheid_id": str(source.id)}
+            )
+            for source in sources
+        ]
+    assert [d["decision"] for d in asked.json()["evaluations"]] == [True, False]
     assert inside.status_code == 200, inside.text
     assert outside.status_code == 403
+
+
+async def test_sharing_with_own_eenheid_is_refused_alike(tree: Tree):
+    from tests.authz_world import ask
+
+    async with client_as(tree.db, tree.ministry_admin) as c:
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask(
+                        "eenheid:share",
+                        "organisatie_eenheid",
+                        tree.team.id,
+                        target_eenheid_id=tree.dg.id,
+                    )
+                ]
+            },
+        )
+        shared = await c.post(
+            "/api/sharing",
+            json={
+                "source_eenheid_id": str(tree.team.id),
+                "target_eenheid_id": str(tree.dg.id),
+                "access_level": "read",
+            },
+        )
+    assert asked.json()["evaluations"][0]["decision"] is False
+    assert shared.status_code == 403, shared.text
 
 
 async def test_pending_requests_follow_the_managed_subtree(tree: Tree):

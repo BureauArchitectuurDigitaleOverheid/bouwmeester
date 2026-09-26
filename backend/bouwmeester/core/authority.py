@@ -26,7 +26,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import can, get_eenheid_ids, require, rights_on_eenheid
+from bouwmeester.core.authz import (
+    can,
+    get_eenheid_ids,
+    perm_ctx_for,
+    require,
+    rights_on_eenheid,
+)
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
 from bouwmeester.models.corpus_node import CorpusNode
@@ -846,7 +852,7 @@ async def require_can_share(
     directorate onward; without an eenheid, system roles decide).  Creating
     one must not reach the caller: nobody shares with an eenheid they are
     in or are joining (``_grant_reaches_caller``).  Revoking only takes
-    access away.
+    access away.  The evaluation endpoint asks this as ``eenheid:share``.
     """
     for eenheid_id in await _share_source_eenheden(
         db, source_eenheid_id, source_node_id
@@ -885,45 +891,95 @@ async def _require_keeps_an_owner(
         )
 
 
-async def require_can_name_first_owner(
+async def _node_owner_grants(
+    db: AsyncSession, node_id: UUID
+) -> list[ResourcePermission]:
+    return list(
+        (
+            await db.scalars(
+                select(ResourcePermission).where(
+                    ResourcePermission.resource_type == "corpus_node",
+                    ResourcePermission.resource_id == node_id,
+                    ResourcePermission.rol == "eigenaar",
+                )
+            )
+        ).all()
+    )
+
+
+async def _require_first_owner_authority(
     db: AsyncSession,
     perm_ctx: PermissionContext,
     *,
     node_id: UUID,
     target_person_id: UUID,
 ) -> None:
-    """Guard naming the first eigenaar of a node that has none (a review).
+    """Naming the first eigenaar of a node that has none.
 
     Naming who owns a freshly imported parliamentary item is the point of
-    reviewing it, so whoever may review it (``parlementair:review`` on the
-    node) may do so.  Naming yourself is only allowed when you already edit
-    the node (``node:update``): a reviewer without it would otherwise hand
-    themselves rights.  Once the node has an eigenaar, changing that is a
-    grant like any other.
+    reviewing it, so the reviewer's mandate covers it.  Only someone who
+    can already read the node qualifies: eigenaar carries ``node:delete``,
+    so handing it to an outsider would give away the node.  Naming yourself
+    is only allowed when you already edit the node (``node:update``): a
+    reviewer without it would otherwise hand themselves rights.
     """
-    has_owner = await db.scalar(
-        select(ResourcePermission.id)
-        .where(
-            ResourcePermission.resource_type == "corpus_node",
-            ResourcePermission.resource_id == node_id,
-            ResourcePermission.rol == "eigenaar",
-        )
-        .limit(1)
-    )
-    if has_owner is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Dit item heeft al een eigenaar",
-        )
-    await require(db, perm_ctx, "parlementair:review", "corpus_node", node_id)
-    if (
-        not perm_ctx.is_super_admin
-        and target_person_id == perm_ctx.person_id
-        and not await can(db, perm_ctx, "node:update", "corpus_node", node_id)
-    ):
+    if perm_ctx.is_super_admin:
+        return
+    if target_person_id == perm_ctx.person_id:
+        if not await can(db, perm_ctx, "node:update", "corpus_node", node_id):
+            raise _forbidden(
+                "Je kunt jezelf alleen eigenaar maken van een item dat je al "
+                "mag bewerken"
+            )
+        return
+    target_ctx = await perm_ctx_for(db, target_person_id)
+    if not await can(db, target_ctx, "node:read", "corpus_node", node_id):
         raise _forbidden(
-            "Je kunt jezelf alleen eigenaar maken van een item dat je al mag bewerken"
+            "Deze persoon kan dit item niet zien en kan er dus geen eigenaar van zijn"
         )
+
+
+async def require_can_name_owner(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    node_id: UUID,
+    target_person_id: UUID,
+) -> None:
+    """Guard making *target_person_id* the sole person eigenaar of a node.
+
+    Completing the review of a parliamentary item names its eigenaar, so the
+    caller must review the node (``parlementair:review``).  Then:
+
+    - the target already is an eigenaar: nothing changes;
+    - the node has no eigenaar: the first one (``_require_first_owner_authority``);
+    - otherwise it is a grant like any other: the authority to hand out
+      eigenaar to the target and to remove every current person eigenaar
+      (eigenaar grants to an eenheid stay).
+
+    The evaluation endpoint asks this as ``parlementair:name_owner``.
+    """
+    if await db.get(Person, target_person_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Persoon niet gevonden")
+    await require(db, perm_ctx, "parlementair:review", "corpus_node", node_id)
+    grants = await _node_owner_grants(db, node_id)
+    if any(grant.person_id == target_person_id for grant in grants):
+        return
+    if not grants:
+        await _require_first_owner_authority(
+            db, perm_ctx, node_id=node_id, target_person_id=target_person_id
+        )
+        return
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="corpus_node",
+        resource_id=node_id,
+        rol="eigenaar",
+        target_person_id=target_person_id,
+    )
+    for grant in grants:
+        if grant.person_id is not None:
+            await _require_change_authority(db, perm_ctx, grant, new_rol=None)
 
 
 async def require_can_grant_resource_role(
@@ -991,6 +1047,17 @@ async def require_can_change_resource_role(
     as ``resource_role:revoke`` on the grant.
     """
     await _require_keeps_an_owner(db, grant, new_rol)
+    await _require_change_authority(db, perm_ctx, grant, new_rol=new_rol)
+
+
+async def _require_change_authority(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    grant: ResourcePermission,
+    *,
+    new_rol: str | None,
+) -> None:
+    """Authority to change or remove *grant*, leaving the last-owner rule aside."""
     if new_rol is not None:
         _require_known_rol(grant.resource_type, new_rol)
     if grant.person_id is not None and grant.person_id == perm_ctx.person_id:

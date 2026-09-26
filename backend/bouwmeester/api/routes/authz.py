@@ -13,7 +13,7 @@ is ``false``.  See :func:`evaluate` for the list.
 from collections.abc import Awaitable, Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -192,6 +192,36 @@ async def _revoke_resource_role(
         )
 
 
+async def _name_owner(
+    db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
+) -> None:
+    props = ev.resource.properties or _NO_PROPERTIES
+    if (
+        ev.resource.type != "corpus_node"
+        or ev.resource.id is None
+        or props.target_person_id is None
+    ):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT)
+    await authority.require_can_name_owner(
+        db, perm_ctx, ev.resource.id, props.target_person_id
+    )
+
+
+async def _share(
+    db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
+) -> None:
+    props = ev.resource.properties or _NO_PROPERTIES
+    if ev.resource.type != "organisatie_eenheid" or ev.resource.id is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT)
+    await authority.require_can_share(
+        db,
+        perm_ctx,
+        source_eenheid_id=ev.resource.id,
+        source_node_id=None,
+        target_eenheid_id=props.target_eenheid_id,
+    )
+
+
 Guard = Callable[[AsyncSession, PermissionContext, AuthzEvaluation], Awaitable[None]]
 
 GRANT_ACTIONS: dict[str, Guard] = {
@@ -202,6 +232,8 @@ GRANT_ACTIONS: dict[str, Guard] = {
     "eenheid:set_manager": _set_manager,
     "eenheid:dissolve": _dissolve,
     "person:place": _place,
+    "parlementair:name_owner": _name_owner,
+    "eenheid:share": _share,
 }
 
 
@@ -315,6 +347,14 @@ async def evaluate(
       ``properties.eenheid_id``, optional ``properties.ending`` (end the
       placement) and ``properties.contact`` (no id: a contact without
       account).  Without an id: place another person's account there.
+    - ``parlementair:name_owner``, resource ``{type: "corpus_node", id}``,
+      ``properties.target_person_id``: make that person the eigenaar of the
+      node when completing the review of its parliamentary item
+      (``require_can_name_owner``, the guard the complete route calls).
+    - ``eenheid:share``, resource ``{type: "organisatie_eenheid", id}`` (the
+      source), ``properties.target_eenheid_id``: share the source with that
+      eenheid (``require_can_share``, the guard ``POST /api/sharing``
+      calls).  Without a target: with an eenheid the caller is not in.
     """
     await _prefetch(db, perm_ctx, data.evaluations)
     decisions = [
