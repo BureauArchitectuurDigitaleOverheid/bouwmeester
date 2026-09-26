@@ -148,30 +148,30 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.due_date && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center">
+              <div className="hug">
                 <Icon name="clock" size="xs" />
                 <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
                   {formatDateShort(task.due_date)}
                 </nldd-text>
-              </nldd-container>
+              </div>
             )}
 
             {task.assignee && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center">
+              <div className="hug">
                 {task.assignee.is_agent ? (
                   <nldd-icon name="sparkles" size="16" color="paars" aria-hidden="true" />
                 ) : (
                   <Icon name="person" size="xs" />
                 )}
                 <nldd-text size="xs" color="secondary">{task.assignee.naam}</nldd-text>
-              </nldd-container>
+              </div>
             )}
 
             {task.organisatie_eenheid && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center">
+              <div className="hug">
                 <Icon name="apartment-building" size="xs" />
                 <nldd-text size="xs" color="secondary">{task.organisatie_eenheid.naam}</nldd-text>
-              </nldd-container>
+              </div>
             )}
 
             {task.work_type && (
@@ -179,10 +179,10 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {subtasks.length > 0 && (
-              <nldd-container layout="row" gap="4" vertical-alignment="center">
+              <div className="hug">
                 <Icon name="tree-structure" size="xs" />
                 <nldd-text size="xs" color="secondary">{doneSubtasks}/{subtasks.length}</nldd-text>
-              </nldd-container>
+              </div>
             )}
           </nldd-container>
         </nldd-container>

@@ -234,12 +234,12 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                 {TASK_PRIORITY_LABELS[task.priority]}
               </Badge>
               {task.due_date && (
-                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <div className="hug">
                   <Icon name="clock" size="sm" />
                   <nldd-text size="sm" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
                     {formatDateLong(task.due_date)}
                   </nldd-text>
-                </nldd-container>
+                </div>
               )}
             </nldd-container>
 

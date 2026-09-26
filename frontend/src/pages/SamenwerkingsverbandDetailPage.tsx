@@ -230,7 +230,7 @@ export function SamenwerkingsverbandDetailPage() {
           <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
         </nldd-container>
         {!editing && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
+          <div className="hug">
             <Button variant="ghost" size="sm" icon="pencil" onClick={startEdit}>
               Bewerken
             </Button>
@@ -242,7 +242,7 @@ export function SamenwerkingsverbandDetailPage() {
             >
               Verwijderen
             </Button>
-          </nldd-container>
+          </div>
         )}
       </nldd-container>
 
@@ -306,17 +306,17 @@ export function SamenwerkingsverbandDetailPage() {
                   <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
                     {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
                   </Badge>
-                  <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
+                  <div className="hug">
                     <Icon name="users" size="xs" />
                     <nldd-text size="xs" color="secondary">
                       {swv.aantal_leden} {swv.aantal_leden === 1 ? 'lid' : 'leden'}
                     </nldd-text>
-                  </nldd-container>
+                  </div>
                   {periode && (
-                    <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
+                    <div className="hug">
                       <Icon name="calendar" size="xs" />
                       <nldd-text size="xs" color="secondary">{periode}</nldd-text>
-                    </nldd-container>
+                    </div>
                   )}
                 </nldd-container>
               </nldd-container>

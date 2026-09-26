@@ -14,7 +14,7 @@ import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import type { SelectOption } from '@/components/common/CreatableSelect';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   OPDRACHT_TYPE_LABELS,
@@ -46,6 +46,35 @@ function OpdrachtenSearchField({ value, onChange }: { value: string; onChange: (
       value={value}
       placeholder="Zoek opdrachten..."
       accessible-label="Zoek opdrachten"
+    />
+  );
+}
+
+/**
+ * Shows or hides the filters on a phone. Six filters stacked there took half
+ * the screen before the first opdracht, so below `sm` they stay folded away
+ * until asked for; the count says whether any of them is narrowing the list.
+ */
+function FiltersToggle({
+  open,
+  activeCount,
+  onToggle,
+}: {
+  open: boolean;
+  activeCount: number;
+  onToggle: () => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onToggle);
+  return (
+    <nldd-button
+      ref={ref}
+      variant="secondary"
+      size="sm"
+      start-icon="filter"
+      text={activeCount > 0 ? `Filters (${activeCount})` : 'Filters'}
+      expanded={orUndef(open)}
+      aria-controls="opdrachten-filters"
     />
   );
 }
@@ -271,14 +300,18 @@ export function OpdrachtenPage() {
 
   // Whether any search, dropdown or client-side filter is narrowing the set,
   // so the empty state can say "no matches" rather than "nothing here at all".
-  const hasActiveFilter =
-    !!searchQuery ||
-    typeFilter.size > 0 ||
-    statusFilter.size > 0 ||
-    !!apiFilters.begrotingsjaar ||
-    !!apiFilters.opdrachtnemer_eenheid_id ||
-    !!apiFilters.verantwoordelijke_id ||
-    !!apiFilters.instrument_id;
+  const activeFilterCount = [
+    typeFilter.size > 0,
+    statusFilter.size > 0,
+    !!apiFilters.begrotingsjaar,
+    !!apiFilters.opdrachtnemer_eenheid_id,
+    !!apiFilters.verantwoordelijke_id,
+    !!apiFilters.instrument_id,
+  ].filter(Boolean).length;
+  const hasActiveFilter = !!searchQuery || activeFilterCount > 0;
+
+  // Only matters below `sm`; from `sm` up the filters are always shown.
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Totals from server-side summary (for summary cards)
   const totaalBudget = summary?.totaal_budget ?? 0;
@@ -325,103 +358,10 @@ export function OpdrachtenPage() {
       {/* Page header */}
       <nldd-toolbar label="Opdrachtacties">
         <nldd-toolbar-item slot="start" priority={1} min-width="60%">
-          {/* Filters share the toolbar row with the actions, and wrap only
-              when the room runs out. `min-width` makes the item fluid; a
-              percentage lets it give way to the end items instead of pushing
-              them into the overflow menu. Each field has a fixed width,
-              because a fit-content container measures its children and they
-              measure it back. */}
-          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-            <nldd-container width="224px">
-              <OpdrachtenSearchField value={searchInput} onChange={setSearchInput} />
-            </nldd-container>
-            <nldd-container width="176px">
-              <MultiSelect
-                value={typeFilter}
-                onChange={setTypeFilter}
-                options={TYPE_OPTIONS}
-                allLabel="Alle typen"
-              />
-            </nldd-container>
-            <nldd-container width="176px">
-              <MultiSelect
-                value={statusFilter}
-                onChange={setStatusFilter}
-                options={STATUS_OPTIONS}
-                allLabel="Alle statussen"
-              />
-            </nldd-container>
-            <nldd-container width="160px">
-              <CreatableSelect
-                value={apiFilters.begrotingsjaar ? String(apiFilters.begrotingsjaar) : ''}
-                onChange={(v) =>
-                  setApiFilters((f) => ({
-                    ...f,
-                    begrotingsjaar: v ? Number(v) : undefined,
-                  }))
-                }
-                options={yearOptions}
-                placeholder="Alle jaren"
-                searchable={false}
-                onClear={() =>
-                  setApiFilters((f) => ({ ...f, begrotingsjaar: undefined }))
-                }
-              />
-            </nldd-container>
-            <nldd-container width="208px">
-              <CreatableSelect
-                value={apiFilters.opdrachtnemer_eenheid_id ?? ''}
-                onChange={(v) =>
-                  setApiFilters((f) => ({
-                    ...f,
-                    opdrachtnemer_eenheid_id: v || undefined,
-                  }))
-                }
-                options={opdrachtnemerOptions}
-                placeholder="Alle opdrachtnemers"
-                onClear={() =>
-                  setApiFilters((f) => ({ ...f, opdrachtnemer_eenheid_id: undefined }))
-                }
-              />
-            </nldd-container>
-            <nldd-container width="192px">
-              <CreatableSelect
-                value={apiFilters.verantwoordelijke_id === currentPerson?.id ? MY_OPDRACHTEN_SENTINEL : (apiFilters.verantwoordelijke_id ?? '')}
-                onChange={(v) => {
-                  const resolved = v === MY_OPDRACHTEN_SENTINEL ? currentPerson?.id : v;
-                  setApiFilters((f) => ({
-                    ...f,
-                    verantwoordelijke_id: resolved || undefined,
-                  }));
-                }}
-                options={verantwoordelijkeOptions}
-                placeholder="Alle verantwoordelijken"
-                onClear={() =>
-                  setApiFilters((f) => ({ ...f, verantwoordelijke_id: undefined }))
-                }
-              />
-            </nldd-container>
-            <nldd-container width="192px">
-              <CreatableSelect
-                value={apiFilters.instrument_id ?? ''}
-                onChange={(v) =>
-                  setApiFilters((f) => ({
-                    ...f,
-                    instrument_id: v || undefined,
-                  }))
-                }
-                options={instrumentOptions}
-                placeholder="Alle instrumenten"
-                onClear={() =>
-                  setApiFilters((f) => ({ ...f, instrument_id: undefined }))
-                }
-              />
-            </nldd-container>
-            {fccEnabled && lastSync?.last_synced_at && (
-              <nldd-text size="xs" color="secondary">
-                Laatste FCC-import: {timeAgo(lastSync.last_synced_at)}
-              </nldd-text>
-            )}
+          {/* A fixed width: a fit-content container measures its children and
+              they measure it back. */}
+          <nldd-container width="224px">
+            <OpdrachtenSearchField value={searchInput} onChange={setSearchInput} />
           </nldd-container>
         </nldd-toolbar-item>
         {hasPermission('opdracht:update') && (
@@ -462,6 +402,109 @@ export function OpdrachtenPage() {
           <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>
+
+      {/* Filters. From `sm` up they are always shown, as a grid of equal
+          columns. On a phone they used to stack as six blocks of different
+          widths and fill half the screen before the first opdracht; there
+          they now fold away behind a toggle that counts the active ones.
+
+          The show/hide is a plain div: a light-DOM utility class cannot
+          reliably override a custom element's own display. */}
+      <nldd-container gap="8">
+        <div className="hidden-from-sm">
+          <FiltersToggle
+            open={filtersOpen}
+            activeCount={activeFilterCount}
+            onToggle={() => setFiltersOpen((o) => !o)}
+          />
+        </div>
+        <div id="opdrachten-filters" className={filtersOpen ? undefined : 'hidden-below-sm-block'}>
+          <nldd-container
+            layout="grid"
+            gap="8"
+            column-count={1}
+            sm-column-count={1}
+            md-column-count={3}
+            lg-column-count={6}
+          >
+            <MultiSelect
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={TYPE_OPTIONS}
+              allLabel="Alle typen"
+            />
+            <MultiSelect
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUS_OPTIONS}
+              allLabel="Alle statussen"
+            />
+            <CreatableSelect
+              value={apiFilters.begrotingsjaar ? String(apiFilters.begrotingsjaar) : ''}
+              onChange={(v) =>
+                setApiFilters((f) => ({
+                  ...f,
+                  begrotingsjaar: v ? Number(v) : undefined,
+                }))
+              }
+              options={yearOptions}
+              placeholder="Alle jaren"
+              searchable={false}
+              onClear={() =>
+                setApiFilters((f) => ({ ...f, begrotingsjaar: undefined }))
+              }
+            />
+            <CreatableSelect
+              value={apiFilters.opdrachtnemer_eenheid_id ?? ''}
+              onChange={(v) =>
+                setApiFilters((f) => ({
+                  ...f,
+                  opdrachtnemer_eenheid_id: v || undefined,
+                }))
+              }
+              options={opdrachtnemerOptions}
+              placeholder="Alle opdrachtnemers"
+              onClear={() =>
+                setApiFilters((f) => ({ ...f, opdrachtnemer_eenheid_id: undefined }))
+              }
+            />
+            <CreatableSelect
+              value={apiFilters.verantwoordelijke_id === currentPerson?.id ? MY_OPDRACHTEN_SENTINEL : (apiFilters.verantwoordelijke_id ?? '')}
+              onChange={(v) => {
+                const resolved = v === MY_OPDRACHTEN_SENTINEL ? currentPerson?.id : v;
+                setApiFilters((f) => ({
+                  ...f,
+                  verantwoordelijke_id: resolved || undefined,
+                }));
+              }}
+              options={verantwoordelijkeOptions}
+              placeholder="Alle verantwoordelijken"
+              onClear={() =>
+                setApiFilters((f) => ({ ...f, verantwoordelijke_id: undefined }))
+              }
+            />
+            <CreatableSelect
+              value={apiFilters.instrument_id ?? ''}
+              onChange={(v) =>
+                setApiFilters((f) => ({
+                  ...f,
+                  instrument_id: v || undefined,
+                }))
+              }
+              options={instrumentOptions}
+              placeholder="Alle instrumenten"
+              onClear={() =>
+                setApiFilters((f) => ({ ...f, instrument_id: undefined }))
+              }
+            />
+          </nldd-container>
+        </div>
+        {fccEnabled && lastSync?.last_synced_at && (
+          <nldd-text size="xs" color="secondary">
+            Laatste FCC-import: {timeAgo(lastSync.last_synced_at)}
+          </nldd-text>
+        )}
+      </nldd-container>
 
       {/* Mobile card list. `nldd-table`'s own `sm-columns` collapses tracks
           rather than swapping to an entirely different card layout, so there

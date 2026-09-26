@@ -74,31 +74,31 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
                 </nldd-text>
               )}
               {contacts.length > 0 && (
-                <nldd-container layout="row" gap="2" vertical-alignment="center" title={contacts.join(', ')}>
+                <div className="hug hug-gap-2 hug-truncate" title={contacts.join(', ')}>
                   <nldd-icon name="users" size="16" aria-hidden="true" />
                   <nldd-text size="xs" color="secondary">
                     {contacts[0]}
                     {contacts.length > 1 && ` +${contacts.length - 1}`}
                   </nldd-text>
-                </nldd-container>
+                </div>
               )}
             </>
           )}
 
           {lead.next_action_date && (
-            <nldd-container layout="row" gap="2" vertical-alignment="center">
+            <div className="hug hug-gap-2">
               <nldd-icon name="calendar" size="16" aria-hidden="true" />
               <nldd-text size="xs" color={overdue ? 'critical' : 'secondary'} weight={overdue ? 'medium' : 'regular'}>
                 {formatDateShort(lead.next_action_date)}
               </nldd-text>
-            </nldd-container>
+            </div>
           )}
 
           {lead.attachment_count > 0 && (
-            <nldd-container layout="row" gap="2" vertical-alignment="center" horizontal-alignment="right">
+            <div className="hug hug-gap-2">
               <nldd-icon name="paperclip" size="16" aria-hidden="true" />
               <nldd-text size="xs" color="secondary">{lead.attachment_count}</nldd-text>
-            </nldd-container>
+            </div>
           )}
 
           {hasFunnelScores && (

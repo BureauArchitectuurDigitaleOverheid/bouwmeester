@@ -186,10 +186,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               </Badge>
               {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
               {node.edge_count != null && (
-                <nldd-container layout="row" gap="4" vertical-alignment="center">
+                <div className="hug">
                   <nldd-icon name="link" size="16" aria-hidden="true" />
                   <nldd-text size="sm" color="secondary">{node.edge_count} verbindingen</nldd-text>
-                </nldd-container>
+                </div>
               )}
               {parlementairItem?.document_url && (
                 <nldd-link
@@ -205,7 +205,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             {stakeholders && stakeholders.length > 0 && (
               <nldd-container layout="row" gap="16" vertical-alignment="top">
                 {eigenaren.length > 0 && (
-                  <nldd-container gap="6" min-width="0px" width="fit-content">
+                  <div className="hug hug-stack hug-gap-8 hug-truncate">
                     <nldd-container layout="row" gap="4" vertical-alignment="center">
                       <nldd-icon name="users" size="16" aria-hidden="true" />
                       <nldd-text size="xs" weight="bold" color="secondary"><h4>Eigenaar</h4></nldd-text>
@@ -215,10 +215,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                         <nldd-tag key={s.id} text={s.person.naam} color="accent" />
                       ))}
                     </nldd-container>
-                  </nldd-container>
+                  </div>
                 )}
                 {otherStakeholders.length > 0 && (
-                  <nldd-container gap="6" min-width="0px" width="fit-content">
+                  <div className="hug hug-stack hug-gap-8 hug-truncate">
                     <nldd-text size="xs" weight="bold" color="secondary"><h4>Betrokkenen</h4></nldd-text>
                     <nldd-container layout="wrap" gap="6">
                       {otherStakeholders.slice(0, 6).map((s) => (
@@ -232,7 +232,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                         <nldd-tag color="neutral" text={`+${otherStakeholders.length - 6}`} />
                       )}
                     </nldd-container>
-                  </nldd-container>
+                  </div>
                 )}
               </nldd-container>
             )}

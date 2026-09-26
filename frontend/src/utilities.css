@@ -158,6 +158,53 @@
   min-width: max-content;
 }
 
+/* # A group exactly as wide as its content
+ *
+ * An icon with its text, a date beside some badges, a pair of icon buttons at
+ * the end of a row. nldd-container cannot be this: inside its shadow root the
+ * layout box is `container-type: inline-size`, and a size container ignores
+ * its content when it is measured. `width="fit-content"` therefore comes out
+ * at 0px, with the content spilling over whatever sits next to it. Measured
+ * on the node header (2026-09-26): 0px for the metadata items and for the
+ * edit/delete buttons, with `shrink-0` and with `min-width: max-content`
+ * alike. The dates beside a samenwerkingsverband title broke into "1-5-" and
+ * "2022" for the same reason.
+ *
+ * So a plain element carries it. It does not shrink: whatever sits beside it
+ * gives way. `hug-truncate` is for the one text that should give way instead,
+ * with an ellipsis on the text inside.
+ */
+.hug {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--primitives-space-4);
+  max-width: 100%;
+}
+.hug.hug-gap-2 {
+  gap: var(--primitives-space-2);
+}
+.hug.hug-gap-8 {
+  gap: var(--primitives-space-8);
+}
+.hug.hug-gap-12 {
+  gap: var(--primitives-space-12);
+}
+.hug.hug-top {
+  align-items: flex-start;
+}
+.hug.hug-stack {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.hug.hug-stack.hug-end {
+  align-items: flex-end;
+}
+.hug.hug-truncate {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
 /* # Hover-reveal within a group
  *
  * `group` marks the hoverable ancestor (a row, a card); `group-hover-reveal`
@@ -727,4 +774,14 @@
 .row-fill {
   flex-grow: 1;
   min-width: 0;
+}
+
+/* `row-fill` for an item that also has a floor of its own. The `min-width: 0`
+ * above is outside CSS on the element, and that beats the `min-width`
+ * attribute the component applies from inside its shadow root. In a wrap of
+ * person cards the card's 240px floor was gone: the card shrank to 150px next
+ * to the role picker instead of moving to its own line, and its content ran
+ * under the picker. This one only grows, so the attribute's floor holds. */
+.grow {
+  flex-grow: 1;
 }

@@ -497,19 +497,18 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
           <nldd-container layout="wrap" gap="8" vertical-alignment="center">
             <nldd-tag text={LEAD_STAGE_LABELS[lead.stage]} color={stageTagColor(lead.stage)} size="sm" />
             {lead.next_action_date && (
-              <nldd-container
-                layout="row"
-                gap="4"
-                vertical-alignment="center"
-                padding="2"
-                padding-inline="8"
-                style={overdue ? { backgroundColor: 'var(--primitives-color-critical-25)', borderRadius: '6px' } : undefined}
+              <div
+                className="hug"
+                style={{
+                  padding: '2px 8px',
+                  ...(overdue ? { backgroundColor: 'var(--primitives-color-critical-25)', borderRadius: '6px' } : {}),
+                }}
               >
                 <nldd-icon name="calendar" size="16" aria-hidden="true" />
                 <nldd-text size="sm" color={overdue ? 'critical' : 'secondary'} weight={overdue ? 'medium' : 'regular'}>
                   {formatDateLong(lead.next_action_date)}
                 </nldd-text>
-              </nldd-container>
+              </div>
             )}
           </nldd-container>
 
