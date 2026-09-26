@@ -1,23 +1,17 @@
 """Regression guard: every API route must declare its authorization.
 
-GET routes need an authz dependency (visibility or permission).  Write
-routes (POST/PUT/PATCH/DELETE) need the decision point in ``core/authz.py``
-or a guard built on it; see the second half of this module.
+Walks the FastAPI app's route table.  A GET route under ``/api/`` must make
+a read decision: ``requires(...)``, a permission guard, the caller's
+visibility (``get_org_context`` / ``get_initiatief_context``, or an
+``apply_*_filter``), or a ``require``/``can`` call on ``core.authz``.
+Merely taking the ``PermissionContext`` decides nothing.  A write route
+(POST/PUT/PATCH/DELETE) must ask ``core/authz.py`` or a ``core.authority``
+guard.  Calls are found in the route and its dependencies, and one level
+into the helpers they call (a local ``_require_can_*`` wrapper counts only
+because it calls a real decision).
 
-Walks the FastAPI app's route table and fails the build if a GET route
-under ``/api/`` lacks one of the recognised authz dependencies (or is
-not on the explicit public/whitelisted set).
-
-This catches the common regression of adding a new GET endpoint and
-forgetting ``require_permission`` / ``get_org_context``.
-
-When a new endpoint is genuinely public or self-scoped (no leak risk),
-add it to ``_AUTHZ_WHITELIST`` with a short justification.
-
-Endpoints that are *known* to lack authz but are not yet fixed live in
-``_KNOWN_DEBT``.  They are exempt from the test — but a second test
-fails if a known-debt entry is no longer present (so we can't silently
-re-introduce a regression on a fixed route either).
+A route that is genuinely public or self-scoped goes on an allowlist with
+a short reason; an allowlist entry for a route that no longer exists fails.
 """
 
 import ast
@@ -26,17 +20,17 @@ import textwrap
 
 from fastapi.routing import APIRoute
 
+from bouwmeester.core import authority
+
 # Routes that are intentionally accessible without an authz dependency.
 # Each entry must include a comment documenting why.
 _AUTHZ_WHITELIST: dict[str, str] = {
     # Public auth/health endpoints
     "/api/auth/status": "public — used by frontend to detect login state",
     "/api/auth/me": "self-scoped to current user",
-    "/api/auth/csrf": "public — bootstrap CSRF token",
     "/api/auth/login": "public — start OIDC flow",
     "/api/auth/callback": "public — OIDC callback",
     "/api/auth/logout": "public — terminate session",
-    "/api/health": "public health check",
     "/api/health/ready": "public health check",
     # Self-scoped endpoints (effective_person_id ensures caller-only data)
     "/api/tasks/my": "self-scoped via effective_person_id",
@@ -46,12 +40,10 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/org-placements/my-requests": "self-scoped via current_user.id filter",
     "/api/chat/{conversation_id}": "self-scoped via current_user.id in handler",
     "/api/chat/attachments/{attachment_id}/preview": "owner-check in handler",
-    # Mattermost webhook endpoints (authenticated via shared secret)
-    "/api/mattermost/slash": "authenticated via shared secret in body",
-    "/api/mattermost/verify-link": "public — link verification",
-    # WebAuthn registration/authentication ceremony
-    "/api/webauthn/authenticate/options": "public — start authn ceremony",
-    "/api/webauthn/authenticate/verify": "public — complete authn ceremony",
+    "/api/mattermost-channels/search": (
+        "self-scoped: a private channel only for the caller's own Mattermost "
+        "account when it is a member"
+    ),
     # Tenant-wide reference data (intentionally readable by any logged-in user
     # because the authn middleware already gates /api/*)
     "/api/tags": "ministerie-breed gedeeld per ontwerp",
@@ -78,10 +70,6 @@ _AUTHZ_WHITELIST: dict[str, str] = {
         "team-member lijst, ministerie-breed (publiek profiel: naam, "
         "functie, default email — geen private nummers)"
     ),
-    # Externe organisaties zijn als KvK-nummers publieke NL-data, geen
-    # gevoelige interne contactdata.
-    "/api/externe-organisaties": "externe org-referentie, publieke NL-data",
-    "/api/externe-organisaties/{id}": "externe org-referentie, publieke NL-data",
     # Notifications: handlers filter on effective_person_id explicitly
     # in the route body (zie notifications.py — list/count/dashboard-stats
     # roepen effective_person_id aan; detail/replies gaan door
@@ -106,35 +94,98 @@ _AUTHZ_PREFIX_WHITELIST: tuple[str, ...] = (
     "/api/public/",
 )
 
-# Known-debt: GET routes that still lack authz but are scheduled for a
-# follow-up PR.  Once empty, this guard is fully active.
-_KNOWN_DEBT: set[str] = set()
-
-# Recognised dependency-callable names that satisfy the authz requirement.
-_AUTHZ_DEP_NAMES = {
-    "_check",  # require_permission inner closure
-    "get_org_context",
-    "get_permission_context",
-    "get_initiatief_context",
+# Dependencies that decide something by themselves, by qualified name.
+_DECIDING_DEPS = {
+    "requires.<locals>._authz_requires",  # core.authz.requires
+    "require_permission.<locals>._check",
+    "require_system_permission.<locals>._check",
     "get_admin_user",  # AdminUser annotation
-    "effective_person_id",
-    "_authz_requires",  # core.authz.requires
+    "get_super_admin_user",
 }
 
+# A permission held anywhere gates a module, it decides no write.
+_READ_ONLY_GATES = {"require_permission.<locals>._check"}
 
-def _route_has_authz_dep(route: APIRoute) -> bool:
-    """True if any of the route's dependencies match _AUTHZ_DEP_NAMES."""
+# Dependencies that decide a read: the caller's visibility, or data scoped to
+# the caller themselves.
+_READ_DEPS = {"get_org_context", "get_initiatief_context", "effective_person_id"}
 
-    def _walk(deps):
+# Calls that decide: ``core.authz``, the list filters built on visibility, and
+# the eenheden whose placements the caller decides (``core.authority``).
+_READ_CALLS = {"require", "can", "managed_subtree_ids"}
+_READ_CALL_PREFIX = "apply_"
+_WRITE_CALLS = {"require"}
+
+
+def _called_names(fn) -> set[str]:
+    """Names of every function called in *fn*'s source (``f()`` and ``x.f()``)."""
+    try:
+        source = textwrap.dedent(inspect.getsource(fn))
+    except (OSError, TypeError):
+        return set()
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name):
+                names.add(node.func.id)
+            elif isinstance(node.func, ast.Attribute):
+                names.add(node.func.attr)
+    return names
+
+
+def _is_guard(name: str) -> bool:
+    """A ``require_can_*`` guard that really exists in ``core.authority``."""
+    return name.startswith("require_can_") and callable(getattr(authority, name, None))
+
+
+def _is_read_decision(name: str) -> bool:
+    return (
+        name in _READ_CALLS
+        or (name.startswith(_READ_CALL_PREFIX) and name.endswith("_filter"))
+        or _is_guard(name)
+    )
+
+
+def _is_write_decision(name: str) -> bool:
+    return name in _WRITE_CALLS or _is_guard(name)
+
+
+def _decides(fn, is_decision) -> bool:
+    """*fn* calls a decision, directly or through one local helper."""
+    names = _called_names(fn)
+    if any(is_decision(n) for n in names):
+        return True
+    scope = getattr(fn, "__globals__", {})
+    for name in names:
+        helper = scope.get(name)
+        if inspect.isfunction(helper) and helper.__module__.startswith("bouwmeester"):
+            if any(is_decision(n) for n in _called_names(helper)):
+                return True
+    return False
+
+
+def _route_decides(route: APIRoute, dep_names: set[str], is_decision) -> bool:
+    """True if a dependency in *dep_names* or a called decision guards *route*."""
+    callables = [route.endpoint]
+
+    def _walk(deps) -> bool:
         for dep in deps:
             call = getattr(dep, "call", None)
-            if call is not None and call.__name__ in _AUTHZ_DEP_NAMES:
-                return True
+            if call is not None:
+                if getattr(call, "__qualname__", "") in dep_names:
+                    return True
+                callables.append(call)
             if _walk(getattr(dep, "dependencies", [])):
                 return True
         return False
 
-    return _walk(route.dependant.dependencies)
+    if _walk(route.dependant.dependencies):
+        return True
+    return any(_decides(fn, is_decision) for fn in callables)
+
+
+def _route_has_read_decision(route: APIRoute) -> bool:
+    return _route_decides(route, _DECIDING_DEPS | _READ_DEPS, _is_read_decision)
 
 
 def _collect_get_routes(app) -> list[APIRoute]:
@@ -146,59 +197,23 @@ def _collect_get_routes(app) -> list[APIRoute]:
 
 
 def _is_exempt(path: str) -> bool:
-    if path in _AUTHZ_WHITELIST or path in _KNOWN_DEBT:
+    if path in _AUTHZ_WHITELIST:
         return True
     return any(path.startswith(p) for p in _AUTHZ_PREFIX_WHITELIST)
 
 
 def test_all_get_routes_have_authz_dep(_test_app):
-    """Fail if any GET /api/* route is missing an authz dependency.
-
-    Whitelisted entries (intentionally public/self-scoped) and known-debt
-    entries (scheduled for follow-up) are exempt.
-    """
-    offenders: list[str] = []
-
-    for route in _collect_get_routes(_test_app):
-        if _is_exempt(route.path):
-            continue
-        if _route_has_authz_dep(route):
-            continue
-        offenders.append(route.path)
-
+    """Fail if any GET /api/* route makes no read decision."""
+    offenders = sorted(
+        route.path
+        for route in _collect_get_routes(_test_app)
+        if not _is_exempt(route.path) and not _route_has_read_decision(route)
+    )
     assert not offenders, (
-        "New GET routes without authz dependency. Either add one of "
-        f"{sorted(_AUTHZ_DEP_NAMES)}, whitelist in _AUTHZ_WHITELIST with "
-        "justification, or — if this is genuine debt — add to _KNOWN_DEBT:\n"
-        + "\n".join(f"  - {p}" for p in sorted(offenders))
-    )
-
-
-def test_known_debt_is_still_unauthorized(_test_app):
-    """Fail if a route in _KNOWN_DEBT has acquired an authz dependency.
-
-    Forces removal from the debt list when fixed, so the test stays a
-    meaningful regression guard rather than a stale wishlist.
-    """
-    fixed: list[str] = []
-    actual_paths = {r.path for r in _collect_get_routes(_test_app)}
-
-    for route in _collect_get_routes(_test_app):
-        if route.path not in _KNOWN_DEBT:
-            continue
-        if _route_has_authz_dep(route):
-            fixed.append(route.path)
-
-    # Routes in the debt list that no longer exist also need to be cleaned up.
-    stale = sorted(_KNOWN_DEBT - actual_paths)
-
-    assert not fixed, (
-        "These routes are now protected — remove them from _KNOWN_DEBT:\n"
-        + "\n".join(f"  - {p}" for p in sorted(fixed))
-    )
-    assert not stale, (
-        "These routes no longer exist — remove them from _KNOWN_DEBT:\n"
-        + "\n".join(f"  - {p}" for p in stale)
+        "GET routes without a read decision. Use requires(...), a permission "
+        "guard, the caller's visibility (get_org_context / "
+        "get_initiatief_context) or authz.require/can, or whitelist in "
+        "_AUTHZ_WHITELIST with a reason:\n" + "\n".join(f"  - {p}" for p in offenders)
     )
 
 
@@ -207,21 +222,6 @@ def test_known_debt_is_still_unauthorized(_test_app):
 # ---------------------------------------------------------------------------
 
 _WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
-
-# Dependencies that decide a write: the authz factory, system-only
-# permissions and the admin users.
-_WRITE_AUTHZ_DEPS = {
-    "requires.<locals>._authz_requires",
-    "require_system_permission.<locals>._check",
-    "get_admin_user",
-    "get_super_admin_user",
-}
-
-# Calls that decide a write when made in the route body or in one of its
-# dependencies (other helpers are not followed): ``authz.require`` and the
-# guards of ``core.authority`` (``require_can_*``).
-_WRITE_AUTHZ_CALLS = {"require"}
-_WRITE_AUTHZ_CALL_PREFIX = "require_can_"
 
 # Write routes that need no resource decision.  One line of reason each.
 _WRITE_ALLOWLIST: dict[str, str] = {
@@ -261,53 +261,9 @@ _WRITE_ALLOWLIST: dict[str, str] = {
     "DELETE /api/webauthn/credentials/{credential_id}": "self-scoped: own credential",
 }
 
-# Write routes not yet on core.authz, grouped by file with the check they use
-# today.  Migrating a route means removing it here (the second test below
-# insists).  Never add to this list.
-_WRITE_KNOWN_DEBT: set[str] = set()
-
-
-def _called_names(fn) -> set[str]:
-    """Names of every function called in *fn*'s source (``f()`` and ``x.f()``)."""
-    try:
-        source = textwrap.dedent(inspect.getsource(fn))
-    except (OSError, TypeError):
-        return set()
-    names: set[str] = set()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Name):
-                names.add(node.func.id)
-            elif isinstance(node.func, ast.Attribute):
-                names.add(node.func.attr)
-    return names
-
-
-def _decides(names: set[str]) -> bool:
-    # A local wrapper such as ``_require_can_place`` counts as its guard.
-    return bool(names & _WRITE_AUTHZ_CALLS) or any(
-        n.lstrip("_").startswith(_WRITE_AUTHZ_CALL_PREFIX) for n in names
-    )
-
 
 def _write_route_is_authorized(route: APIRoute) -> bool:
-    """True if the route depends on or calls a write decision."""
-    callables = [route.endpoint]
-
-    def _walk(deps) -> bool:
-        for dep in deps:
-            call = getattr(dep, "call", None)
-            if call is not None:
-                if getattr(call, "__qualname__", "") in _WRITE_AUTHZ_DEPS:
-                    return True
-                callables.append(call)
-            if _walk(getattr(dep, "dependencies", [])):
-                return True
-        return False
-
-    if _walk(route.dependant.dependencies):
-        return True
-    return any(_decides(_called_names(fn)) for fn in callables)
+    return _route_decides(route, _DECIDING_DEPS - _READ_ONLY_GATES, _is_write_decision)
 
 
 def _write_routes(app) -> dict[str, APIRoute]:
@@ -322,16 +278,14 @@ def _write_routes(app) -> dict[str, APIRoute]:
 def test_all_write_routes_ask_authz(_test_app):
     """Fail if a write route decides nothing through core.authz.
 
-    Fix a failure with ``Depends(requires(...))`` or an ``authz.require(...)``
-    call, never by adding to ``_WRITE_KNOWN_DEBT``.  Truly self-scoped routes
-    go in ``_WRITE_ALLOWLIST`` with a reason.
+    Fix a failure with ``Depends(requires(...))``, an ``authz.require(...)``
+    call or a ``core.authority`` guard.  Truly self-scoped routes go in
+    ``_WRITE_ALLOWLIST`` with a reason.
     """
     offenders = sorted(
         key
         for key, route in _write_routes(_test_app).items()
-        if key not in _WRITE_ALLOWLIST
-        and key not in _WRITE_KNOWN_DEBT
-        and not _write_route_is_authorized(route)
+        if key not in _WRITE_ALLOWLIST and not _write_route_is_authorized(route)
     )
     assert not offenders, (
         "Write routes without an authz decision; use core.authz "
@@ -340,18 +294,12 @@ def test_all_write_routes_ask_authz(_test_app):
     )
 
 
-def test_write_known_debt_is_still_debt(_test_app):
-    """Fail when a debt route has been migrated or no longer exists."""
-    routes = _write_routes(_test_app)
-    fixed = sorted(
-        key
-        for key in _WRITE_KNOWN_DEBT
-        if key in routes and _write_route_is_authorized(routes[key])
-    )
-    stale = sorted((_WRITE_KNOWN_DEBT | set(_WRITE_ALLOWLIST)) - set(routes))
-    assert not fixed, "Migrated; remove from _WRITE_KNOWN_DEBT:\n" + "\n".join(
-        f"  - {k}" for k in fixed
-    )
-    assert not stale, "No longer exist; remove from the lists:\n" + "\n".join(
+def test_allowlists_name_existing_routes(_test_app):
+    """Fail when an allowlisted route no longer exists."""
+    stale_writes = sorted(set(_WRITE_ALLOWLIST) - set(_write_routes(_test_app)))
+    get_paths = {r.path for r in _collect_get_routes(_test_app)}
+    stale_gets = sorted(set(_AUTHZ_WHITELIST) - get_paths)
+    stale = stale_writes + stale_gets
+    assert not stale, "No longer exist; remove from the allowlists:\n" + "\n".join(
         f"  - {k}" for k in stale
     )

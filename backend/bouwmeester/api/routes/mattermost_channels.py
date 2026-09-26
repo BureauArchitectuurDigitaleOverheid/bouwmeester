@@ -234,10 +234,11 @@ async def search_channels(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[MattermostChannelSearchResult]:
-    """Zoek MM-kanalen via de bot. Vereist authenticated user."""
-    if not perm_ctx.is_authenticated:
+    """Zoek MM-kanalen via de bot, private alleen waar de caller lid van is."""
+    if not perm_ctx.is_authenticated or perm_ctx.person_id is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
 
+    from bouwmeester.repositories.mattermost_user import MattermostUserRepository
     from bouwmeester.services.mattermost_service import MattermostService
 
     service = MattermostService(db)
@@ -246,7 +247,10 @@ async def search_channels(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Mattermost is niet geconfigureerd",
         )
-    results = await service.search_channels(q)
+    mapping = await MattermostUserRepository(db).get_by_person_id(perm_ctx.person_id)
+    results = await service.search_channels(
+        q, member_user_id=mapping.mattermost_user_id if mapping else None
+    )
     return [MattermostChannelSearchResult.model_validate(r) for r in results]
 
 

@@ -340,3 +340,42 @@ async def test_private_channel_of_others_is_refused(
     assert init.status_code == 403, init.text
     assert lead.status_code == 403, lead.text
     assert "geen lid" in init.json()["detail"]
+
+
+async def test_search_lists_private_channels_only_to_members(db_session):
+    """A private channel's name is shown only to a confirmed member."""
+    import httpx
+
+    from bouwmeester.services.mattermost_service import MattermostService
+
+    channels = [
+        {"id": "open", "type": "O", "name": "proj-open", "team_id": "t"},
+        {"id": "mine", "type": "P", "name": "proj-mine", "team_id": "t"},
+        {"id": "other", "type": "P", "name": "proj-other", "team_id": "t"},
+        {"id": "unknown", "type": "P", "name": "proj-unknown", "team_id": "t"},
+    ]
+    membership = {"mine": 200, "other": 404, "unknown": 500}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v4/users/me":
+            return httpx.Response(200, json={"id": "bot"})
+        if path == "/api/v4/users/bot/channels":
+            return httpx.Response(200, json=channels)
+        if path.startswith("/api/v4/channels/"):
+            return httpx.Response(membership[path.split("/")[4]], json={})
+        return httpx.Response(200, json=[])
+
+    service = MattermostService(db_session)
+    service._config = {}
+    service._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://mm"
+    )
+
+    def names(results: list[dict]) -> set[str]:
+        return {r["channel_name"] for r in results}
+
+    member = await service.search_channels("proj", member_user_id="me")
+    unlinked = await service.search_channels("proj", member_user_id=None)
+    assert names(member) == {"proj-open", "proj-mine"}
+    assert names(unlinked) == {"proj-open"}

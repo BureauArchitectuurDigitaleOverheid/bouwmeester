@@ -735,7 +735,18 @@ class MattermostService:
             if ch.get("id") and ch.get("team_id")
         }
 
-    async def search_channels(self, query: str) -> list[dict]:
+    async def _is_confirmed_member(self, channel_id: str, user_id: str | None) -> bool:
+        """Membership of *user_id*, failing closed when it cannot be checked."""
+        if not user_id or not channel_id:
+            return False
+        try:
+            return await self.is_member_of_channel(channel_id, user_id)
+        except MattermostUnavailableError:
+            return False
+
+    async def search_channels(
+        self, query: str, *, member_user_id: str | None
+    ) -> list[dict]:
         """Zoek kanalen waar de bot in zit, gefilterd op naam.
 
         Returns een lijst van dicts met channel_id, channel_name,
@@ -744,7 +755,11 @@ class MattermostService:
 
         We zoeken alleen binnen de kanalen waarvan de bot lid is — pas
         wanneer de bot toegevoegd wordt aan een kanaal kunnen we daar
-        meelezen.
+        meelezen.  A private channel is only listed when *member_user_id*
+        (the caller's Mattermost account) is a member: its name is not for
+        others to see, and only a member may link it
+        (``channel_link_refusal``).  When membership cannot be confirmed
+        the channel is left out.
         """
         bot_user_id = await self.get_bot_user_id()
         if not bot_user_id:
@@ -782,6 +797,10 @@ class MattermostService:
             name = ch.get("name", "")
             display_name = ch.get("display_name", "") or name
             if needle not in name.lower() and needle not in display_name.lower():
+                continue
+            if ch_type == "P" and not await self._is_confirmed_member(
+                ch.get("id", ""), member_user_id
+            ):
                 continue
             results.append(
                 {
