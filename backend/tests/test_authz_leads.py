@@ -19,6 +19,7 @@ from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.resource_permission import ResourcePermission
 from tests.authz_world import (
     World,
+    ask,
     assert_can_case,
     assert_route_case,
     can_case_id,
@@ -115,8 +116,11 @@ CASES = [
     ("init_viewer", "lead:update", "lead", "lead_free", None, False),
     ("team_editor", "lead:delete", "lead", "lead_free", None, False),
     ("manager", "lead:delete", "lead", "lead_free", None, True),
-    ("team_editor", "lead:create", "lead", None, None, True),
+    # creating one that lives nowhere: system roles only (without a place
+    # the route puts a new lead in the caller's own eenheid)
+    ("team_editor", "lead:create", "lead", None, None, False),
     ("viewer", "lead:create", "lead", None, None, False),
+    ("super_admin", "lead:create", "lead", None, None, True),
     # a lead without initiatief but with an eenheid follows that eenheid
     ("team_editor", "lead:update", "lead", "lead_team", None, True),
     ("afd_editor", "lead:update", "lead", "lead_team", None, True),
@@ -167,6 +171,34 @@ async def test_initiatief_viewer_sees_but_does_not_write(lw):
     assert write.status_code == 403
 
 
+# (who, eenheid the lead lands in or None for tenant-wide, None when refused)
+WITHOUT_PLACE = [
+    ("team_editor", "team"),
+    ("afd_editor", "afdeling"),
+    ("viewer", None),  # an implicit viewer creates no leads
+    ("role_only", None),  # a contributor creates leads in the initiatief only
+    ("super_admin", "tenant-wide"),  # no placement: a system role may
+]
+
+
+@pytest.mark.parametrize(("who", "lands_in"), WITHOUT_PLACE)
+async def test_new_lead_without_place_lands_in_own_eenheid(lw, who, lands_in):
+    """POST /leads without place, and ``lead:create`` anywhere, agree."""
+    async with client_as(lw.db, lw.person[who]) as c:
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={"evaluations": [ask("lead:create", "lead", anywhere=True)]},
+        )
+        created = await c.post("/api/leads", json=_lead_body(stage="inbox"))
+    assert asked.json()["evaluations"][0]["decision"] is (lands_in is not None)
+    if lands_in is None:
+        assert created.status_code == 403, created.text
+        return
+    assert created.status_code == 201, created.text
+    expected = None if lands_in == "tenant-wide" else str(lw.org[lands_in].id)
+    assert created.json()["organisatie_eenheid_id"] == expected
+
+
 def _lead_body(**extra) -> dict:
     return {"title": "Nieuwe lead", "stage": "verkennen", **extra}
 
@@ -188,7 +220,8 @@ ROUTES = [
         lambda lw: _lead_body(initiatief_id=str(lw.id("initiatief"))),
         201,
     ),
-    # create without initiatief: tenant-wide, or the eenheid it goes into
+    # create without initiatief: in the eenheid it goes into (none given:
+    # the own eenheid, see test_new_lead_without_place_lands_in_own_eenheid)
     ("viewer", "POST", "/api/leads", lambda lw: _lead_body(stage="inbox"), 403),
     (
         "team_editor",

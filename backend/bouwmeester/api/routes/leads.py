@@ -73,6 +73,7 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.lead_rules import require_lead_create
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
@@ -181,7 +182,7 @@ async def create_lead(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadResponse:
     """Create a new lead."""
-    await require(db, perm_ctx, "lead:create", "lead", place=data)
+    await require_lead_create(db, perm_ctx, data)
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
     try:

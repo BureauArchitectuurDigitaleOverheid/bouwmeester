@@ -143,7 +143,9 @@ corpus_node Product decision: a node with an eenheid is written by rights
             permission through any role.  (Reading follows step 0.)
 lead        A lead without initiatief and without eenheid (leads from
             before initiatieven existed).  A lead with an eenheid and no
-            initiatief lives in that eenheid, for reading too.
+            initiatief lives in that eenheid, for reading too.  Creating
+            a new one without either is system-only: ``POST /leads`` puts
+            it in the caller's own eenheid (``own_eenheid_where``).
 opdracht    Same rule as the corpus: FCC imports mostly arrive without
             opdrachtgever or opdrachtnemer-eenheid.  With one of those, only
             rights on that eenheid count.
@@ -281,7 +283,19 @@ async def _prefetch_chains(
         cache[("chain", eid)] = chain
 
 
-async def _memberships(db: AsyncSession, perm_ctx: PermissionContext) -> list[UUID]:
+async def self_and_ancestor_ids(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid_ids: Iterable[UUID]
+) -> set[UUID]:
+    """The eenheden plus every eenheid above them, from the request's chains."""
+    eenheid_ids = list(eenheid_ids)
+    await _prefetch_chains(db, perm_ctx, eenheid_ids)
+    result: set[UUID] = set()
+    for eid in eenheid_ids:
+        result |= await _chain(db, perm_ctx, eid)
+    return result
+
+
+async def memberships(db: AsyncSession, perm_ctx: PermissionContext) -> list[UUID]:
     """The eenheden the caller is placed in today, once per request."""
     key = ("memberships",)
     if key not in perm_ctx.authz_cache:
@@ -681,6 +695,11 @@ _TENANT_WIDE_WHEN_UNSCOPED = frozenset(
     }
 )
 
+# A new one of these without a place lands in the caller's own eenheid
+# (:func:`own_eenheid_where`); only system roles create one that lives
+# nowhere in particular (step 1).
+_CREATED_IN_OWN_EENHEID = frozenset({"lead"})
+
 # Every resource type can() knows (for input validation by callers).
 RESOURCE_TYPES = frozenset(set(_LOCATORS) | _CREATE_ONLY_TYPES)
 
@@ -966,7 +985,7 @@ async def _edit_shares(
     """Active edit shares to eenheden the caller is placed in, once per request."""
     key = ("edit_shares",)
     if key not in perm_ctx.authz_cache:
-        own = await _memberships(db, perm_ctx)
+        own = await memberships(db, perm_ctx)
         rows = []
         if own:
             rows = (
@@ -1110,7 +1129,11 @@ async def _resolve(
 
     # 5. Tenant-wide fallback for resources that live nowhere in particular.
     unscoped = not loc.eenheid_ids and not loc.parents
-    if unscoped and resource_type in _TENANT_WIDE_WHEN_UNSCOPED:
+    if (
+        unscoped
+        and resource_type in _TENANT_WIDE_WHEN_UNSCOPED
+        and not (resource_id is None and resource_type in _CREATED_IN_OWN_EENHEID)
+    ):
         return perm_ctx.has_permission(permission)
     return (
         resource_id is None
@@ -1190,13 +1213,36 @@ async def can_anywhere(
     person holds a scoped role on (a role applies below it, so those are
     where it holds first), and whether a resource role on some parent (an
     initiatief contributor, a node eigenaar) lets them create it there.
+
+    A lead is created without a place in the caller's own eenheid
+    (``_CREATED_IN_OWN_EENHEID``), so for a lead this asks exactly what
+    ``POST /api/leads`` without initiatief and eenheid allows: a system
+    role, or an own eenheid where creating holds.  Creating one in an
+    initiatief is ``lead:create`` on that initiatief.
     """
     if await can(db, perm_ctx, permission, resource_type):
         return True
+    if resource_type in _CREATED_IN_OWN_EENHEID:
+        own = await own_eenheid_where(db, perm_ctx, permission, resource_type)
+        return own is not None
     for eenheid_id in perm_ctx.scoped_permissions:
         if await can(db, perm_ctx, permission, resource_type, eenheid_id=eenheid_id):
             return True
     return await _holds_parent_role_for(db, perm_ctx, permission, resource_type)
+
+
+async def own_eenheid_where(
+    db: AsyncSession, perm_ctx: PermissionContext, permission: str, resource_type: str
+) -> UUID | None:
+    """The first of the caller's own eenheden where a new resource may go.
+
+    Own eenheden are the active placements, in a fixed order, so asking
+    and creating pick the same one.  ``None`` when there is none.
+    """
+    for eenheid_id in sorted(await memberships(db, perm_ctx), key=str):
+        if await can(db, perm_ctx, permission, resource_type, eenheid_id=eenheid_id):
+            return eenheid_id
+    return None
 
 
 async def eenheid_ids_where(
@@ -1464,7 +1510,9 @@ __all__ = [
     "can_anywhere",
     "eenheid_ids_where",
     "get_eenheid_ids",
+    "memberships",
     "org_visibility",
+    "own_eenheid_where",
     "perm_ctx_for",
     "prefetch",
     "readable_modules",
@@ -1473,6 +1521,7 @@ __all__ = [
     "requires",
     "rights_on_eenheid",
     "role_read_ids",
+    "self_and_ancestor_ids",
     "visibility",
     "write_eenheid_ids",
 ]

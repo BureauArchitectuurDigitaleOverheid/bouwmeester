@@ -1574,34 +1574,16 @@ async def _sees_node(db: AsyncSession, caller: Caller, node_id: UUID) -> bool:
     return await can(db, caller.perm_ctx, "node:read", "corpus_node", node_id)
 
 
-async def _lead_eenheid(db: AsyncSession, caller: Caller) -> UUID | None:
-    """The eenheid a lead made in the chat goes into.
-
-    The first of the user's own eenheden (active placements, in a fixed
-    order) where ``lead:create`` holds, so authorizing and creating pick the
-    same one; ``None`` when there is none.
-    """
-    from bouwmeester.core.authz import can
-    from bouwmeester.repositories.org_tree import get_membership_ids
-
-    if caller.person_id is None:
-        return None
-    for eenheid_id in sorted(await get_membership_ids(db, caller.person_id), key=str):
-        if await can(db, caller.perm_ctx, "lead:create", "lead", eenheid_id=eenheid_id):
-            return eenheid_id
-    return None
-
-
 # Each write tool stands in for a REST route and asks ``core.authz`` the
 # same question: ``(permission, resource type, argument with the resource
 # id)``, where ``None`` means a new resource without an eenheid.  Several
 # entries are alternatives: an edge needs write access on either end.
 # ``create_task`` and ``create_lead`` are placed in an eenheid and decided in
 # ``_authorize_write_tool``: a task like ``POST /tasks`` (its eenheid when
-# given, else its node), a lead in one of the user's own eenheden where
-# ``lead:create`` holds.  Linking an existing tag is ``node:update`` (the
-# chat never creates tags).  Granting a stakeholder role goes through the
-# same authority check as the REST routes.
+# given, else its node), a lead like ``POST /leads`` without initiatief
+# (``services.lead_rules``: one of the user's own eenheden).  Linking an
+# existing tag is ``node:update`` (the chat never creates tags).  Granting a
+# stakeholder role goes through the same authority check as the REST routes.
 _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "create_node": (("node:create", "corpus_node", None),),
     "update_node": (("node:update", "corpus_node", "node_id"),),
@@ -1619,11 +1601,6 @@ _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "move_lead": (("lead:update", "lead", "lead_id"),),
     "add_lead_activity": (("lead_activity:create", "lead", "lead_id"),),
 }
-
-_NO_EENHEID_FOR_LEAD = (
-    "Kan geen lead aanmaken: je mag in geen van je eigen"
-    " organisatie-eenheden leads aanmaken."
-)
 
 # Resources a tool links to that the user must at least be able to see.
 _MUST_SEE: dict[str, tuple[tuple[str, str, str], ...]] = {
@@ -1668,6 +1645,8 @@ async def _authorize_write_tool(
 
     from bouwmeester.core.authority import require_can_grant_resource_role
     from bouwmeester.core.authz import can, require
+    from bouwmeester.schema.lead import LeadCreate
+    from bouwmeester.services.lead_rules import require_lead_create
     from bouwmeester.services.task_rules import require_task_create
 
     checks = _WRITE_TOOL_POLICY.get(tool_name)
@@ -1698,8 +1677,8 @@ async def _authorize_write_tool(
                 await require(db, perm_ctx, perm, resource_type, UUID(args[arg]))
         if tool_name == "create_task":
             await require_task_create(db, perm_ctx, _task_create_from_args(args))
-        if tool_name == "create_lead" and await _lead_eenheid(db, caller) is None:
-            return _NO_EENHEID_FOR_LEAD
+        if tool_name == "create_lead":
+            await require_lead_create(db, perm_ctx, LeadCreate.model_construct())
         if tool_name == "add_stakeholder":
             await require_can_grant_resource_role(
                 db,
@@ -2062,17 +2041,13 @@ async def _execute_write_tool(
             }
 
         elif tool_name == "create_lead":
+            from fastapi import HTTPException
+
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadCreate, LeadStage
+            from bouwmeester.services.lead_rules import require_lead_create
 
-            org_eenheid_id = await _lead_eenheid(db, caller)
-            if not org_eenheid_id:
-                return {"success": False, "summary": _NO_EENHEID_FOR_LEAD}
-
-            lead_data: dict = {
-                "title": args["title"],
-                "organisatie_eenheid_id": org_eenheid_id,
-            }
+            lead_data: dict = {"title": args["title"]}
             if args.get("description"):
                 lead_data["description"] = args["description"]
             if args.get("organization"):
@@ -2100,8 +2075,12 @@ async def _execute_write_tool(
                         ),
                     }
 
-            repo = LeadRepository(db)
             data = LeadCreate(**lead_data)
+            try:
+                await require_lead_create(db, caller.perm_ctx, data)
+            except HTTPException as exc:
+                return {"success": False, "summary": str(exc.detail)}
+            repo = LeadRepository(db)
             lead = await repo.create(data, author_id=person_id)
             await db.commit()
             return {

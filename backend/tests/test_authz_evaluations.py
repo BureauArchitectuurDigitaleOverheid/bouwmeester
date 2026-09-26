@@ -325,8 +325,9 @@ ANYWHERE_CASES = [
     ("viewer", "task:create", "task", False),
     # a node role that grants node:update: a task on that node
     ("role_only", "task:create", "task", True),
-    # a contributor on an initiatief: a lead in it
-    ("role_only", "lead:create", "lead", True),
+    # a contributor on an initiatief creates leads there (lead:create on the
+    # initiatief), not without a place: POST /leads would refuse
+    ("role_only", "lead:create", "lead", False),
     ("platform_admin", "task:create", "task", False),
     ("super_admin", "task:create", "task", True),
     ("team_editor", "lead:create", "lead", True),

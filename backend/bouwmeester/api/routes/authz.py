@@ -283,7 +283,10 @@ async def evaluate(
       ``eenheid_type`` and with ``eenheid_id``: an internal eenheid below it.
     - ``properties.anywhere: true`` (no id): is there any eenheid where the
       caller may create this?  For generic create buttons (a task, a lead
-      without initiatief).
+      without initiatief).  For ``lead:create`` on ``lead`` this is exactly
+      what ``POST /api/leads`` without initiatief and eenheid allows (the
+      lead lands in the caller's own eenheid; with none, system roles
+      only); in an initiatief ask ``lead:create`` on that ``initiatief``.
 
     Grant actions (``core.authority`` guards, the same the routes call):
 
