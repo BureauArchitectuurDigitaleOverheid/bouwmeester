@@ -361,10 +361,17 @@ async def require_can_assign_role(
     *,
     role: Role,
     eenheid_id: UUID | None,
-    target_person_id: UUID,
+    target_person_id: UUID | None,
 ) -> None:
-    """Guard granting *role* to a person: authority, and never to yourself."""
-    if not perm_ctx.is_super_admin and target_person_id == perm_ctx.person_id:
+    """Guard granting *role* to a person: authority, and never to yourself.
+
+    ``target_person_id=None`` asks about someone else (for the frontend).
+    """
+    if (
+        not perm_ctx.is_super_admin
+        and target_person_id is not None
+        and target_person_id == perm_ctx.person_id
+    ):
         raise _forbidden("Je kunt jezelf geen rol toekennen")
     await _require_role_authority(db, perm_ctx, role=role, eenheid_id=eenheid_id)
 

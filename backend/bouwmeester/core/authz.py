@@ -772,6 +772,27 @@ async def can(
     )
 
 
+async def can_anywhere(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    permission: str,
+    resource_type: str,
+) -> bool:
+    """Is there any eenheid where *perm_ctx* may create this new resource?
+
+    For generic create buttons of eenheid-bound types (a task, a lead
+    without initiatief).  Asks :func:`can` for "no eenheid" (system roles,
+    tenant-wide fallback) and for every eenheid the person holds a scoped
+    role on; a role applies below it, so those are where it holds first.
+    """
+    if await can(db, perm_ctx, permission, resource_type):
+        return True
+    for eenheid_id in perm_ctx.scoped_permissions:
+        if await can(db, perm_ctx, permission, resource_type, eenheid_id=eenheid_id):
+            return True
+    return False
+
+
 async def require(
     db: AsyncSession,
     perm_ctx: PermissionContext,

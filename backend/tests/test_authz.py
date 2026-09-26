@@ -561,7 +561,9 @@ def _ask(action: str, resource_type: str, resource_id=None, **properties) -> dic
     if resource_id is not None:
         resource["id"] = str(resource_id)
     if properties:
-        resource["properties"] = {k: str(v) for k, v in properties.items()}
+        resource["properties"] = {
+            k: v if isinstance(v, bool) else str(v) for k, v in properties.items()
+        }
     return {"action": action, "resource": resource}
 
 
