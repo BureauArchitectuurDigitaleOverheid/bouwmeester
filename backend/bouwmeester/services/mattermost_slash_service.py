@@ -49,6 +49,11 @@ _NOT_A_MEMBER = (
     "Dit is een besloten kanaal: alleen leden mogen het koppelen, want de "
     "berichten erin komen daarna in Bouwmeester terecht."
 )
+_NOT_IN_TEAM = (
+    "Dit kanaal hoort bij een Mattermost-team waar je geen lid van bent: "
+    "alleen teamleden mogen het koppelen, want de berichten erin komen daarna "
+    "in Bouwmeester terecht."
+)
 _MEMBERSHIP_UNKNOWN = (
     "Kon bij Mattermost niet nagaan of je lid bent van dit kanaal. "
     "Probeer het later opnieuw."
@@ -60,9 +65,10 @@ async def channel_link_refusal(
 ) -> str | None:
     """Why *person_id* may not link this channel, or ``None`` when they may.
 
-    A linked channel's posts are ingested, so a private channel (or group
-    message) may only be linked by one of its members; an open channel can
-    be joined by anyone in the team anyway.  Fails closed when Mattermost
+    A linked channel's posts are ingested, so only someone who can read
+    them may link it: for an open channel a member of its team, for any
+    other channel one of its members (``MattermostService.may_link_channel``).
+    Fails closed without a linked Mattermost account and when Mattermost
     cannot confirm.  The REST link routes and ``/bouwmeester koppel`` ask
     this after ``mattermost_channel_link:create``.
     """
@@ -73,18 +79,16 @@ async def channel_link_refusal(
 
     service = MattermostService(db)
     try:
-        if await service.is_open_channel(channel_id):
-            return None
+        channel = await service.get_channel(channel_id) or {"id": channel_id}
         mapping = (
             await MattermostUserRepository(db).get_by_person_id(person_id)
             if person_id
             else None
         )
-        if mapping is not None and await service.is_member_of_channel(
-            channel_id, mapping.mattermost_user_id
-        ):
+        user_id = mapping.mattermost_user_id if mapping else None
+        if await service.may_link_channel(channel, user_id):
             return None
-        return _NOT_A_MEMBER
+        return _NOT_IN_TEAM if channel.get("type") == "O" else _NOT_A_MEMBER
     except (MattermostUnavailableError, ValueError):
         return _MEMBERSHIP_UNKNOWN
     finally:

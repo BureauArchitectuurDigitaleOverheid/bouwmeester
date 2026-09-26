@@ -623,37 +623,38 @@ class MattermostService:
         200 is a member, 404 is not; anything else raises
         ``MattermostUnavailableError`` (see ``is_bot_member_of_channel``).
         """
+        return await self._is_member(f"/api/v4/channels/{channel_id}/members/{user_id}")
+
+    async def is_member_of_team(self, team_id: str, user_id: str) -> bool:
+        """Whether a Mattermost user is a member of a team (like a channel)."""
+        return await self._is_member(f"/api/v4/teams/{team_id}/members/{user_id}")
+
+    async def _is_member(self, path: str) -> bool:
         client = await self._get_client()
         try:
-            resp = await client.get(f"/api/v4/channels/{channel_id}/members/{user_id}")
+            resp = await client.get(path)
         except httpx.HTTPError as exc:
-            logger.warning(
-                "Mattermost membership-check faalde voor kanaal %s: %s",
-                channel_id,
-                exc,
-            )
+            logger.warning("Mattermost membership-check faalde voor %s: %s", path, exc)
             raise MattermostUnavailableError(
-                f"Kon membership voor kanaal {channel_id} niet checken"
+                f"Kon membership niet checken: {path}"
             ) from exc
         if resp.status_code == 404:
             return False
         if resp.status_code == 200:
             return True
         logger.warning(
-            "Mattermost membership-check gaf onverwachte status %s voor kanaal %s",
+            "Mattermost membership-check gaf onverwachte status %s voor %s",
             resp.status_code,
-            channel_id,
+            path,
         )
         raise MattermostUnavailableError(
             f"Onverwachte status {resp.status_code} bij membership-check"
         )
 
-    async def is_open_channel(self, channel_id: str) -> bool:
-        """Whether a channel is public ("O"): anyone in the team can join it.
+    async def get_channel(self, channel_id: str) -> dict | None:
+        """The channel as the bot sees it, ``None`` when it cannot (404, 403).
 
-        False for private channels and (group) DMs, and for a channel the
-        bot cannot see (404, 403).  Other failures raise
-        ``MattermostUnavailableError``.
+        Other failures raise ``MattermostUnavailableError``.
         """
         client = await self._get_client()
         try:
@@ -663,12 +664,12 @@ class MattermostService:
                 f"Kon kanaal {channel_id} niet ophalen"
             ) from exc
         if resp.status_code in (403, 404):
-            return False
+            return None
         if resp.status_code != 200:
             raise MattermostUnavailableError(
                 f"Onverwachte status {resp.status_code} bij ophalen kanaal"
             )
-        return resp.json().get("type") == "O"
+        return resp.json()
 
     async def team_namen(self) -> dict[str, str]:
         """Team-id naar leesbare naam, voor de teams waar de bot in zit.
@@ -735,14 +736,32 @@ class MattermostService:
             if ch.get("id") and ch.get("team_id")
         }
 
-    async def _is_confirmed_member(self, channel_id: str, user_id: str | None) -> bool:
-        """Membership of *user_id*, failing closed when it cannot be checked."""
+    async def may_link_channel(
+        self,
+        channel: dict,
+        user_id: str | None,
+        *,
+        teams: dict[str, bool] | None = None,
+    ) -> bool:
+        """May Mattermost user *user_id* link (and so see) this channel?
+
+        An open channel ("O") is for the members of its team, any other
+        channel for its own members.  Fails closed: no account or no channel
+        id is no; when Mattermost does not answer,
+        ``MattermostUnavailableError`` is raised.  *teams* caches team
+        membership over several channels of one user.
+        """
+        channel_id = channel.get("id")
         if not user_id or not channel_id:
             return False
-        try:
-            return await self.is_member_of_channel(channel_id, user_id)
-        except MattermostUnavailableError:
-            return False
+        team_id = channel.get("team_id")
+        if channel.get("type") == "O" and team_id:
+            cache = {} if teams is None else teams
+            if team_id not in cache:
+                cache[team_id] = await self.is_member_of_team(team_id, user_id)
+            if cache[team_id]:
+                return True
+        return await self.is_member_of_channel(channel_id, user_id)
 
     async def search_channels(
         self, query: str, *, member_user_id: str | None
@@ -755,11 +774,11 @@ class MattermostService:
 
         We zoeken alleen binnen de kanalen waarvan de bot lid is — pas
         wanneer de bot toegevoegd wordt aan een kanaal kunnen we daar
-        meelezen.  A private channel is only listed when *member_user_id*
-        (the caller's Mattermost account) is a member: its name is not for
-        others to see, and only a member may link it
-        (``channel_link_refusal``).  When membership cannot be confirmed
-        the channel is left out.
+        meelezen.  A channel is only listed when *member_user_id* (the
+        caller's Mattermost account) may link it (``may_link_channel``): a
+        member of an open channel's team, a member of a private channel.
+        Its name is not for others to see.  When membership cannot be
+        confirmed the channel is left out.
         """
         bot_user_id = await self.get_bot_user_id()
         if not bot_user_id:
@@ -788,6 +807,7 @@ class MattermostService:
         namen = await self.team_namen()
 
         results: list[dict] = []
+        teams: dict[str, bool] = {}
         for ch in channels:
             ch_type = ch.get("type")
             # Open kanalen ("O") en private kanalen ("P"). DMs ("D") en
@@ -798,9 +818,10 @@ class MattermostService:
             display_name = ch.get("display_name", "") or name
             if needle not in name.lower() and needle not in display_name.lower():
                 continue
-            if ch_type == "P" and not await self._is_confirmed_member(
-                ch.get("id", ""), member_user_id
-            ):
+            try:
+                if not await self.may_link_channel(ch, member_user_id, teams=teams):
+                    continue
+            except MattermostUnavailableError:
                 continue
             results.append(
                 {

@@ -440,19 +440,24 @@ async def test_slash_kanaal_names_the_initiatief_only_to_who_sees_it(
     assert naam in member
 
 
-# (open channel?, member?, Mattermost reachable?, linked?)
+# (channel type, team member?, channel member?, Mattermost reachable?, linked?)
 KOPPEL_CASES = [
-    (True, False, True, True),
-    (False, True, True, True),
-    (False, False, True, False),
-    (False, True, False, False),
+    ("O", True, False, True, True),  # an open channel of your own team
+    ("O", False, False, True, False),  # an open channel of another team
+    ("O", False, True, True, True),  # a member of the channel itself
+    ("P", True, True, True, True),
+    ("P", True, False, True, False),  # a team member, not in the channel
+    ("P", True, True, False, False),  # fails closed
 ]
 
 
-@pytest.mark.parametrize(("is_open", "member", "reachable", "linked"), KOPPEL_CASES)
-async def test_slash_koppel_private_channel_needs_membership(
-    world, mm, is_open, member, reachable, linked
+@pytest.mark.parametrize(
+    ("kind", "in_team", "member", "reachable", "linked"), KOPPEL_CASES
+)
+async def test_slash_koppel_needs_a_reader_of_the_channel(
+    world, mm, kind, in_team, member, reachable, linked
 ):
+    """Only someone who can read a channel may link it (its posts are ingested)."""
     from unittest.mock import AsyncMock, patch
 
     from bouwmeester.models.initiatief import Initiatief
@@ -466,20 +471,22 @@ async def test_slash_koppel_private_channel_needs_membership(
 
     naam = (await world.db.get(Initiatief, world.res["initiatief"])).naam
     channel = _mm_id()
+    found = {"id": channel, "type": kind, "team_id": "team"}
     down = MattermostUnavailableError("weg")
     with (
         patch.object(
             MattermostService,
-            "is_open_channel",
-            AsyncMock(return_value=is_open, side_effect=None if reachable else down),
+            "get_channel",
+            AsyncMock(return_value=found, side_effect=None if reachable else down),
+        ),
+        patch.object(
+            MattermostService, "is_member_of_team", AsyncMock(return_value=in_team)
         ),
         patch.object(
             MattermostService, "is_member_of_channel", AsyncMock(return_value=member)
-        ) as is_member,
+        ),
     ):
         # role_only is contributor on the initiatief: may link it.
         await _slash(world, mm, "role_only", f"koppel initiatief {naam}", channel)
     link = await MattermostChannelLinkRepository(world.db).get_by_channel_id(channel)
     assert (link is not None) is linked
-    if not is_open and reachable:
-        assert is_member.await_args.args == (channel, mm["role_only"])

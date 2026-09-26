@@ -342,19 +342,22 @@ async def test_private_channel_of_others_is_refused(
     assert "geen lid" in init.json()["detail"]
 
 
-async def test_search_lists_private_channels_only_to_members(db_session):
-    """A private channel's name is shown only to a confirmed member."""
+async def test_search_lists_channels_only_to_who_may_link_them(db_session):
+    """A channel is listed only to someone who may link it: a member of an
+    open channel's team, a confirmed member of a private channel."""
     import httpx
 
     from bouwmeester.services.mattermost_service import MattermostService
 
     channels = [
         {"id": "open", "type": "O", "name": "proj-open", "team_id": "t"},
+        {"id": "elsewhere", "type": "O", "name": "proj-elsewhere", "team_id": "t2"},
         {"id": "mine", "type": "P", "name": "proj-mine", "team_id": "t"},
         {"id": "other", "type": "P", "name": "proj-other", "team_id": "t"},
         {"id": "unknown", "type": "P", "name": "proj-unknown", "team_id": "t"},
     ]
-    membership = {"mine": 200, "other": 404, "unknown": 500}
+    membership = {"mine": 200, "other": 404, "unknown": 500, "elsewhere": 404}
+    team_membership = {"t": 200, "t2": 404}
 
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -362,6 +365,8 @@ async def test_search_lists_private_channels_only_to_members(db_session):
             return httpx.Response(200, json={"id": "bot"})
         if path == "/api/v4/users/bot/channels":
             return httpx.Response(200, json=channels)
+        if path.startswith("/api/v4/teams/"):
+            return httpx.Response(team_membership[path.split("/")[4]], json={})
         if path.startswith("/api/v4/channels/"):
             return httpx.Response(membership[path.split("/")[4]], json={})
         return httpx.Response(200, json=[])
@@ -378,4 +383,4 @@ async def test_search_lists_private_channels_only_to_members(db_session):
     member = await service.search_channels("proj", member_user_id="me")
     unlinked = await service.search_channels("proj", member_user_id=None)
     assert names(member) == {"proj-open", "proj-mine"}
-    assert names(unlinked) == {"proj-open"}
+    assert names(unlinked) == set()  # no Mattermost account: fail closed
