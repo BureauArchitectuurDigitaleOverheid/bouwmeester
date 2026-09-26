@@ -49,6 +49,9 @@ const REGISTERED_BY_PARENT: Record<string, string> = {
   'nldd-progress-bar-segment-indicator': 'progress-bar',
   'nldd-progress-circle-segment-indicator': 'progress-circle',
   'nldd-avatar-group': 'avatar',
+  'nldd-tooltip': 'icon-button',
+  'nldd-radio-button': 'radio-button-field',
+  'nldd-button-bar': 'collection',
 };
 
 // Vite inlines these at build time, so the test needs no filesystem access and

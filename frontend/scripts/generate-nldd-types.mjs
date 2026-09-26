@@ -118,7 +118,7 @@ function reactProps(block) {
 /**
  * Which elements the app actually imports.
  *
- * Typing all 128 while registering 77 quietly promises that any of them works:
+ * Typing every element while registering a subset quietly promises that any of them works:
  * an unregistered element renders its children unstyled with no error, so the
  * types would be handing out a trap. The ones that are not imported keep their
  * props (so adding the import is all it takes) but say so in a doc comment.

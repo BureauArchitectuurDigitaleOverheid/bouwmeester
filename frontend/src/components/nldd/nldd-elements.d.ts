@@ -203,7 +203,7 @@ declare module 'react' {
 				'button'?: NLDDAvatar['button'];
 				/** Link target for href (e.g. '_blank'); completes rel and announces "Opens in a new tab" */
 				'target'?: NLDDAvatar['target'];
-				/** Link rel for href; defaults to 'noopener noreferrer' when target='_blank' */
+				/** Link rel for href; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDAvatar['rel'];
 				/** Override translation keys; unset keys fall back to Dutch */
 				'translations'?: NLDDAvatar['translations'];
@@ -227,7 +227,7 @@ declare module 'react' {
 				'size'?: NLDDBadge['size'];
 				/** Semantic ('critical' | 'accent' | 'neutral' | 'warning' | 'success'), a Rijkshuisstijl color ('lintblauw' | 'hemelblauw' | 'oranje' | …), or 'inherit' to fill in the content color around it: the `--context-content-color` channel a list item, table row or menu sets, falling back to `currentColor`. Default: 'critical' */
 				'color'?: NLDDBadge['color'];
-				/** A color of its own, as any CSS color value ('#a90061', 'oklch(0.6 0.2 20)', 'var(--brand-cable-blue)'). For a color the design system cannot know: the jacket of a cable, a color someone picked. It wins over `color`. Whatever it paints, the text and icon on top become white or black, whichever contrasts. The text on it is black or white, picked on the relative luminance of the fill, so it clears 4.5:1 whatever color you hand it. */
+				/** A color of its own, as any CSS color value ('#a90061', 'oklch(0.6 0.2 20)', 'var(--brand-cable-blue)'). For a color the system cannot know: the jacket of a cable, a color someone picked. It wins over `color`. Whatever it paints, the text and icon on top become white or black, whichever contrasts. The text on it is black or white, picked on the relative luminance of the fill, so it clears 4.5:1 whatever color you hand it. */
 				'custom-color'?: NLDDBadge['customColor'];
 				/** Grows a ring out of the badge and fades it, for something happening right now (a live connection, an outage). Respects `prefers-reduced-motion`. */
 				'pulse'?: NLDDBadge['pulse'];
@@ -349,11 +349,16 @@ declare module 'react' {
 				'href'?: NLDDButton['href'];
 				/** Link target (e.g. '_blank'); only used when href is set. With '_blank' the button adds a visually hidden "opens in new tab" announcement for screen readers (WCAG 2.1 SC 3.2.2). */
 				'target'?: NLDDButton['target'];
-				/** Link rel attribute; defaults to 'noopener noreferrer' when target is '_blank' */
+				/** Link rel attribute, used with href; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDButton['rel'];
 				/** Override translation keys (e.g. the "opens in new tab" announcement); unset keys fall back to Dutch. */
 				'translations'?: NLDDButton['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/button-bar';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-button-bar': NlddElement & {
 				/** Bar size: 'xs' | 'sm' | 'md' | 'lg' (default: 'md'). At 'lg', icon-button children stack their label below the icon (mobile action-bar style). */
 				'size'?: NLDDButtonBar['size'];
@@ -386,7 +391,7 @@ declare module 'react' {
 				'button'?: NLDDCard['button'];
 				/** Link target for href (e.g. '_blank'); adjusts rel automatically and adds an "Opent in nieuw tabblad" announcement for '_blank' */
 				'target'?: NLDDCard['target'];
-				/** Link rel for href; defaults to 'noopener noreferrer' with target='_blank' */
+				/** Link rel for href; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDCard['rel'];
 				/** Override translation keys (e.g. the "Opent in nieuw tabblad" announcement) */
 				'translations'?: NLDDCard['translations'];
@@ -941,7 +946,7 @@ declare module 'react' {
 				'size'?: NLDDIcon['size'];
 				/** Functional (`primary-content`, `secondary-content`, `accent`, `critical`, `warning`, `success`) or rijkskleur (`lintblauw`, `donkerblauw`, `hemelblauw`, `lichtblauw`, `paars`, `violet`, `robijnrood`, `roze`, `rood`, `oranje`, `donkergeel`, `geel`, `donkerbruin`, `bruin`, `donkergroen`, `groen`, `mosgroen`, `mintgroen`). Empty = inherit `color` from parent. */
 				'color'?: NLDDIcon['color'];
-				/** A color of its own, as any CSS color value ('#a90061', 'oklch(0.6 0.2 20)', 'var(--brand-cable-blue)'). For a color the design system cannot know. It wins over `color`. */
+				/** A color of its own, as any CSS color value ('#a90061', 'oklch(0.6 0.2 20)', 'var(--brand-cable-blue)'). For a color the system cannot know. It wins over `color`. */
 				'custom-color'?: NLDDIcon['customColor'];
 				/** Draw the icon on a filled square. `color` and `custom-color` then paint the box and the glyph takes the contrasting color, and `size` measures the box: the glyph is four fifths of it, the corner radius a fifth. */
 				'box'?: NLDDIcon['box'];
@@ -985,7 +990,7 @@ declare module 'react' {
 				'href'?: NLDDIconButton['href'];
 				/** Link target (e.g. '_blank'); only used when href is set. With '_blank' the "opens in new tab" announcement is folded into the aria-label for screen readers (WCAG 2.1 SC 3.2.2). */
 				'target'?: NLDDIconButton['target'];
-				/** Link rel attribute; defaults to 'noopener noreferrer' when target is '_blank' */
+				/** Link rel attribute, used with href; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDIconButton['rel'];
 				/** Override translation keys (e.g. the "opens in new tab" announcement); unset keys fall back to Dutch. */
 				'translations'?: NLDDIconButton['translations'];
@@ -1014,11 +1019,6 @@ declare module 'react' {
 				/** Alt text for the avatar-src image; empty means decorative */
 				'avatar-alt'?: NLDDIdentity['avatarAlt'];
 			};
-			/** NOT REGISTERED. Using this renders its children unstyled with no
-			 *  error. Add `import '@nldd/design-system/image';` to
-			 *  components/nldd/register.ts first. Some elements register through a
-			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
-			 *  those. */
 			'nldd-image': NlddElement & {
 				/** Image URL */
 				'src'?: NLDDImage['src'];
@@ -1125,7 +1125,7 @@ declare module 'react' {
 				'href'?: NLDDLink['href'];
 				/** Link target (e.g. '_blank'); adjusts rel automatically. With '_blank' the link adds a visually hidden "Opent in nieuw tabblad" announcement for screen readers (WCAG 2.1 SC 3.2.2). */
 				'target'?: NLDDLink['target'];
-				/** Link rel attribute; defaults to 'noopener noreferrer' with target='_blank' */
+				/** Link rel attribute; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDLink['rel'];
 				/** Text size: 'inherit' (the default) follows the surrounding text and lays the link out inline, so it wraps in running prose. 'xs' | 'sm' | 'md' | 'lg' pin a size and switch to inline-flex, which baseline-aligns a start or end icon with an explicit gap. */
 				'size'?: NLDDLink['size'];
@@ -1183,7 +1183,7 @@ declare module 'react' {
 				'href'?: NLDDListItem['href'];
 				/** Link target forwarded to the `<a>` (e.g. '_blank'); only applies with `href`. With '_blank' a visually hidden "opens in new tab" announcement is added for assistive technology. */
 				'target'?: NLDDListItem['target'];
-				/** Link rel forwarded to the `<a>` (e.g. 'noopener noreferrer'); only applies with `href` */
+				/** Link rel forwarded to the `<a>`, only with `href`; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDListItem['rel'];
 				/** Set by the parent `nldd-list` when its own `reorderable` is on (with `type="list"`); consumers do not set this. Serves as a CSS hook for drag handle visibility. */
 				'reorderable'?: NLDDListItem['reorderable'];
@@ -1196,7 +1196,7 @@ declare module 'react' {
 				'href'?: NLDDListItemSegment['href'];
 				/** Link target forwarded to the `<a>`; only applies with `href` */
 				'target'?: NLDDListItemSegment['target'];
-				/** Link rel forwarded to the `<a>`; only applies with `href` */
+				/** Link rel forwarded to the `<a>`, only with `href`; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDListItemSegment['rel'];
 				/** Makes the segment a `role="checkbox"` control. Wins over `button`, loses to `href`. */
 				'checkbox'?: NLDDListItemSegment['checkbox'];
@@ -1233,11 +1233,6 @@ declare module 'react' {
 				/** Render variant. Use 'listbox' when the menu serves as a combobox popup — this switches role to "listbox" and item roles to "option" per ARIA spec. Default: 'menu'. */
 				'variant'?: NLDDMenu['variant'];
 			};
-			/** NOT REGISTERED. Using this renders its children unstyled with no
-			 *  error. Add `import '@nldd/design-system/menu-bar';` to
-			 *  components/nldd/register.ts first. Some elements register through a
-			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
-			 *  those. */
 			'nldd-menu-bar': NlddElement & {
 				/** Text for the overflow button (default through i18n) */
 				'overflow-text'?: NLDDMenuBar['overflowText'];
@@ -1247,11 +1242,6 @@ declare module 'react' {
 				'compact'?: NLDDMenuBar['compact'];
 				'translations'?: NLDDMenuBar['translations'];
 			};
-			/** NOT REGISTERED. Using this renders its children unstyled with no
-			 *  error. Add `import '@nldd/design-system/menu-bar-item';` to
-			 *  components/nldd/register.ts first. Some elements register through a
-			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
-			 *  those. */
 			'nldd-menu-bar-item': NlddElement & {
 				/** Text of the item */
 				'text'?: NLDDMenuBarItem['text'];
@@ -1712,6 +1702,11 @@ declare module 'react' {
 				/** Optional name used in the combined tooltip + screenreader text */
 				'name'?: NLDDProgressCircleSegmentIndicator['name'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/radio-button';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-radio-button': NlddElement & {
 				/** Checked state */
 				'checked'?: NLDDRadioButton['checked'];
@@ -1865,6 +1860,11 @@ declare module 'react' {
 				/** Icon name for nldd-icon */
 				'icon'?: NLDDSegmentedControlItem['icon'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/sheet';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-sheet': NlddElement & {
 				/** Sheet position: 'left' | 'right' | 'bottom' (default: 'right') */
 				'placement'?: NLDDSheet['placement'];
@@ -2042,7 +2042,7 @@ declare module 'react' {
 				'href'?: NLDDStatusBar['href'];
 				/** Link target (e.g. '_blank'); only used with href */
 				'target'?: NLDDStatusBar['target'];
-				/** Link rel; defaults to 'noopener noreferrer' with target='_blank' */
+				/** Link rel, used with href; with target '_blank', 'noopener noreferrer' is added to whatever you set */
 				'rel'?: NLDDStatusBar['rel'];
 				/** Makes the whole bar a button; ignored when href is set */
 				'button'?: NLDDStatusBar['button'];
@@ -2257,11 +2257,6 @@ declare module 'react' {
 				'hide-below'?: NLDDTextCell['hideBelow'];
 				'hide-above'?: NLDDTextCell['hideAbove'];
 			};
-			/** NOT REGISTERED. Using this renders its children unstyled with no
-			 *  error. Add `import '@nldd/design-system/text-editor';` to
-			 *  components/nldd/register.ts first. Some elements register through a
-			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
-			 *  those. */
 			'nldd-text-editor': NlddElement & {
 				/** Editor content (markdown) */
 				'value'?: NLDDTextEditor['value'];
@@ -2622,6 +2617,11 @@ declare module 'react' {
 				/** Override translation keys (the new-tab announcement); unset keys fall back to Dutch. */
 				'translations'?: NLDDToolbarTitle['translations'];
 			};
+			/** NOT REGISTERED. Using this renders its children unstyled with no
+			 *  error. Add `import '@nldd/design-system/tooltip';` to
+			 *  components/nldd/register.ts first. Some elements register through a
+			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
+			 *  those. */
 			'nldd-tooltip': NlddElement & {
 				/** Tooltip text */
 				'text'?: NLDDTooltip['text'];
