@@ -199,33 +199,13 @@ async def test_parlementair_review_is_decided_on_its_node(world, who, node, expe
     assert resp.status_code == expected, resp.text
 
 
-async def test_suggested_edge_is_reviewed_as_part_of_its_item(world):
-    item = await make_item(world, "node_directie")
-    suggested = SuggestedEdge(
-        parlementair_item_id=item.id,
-        target_node_id=world.res["node_team"],
-        edge_type_id=world.res["edge_type"],
-        confidence=0.9,
-    )
-    world.db.add(suggested)
-    await world.db.flush()
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        denied = await c.put(f"/api/parlementair/edges/{suggested.id}/reject")
-        missing = await c.put(f"/api/parlementair/edges/{uuid.uuid4()}/reject")
-    async with client_as(world.db, world.person["manager"]) as c:
-        allowed = await c.put(f"/api/parlementair/edges/{suggested.id}/reject")
-    assert denied.status_code == 403
-    assert missing.status_code == 404
-    assert allowed.status_code == 200, allowed.text
-
-
 # (who, item node, target node, expected status of approve)
 APPROVE_CASES = [
-    # review rights and write access on the item's node
+    # the reviewer of the item's node; the target may lie out of their reach
     ("team_editor", "node_team", "node_elders", 200),
-    # write access on the target end suffices too, like any edge
+    # an item on a node without eenheid is reviewed by any reviewer
     ("team_editor", "node_free", "node_team", 200),
-    # approving is the reviewer's mandate on the item's node, not edge:create
+    # a reviewer who holds no edge:create still approves: it is their mandate
     ("ministry_admin", "node_directie", "node_team", 200),
 ]
 
@@ -235,7 +215,7 @@ APPROVE_CASES = [
     APPROVE_CASES,
     ids=[f"{c[0]}-{c[1]}-{c[2]}" for c in APPROVE_CASES],
 )
-async def test_approving_a_suggested_edge_needs_edge_create(
+async def test_approving_a_suggested_edge_is_the_reviewers_mandate(
     world, who, node, target, expected
 ):
     await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")

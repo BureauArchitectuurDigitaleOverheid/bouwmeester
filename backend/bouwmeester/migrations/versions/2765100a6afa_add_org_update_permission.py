@@ -1,13 +1,18 @@
 """Add org:update: edit an eenheid's attributes, scoped to the eenheid
 
 Editing an eenheid (naam, beschrijving, contact details) had no permission
-of its own: the route accepted org:manage or managing the eenheid's members
-as a workaround.  org:update is that permission.  Held on an eenheid it
-applies to everything below it, like every scoped role.
+of its own: the route accepted org:create or org:manage held anywhere,
+combined with seeing the eenheid (or an eigenaar grant on it).  So an
+editor, who holds org:create to add stakeholder eenheden, could rename
+every eenheid they saw, their ancestors included.  org:update is the
+permission for it.  Held on an eenheid it applies to everything below it,
+like every scoped role.
 
 Granted to unit_manager and ministry_admin, and to super_admin, which is
-seeded with every permission.  platform_admin is left out on purpose: it
-operates the platform and holds no org:manage either.
+seeded with every permission.  Editors lose editing eenheid attributes on
+purpose: renaming an eenheid is a manager's job.  platform_admin is left
+out on purpose too: it operates the platform and holds no org:manage
+either.
 
 Revision ID: 2765100a6afa
 Revises: d1a6f3b8c925

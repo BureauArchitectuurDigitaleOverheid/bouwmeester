@@ -42,7 +42,7 @@ async def _get_bron(
     if bron is None:
         raise HTTPException(
             status_code=404,
-            detail="Bron not found (node is not a bron type)",
+            detail="Bron niet gevonden (dit item is geen bron)",
         )
     return bron
 

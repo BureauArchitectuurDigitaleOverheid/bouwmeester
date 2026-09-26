@@ -189,7 +189,7 @@ async def create_lead(
         lead = await repo.create(data, author_id=author_id)
     except StageNotInColumnsError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Onbekende stage '{exc.args[0]}' voor dit initiatief",
         )
 
@@ -405,7 +405,7 @@ async def update_lead(
         lead = require_found(await repo.update(lead_id, data), "Lead")
     except StageNotInColumnsError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Onbekende stage '{exc.args[0]}' voor dit initiatief",
         )
 
@@ -505,7 +505,7 @@ async def move_lead(
         )
     except StageNotInColumnsError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Onbekende stage '{exc.args[0]}' voor dit initiatief",
         )
 
@@ -1117,7 +1117,7 @@ async def create_github_link(
     parsed = parse_github_url(payload.url)
     if parsed is None:
         raise HTTPException(
-            status_code=422,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Ongeldige GitHub-URL",
         )
 

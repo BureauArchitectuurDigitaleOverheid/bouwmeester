@@ -151,7 +151,7 @@ async def assign_role(
     role_repo = RoleRepository(db)
     role = await role_repo.get_role(data.role_id)
     if role is None:
-        raise HTTPException(404, f"Role '{data.role_id}' not found")
+        raise HTTPException(404, f"Rol '{data.role_id}' niet gevonden")
 
     # System-level roles require no eenheid
     if role.level == "system" and data.organisatie_eenheid_id:
@@ -217,7 +217,7 @@ async def revoke_role(
     # Read before delete for logging
     assignment = await repo.get_by_id(assignment_id)
     if assignment is None:
-        raise HTTPException(404, "Assignment not found")
+        raise HTTPException(404, "Roltoekenning niet gevonden")
 
     await require_can_revoke_role(db, perm, assignment)
 

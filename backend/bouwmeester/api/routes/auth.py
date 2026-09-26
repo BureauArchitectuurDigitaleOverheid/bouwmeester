@@ -502,12 +502,12 @@ async def complete_onboarding(
     org_row = org_result.first()
     if org_row is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Organisatie-eenheid niet gevonden",
         )
     if org_row.type == "ministerie":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Selecteer een organisatie-eenheid onder ministerie-niveau",
         )
 
@@ -607,7 +607,7 @@ async def dismiss_onboarding_feature(
     feature = get_feature(body.feature_key)
     if feature is None or not feature.dismissible:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Ongeldige of niet-overslaan-bare onboarding stap",
         )
 

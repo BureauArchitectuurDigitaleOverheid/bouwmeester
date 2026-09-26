@@ -74,7 +74,9 @@ async def create_edge(
         from_node.node_type, to_node.node_type, data.edge_type_id
     )
     if error:
-        raise HTTPException(status_code=422, detail=error)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=error
+        )
 
     repo = EdgeRepository(db)
     try:
@@ -143,7 +145,7 @@ async def update_edge(
             )
             if error:
                 raise HTTPException(
-                    status_code=422,
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail=error,
                 )
 

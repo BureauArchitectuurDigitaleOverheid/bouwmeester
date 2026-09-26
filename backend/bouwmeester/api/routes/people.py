@@ -911,7 +911,7 @@ async def add_person_phone(
 
     if data.label not in PHONE_LABELS:
         raise HTTPException(
-            status_code=422,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Label moet een van {list(PHONE_LABELS.keys())} zijn",
         )
 

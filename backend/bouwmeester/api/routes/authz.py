@@ -53,7 +53,7 @@ async def _grant_resource_role(
 ) -> None:
     props = ev.resource.properties or _NO_PROPERTIES
     if ev.resource.id is None or props.rol is None:
-        raise HTTPException(422)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT)
     await authority.require_can_grant_resource_role(
         db,
         perm_ctx,
@@ -74,7 +74,7 @@ async def _assign_role(
         return
     role = await db.get(Role, props.role_id) if props.role_id else None
     if role is None:
-        raise HTTPException(422)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT)
     await authority.require_can_assign_role(
         db,
         perm_ctx,
@@ -176,7 +176,7 @@ async def _revoke_resource_role(
     if ev.resource.id is None or (
         (props.target_person_id is None) == (props.target_eenheid_id is None)
     ):
-        raise HTTPException(422)
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT)
     grants = await ResourcePermissionRepository(db).find_grants(
         ev.resource.type,
         ev.resource.id,

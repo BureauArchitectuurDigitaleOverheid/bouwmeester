@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +45,7 @@ from bouwmeester.services.task_rules import require_task_create
 logger = logging.getLogger(__name__)
 
 SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
+_NO_NODE = "Deze import heeft nog geen gekoppeld item"
 
 
 class FollowUpTask(BaseModel):
@@ -71,9 +72,7 @@ async def _require_can_review(
     without a node yet (out of scope) is decided like a new node without
     eenheid.
     """
-    item = await db.get(ParlementairItem, import_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
+    item = require_found(await db.get(ParlementairItem, import_id), "Import")
     await require(
         db, perm_ctx, "parlementair:review", "corpus_node", item.corpus_node_id
     )
@@ -159,9 +158,7 @@ async def get_import(
 ) -> ParlementairItemResponse:
     """Get a single parliamentary import item by ID."""
     repo = ParlementairItemRepository(db)
-    item = await repo.get_by_id(import_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
+    item = require_found(await repo.get_by_id(import_id), "Import")
     return _item_response(item, org_ctx)
 
 
@@ -249,11 +246,10 @@ async def reject_import(
     """Reject a parliamentary import item (sets status to rejected)."""
     await _require_can_review(db, perm_ctx, import_id)
     repo = ParlementairItemRepository(db)
-    item = await repo.update_status(
-        import_id, "rejected", reviewed_at=datetime.now(UTC)
+    item = require_found(
+        await repo.update_status(import_id, "rejected", reviewed_at=datetime.now(UTC)),
+        "Import",
     )
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
 
     await log_activity(
         db,
@@ -289,9 +285,9 @@ async def reopen_import(
             detail="Alleen afgewezen of buiten-scope items kunnen heropend worden",
         )
 
-    item = await repo.update_status(import_id, "imported", reviewed_at=None)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
+    item = require_found(
+        await repo.update_status(import_id, "imported", reviewed_at=None), "Import"
+    )
 
     # Ensure corpus node exists (out-of-scope items skip node creation)
     service = ParlementairImportService(db)
@@ -363,12 +359,8 @@ async def complete_review(
     item = await _require_can_review(db, perm_ctx, import_id)
     repo = ParlementairItemRepository(db)
     if item.corpus_node_id is None:
-        raise HTTPException(status_code=400, detail="Import has no linked corpus node")
-
-    # Validate eigenaar person exists
-    person = await db.get(Person, body.eigenaar_id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Eigenaar person not found")
+        raise HTTPException(status_code=400, detail=_NO_NODE)
+    require_found(await db.get(Person, body.eigenaar_id), "Eigenaar")
 
     # Follow-up tasks are new tasks like any other: the POST /tasks rules.
     follow_ups = [
@@ -431,12 +423,13 @@ async def update_suggested_edge(
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
-    suggested_edge = require_found(
-        await db.get(SuggestedEdge, edge_id), "Suggested edge"
-    )
+    suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
     repo = SuggestedEdgeRepository(db)
     if suggested_edge.status != "pending":
-        raise HTTPException(status_code=400, detail="Can only update pending edges")
+        raise HTTPException(
+            status_code=400,
+            detail="Alleen openstaande suggesties kunnen worden gewijzigd",
+        )
     suggested_edge.edge_type_id = body.edge_type_id
     await db.flush()
     updated = await repo.get_by_id(edge_id)
@@ -453,16 +446,11 @@ async def approve_edge(
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
-    suggested_edge = require_found(
-        await db.get(SuggestedEdge, edge_id), "Suggested edge"
-    )
+    suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
     suggested_edge_repo = SuggestedEdgeRepository(db)
     item = await db.get(ParlementairItem, suggested_edge.parlementair_item_id)
     if item is None or item.corpus_node_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Import has no linked corpus node",
-        )
+        raise HTTPException(status_code=400, detail=_NO_NODE)
 
     # Validate against edge schema rules
     from_node = await db.get(CorpusNode, item.corpus_node_id)
@@ -473,7 +461,7 @@ async def approve_edge(
         )
         if error:
             raise HTTPException(
-                status_code=422,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=error,
             )
 
@@ -516,13 +504,10 @@ async def reject_edge(
 ) -> SuggestedEdgeResponse:
     """Reject a suggested edge (sets status to rejected)."""
     repo = SuggestedEdgeRepository(db)
-    updated = await repo.update_status(
-        edge_id,
-        "rejected",
-        reviewed_at=datetime.now(UTC),
+    updated = require_found(
+        await repo.update_status(edge_id, "rejected", reviewed_at=datetime.now(UTC)),
+        "Suggestie",
     )
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Suggested edge not found")
 
     await log_activity(
         db,
@@ -549,9 +534,7 @@ async def reset_suggested_edge(
     Resetting an approved suggestion deletes the edge it created, so it is
     asked as deleting the suggestion.
     """
-    suggested_edge = require_found(
-        await db.get(SuggestedEdge, edge_id), "Suggested edge"
-    )
+    suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
     repo = SuggestedEdgeRepository(db)
 
     # If it was approved, delete the actual edge that was created

@@ -127,8 +127,10 @@ suggested_lead         initiatief                            initiatief:update
 Suggestions: reviewing a suggested edge (approve, reject, reset, delete)
 is the reviewer's mandate, ``parlementair:review`` on the node of the
 parlementair item it belongs to (anywhere, when the item has no node yet).
-Creating the edge itself is then a plain ``edge:create`` question.
-Reviewing a suggested lead (approve or reject) is ``initiatief:update``.
+Approving creates the edge under that same mandate: it is not asked as
+``edge:create``, so a reviewer who edits no nodes still approves, and
+editing the target end gives no say over the item.  Reviewing a suggested
+lead (approve or reject) is ``initiatief:update``.
 
 Edges: an edge is a relation of both nodes, so the editors of either end may
 maintain it; the other end must be visible.  Sub-records without an RBAC

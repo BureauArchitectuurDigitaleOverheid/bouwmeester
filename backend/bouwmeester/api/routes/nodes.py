@@ -461,7 +461,7 @@ async def update_node_stakeholder(
     if rp.resource_type != "corpus_node" or rp.resource_id != id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Stakeholder not found",
+            detail="Stakeholder niet gevonden",
         )
     await require_can_change_resource_role(db, perm_ctx, rp, new_rol=data.rol)
 
@@ -521,7 +521,7 @@ async def remove_node_stakeholder(
     if rp.resource_type != "corpus_node" or rp.resource_id != id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Stakeholder not found",
+            detail="Stakeholder niet gevonden",
         )
     await require_can_change_resource_role(db, perm_ctx, rp, new_rol=None)
 
