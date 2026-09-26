@@ -37,8 +37,9 @@ permission can also be asked on its parent
 decided as write access on that parent.  A new opdracht lands in every
 eenheid it names, so creating one needs the permission in each of them.
 A new internal eenheid is placed below its parent (``org:create`` there);
-an external one (a stakeholder) goes anywhere for whoever holds
-``org:create`` somewhere.  Moving an existing lead, task or opdracht is
+so is an external one (a stakeholder) whose parent touches the internal
+organisation.  Outside the organisation an external one goes anywhere for
+whoever holds ``org:create`` somewhere.  Moving an existing lead, task or opdracht is
 :func:`require_move`: taking it away where it is and adding it where it
 goes.
 
@@ -97,9 +98,9 @@ Resolution order (first match wins; every step can only allow):
 5. Tenant-wide fallback, only for the types in ``_TENANT_WIDE_WHEN_UNSCOPED``
    and only when the resource has no eenheid and no parent: *permission*
    held through any role, anywhere.  Creating an external
-   organisatie_eenheid is free in the same way (stakeholder eenheden live
-   anywhere in the tree; naming a manager is a grant decided by
-   ``core.authority``).
+   organisatie_eenheid outside the internal organisation is free in the
+   same way (stakeholder eenheden live anywhere outside it; naming a
+   manager is a grant decided by ``core.authority``).
 
 Delegation table (child -> parent; any parent suffices):
 
@@ -202,8 +203,10 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
     get_chains,
     get_membership_ids,
+    get_organisation_ids,
     get_self_and_ancestor_ids,
     get_subtree_ids,
+    touches_organisation,
 )
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.shared_access import share_active_today
@@ -372,16 +375,21 @@ def _task_location(
     )
 
 
-def _eenheid_place(place: Any) -> _Location:
-    """Where a new eenheid goes: internal ones under their parent, others free.
+async def _place_eenheid(db: AsyncSession, cache: dict, place: Any) -> _Location:
+    """Where a new eenheid goes: inside the organisation under its parent.
 
     An internal eenheid (ministerie down to team) becomes part of the
     organisation below its parent, so ``org:create`` on the parent decides
-    (no parent: system roles only).  An external one (a gemeente, a
-    stakeholder) lives anywhere: ``org:create`` held anywhere suffices.
+    (no parent: system roles only).  So does an external one (a gemeente, a
+    stakeholder) whose parent touches the organisation: its members would
+    see up that line.  Elsewhere an external eenheid is free:
+    ``org:create`` held anywhere suffices.
     """
-    if _field(place, "type") in INTERNAL_EENHEID_TYPES:
-        return _Location(eenheid_ids=_eenheden(_field(place, "parent_id")))
+    parent_id = _field(place, "parent_id")
+    if _field(place, "type") in INTERNAL_EENHEID_TYPES or (
+        parent_id is not None and await touches_organisation(db, parent_id)
+    ):
+        return _Location(eenheid_ids=_eenheden(parent_id))
     return _Location(free_create=True)
 
 
@@ -533,7 +541,7 @@ _PLACES: dict[str, _PlaceLocator] = {
         )
     ),
     "lead": _place_lead,
-    "organisatie_eenheid": _sync_place(_eenheid_place),
+    "organisatie_eenheid": _place_eenheid,
     "opdracht": _sync_place(
         lambda p: _Location(
             eenheid_ids=_eenheden(
@@ -1192,15 +1200,22 @@ async def can_anywhere(
 
 
 async def eenheid_ids_where(
-    db: AsyncSession, perm_ctx: PermissionContext, permission: str
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    permission: str,
+    *,
+    eenheid_type: str | None = None,
 ) -> set[UUID] | None:
     """The eenheden where ``can`` allows an ``org:*`` *permission*; None: all.
 
     ``org:update`` / ``org:manage`` are asked on the eenheid itself,
-    ``org:create`` as creating an internal eenheid below it.  Candidates are
-    the subtrees of the eenheden where a scoped role grants the permission
-    (it applies below them) and the eenheden a resource role covers; each
-    is then decided by :func:`can`, so this list and the decisions agree.
+    ``org:create`` as creating an eenheid below it (of *eenheid_type*;
+    none: an internal one).  Candidates are the subtrees of the eenheden
+    where a scoped role grants the permission (it applies below them) and
+    the eenheden a resource role covers; each is then decided by
+    :func:`can`, so this list and the decisions agree.  An external type
+    may also go below every eenheid outside the internal organisation, for
+    whoever holds ``org:create`` anywhere (``_place_eenheid``).
     """
     if perm_ctx.is_super_admin or perm_ctx.has_system_permission(permission):
         return None
@@ -1227,6 +1242,14 @@ async def eenheid_ids_where(
             ok = await can(db, perm_ctx, permission, "organisatie_eenheid", eid)
         if ok:
             allowed.add(eid)
+    if (
+        creating
+        and eenheid_type is not None
+        and eenheid_type not in INTERNAL_EENHEID_TYPES
+        and perm_ctx.has_permission(permission)
+    ):
+        everything = set((await db.scalars(select(OrganisatieEenheid.id))).all())
+        allowed |= everything - await get_organisation_ids(db)
     return allowed
 
 

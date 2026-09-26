@@ -28,10 +28,7 @@ from bouwmeester.core.authz import (
 )
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
-from bouwmeester.models.organisatie_eenheid import (
-    INTERNAL_EENHEID_TYPES,
-    OrganisatieEenheid,
-)
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.org_tree import get_subtree_ids
@@ -280,9 +277,10 @@ async def evaluate(
     - A new eenheid: ``org:create`` on ``organisatie_eenheid`` with
       ``properties.eenheid_type`` and optional ``properties.eenheid_id``
       (the parent).  An internal type needs ``org:create`` on the parent
-      (no parent: system roles only); an external type is free for anyone
-      holding ``org:create`` somewhere.  Without ``eenheid_type`` and with
-      ``eenheid_id``: an internal eenheid below it.
+      (no parent: system roles only), and so does an external type below a
+      parent that touches the internal organisation; elsewhere an external
+      type is free for anyone holding ``org:create`` somewhere.  Without
+      ``eenheid_type`` and with ``eenheid_id``: an internal eenheid below it.
     - ``properties.anywhere: true`` (no id): is there any eenheid where the
       caller may create this?  For generic create buttons (a task, a lead
       without initiatief).
@@ -373,7 +371,6 @@ async def _place_where(
 _EENHEDEN_WHERE: dict[str, EenhedenWhere] = {
     "org:manage": _org_where("org:manage"),
     "org:update": _org_where("org:update"),
-    "org:create": _org_where("org:create"),
     "people:assign_role": _assign_role_where,
     "person:place": _place_where,
 }
@@ -392,8 +389,11 @@ async def eenheden_allowed(
 
     - ``org:update``, ``org:manage``: on the eenheid itself (synced eenheden
       are read-only, so they are left out);
-    - ``org:create``: creating an internal eenheid below it; with an
-      external ``eenheid_type`` every parent or none (``can`` decides);
+    - ``org:create``: creating an eenheid of ``eenheid_type`` below it (no
+      type: an internal one).  Inside the internal organisation that needs
+      ``org:create`` on the parent, for an external type too; an external
+      type may go below any eenheid outside it.  Creating one at the top
+      is asked through the evaluation endpoint;
     - ``people:assign_role``: some role may be assigned there;
     - ``person:place``: another person's account may be placed there.
 
@@ -403,20 +403,10 @@ async def eenheden_allowed(
     """
     if not perm_ctx.is_authenticated:
         return AuthzEenhedenResponse(all=False, ids=[])
-    if (
-        action == "org:create"
-        and eenheid_type is not None
-        and eenheid_type not in INTERNAL_EENHEID_TYPES
-    ):
-        # An external eenheid does not depend on its parent: whoever may
-        # create one may put it anywhere.
-        allowed = await can(
-            db,
-            perm_ctx,
-            "org:create",
-            "organisatie_eenheid",
-            place={"type": eenheid_type},
+    if action == "org:create":
+        ids = await eenheid_ids_where(
+            db, perm_ctx, "org:create", eenheid_type=eenheid_type
         )
-        return AuthzEenhedenResponse(all=allowed, ids=[])
-    ids = await _EENHEDEN_WHERE[action](db, perm_ctx)
+    else:
+        ids = await _EENHEDEN_WHERE[action](db, perm_ctx)
     return AuthzEenhedenResponse(all=ids is None, ids=sorted(ids or (), key=str))

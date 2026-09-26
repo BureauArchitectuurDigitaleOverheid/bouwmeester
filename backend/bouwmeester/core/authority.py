@@ -43,6 +43,7 @@ from bouwmeester.repositories.org_tree import (
     get_membership_ids,
     get_self_and_ancestor_ids,
     get_subtree_ids,
+    touches_organisation,
 )
 
 # Roles that make someone responsible for the members of an eenheid (and
@@ -166,9 +167,12 @@ async def require_can_place(
         return
     # Linking your own staff to an external organisation (a detachering) is
     # the person's manager's call: it grants nothing inside the organisation.
+    # One that hangs inside it does (members see up the line), so there
+    # its managers decide like anywhere else in the organisation.
     if (
         person is not None
         and eenheid.type not in INTERNAL_EENHEID_TYPES
+        and not await touches_organisation(db, eenheid.id)
         and await _manages_person(db, perm_ctx, person)
     ):
         return
@@ -197,24 +201,6 @@ async def placement_bron(
     if await can_manage_members(db, perm_ctx, eenheid_id):
         return CONFIRMED_PLACEMENT_BRON
     return _UNCONFIRMED_PLACEMENT_BRON
-
-
-async def _touches_organisation(db: AsyncSession, eenheid_id: UUID) -> bool:
-    """True if *eenheid_id* or an eenheid above it is internal.
-
-    Members see their eenheid and everything above it, so membership of an
-    external organisation that hangs below a ministerie reaches inside too.
-    """
-    chain = await get_self_and_ancestor_ids(db, eenheid_id)
-    hit = await db.scalar(
-        select(OrganisatieEenheid.id)
-        .where(
-            OrganisatieEenheid.id.in_(chain),
-            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
-        )
-        .limit(1)
-    )
-    return hit is not None
 
 
 async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
@@ -254,7 +240,7 @@ async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
     )
     for placement in placements:
         eenheid_id = placement.organisatie_eenheid_id
-        if not await _touches_organisation(db, eenheid_id):
+        if not await touches_organisation(db, eenheid_id):
             continue
         await db.delete(placement)
         if eenheid_id in pending:
@@ -312,14 +298,6 @@ async def require_can_decide_placement_request(
 # ---------------------------------------------------------------------------
 
 
-async def _eenheid_type(db: AsyncSession, eenheid_id: UUID | None) -> str | None:
-    if eenheid_id is None:
-        return None
-    return await db.scalar(
-        select(OrganisatieEenheid.type).where(OrganisatieEenheid.id == eenheid_id)
-    )
-
-
 async def _has_internal_descendant(db: AsyncSession, eenheid_id: UUID) -> bool:
     below = await get_subtree_ids(db, [eenheid_id]) - {eenheid_id}
     if not below:
@@ -346,25 +324,32 @@ async def require_can_move_eenheid(
     """Guard moving an eenheid or changing it between internal and external.
 
     Whoever manages a parent manages everything below it, and members see
-    all their ancestors.  So when the internal organisation is involved
-    (before or after, the eenheid, its parent or anything below it), the
-    caller must manage the eenheid itself and the new parent.  Detaching
-    into a new root is super_admin-only.  External organisations without
-    internal parts can be arranged freely by anyone allowed to edit them.
+    all their ancestors.  So when an internal eenheid is involved (before or
+    after, the eenheid itself or anything below it), the caller must manage
+    the eenheid itself and the new parent.  Detaching into a new root is
+    super_admin-only.
+
+    An external eenheid (without internal parts) moves like it is created
+    (``core.authz``): freely outside the internal organisation, and inside
+    it only with ``org:create`` on the parent, both the one it leaves and
+    the one it goes to.
     """
     if perm_ctx.is_super_admin:
         return
     if new_parent_id == eenheid.parent_id and new_type == eenheid.type:
         return
-    involved = {
-        eenheid.type,
-        new_type,
-        await _eenheid_type(db, eenheid.parent_id),
-        await _eenheid_type(db, new_parent_id),
-    }
-    if not involved & INTERNAL_EENHEID_TYPES and not await _has_internal_descendant(
-        db, eenheid.id
-    ):
+    internal = {eenheid.type, new_type} & INTERNAL_EENHEID_TYPES
+    if not internal and not await _has_internal_descendant(db, eenheid.id):
+        if new_parent_id == eenheid.parent_id:
+            return
+        for parent_id in (eenheid.parent_id, new_parent_id):
+            await require(
+                db,
+                perm_ctx,
+                "org:create",
+                "organisatie_eenheid",
+                place={"parent_id": parent_id, "type": new_type},
+            )
         return
     if not await can_manage_members(db, perm_ctx, eenheid.id):
         raise _forbidden(
@@ -527,11 +512,13 @@ async def require_can_create_eenheid(
     parent_id: UUID | None,
     manager_id: UUID | None,
 ) -> None:
-    """Guard creating an eenheid.
+    """Guard naming a manager when creating an eenheid.
 
-    Creating is free (stakeholder eenheden live anywhere): a new eenheid
-    has no members, so it grants nobody anything.  Naming a manager does,
-    and the new eenheid inherits its parent's rights, so the parent decides.
+    Where the eenheid may go is ``core.authz`` (``org:create``): inside the
+    internal organisation on its parent, outside it anywhere.  A new
+    eenheid has no members, so it grants nobody anything.  Naming a manager
+    does, and the new eenheid inherits its parent's rights, so the parent
+    decides.
     """
     if manager_id is None or perm_ctx.is_super_admin:
         return
@@ -579,7 +566,7 @@ async def _trusted_placement_eenheid_ids(
             )
         ).all()
     )
-    return {eid for eid in eenheid_ids if await _touches_organisation(db, eid)}
+    return {eid for eid in eenheid_ids if await touches_organisation(db, eid)}
 
 
 _IDENTITY_REFUSAL = (

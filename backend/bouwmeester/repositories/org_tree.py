@@ -18,7 +18,10 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.organisatie_eenheid import (
+    INTERNAL_EENHEID_TYPES,
+    OrganisatieEenheid,
+)
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
 
@@ -108,6 +111,46 @@ async def get_subtree_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set
     )
     result = await session.execute(select(cte.c.id))
     return set(result.scalars().all())
+
+
+async def touches_organisation(session: AsyncSession, eenheid_id: UUID) -> bool:
+    """True if *eenheid_id* or an eenheid above it is internal.
+
+    Members see their eenheid and everything above it, so an external
+    organisation that hangs below a ministerie reaches inside: its members
+    and its creation are matters of the internal organisation.
+    """
+    cte = (
+        select(
+            OrganisatieEenheid.id, OrganisatieEenheid.parent_id, OrganisatieEenheid.type
+        )
+        .where(OrganisatieEenheid.id == eenheid_id)
+        .cte(name="chain_types", recursive=True)
+    )
+    cte = cte.union(
+        select(
+            OrganisatieEenheid.id, OrganisatieEenheid.parent_id, OrganisatieEenheid.type
+        ).where(OrganisatieEenheid.id == cte.c.parent_id)
+    )
+    hit = await session.scalar(
+        select(cte.c.id).where(cte.c.type.in_(INTERNAL_EENHEID_TYPES)).limit(1)
+    )
+    return hit is not None
+
+
+async def get_organisation_ids(session: AsyncSession) -> set[UUID]:
+    """Every eenheid that touches the organisation: internal ones and below them.
+
+    The bulk form of :func:`touches_organisation`.
+    """
+    internal = (
+        await session.scalars(
+            select(OrganisatieEenheid.id).where(
+                OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES)
+            )
+        )
+    ).all()
+    return await get_subtree_ids(session, list(internal))
 
 
 async def get_membership_ids(session: AsyncSession, person_id: UUID) -> list[UUID]:

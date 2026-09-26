@@ -1,13 +1,14 @@
-"""Editors can create stakeholder (external) eenheden anywhere in the tree.
+"""Editors can create stakeholder (external) eenheden outside the organisation.
 
 An internal eenheid (ministerie down to team) is part of the organisation
-and needs org:create on its parent; see the last tests.
+and needs org:create on its parent, and so does an external one whose
+parent touches the internal organisation; see the last tests.
 
 Covers the scenario from the lead-stakeholder flow: a Bewerker (editor
 role) without ministry_admin needs to add an org unit for a counterpart
-that does not fall under their own ministry. The aanmaker is granted
-an eigenaar resource-permission so they can edit/delete that eenheid
-later, even though it is outside their visible org scope.
+that does not fall under their own ministry. The aanmaker of an external
+eenheid is granted an eigenaar resource-permission so they can edit/delete
+it later, even though it is outside their visible org scope.
 """
 
 import uuid
@@ -50,6 +51,7 @@ async def editor_setup(db_session: AsyncSession):
     """Editor on org_own, plus a separate org_other outside their scope."""
     org_own = await make_org(db_session, "Eigen Directie")
     org_other = await make_org(db_session, "Ander Ministerie")
+    org_external = await make_org(db_session, "Provincie", "provincie")
 
     editor = await make_person(db_session, "Abram Bewerker", account=False)
     db_session.add(
@@ -76,6 +78,7 @@ async def editor_setup(db_session: AsyncSession):
             "editor": editor,
             "org_own": org_own,
             "org_other": org_other,
+            "org_external": org_external,
         }
     app.dependency_overrides.clear()
 
@@ -93,8 +96,25 @@ async def test_editor_creates_top_level_eenheid(editor_setup):
     assert body["parent_id"] is None
 
 
-async def test_editor_creates_eenheid_under_foreign_parent(editor_setup):
-    """Editor can hang a new eenheid under a parent outside their scope."""
+async def test_editor_creates_eenheid_under_foreign_external_parent(editor_setup):
+    """Editor can hang a new external eenheid under another external one."""
+    s = editor_setup
+    resp = await s["client"].post(
+        "/api/organisatie",
+        json={
+            "naam": "Gemeente",
+            "type": "gemeente",
+            "parent_id": str(s["org_external"].id),
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["parent_id"] == str(s["org_external"].id)
+
+
+async def test_editor_cannot_hang_external_eenheid_in_foreign_organisation(
+    editor_setup,
+):
+    """Inside the internal organisation the parent decides, external or not."""
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
@@ -104,8 +124,7 @@ async def test_editor_creates_eenheid_under_foreign_parent(editor_setup):
             "parent_id": str(s["org_other"].id),
         },
     )
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["parent_id"] == str(s["org_other"].id)
+    assert resp.status_code == 403, resp.text
 
 
 async def test_aanmaker_gets_eigenaar_resource_permission(
@@ -130,6 +149,25 @@ async def test_aanmaker_gets_eigenaar_resource_permission(
         )
     ).scalar_one()
     assert rp.rol == "eigenaar"
+
+
+async def test_aanmaker_of_internal_eenheid_gets_no_eigenaar(
+    editor_setup, db_session: AsyncSession
+):
+    """An internal eenheid is maintained through the rights on its parent."""
+    s = editor_setup
+    resp = await s["client"].post(
+        "/api/organisatie",
+        json={"naam": "Team", "type": "team", "parent_id": str(s["org_own"].id)},
+    )
+    assert resp.status_code == 201, resp.text
+    grant = await db_session.scalar(
+        select(ResourcePermission.id).where(
+            ResourcePermission.resource_type == "organisatie_eenheid",
+            ResourcePermission.resource_id == uuid.UUID(resp.json()["id"]),
+        )
+    )
+    assert grant is None
 
 
 async def test_aanmaker_can_update_own_eenheid_outside_scope(editor_setup):

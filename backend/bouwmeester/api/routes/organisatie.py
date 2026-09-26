@@ -19,7 +19,10 @@ from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
 )
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.organisatie_eenheid import (
+    INTERNAL_EENHEID_TYPES,
+    OrganisatieEenheid,
+)
 from bouwmeester.repositories.org_tree import get_subtree_ids
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
@@ -41,7 +44,7 @@ router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
 # Editing or deleting an eenheid: org:update there (held there or above it,
-# or as eigenaar of a stakeholder eenheid one created).  Synced eenheden
+# or as eigenaar of an external stakeholder eenheid one created).  Synced eenheden
 # (TOOI, scrapes) are read-only except for super_admin (``core.authz``).
 # Structural changes are checked by ``core.authority`` on top.
 _UPDATE_EENHEID = requires("org:update", "organisatie_eenheid")
@@ -268,18 +271,20 @@ async def create_organisatie(
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
-    An external eenheid (a stakeholder) may go under any parent (or none)
-    for anyone with org:create somewhere: stakeholder eenheden often live
-    outside the caller's own ministry.  An internal one becomes part of the
-    organisation and needs org:create on its parent.  The aanmaker is
-    granted an eigenaar resource-permission so they can edit/delete their
-    creation later, even if it falls outside their org scope.
+    An internal eenheid becomes part of the organisation and needs
+    org:create on its parent; so does an external one (a stakeholder) whose
+    parent touches the internal organisation.  Elsewhere an external one
+    may go under any parent (or none) for anyone with org:create somewhere:
+    stakeholder eenheden often live outside the caller's own ministry.  The
+    aanmaker of an external eenheid becomes its eigenaar so they can
+    maintain it later, even outside their org scope.  An internal eenheid is
+    maintained by the rights on its parent, which it inherits.
     """
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
-    # An internal eenheid needs org:create on its parent; an external one
-    # (a stakeholder) can go anywhere (``core.authz``).
+    # Inside the organisation org:create on the parent decides; outside it
+    # an external eenheid (a stakeholder) can go anywhere (``core.authz``).
     await require(
         db,
         perm_ctx,
@@ -292,7 +297,11 @@ async def create_organisatie(
     )
     eenheid = await repo.create(data)
 
-    if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
+    if (
+        perm_ctx.person_id is not None
+        and not perm_ctx.is_super_admin
+        and eenheid.type not in INTERNAL_EENHEID_TYPES
+    ):
         await ResourcePermissionRepository(db).create_permission(
             person_id=perm_ctx.person_id,
             resource_type="organisatie_eenheid",

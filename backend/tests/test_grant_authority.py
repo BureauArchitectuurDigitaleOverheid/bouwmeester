@@ -1405,3 +1405,133 @@ async def test_dev_person_cookie_is_ignored_with_oidc(tree: Tree):
 async def test_dev_person_cookie_acts_as_that_person_locally(tree: Tree):
     person = await _resolve_with_dev_cookie(tree, "")
     assert person is not None and person.id == tree.editor.id
+
+
+# ---------------------------------------------------------------------------
+# External eenheden inside the internal organisation
+# ---------------------------------------------------------------------------
+
+
+async def _other_ministry_dg(tree: Tree) -> OrganisatieEenheid:
+    other = await make_org(tree.db, "Ander ministerie", "ministerie")
+    return await make_org(tree.db, "Ander DG", "directoraat_generaal", other)
+
+
+async def test_external_eenheid_cannot_smuggle_staff_into_another_ministry(
+    tree: Tree,
+):
+    """A gemeente under another ministry's DG is inside the organisation.
+
+    Creating it there needs org:create on that DG, and placing own staff in
+    it is no detachering: its members would read that ministry up the line.
+    """
+    foreign_dg = await _other_ministry_dg(tree)
+    body = {"naam": "Gemeente", "type": "gemeente", "parent_id": str(foreign_dg.id)}
+    async with client_as(tree.db, tree.directie_manager) as c:
+        created = await c.post("/api/organisatie", json=body)
+    assert created.status_code == 403, created.text
+
+    inside = await make_org(tree.db, "Gemeente binnen", "gemeente", foreign_dg)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        placed = await c.post(
+            f"/api/people/{tree.member.id}/organisaties", json=_placement(inside)
+        )
+    assert placed.status_code == 403, placed.text
+
+
+async def test_external_eenheid_outside_the_organisation_stays_free(tree: Tree):
+    """At the top or under another external eenheid, creating is free."""
+    async with client_as(tree.db, tree.directie_manager) as c:
+        top = await c.post(
+            "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
+        )
+        below = await c.post(
+            "/api/organisatie",
+            json={
+                "naam": "Wijkteam",
+                "type": "gemeente",
+                "parent_id": str(tree.gemeente.id),
+            },
+        )
+        # A detachering: own staff in an external organisation.
+        placed = await c.post(
+            f"/api/people/{tree.member.id}/organisaties",
+            json=_placement(tree.gemeente),
+        )
+    assert top.status_code == 201, top.text
+    assert below.status_code == 201, below.text
+    assert placed.status_code == 201, placed.text
+
+
+async def test_external_eenheid_moves_like_it_is_created(tree: Tree):
+    """Moving into the organisation needs org:create on the new parent."""
+    foreign_dg = await _other_ministry_dg(tree)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        created = await c.post(
+            "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
+        )
+        assert created.status_code == 201, created.text
+        url = f"/api/organisatie/{created.json()['id']}"
+        into_foreign = await c.put(url, json={"parent_id": str(foreign_dg.id)})
+        under_external = await c.put(url, json={"parent_id": str(tree.gemeente.id)})
+        into_own = await c.put(url, json={"parent_id": str(tree.directie.id)})
+    assert into_foreign.status_code == 403, into_foreign.text
+    assert under_external.status_code == 200, under_external.text
+    assert into_own.status_code == 200, into_own.text
+
+
+async def test_external_eenheid_leaves_the_organisation_only_with_rights_there(
+    tree: Tree,
+):
+    inside = await make_org(tree.db, "Stichting", "stichting", tree.dg)
+    tree.db.add(
+        ResourcePermission(
+            person_id=tree.editor.id,
+            resource_type="organisatie_eenheid",
+            resource_id=inside.id,
+            rol="eigenaar",
+        )
+    )
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        resp = await c.put(
+            f"/api/organisatie/{inside.id}", json={"parent_id": str(tree.gemeente.id)}
+        )
+    assert resp.status_code == 403, resp.text
+
+
+async def test_external_create_list_agrees_with_each_evaluation(tree: Tree):
+    """``GET /authz/eenheden`` for a gemeente matches asking per parent."""
+    from tests.authz_world import ask
+
+    foreign_dg = await _other_ministry_dg(tree)
+    parents = [tree.directie, tree.team, tree.dg, tree.gemeente, foreign_dg]
+    async with client_as(tree.db, tree.directie_manager) as c:
+        listed = (
+            await c.get(
+                "/api/authz/eenheden",
+                params={"action": "org:create", "eenheid_type": "gemeente"},
+            )
+        ).json()
+        evaluations = [
+            ask(
+                "org:create",
+                "organisatie_eenheid",
+                eenheid_type="gemeente",
+                eenheid_id=p.id,
+            )
+            for p in parents
+        ]
+        decisions = (
+            await c.post("/api/authz/evaluations", json={"evaluations": evaluations})
+        ).json()["evaluations"]
+    assert not listed["all"]
+    got = {p.naam: str(p.id) in listed["ids"] for p in parents}
+    assert got == {p.naam: d["decision"] for p, d in zip(parents, decisions)}
+    assert got == {
+        "Directie": True,
+        "Team": True,
+        "DG": False,
+        "Gemeente": True,
+        "Ander DG": False,
+    }

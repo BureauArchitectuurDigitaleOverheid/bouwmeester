@@ -247,8 +247,10 @@ async def test_synced_eenheid_is_read_only_in_authz(world):
 @pytest.mark.parametrize(
     ("who", "eenheid_type", "parent", "expected"),
     [
-        # an external eenheid (a stakeholder) goes anywhere
-        ("team_editor", "gemeente", "elders", True),
+        # an external eenheid (a stakeholder) inside the organisation needs
+        # org:create on its parent too (outside it: test_grant_authority)
+        ("team_editor", "gemeente", "elders", False),
+        ("team_editor", "gemeente", "team", True),
         ("viewer", "gemeente", "elders", False),
         # an internal one only below an eenheid where you hold org:create
         ("team_editor", "team", "elders", False),
