@@ -1,6 +1,6 @@
 """Shared builders for people, eenheden, placements and roles in tests.
 
-New tests use these instead of their own ``_make_person`` / ``_make_org``
+Tests use these instead of their own ``_make_person`` / ``_make_org``
 copies.  ``make_org`` writes both parent sources (``parent_id`` and the
 temporal ``OrganisatieEenheidParent``) so tests exercise the same tree the
 application reads.
@@ -49,7 +49,7 @@ async def make_person(db: AsyncSession, naam: str, *, account: bool = True) -> P
 async def make_org(
     db: AsyncSession,
     naam: str,
-    type_: str,
+    type_: str = "directie",
     parent: OrganisatieEenheid | None = None,
 ) -> OrganisatieEenheid:
     org = OrganisatieEenheid(

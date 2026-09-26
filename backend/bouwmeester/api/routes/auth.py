@@ -361,9 +361,8 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-            # Build org context once — derives managed eenheden and
-            # visible eenheid IDs without duplicate queries.
-            visible_eenheid_ids_list: list[str] = []
+            # Build org context once: it derives the managed eenheden and
+            # the managed subtree without duplicate queries.
             managed_subtree_ids_list: list[str] = []
             org_ctx = None
             if person_id:
@@ -374,17 +373,10 @@ async def auth_status(
                     )
 
                     if org_ctx.is_admin:
-                        visible_eenheid_ids_list = ["*"]
                         managed_subtree_ids_list = ["*"]
                     else:
                         managed_subtree_ids_list = [
                             str(eid) for eid in org_ctx.managed_subtree_ids
-                        ]
-                        visible_eenheid_ids_list = [
-                            str(eid)
-                            for eid in set(
-                                org_ctx.visible_eenheid_ids + org_ctx.shared_eenheid_ids
-                            )
                         ]
 
                     # Managed eenheden details (from org context)
@@ -403,7 +395,6 @@ async def auth_status(
             # Resolve RBAC roles and permissions
             roles_list: list[dict] = []
             permissions_list: list[str] = []
-            scoped_permissions_dict: dict[str, list[str]] = {}
             system_permissions_list: list[str] = []
             if person_id:
                 from bouwmeester.repositories.role import (
@@ -419,10 +410,6 @@ async def auth_status(
                 if perm_ctx is not None:
                     permissions_list = sorted(perm_ctx.effective_permissions)
                     if not perm_ctx.is_super_admin:
-                        scoped_permissions_dict = {
-                            str(eid): sorted(perms)
-                            for eid, perms in perm_ctx.scoped_permissions.items()
-                        }
                         system_permissions_list = sorted(perm_ctx.system_permissions)
 
                     pr_repo = PersonRoleRepository(db)
@@ -458,17 +445,14 @@ async def auth_status(
                 "needs_onboarding": needs_onboarding,
                 "onboarding_features": features,
                 "is_admin": bool(is_admin),
-                "organisatie_eenheden": org_eenheden,
                 "managed_eenheden": managed_eenheden_list,
                 "needs_placement": needs_placement,
                 "has_pending_placement": has_pending_placement,
                 "placement_denied": placement_denied,
                 "roles": roles_list,
                 "permissions": permissions_list,
-                "visible_eenheid_ids": visible_eenheid_ids_list,
                 # Eenheden whose members this person manages ("*" = all).
                 "managed_subtree_ids": managed_subtree_ids_list,
-                "scoped_permissions": scoped_permissions_dict,
                 "system_permissions": system_permissions_list,
             }
         except Exception:

@@ -61,5 +61,4 @@ class PersonRoleResponse(BaseModel):
 class MyPermissionsResponse(BaseModel):
     roles: list[PersonRoleResponse]
     permissions: list[str]
-    scoped_permissions: dict[str, list[str]] = {}
     system_permissions: list[str] = []
