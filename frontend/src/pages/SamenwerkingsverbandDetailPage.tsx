@@ -210,12 +210,27 @@ export function SamenwerkingsverbandDetailPage() {
       description: p.functie ?? undefined,
     }));
 
+  const datum = (d: string) => new Date(d).toLocaleDateString('nl-NL');
+  const periode =
+    swv.start_datum && swv.eind_datum
+      ? `${datum(swv.start_datum)} – ${datum(swv.eind_datum)}`
+      : swv.start_datum
+        ? `sinds ${datum(swv.start_datum)}`
+        : swv.eind_datum
+          ? `tot ${datum(swv.eind_datum)}`
+          : null;
+
   return (
     <nldd-container gap="24" max-width="896px">
-      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-        <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
+      {/* `wrap`: on a phone the link and both buttons do not fit on one
+          line. As a row, the link gave way and broke over two lines; now the
+          buttons move to the next line and every label stays whole. */}
+      <nldd-container layout="wrap" width="full" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" className="row-fill">
+          <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
+        </nldd-container>
         {!editing && (
-          <nldd-container layout="row" gap="4" vertical-alignment="center">
+          <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
             <Button variant="ghost" size="sm" icon="pencil" onClick={startEdit}>
               Bewerken
             </Button>
@@ -280,33 +295,28 @@ export function SamenwerkingsverbandDetailPage() {
             </nldd-container>
           ) : (
             <nldd-container gap="12">
-              <nldd-container layout="row" width="full" gap="12" horizontal-alignment="right">
-                <nldd-container gap="4" width="full">
-                  {/* h2: the app header's title bar already renders this
-                      route's h1 ("Samenwerkingsverbanden"). */}
-                  <nldd-title size={3}><h2>{swv.naam}</h2></nldd-title>
-                  <nldd-container layout="row" gap="8" vertical-alignment="center">
-                    <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
-                      {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
-                    </Badge>
-                    <nldd-container layout="row" gap="4" vertical-alignment="center">
-                      <Icon name="users" size="xs" />
-                      <nldd-text size="xs" color="secondary">
-                        {swv.aantal_leden} {swv.aantal_leden === 1 ? 'lid' : 'leden'}
-                      </nldd-text>
-                    </nldd-container>
+              {/* The dates are part of the meta line under the title. As a
+                  column beside the title they were squeezed on a phone until
+                  "1-5-2022" broke into "1-5-" and "2022". */}
+              <nldd-container gap="4">
+                {/* h2: the app header's title bar already renders this
+                    route's h1 ("Samenwerkingsverbanden"). */}
+                <nldd-title size={3}><h2>{swv.naam}</h2></nldd-title>
+                <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+                  <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
+                    {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
+                  </Badge>
+                  <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
+                    <Icon name="users" size="xs" />
+                    <nldd-text size="xs" color="secondary">
+                      {swv.aantal_leden} {swv.aantal_leden === 1 ? 'lid' : 'leden'}
+                    </nldd-text>
                   </nldd-container>
-                </nldd-container>
-                <nldd-container gap="2" width="fit-content" className="shrink-0" horizontal-alignment="right">
-                  {swv.start_datum && (
-                    <nldd-text size="xs" color="secondary" horizontal-alignment="right">
-                      Start: {new Date(swv.start_datum).toLocaleDateString('nl-NL')}
-                    </nldd-text>
-                  )}
-                  {swv.eind_datum && (
-                    <nldd-text size="xs" color="secondary" horizontal-alignment="right">
-                      Eind: {new Date(swv.eind_datum).toLocaleDateString('nl-NL')}
-                    </nldd-text>
+                  {periode && (
+                    <nldd-container layout="row" gap="4" vertical-alignment="center" width="fit-content" className="shrink-0">
+                      <Icon name="calendar" size="xs" />
+                      <nldd-text size="xs" color="secondary">{periode}</nldd-text>
+                    </nldd-container>
                   )}
                 </nldd-container>
               </nldd-container>
@@ -322,8 +332,13 @@ export function SamenwerkingsverbandDetailPage() {
 
       <nldd-card>
         <nldd-container gap="12" padding="24">
-          <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-            <nldd-title size={4}><h2>Leden</h2></nldd-title>
+          <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+            {/* The heading fills the row, so it starts on the left and the
+                button ends on the right. With only right-alignment both
+                were pushed right. */}
+            <nldd-container width="fit-content" className="row-fill">
+              <nldd-title size={4}><h2>Leden</h2></nldd-title>
+            </nldd-container>
             <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddLid(true)}>
               Toevoegen
             </Button>
