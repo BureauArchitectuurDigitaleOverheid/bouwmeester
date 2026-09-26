@@ -72,6 +72,7 @@ export function NlddListItemLink({
 interface NlddListItemButtonProps {
   onClick: () => void;
   size?: 'sm' | 'md';
+  disabled?: boolean;
   children: ReactNode;
 }
 
@@ -81,11 +82,11 @@ interface NlddListItemButtonProps {
  * The `button` attribute renders the row as a real `<button>`, which is valid
  * in every list type, including `navigation`.
  */
-export function NlddListItemButton({ onClick, size = 'md', children }: NlddListItemButtonProps) {
+export function NlddListItemButton({ onClick, size = 'md', disabled, children }: NlddListItemButtonProps) {
   const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
+  useNlddEvent(ref, 'click', disabled ? undefined : onClick);
   return (
-    <nldd-list-item ref={ref} button size={size}>
+    <nldd-list-item ref={ref} button size={size} disabled={disabled ? true : undefined}>
       {children}
     </nldd-list-item>
   );

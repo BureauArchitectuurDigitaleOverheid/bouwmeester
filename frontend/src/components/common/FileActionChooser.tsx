@@ -1,6 +1,5 @@
-import { useRef } from 'react';
 import { Modal } from './Modal';
-import { useNlddEvent } from '@/components/nldd/events';
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 import { NlddButton } from '@/components/nldd/NlddButton';
 
@@ -16,13 +15,11 @@ function ActionRow({
   description: string;
   onSelect: () => void;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onSelect);
   return (
-    <nldd-list-item ref={ref} size="md" button>
+    <NlddListItemButton onClick={onSelect}>
       <nldd-icon-cell icon={icon} size="24" color="accent" />
       <nldd-text-cell text={title} supporting-text={description} />
-    </nldd-list-item>
+    </NlddListItemButton>
   );
 }
 

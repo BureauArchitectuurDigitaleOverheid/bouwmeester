@@ -10,25 +10,7 @@ import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { useToast } from '@/contexts/ToastContext';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 import { NlddButton } from '@/components/nldd/NlddButton';
-
-/** An `nldd-list-item[button]` row with its click bridged to React. */
-function ClickableListItem({
-  disabled,
-  onClick,
-  children,
-}: {
-  disabled?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', disabled ? undefined : onClick);
-  return (
-    <nldd-list-item ref={ref} button disabled={disabled ? true : undefined}>
-      {children}
-    </nldd-list-item>
-  );
-}
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 
 interface LinkExistingNodeModalProps {
   open: boolean;
@@ -110,14 +92,14 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
           <div style={{ maxHeight: '18rem', overflowY: 'auto' }}>
             <nldd-list variant="box-tinted" dividers="always">
               {filteredNodes.map((node) => (
-                <ClickableListItem key={node.id} disabled={isLinking} onClick={() => handleLink(node.id)}>
+                <NlddListItemButton key={node.id} disabled={isLinking} onClick={() => handleLink(node.id)}>
                   <nldd-text-cell width="fit-content">
                     <Badge color={NODE_TYPE_COLORS[nodeType]} dot>
                       {NODE_TYPE_LABELS[nodeType]}
                     </Badge>
                   </nldd-text-cell>
                   <nldd-text-cell text={node.title} />
-                </ClickableListItem>
+                </NlddListItemButton>
               ))}
             </nldd-list>
           </div>

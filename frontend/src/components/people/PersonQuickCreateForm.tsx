@@ -1,12 +1,12 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { useNlddEvent } from '@/components/nldd/events';
 import { useCreatePerson } from '@/hooks/usePeople';
 import { checkDuplicates } from '@/api/people';
 import type { DuplicateCheckHit } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 
 interface DuplicateRowProps {
   hit: DuplicateCheckHit;
@@ -14,17 +14,15 @@ interface DuplicateRowProps {
 }
 
 function DuplicateRow({ hit, onSelect }: DuplicateRowProps) {
-  const ref = useRef<HTMLElement>(null);
   const handleClick = useCallback(() => onSelect(hit.id), [hit.id, onSelect]);
-  useNlddEvent(ref, 'click', handleClick);
 
   const supporting = [hit.email, hit.functie].filter(Boolean).join(' — ');
 
   return (
-    <nldd-list-item ref={ref} button>
+    <NlddListItemButton onClick={handleClick}>
       <nldd-text-cell text={hit.naam} {...(supporting ? { 'supporting-text': supporting } : {})} />
       <nldd-text-cell text="Selecteer" color="accent" horizontal-alignment="right" width="fit-content" />
-    </nldd-list-item>
+    </NlddListItemButton>
   );
 }
 

@@ -1,6 +1,5 @@
-import { useRef } from 'react';
 import { Badge } from '@/components/common/Badge';
-import { useNlddEvent } from '@/components/nldd/events';
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 import { useReferences } from '@/hooks/useMentions';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -20,15 +19,13 @@ function ReferenceRow({
   color: 'geel' | 'lintblauw';
   onOpen: () => void;
 }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onOpen);
   return (
-    <nldd-list-item ref={ref} size="sm" button>
+    <NlddListItemButton onClick={onOpen} size="sm">
       <nldd-cell width="fit-content">
         <Badge color={color}>{label}</Badge>
       </nldd-cell>
       <nldd-text-cell text={title} />
-    </nldd-list-item>
+    </NlddListItemButton>
   );
 }
 

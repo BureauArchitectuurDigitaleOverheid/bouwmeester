@@ -14,17 +14,7 @@ import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 import { NlddButton } from '@/components/nldd/NlddButton';
-
-/** An `nldd-list-item[button]` row with its click bridged to React. */
-function ClickableListItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return (
-    <nldd-list-item ref={ref} button>
-      {children}
-    </nldd-list-item>
-  );
-}
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 
 /**
  * A segment that discloses a row's children group: a chevron that flips, and a
@@ -127,14 +117,14 @@ function StepTypeGroups({
     return (
       <>
         {status.nodes.map((node) => (
-          <ClickableListItem key={node.id} onClick={() => openNodeDetail(node.id)}>
+          <NlddListItemButton key={node.id} onClick={() => openNodeDetail(node.id)}>
             <nldd-text-cell width="fit-content">
               <Badge color={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
                 {NODE_TYPE_LABELS[node.node_type as NodeType]}
               </Badge>
             </nldd-text-cell>
             <nldd-text-cell text={node.title} />
-          </ClickableListItem>
+          </NlddListItemButton>
         ))}
         <StepActionButtons
           nodeType={status.step.nodeTypes[0]}
@@ -159,14 +149,14 @@ function StepTypeGroups({
             </nldd-text>
             <nldd-container gap="0">
               {typeNodes.map((node) => (
-                <ClickableListItem key={node.id} onClick={() => openNodeDetail(node.id)}>
+                <NlddListItemButton key={node.id} onClick={() => openNodeDetail(node.id)}>
                   <nldd-text-cell width="fit-content">
                     <Badge color={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
                       {NODE_TYPE_LABELS[node.node_type as NodeType]}
                     </Badge>
                   </nldd-text-cell>
                   <nldd-text-cell text={node.title} />
-                </ClickableListItem>
+                </NlddListItemButton>
               ))}
             </nldd-container>
             <StepActionButtons
