@@ -2144,7 +2144,6 @@ export interface InitiatiefEenheid {
 export interface InitiatiefDetail extends Initiatief {
   members: InitiatiefMember[];
   eenheden: InitiatiefEenheid[];
-  access_level: 'eigenaar' | 'contributor' | 'viewer' | null;
 }
 
 /**

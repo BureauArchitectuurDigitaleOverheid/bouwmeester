@@ -36,6 +36,7 @@ import {
   useRemoveTagFromLead,
 } from '@/hooks/useLeads';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useCanRemoveGrant } from '@/hooks/useCanRemoveGrant';
 import { useCan } from '@/hooks/useCan';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
@@ -51,7 +52,7 @@ import {
   LEAD_CONTACT_ROL_LABELS,
   ENGAGEMENT_TYPE_LABELS,
 } from '@/types';
-import type { LeadUpdate, LeadActivityCreate, EngagementType, LeadAttachment } from '@/types';
+import type { LeadUpdate, LeadActivityCreate, EngagementType, LeadAttachment, LeadContact } from '@/types';
 import { stageTagColor, engagementTagColor } from './stageColors';
 import { initiatiefTagColor } from '@/components/initiatieven/initiatiefColors';
 import { NlddButton } from '@/components/nldd/NlddButton';
@@ -128,8 +129,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   // Every change to a lead (fields, contacts, bijlagen, notes, links) is
   // decided as an update of the lead; deleting it is its own right.
   const leadResource = leadId ? ({ type: 'lead', id: leadId } as const) : null;
-  const { allowed: canUpdate } = useCan('lead:update', leadResource);
-  const { allowed: canDelete } = useCan('lead:delete', leadResource);
+  const { allowed: canUpdate, showAction: showUpdate } = useCan('lead:update', leadResource);
+  const { allowed: canDelete, showAction: showDelete } = useCan('lead:delete', leadResource);
   const removeContact = useRemoveLeadContact();
   const unlinkNode = useUnlinkLeadNode();
   const uploadAttachment = useUploadLeadAttachment();
@@ -326,11 +327,11 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             onClose={onClose}
             actions={
               <nldd-container layout="row" gap="8">
-                {canUpdate && (
-                  <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={startEditing} disabled={!lead} text="Bewerken" />
+                {showUpdate && (
+                  <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={startEditing} disabled={!lead || !canUpdate} text="Bewerken" />
                 )}
-                {canDelete && (
-                  <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={handleDelete} disabled={!lead} text="Verwijderen" />
+                {showDelete && (
+                  <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={handleDelete} disabled={!lead || !canDelete} text="Verwijderen" />
                 )}
               </nldd-container>
             }
@@ -748,10 +749,9 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                 {lead.contacts.map((contact) => (
                   <ContactRow
                     key={contact.id}
-                    naam={contact.person_naam}
-                    expertise={contact.person_expertise}
-                    rolLabel={LEAD_CONTACT_ROL_LABELS[contact.rol] ?? contact.rol}
-                    onRemove={canUpdate ? () => removeContact.mutate({ leadId: lead.id, contactId: contact.id }) : undefined}
+                    leadId={lead.id}
+                    contact={contact}
+                    onRemove={() => removeContact.mutate({ leadId: lead.id, contactId: contact.id })}
                   />
                 ))}
               </nldd-list>
@@ -1194,16 +1194,26 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
 }
 
 interface ContactRowProps {
-  naam: string;
-  expertise: string | null | undefined;
-  rolLabel: string;
-  onRemove?: () => void;
+  leadId: string;
+  contact: LeadContact;
+  onRemove: () => void;
 }
 
 // Expertise is free text, and a tag never shrinks below its full label. As a
 // tag beside the name it could take the whole row on a phone and leave the
 // name zero wide, one letter per line. As the name's second line it wraps.
-function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
+function ContactRow({ leadId, contact, onRemove }: ContactRowProps) {
+  // A contact is a grant on the lead: removing it is the backend's grant
+  // decision (yourself always), not the right to edit the lead.
+  const canRemove = useCanRemoveGrant({
+    resourceType: 'lead',
+    resourceId: leadId,
+    rol: contact.rol,
+    personId: contact.person_id,
+  });
+  const naam = contact.person_naam;
+  const expertise = contact.person_expertise;
+  const rolLabel = LEAD_CONTACT_ROL_LABELS[contact.rol] ?? contact.rol;
   return (
     <nldd-list-item>
       <nldd-icon-cell icon="person" size="16" />
@@ -1215,7 +1225,7 @@ function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
       <nldd-cell>
         <nldd-tag text={rolLabel} color="neutral" size="sm" />
       </nldd-cell>
-      {onRemove && (
+      {canRemove && (
         <nldd-cell>
           <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
         </nldd-cell>

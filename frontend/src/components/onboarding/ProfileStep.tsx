@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 import { apiPost, ApiError } from '@/api/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
@@ -120,6 +121,7 @@ export function ProfileStep({ onComplete }: { onComplete: () => void }) {
   const naamFieldRef = useRef<HTMLElement>(null);
 
   const mutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: async (data: OnboardingPayload) => {
       const result = await apiPost<Person>('/api/auth/onboarding', data);
       const personId = result.id;

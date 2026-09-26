@@ -102,7 +102,7 @@ export function SamenwerkingsverbandenPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [actiefOnly, setActiefOnly] = useState(true);
   const [search, setSearch] = useState('');
-  const { allowed: canCreate } = useCan('samenwerkingsverband:create', { type: 'samenwerkingsverband' });
+  const { allowed: canCreate, showAction: showCreate } = useCan('samenwerkingsverband:create', { type: 'samenwerkingsverband' });
   const { data = [], isLoading } = useSamenwerkingsverbanden({
     type: typeFilter || undefined,
     actief: actiefOnly ? true : undefined,
@@ -163,12 +163,13 @@ export function SamenwerkingsverbandenPage() {
             <ActiefOnlyCheckbox checked={actiefOnly} onChange={setActiefOnly} />
           </nldd-container>
         </nldd-toolbar-item>
-        {canCreate && (
+        {showCreate && (
           <nldd-toolbar-item slot="end">
             <NlddButton
               variant="primary"
               startIcon="plus"
               onClick={() => { resetForm(); setShowForm(true); }}
+              disabled={!canCreate}
               text="Nieuw samenwerkingsverband"
               compactBelowSm
             />

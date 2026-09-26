@@ -13,7 +13,8 @@ interface TreeNodeProps {
   node: OrganisatieEenheidTreeNode;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAdd: (parentId: string) => void;
+  /** Absent when the user may create no eenheid: no add buttons then. */
+  onAdd?: (parentId: string) => void;
   onDropPerson?: (personId: string, targetNodeId: string) => void;
   depth?: number;
   searchTerm?: string;
@@ -83,7 +84,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
   const addRef = useRef<HTMLElement>(null);
   useNlddEvent(toggleRef, 'click', () => setExpanded(!expanded));
   useNlddEvent(selectRef, 'click', () => onSelect(node.id));
-  useNlddEvent(addRef, 'click', () => onAdd(node.id));
+  useNlddEvent(addRef, 'click', () => onAdd?.(node.id));
 
   const title = isHistorisch
     ? `Opgeheven per ${node.geldig_tot}`
@@ -208,7 +209,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
           )}
 
           {/* Add child button — niet voor synthetische groepen */}
-          {node.bron !== 'synthetisch' ? (
+          {onAdd && node.bron !== 'synthetisch' ? (
             <nldd-list-item-segment
               ref={addRef}
               button
@@ -255,7 +256,7 @@ interface OrganisatieTreeProps {
   tree: OrganisatieEenheidTreeNode[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onAdd: (parentId: string | null) => void;
+  onAdd?: (parentId: string | null) => void;
   onDropPerson?: (personId: string, targetNodeId: string) => void;
   searchTerm?: string;
   /** Nodes die default open staan. Pad naar eigen organisatie inclusief
@@ -272,7 +273,7 @@ export function OrganisatieTree({ tree, selectedId, onSelect, onAdd, onDropPerso
           node={node}
           selectedId={selectedId}
           onSelect={onSelect}
-          onAdd={(parentId) => onAdd(parentId)}
+          onAdd={onAdd}
           onDropPerson={onDropPerson}
           searchTerm={searchTerm}
           expandedByDefaultIds={expandedByDefaultIds}

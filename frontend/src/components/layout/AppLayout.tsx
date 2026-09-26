@@ -9,6 +9,7 @@ import { useUIStore } from '@/store/ui';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useAuth } from '@/contexts/AuthContext';
 import { OnboardingModal } from '@/components/onboarding/OnboardingModal';
+import { AuthzErrorBanner } from '@/components/common/AuthzErrorBanner';
 import { GlobalDropOverlay } from '@/components/common/GlobalDropOverlay';
 import { FileActionChooser } from '@/components/common/FileActionChooser';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
@@ -158,6 +159,7 @@ export function AppLayout() {
               <div slot="header">
                 <Header />
                 <PlacementBanner />
+                <AuthzErrorBanner />
               </div>
               <main id="main-content">
                 <nldd-container padding="16" md-padding="24">

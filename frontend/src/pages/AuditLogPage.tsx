@@ -218,7 +218,7 @@ function DetailCell({
 }
 
 export function AuditLogPage() {
-  const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
+  const { person, oidcConfigured, loading } = useAuth();
   const { hasPermission } = usePermissions();
   const [page, setPage] = useState(0);
   const [category, setCategory] = useState('');
@@ -247,7 +247,7 @@ export function AuditLogPage() {
   });
 
   if (loading) return null;
-  if (viewAsNonAdmin || (oidcConfigured && (!person || !hasPermission('audit:read')))) {
+  if (oidcConfigured && (!person || !hasPermission('audit:read'))) {
     return <Navigate to="/" replace />;
   }
 

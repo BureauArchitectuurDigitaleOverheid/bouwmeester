@@ -3,7 +3,8 @@ import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { createAuthzBatcher, evaluate, MAX_EVALUATIONS } from '@/api/authz';
-import { refreshAuthzOnMutation, useCan } from './useCan';
+import { apiPost } from '@/api/client';
+import { CHANGES_RIGHTS, syncAuthzDecisions, touches, useCan } from './useCan';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -117,7 +118,29 @@ describe('authz batcher', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(3);
     expect(sentBodies().map((b) => b.evaluations.length)).toEqual([50, 50, 10]);
-    expect(answers).toEqual(questions.map((_, i) => i % 2 === 0));
+    expect(answers).toEqual(questions.map((_, i) => ({ ok: true, decision: i % 2 === 0 })));
+  });
+
+  it('fails only the questions of a failed chunk', async () => {
+    let call = 0;
+    mockFetch.mockImplementation(async (_url: string, init: RequestInit) => {
+      call += 1;
+      if (call === 2) return new Response('boom', { status: 502 });
+      const body = JSON.parse(String(init.body)) as { evaluations: unknown[] };
+      return new Response(JSON.stringify({ evaluations: body.evaluations.map(() => ({ decision: true })) }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+    const decide = createAuthzBatcher();
+    const questions = Array.from({ length: MAX_EVALUATIONS + 1 }, (_, i) =>
+      decide({ action: 'node:update', resource: { type: 'corpus_node', id: String(i) } }),
+    );
+
+    const results = await Promise.allSettled(questions);
+
+    expect(results.slice(0, MAX_EVALUATIONS).every((r) => r.status === 'fulfilled' && r.value)).toBe(true);
+    expect(results[MAX_EVALUATIONS].status).toBe('rejected');
   });
 
   it('rejects every waiting question when the request fails', async () => {
@@ -168,11 +191,11 @@ describe('useCan', () => {
     const resource = { type: 'task', id: 't1' } as const;
 
     const first = renderHook(() => useCan('task:update', resource), { wrapper: wrapperFor(client) });
-    expect(first.result.current).toEqual({ allowed: false, isLoading: true });
+    expect(first.result.current).toMatchObject({ allowed: false, isLoading: true, showAction: false });
     await waitFor(() => expect(first.result.current.allowed).toBe(true));
 
     const second = renderHook(() => useCan('task:update', resource), { wrapper: wrapperFor(client) });
-    expect(second.result.current).toEqual({ allowed: true, isLoading: false });
+    expect(second.result.current).toMatchObject({ allowed: true, isLoading: false });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
@@ -183,27 +206,92 @@ describe('useCan', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('asks again after a successful mutation', async () => {
-    let allowed = false;
-    answerAll(() => allowed);
+  it('reports a failed decision as an error, not as a refusal', async () => {
+    mockFetch.mockImplementation(async () => new Response('boom', { status: 500 }));
     const client = newClient();
-    const stop = refreshAuthzOnMutation(client);
-    const { result } = renderHook(
-      () => ({
-        can: useCan('lead:update', { type: 'lead', id: 'l1' }),
-        grant: useMutation({ mutationFn: async () => 'ok' }),
-      }),
-      { wrapper: wrapperFor(client) },
-    );
-    await waitFor(() => expect(result.current.can.isLoading).toBe(false));
-    expect(result.current.can.allowed).toBe(false);
+    const { result } = renderHook(() => useCan('node:update', { type: 'corpus_node', id: 'n1' }), {
+      wrapper: wrapperFor(client),
+    });
 
-    // Say the mutation made the user a member: the next answer is yes.
-    allowed = true;
-    await act(() => result.current.grant.mutateAsync());
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.allowed).toBe(false);
+    // A primary action stays on screen, disabled.
+    expect(result.current.showAction).toBe(true);
+  });
 
-    await waitFor(() => expect(result.current.can.allowed).toBe(true));
-    expect(mockFetch).toHaveBeenCalledTimes(2);
-    stop();
+  describe('after writes', () => {
+    let allowed: boolean;
+    let stop: () => void;
+    let client: QueryClient;
+
+    beforeEach(() => {
+      allowed = false;
+      answerAll(() => allowed);
+      client = newClient();
+      stop = syncAuthzDecisions(client);
+      return () => stop();
+    });
+
+    // Two decisions about two leads, and a write that touches whatever `meta` says.
+    function renderDecisions(meta?: Parameters<typeof useMutation>[0]['meta']) {
+      const view = renderHook(
+        () => ({
+          l1: useCan('lead:update', { type: 'lead', id: 'l1' }),
+          l2: useCan('lead:update', { type: 'lead', id: 'l2' }),
+          write: useMutation({ mutationFn: async (_: { id: string }) => 'ok', meta }),
+        }),
+        { wrapper: wrapperFor(client) },
+      );
+      return view.result;
+    }
+
+    async function loaded(result: { current: { l1: { isLoading: boolean }; l2: { isLoading: boolean } } }) {
+      await waitFor(() => expect(result.current.l1.isLoading || result.current.l2.isLoading).toBe(false));
+    }
+
+    it('asks again only about the resource a mutation touched', async () => {
+      const result = renderDecisions(touches(({ id }: { id: string }) => ({ type: 'lead', id })));
+      await loaded(result);
+
+      allowed = true;
+      await act(() => result.current.write.mutateAsync({ id: 'l1' }));
+
+      await waitFor(() => expect(result.current.l1.allowed).toBe(true));
+      expect(result.current.l2.allowed).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(sentBodies()[1].evaluations).toHaveLength(1);
+    });
+
+    it('asks everything again after a change to who has access', async () => {
+      const result = renderDecisions(CHANGES_RIGHTS);
+      await loaded(result);
+
+      allowed = true;
+      await act(() => result.current.write.mutateAsync({ id: 'x' }));
+
+      await waitFor(() => expect(result.current.l1.allowed && result.current.l2.allowed).toBe(true));
+    });
+
+    it('asks nothing again after a write without an authz effect', async () => {
+      const result = renderDecisions();
+      await loaded(result);
+
+      allowed = true;
+      await act(() => result.current.write.mutateAsync({ id: 'l1' }));
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.current.l1.allowed).toBe(false);
+    });
+
+    it('asks everything again after any 403', async () => {
+      const result = renderDecisions();
+      await loaded(result);
+
+      allowed = true;
+      mockFetch.mockResolvedValueOnce(new Response('{"detail":"nee"}', { status: 403 }));
+      await expect(apiPost('/api/leads/l1/contacts')).rejects.toThrow();
+
+      await waitFor(() => expect(result.current.l1.allowed && result.current.l2.allowed).toBe(true));
+    });
   });
 });

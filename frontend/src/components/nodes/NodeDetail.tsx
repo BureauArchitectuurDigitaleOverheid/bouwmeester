@@ -120,8 +120,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const [bronUrl, setBronUrl] = useState('');
   const [bijlageUploading, setBijlageUploading] = useState(false);
   const nodeResource = { type: 'corpus_node', id: nodeId } as const;
-  const { allowed: canUpdate } = useCan('node:update', nodeResource);
-  const { allowed: canDelete } = useCan('node:delete', nodeResource);
+  const { allowed: canUpdate, showAction: showUpdate } = useCan('node:update', nodeResource);
+  const { allowed: canDelete, showAction: showDelete } = useCan('node:delete', nodeResource);
   const { allowed: canAddTag } = useCan('tag:create', nodeResource);
   const { allowed: canRemoveTag } = useCan('tag:delete', nodeResource);
   // Betrokkenen are resource roles: a grant, decided by core.authority. The
@@ -185,15 +185,16 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         </div>
         <nldd-spacer direction="horizontal" size="flexible" />
         <div className="hug hug-gap-8">
-          {canUpdate && (
-            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={() => setShowEditForm(true)} text="Bewerken" />
+          {showUpdate && (
+            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={() => setShowEditForm(true)} disabled={!canUpdate} text="Bewerken" />
           )}
-          {canDelete && (
+          {showDelete && (
             <NlddButton
               variant="destructive"
               size="sm"
               startIcon="trash"
               onClick={() => setShowDeleteConfirm(true)}
+              disabled={!canDelete}
               text="Verwijder"
             />
           )}

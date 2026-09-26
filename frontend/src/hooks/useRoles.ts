@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '@/api/client';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 export interface RoleDefinition {
   id: string;
@@ -54,6 +55,7 @@ export function usePersonRoleAssignments(personId: string | null) {
 
 export function useAssignRole() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (data: AssignRoleInput) =>
       apiPost<PersonRoleAssignment>('/api/roles/assign', data),
     errorMessage: 'Fout bij toewijzen van rol',
@@ -64,6 +66,7 @@ export function useAssignRole() {
 
 export function useRevokeRole() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (assignmentId: string) =>
       apiDelete(`/api/roles/assignments/${assignmentId}`),
     errorMessage: 'Fout bij intrekken van rol',

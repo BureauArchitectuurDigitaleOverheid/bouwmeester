@@ -34,7 +34,7 @@ interface NavItem {
 
 export function Sidebar({ mobile }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, setMobileSidebarOpen } = useUIStore();
-  const { person: authPerson, authenticated, logout, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin } = useAuth();
+  const { person: authPerson, authenticated, logout } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
   const { hasPermission, hasAnyPermission } = usePermissions();
@@ -248,17 +248,8 @@ export function Sidebar({ mobile }: SidebarProps) {
           accessible-label="Beheer en instellingen"
         >
           {renderItems(bottomNavItems)}
-          {/* Actions rather than places, so button rows; a navigation list
-              supports those alongside its links. They live here and not in the
-              header because they are rarely used and the header toolbar is
-              full. */}
-          {realIsAdmin && (
-            <NlddListItemButton onClick={runAction(toggleViewAsNonAdmin)}>
-              {viewAsNonAdmin
-                ? renderCells('eye-slash', 'Terug naar beheerweergave')
-                : renderCells('eye', 'Bekijk als medewerker')}
-            </NlddListItemButton>
-          )}
+          {/* An action rather than a place, so a button row; a navigation
+              list supports those alongside its links. */}
           {authenticated && (
             <NlddListItemButton onClick={runAction(logout)}>
               {renderCells('logout', 'Uitloggen')}

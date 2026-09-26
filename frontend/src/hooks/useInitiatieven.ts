@@ -28,6 +28,7 @@ import type {
   InitiatiefUpdatePostCreate,
   InitiatiefUpdatePostEdit,
 } from '@/types';
+import { CHANGES_RIGHTS, touches } from '@/hooks/useCan';
 
 export function useInitiatieven(params?: { search?: string }) {
   return useQuery({
@@ -57,6 +58,7 @@ export function useCreateInitiatief() {
 export function useUpdateInitiatief() {
   const qc = useQueryClient();
   return useMutation({
+    meta: touches(({ id }: { id: string }) => ({ type: 'initiatief', id })),
     mutationFn: ({ id, data }: { id: string; data: InitiatiefUpdate }) =>
       updateInitiatief(id, data),
     onSuccess: () => {
@@ -78,6 +80,7 @@ export function useDeleteInitiatief() {
 export function useAddInitiatiefMember() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       initiatiefId,
       personId,
@@ -96,6 +99,7 @@ export function useAddInitiatiefMember() {
 export function useRemoveInitiatiefMember() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       initiatiefId,
       personId,
@@ -112,6 +116,7 @@ export function useRemoveInitiatiefMember() {
 export function useUpdateInitiatiefMemberRole() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       initiatiefId,
       personId,
@@ -130,6 +135,7 @@ export function useUpdateInitiatiefMemberRole() {
 export function useAddInitiatiefEenheid() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       initiatiefId,
       eenheidId,
@@ -147,6 +153,7 @@ export function useAddInitiatiefEenheid() {
 export function useRemoveInitiatiefEenheid() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       initiatiefId,
       eenheidId,
@@ -164,6 +171,7 @@ export function useRemoveInitiatiefEenheid() {
 export function useUpdateInitiatiefEenheidRol() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       initiatiefId,
       eenheidId,

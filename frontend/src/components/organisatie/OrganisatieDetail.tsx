@@ -257,9 +257,17 @@ export function OrganisatieDetail({
 }: OrganisatieDetailProps) {
   const { data: eenheid, isLoading } = useOrganisatieEenheid(selectedId);
   const { isSuperAdmin } = usePermissions();
-  // Editing, deleting and adding below this eenheid need org:update on it
-  // (held here or higher up: managers and ministry admins); the backend decides.
-  const { allowed: canManage } = useCan('org:update', { type: 'organisatie_eenheid', id: selectedId });
+  // Each button asks the decision its route makes. TOOI and scraped
+  // eenheden are refused there too, so no frontend rule on `bron`.
+  const { allowed: canManage, showAction: showManage } = useCan('org:update', {
+    type: 'organisatie_eenheid',
+    id: selectedId,
+  });
+  const { allowed: canAddChild } = useCan('org:create', { type: 'organisatie_eenheid', eenheidId: selectedId });
+  // "Persoon toevoegen" creates a person (tenant-wide) or links an existing
+  // one here, which is a placement.
+  const { allowed: canCreatePerson } = useCan('people:create', { type: 'person' });
+  const { allowed: canPlace } = useCan('person:place', { type: 'person', eenheidId: selectedId });
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
   const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;
@@ -357,19 +365,23 @@ export function OrganisatieDetail({
             </dl>
           )}
         </nldd-container>
-        {canManage && (
+        {showManage && (
           <nldd-container layout="row" gap="8">
-            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} text="Bewerken" />
-            <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} text="Verwijderen" />
+            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} disabled={!canManage} text="Bewerken" />
+            <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} disabled={!canManage} text="Verwijderen" />
           </nldd-container>
         )}
       </div>
 
       {/* Action buttons */}
-      {canManage && (
+      {(canAddChild || canCreatePerson || canPlace || isSuperAdmin) && (
         <nldd-container layout="wrap" gap="8">
-          <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={onAddChild} text="Subeenheid toevoegen" />
-          <NlddButton variant="secondary" size="sm" startIcon="person" onClick={onAddPerson} text="Persoon toevoegen" />
+          {canAddChild && (
+            <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={onAddChild} text="Subeenheid toevoegen" />
+          )}
+          {(canCreatePerson || canPlace) && (
+            <NlddButton variant="secondary" size="sm" startIcon="person" onClick={onAddPerson} text="Persoon toevoegen" />
+          )}
           {isSuperAdmin && (
             <NlddButton variant="secondary" size="sm" startIcon="sparkles" onClick={onAddAgent} text="Agent toevoegen" />
           )}

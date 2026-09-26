@@ -161,7 +161,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
   const { openTaskDetail, taskParentLabel } = useTaskDetail();
   const navigate = useNavigate();
   const reorderSubtasks = useReorderSubtasks();
-  const { allowed: canUpdate } = useCan('task:update', taskId ? { type: 'task', id: taskId } : null);
+  const { allowed: canUpdate, showAction: showUpdate } = useCan('task:update', taskId ? { type: 'task', id: taskId } : null);
   // A new subtask gets the parent's node and no eenheid, so it is created on that node.
   const { allowed: canAddSubtask } = useCan(
     'task:create',
@@ -216,13 +216,13 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
           <DetailModalFooter
             onClose={onClose}
             actions={
-              canUpdate && (
+              showUpdate && (
                 <NlddButton
                   variant="secondary"
                   size="sm"
                   startIcon="pencil"
                   onClick={() => setShowEdit(true)}
-                  disabled={!task}
+                  disabled={!task || !canUpdate}
                   text="Bewerken"
                 />
               )

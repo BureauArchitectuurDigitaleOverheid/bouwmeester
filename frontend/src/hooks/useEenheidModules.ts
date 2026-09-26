@@ -4,6 +4,7 @@ import {
   updateEenheidModule,
   getAvailableModules,
 } from '@/api/eenheidModules';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 export function useEenheidModules(eenheidId: string | undefined) {
   return useQuery({
@@ -23,6 +24,7 @@ export function useAvailableModules() {
 export function useUpdateEenheidModule() {
   const qc = useQueryClient();
   return useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       eenheidId,
       module,

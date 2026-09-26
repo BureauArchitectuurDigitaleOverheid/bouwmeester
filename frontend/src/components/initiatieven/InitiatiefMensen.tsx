@@ -14,11 +14,12 @@ import {
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { INITIATIEF_ROL_LABELS } from '@/types';
-import type { InitiatiefDetail } from '@/types';
+import type { InitiatiefDetail, InitiatiefMember } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { useCan } from '@/hooks/useCan';
+import { useCanRemoveGrant } from '@/hooks/useCanRemoveGrant';
 
 /**
  * The "Mensen" tab: who works on the initiatief (members and eenheden, which
@@ -85,43 +86,15 @@ function Members({
       {initiatief.members.length > 0 && (
         <nldd-list type="list" variant="box-tinted">
           {initiatief.members.map((member) => (
-            <nldd-list-item key={member.person_id}>
-              <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-                <nldd-container layout="row" gap="8" vertical-alignment="center">
-                  <nldd-text-cell text={member.person_naam} width="fit-content" />
-                  <Badge color={member.rol === 'eigenaar' ? 'paars' : 'coolgray'}>
-                    {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
-                  </Badge>
-                </nldd-container>
-                {canManage && (
-                  <div className="hug">
-                    {member.rol === 'eigenaar' ? (
-                      eigenaarCount > 1 && canGrantOwner && (
-                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'contributor')} text="Maak bijdrager" />
-                      )
-                    ) : (
-                      <>
-                        {canGrantOwner && (
-                          <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
-                        )}
-                        <NlddIconButton
-                          icon="close"
-                          accessibleLabel={`${member.person_naam} verwijderen`}
-                          variant="neutral-transparent"
-                          size="sm"
-                          onClick={() =>
-                            removeMemberMutation.mutateAsync({
-                              initiatiefId: initiatief.id,
-                              personId: member.person_id,
-                            })
-                          }
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
-              </nldd-container>
-            </nldd-list-item>
+            <MemberRow
+              key={member.person_id}
+              initiatiefId={initiatief.id}
+              member={member}
+              lastEigenaar={member.rol === 'eigenaar' && eigenaarCount === 1}
+              canGrantOwner={canGrantOwner}
+              onRemove={() => removeMemberMutation.mutate({ initiatiefId: initiatief.id, personId: member.person_id })}
+              onSetRole={(rol) => void setRole(member.person_id, rol)}
+            />
           ))}
         </nldd-list>
       )}
@@ -153,6 +126,65 @@ function Members({
         </nldd-container>
       )}
     </nldd-container>
+  );
+}
+
+/**
+ * One member. Changing the rol needs the authority to hand out eigenaar;
+ * removing is the grant decision, which also lets you leave yourself.
+ */
+function MemberRow({
+  initiatiefId,
+  member,
+  lastEigenaar,
+  canGrantOwner,
+  onRemove,
+  onSetRole,
+}: {
+  initiatiefId: string;
+  member: InitiatiefMember;
+  lastEigenaar: boolean;
+  canGrantOwner: boolean;
+  onRemove: () => void;
+  onSetRole: (rol: 'eigenaar' | 'contributor') => void;
+}) {
+  const canRemove = useCanRemoveGrant(
+    { resourceType: 'initiatief', resourceId: initiatiefId, rol: member.rol, personId: member.person_id },
+    { lastEigenaar },
+  );
+  const isEigenaar = member.rol === 'eigenaar';
+  return (
+    <nldd-list-item>
+      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-text-cell text={member.person_naam} width="fit-content" />
+          <Badge color={isEigenaar ? 'paars' : 'coolgray'}>
+            {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
+          </Badge>
+        </nldd-container>
+        {((canGrantOwner && !lastEigenaar) || canRemove) && (
+          <div className="hug">
+            {canGrantOwner && !lastEigenaar && (
+              <NlddButton
+                variant="neutral-transparent"
+                size="sm"
+                onClick={() => onSetRole(isEigenaar ? 'contributor' : 'eigenaar')}
+                text={isEigenaar ? 'Maak bijdrager' : 'Maak eigenaar'}
+              />
+            )}
+            {canRemove && (
+              <NlddIconButton
+                icon="close"
+                accessibleLabel={`${member.person_naam} verwijderen`}
+                variant="neutral-transparent"
+                size="sm"
+                onClick={onRemove}
+              />
+            )}
+          </div>
+        )}
+      </nldd-container>
+    </nldd-list-item>
   );
 }
 

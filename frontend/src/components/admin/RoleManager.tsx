@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople, useMergePersons } from '@/hooks/usePeople';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { useCan, useCanEach } from '@/hooks/useCan';
+import { CHANGES_RIGHTS, useCan, useCanEach } from '@/hooks/useCan';
+import { useCanRemoveGrant } from '@/hooks/useCanRemoveGrant';
 import type { AuthzResourceType } from '@/api/authz';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { formatFunctie } from '@/types';
@@ -14,7 +15,9 @@ import {
   useAssignRole,
   useRevokeRole,
 } from '@/hooks/useRoles';
-import type { PersonRoleAssignment } from '@/hooks/useRoles';
+import type { PersonRoleAssignment, RoleDefinition } from '@/hooks/useRoles';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { descendantIds } from '@/utils/orgTree';
 import {
   usePersonResourcePermissions,
   useRemovePersonResourcePermission,
@@ -97,14 +100,16 @@ function AssignmentRow({
   );
 }
 
+// Eenheden asked about per panel; beyond this the list is cut, not the answers.
+const MAX_CANDIDATE_EENHEDEN = 200;
+
 function PersonRolesPanel({
   personId,
 }: {
   personId: string;
 }) {
-  const { person: authPerson } = useAuth();
-  const { isSuperAdmin, hasSystemPermission, managesEenheid } = usePermissions();
-  const isSelf = authPerson?.id === personId;
+  const { currentPerson } = useCurrentPerson();
+  const { data: ownAssignments } = usePersonRoleAssignments(currentPerson?.id ?? null);
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
   const { data: orgUnits } = useOrganisatieFlat();
@@ -125,15 +130,6 @@ function PersonRolesPanel({
   const selectedRole = roles?.find((r) => r.id === selectedRoleId);
   const isSystemLevel = selectedRole?.level === 'system';
 
-  // Offer only eenheden where the backend will accept the assignment: the
-  // ones this person manages (and everything below), or all of them for a
-  // system-wide role.
-  const scopedOrgUnits = useMemo(() => {
-    if (!orgUnits) return [];
-    if (hasSystemPermission('people:assign_role')) return orgUnits;
-    return orgUnits.filter((u) => managesEenheid(u.id));
-  }, [orgUnits, hasSystemPermission, managesEenheid]);
-
   // Offer the roles the backend would let this person assign here: to this
   // person, in the chosen eenheid (a system role has none).
   const roleQuestions = useMemo(
@@ -151,6 +147,44 @@ function PersonRolesPanel({
     () => (roles ?? []).filter((_, i) => roleAllowed[i]),
     [roles, roleAllowed],
   );
+  // Only a system administrator hands out system roles, and may assign in
+  // every eenheid.
+  const canAssignSystemRole = (roles ?? []).some((r, i) => r.level === 'system' && roleAllowed[i]);
+
+  // Candidate eenheden: where the caller holds a role and everything below
+  // (a role applies downward). The backend decides each one, asked with the
+  // lowest eenheid role: if not even that, nothing can be assigned there.
+  const candidateUnits = useMemo(() => {
+    const roots = (ownAssignments ?? []).flatMap((a) => (a.organisatie_eenheid_id ? [a.organisatie_eenheid_id] : []));
+    const inScope = descendantIds(orgUnits ?? [], roots);
+    roots.forEach((id) => inScope.add(id));
+    return (orgUnits ?? []).filter((u) => inScope.has(u.id)).slice(0, MAX_CANDIDATE_EENHEDEN);
+  }, [ownAssignments, orgUnits]);
+  const lowestEenheidRole = useMemo(
+    () =>
+      (roles ?? [])
+        .filter((r) => r.level !== 'system')
+        .reduce<RoleDefinition | undefined>((low, r) => (!low || r.rank < low.rank ? r : low), undefined),
+    [roles],
+  );
+  const unitQuestions = useMemo(
+    () =>
+      lowestEenheidRole
+        ? candidateUnits.map((u) => ({
+            type: 'role' as const,
+            roleId: lowestEenheidRole.id,
+            eenheidId: u.id,
+            targetPersonId: personId,
+          }))
+        : [],
+    [candidateUnits, lowestEenheidRole, personId],
+  );
+  const { allowed: unitAllowed } = useCanEach('role:assign', unitQuestions);
+  const scopedOrgUnits = useMemo(
+    () => (canAssignSystemRole ? (orgUnits ?? []) : candidateUnits.filter((_, i) => unitAllowed[i])),
+    [canAssignSystemRole, orgUnits, candidateUnits, unitAllowed],
+  );
+  const canAssignAny = canAssignSystemRole || scopedOrgUnits.length > 0;
 
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,9 +258,9 @@ function PersonRolesPanel({
         <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
       )}
 
-      {/* Add role button / form — directly after roles. Nobody but a
-          super_admin assigns roles to themselves. */}
-      {isSelf && !isSuperAdmin ? null : !showForm ? (
+      {/* Add role button / form, directly after roles. The questions above
+          name this person, so assigning to yourself is refused there. */}
+      {!canAssignAny ? null : !showForm ? (
         <NlddButton
           text="Rol toewijzen"
           startIcon="plus"
@@ -339,11 +373,13 @@ function ResourcePermissionRow({
   removing: boolean;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const { allowed: canRemove } = useCan('resource_role:grant', {
-    type: rp.resource_type as AuthzResourceType,
-    id: rp.resource_id,
+  // Whether rp is the last eigenaar is not known here; the backend answers
+  // 409 and the toast says so.
+  const canRemove = useCanRemoveGrant({
+    resourceType: rp.resource_type as AuthzResourceType,
+    resourceId: rp.resource_id,
     rol: rp.rol,
-    targetPersonId: rp.person_id,
+    personId: rp.person_id,
   });
 
   return (
@@ -455,6 +491,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
   );
 
   const addPermission = useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (data: {
       resourceType: string;
       resourceId: string;

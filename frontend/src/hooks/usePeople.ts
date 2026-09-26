@@ -24,6 +24,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { PersonCreate } from '@/types';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 export function usePeople(options?: { refetchInterval?: number }) {
   return useQuery({
@@ -43,6 +44,7 @@ export function usePerson(id: string | null) {
 
 export function useCreatePerson() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ force, ...data }: PersonCreate & { force?: boolean }) =>
       createPerson(data, force),
     errorMessage: 'Fout bij aanmaken persoon',
@@ -64,6 +66,7 @@ export function usePersonSummary(id: string | null) {
 
 export function useUpdatePerson() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ id, data }: { id: string; data: Partial<PersonCreate> }) =>
       updatePerson(id, data),
     errorMessage: 'Fout bij bijwerken persoon',
@@ -87,6 +90,7 @@ export function usePersonOrganisaties(personId: string | null, actief = true) {
 
 export function useAddPersonOrganisatie() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       personId,
       data,
@@ -101,6 +105,7 @@ export function useAddPersonOrganisatie() {
 
 export function useUpdatePersonOrganisatie() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       personId,
       placementId,
@@ -117,6 +122,7 @@ export function useUpdatePersonOrganisatie() {
 
 export function useRemovePersonOrganisatie() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       personId,
       placementId,
@@ -248,6 +254,7 @@ export function useSetDefaultPhone() {
 
 export function useMergePersons() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ sourceIds, targetId }: { sourceIds: string[]; targetId: string }) =>
       mergePersons(sourceIds, targetId),
     errorMessage: 'Fout bij samenvoegen personen',

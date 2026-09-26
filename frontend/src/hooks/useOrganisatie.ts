@@ -13,6 +13,7 @@ import {
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 export function useOrganisatieTree(includeHistorisch = false) {
   return useQuery({
@@ -54,6 +55,7 @@ export function useOrganisatiePersonenRecursive(id: string | null) {
 
 export function useCreateOrganisatieEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (data: OrganisatieEenheidCreate) => createOrganisatieEenheid(data),
     errorMessage: 'Fout bij aanmaken eenheid',
     invalidateKeys: [queryKeys.organisatie.all],
@@ -62,6 +64,7 @@ export function useCreateOrganisatieEenheid() {
 
 export function useUpdateOrganisatieEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ id, data }: { id: string; data: OrganisatieEenheidUpdate }) =>
       updateOrganisatieEenheid(id, data),
     errorMessage: 'Fout bij bijwerken eenheid',
@@ -71,6 +74,7 @@ export function useUpdateOrganisatieEenheid() {
 
 export function useDeleteOrganisatieEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => deleteOrganisatieEenheid(id),
     errorMessage: 'Fout bij verwijderen eenheid',
     invalidateKeys: [queryKeys.organisatie.all],
