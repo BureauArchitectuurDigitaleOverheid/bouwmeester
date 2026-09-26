@@ -14,6 +14,8 @@ import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { NlddActionText } from '@/components/nldd/NlddLink';
 
 /** `SyncStatus` -> the design system's five semantic roles. */
+const OPDRACHT_CONTACT_ROLS = Object.keys(OPDRACHT_CONTACT_ROL_LABELS);
+
 const SYNC_STATUS_TAG_COLOR: Record<SyncStatus, 'success' | 'warning' | 'accent' | 'critical'> = {
   synced: 'success',
   pending_push: 'warning',
@@ -70,6 +72,7 @@ import {
 import { formatCurrency, calculateUtilization } from '@/utils/format';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { useCan, useCanEach } from '@/hooks/useCan';
+import { useEenheidGrants } from '@/hooks/useEenheidGrants';
 import { useCanCreateTask } from '@/hooks/useTasks';
 
 interface OpdrachtDetailModalProps {
@@ -130,7 +133,8 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
     [opdrachtId, opdracht?.members],
   );
   const { allowed: canRemoveMember } = useCanEach('resource_role:revoke', memberRevokes);
-  const eenheden = opdracht?.eenheden ?? [];
+  const eenheden = useMemo(() => opdracht?.eenheden ?? [], [opdracht?.eenheden]);
+  const eenheidGrants = useEenheidGrants('opdracht', opdrachtId, eenheden, OPDRACHT_CONTACT_ROLS);
 
   const availablePeopleOptions = useMemo(() => {
     const memberIds = new Set(members.map((m) => m.person_id));
@@ -559,7 +563,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
               <nldd-container gap="12">
                 {eenheden.length > 0 && (
                   <nldd-list variant="box-tinted" dividers="always">
-                    {eenheden.map((eenheid) => (
+                    {eenheden.map((eenheid, i) => (
                       <nldd-list-item key={eenheid.eenheid_id}>
                         {/* `full`: a fit-content cell measures its content, and a
                             container measures its parent, so the two wait on
@@ -579,14 +583,17 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                         <nldd-cell width="144px">
                           <Select
                             value={eenheid.rol}
-                            disabled={!canManageContacts}
+                            disabled={eenheidGrants[i].rols.length < 2}
                             aria-label="Rol van deze eenheid"
                             onChange={(e) => handleUpdateEenheidRol(eenheid.eenheid_id, e.target.value)}
-                            options={Object.entries(OPDRACHT_CONTACT_ROL_LABELS).map(([value, label]) => ({ value, label }))}
+                            options={eenheidGrants[i].rols.map((value) => ({
+                              value,
+                              label: OPDRACHT_CONTACT_ROL_LABELS[value] ?? value,
+                            }))}
                           />
                         </nldd-cell>
                         <nldd-spacer-cell size="12" />
-                        {canManageContacts && (
+                        {eenheidGrants[i].canRemove && (
                           <NlddIconButton
                             icon="trash"
                             variant="neutral-transparent"

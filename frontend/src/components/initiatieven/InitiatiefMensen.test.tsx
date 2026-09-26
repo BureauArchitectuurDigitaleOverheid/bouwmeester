@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '@/contexts/ToastContext';
 import { InitiatiefMensen } from './InitiatiefMensen';
 import type { InitiatiefDetail } from '@/types';
+import { askedQuestions as askedQuestionsOf, fakeBackend } from '@/test/authzBackend';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -13,6 +14,14 @@ const member = (person_id: string, person_naam: string, rol: string) => ({
   initiatief_id: 'i1',
   person_id,
   person_naam,
+  rol,
+  created_at: '2026-01-01T00:00:00Z',
+});
+
+const eenheid = (eenheid_id: string, eenheid_naam: string, rol: string) => ({
+  initiatief_id: 'i1',
+  eenheid_id,
+  eenheid_naam,
   rol,
   created_at: '2026-01-01T00:00:00Z',
 });
@@ -35,41 +44,22 @@ const INITIATIEF: InitiatiefDetail = {
   eenheden: [],
 };
 
-interface Question {
-  action: string;
-  resource: { type: string; id?: string; properties?: Record<string, unknown> };
-}
-
 /** The backend allows only removing Bea; everything else is refused. */
 function backend() {
-  mockFetch.mockImplementation(async (url: string, init?: RequestInit) => {
-    const json = (data: unknown) =>
-      new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
-    if (url.includes('/api/authz/evaluations')) {
-      const body = JSON.parse(String(init?.body)) as { evaluations: Question[] };
-      return json({
-        evaluations: body.evaluations.map((e) => ({
-          decision: e.action === 'resource_role:revoke' && e.resource.properties?.target_person_id === 'p2',
-        })),
-      });
-    }
-    return json([]);
+  fakeBackend(mockFetch, {
+    decide: (q) => q.action === 'resource_role:revoke' && q.resource.properties?.target_person_id === 'p2',
   });
 }
 
-function askedQuestions(): Question[] {
-  return mockFetch.mock.calls
-    .filter(([url]) => String(url).includes('/api/authz/evaluations'))
-    .flatMap(([, init]) => (JSON.parse(String((init as RequestInit).body)) as { evaluations: Question[] }).evaluations);
-}
+const askedQuestions = () => askedQuestionsOf(mockFetch);
 
-function renderMensen() {
+function renderMensen(initiatief: InitiatiefDetail = INITIATIEF) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <MemoryRouter>
-          <InitiatiefMensen initiatief={INITIATIEF} />
+          <InitiatiefMensen initiatief={initiatief} />
         </MemoryRouter>
       </ToastProvider>
     </QueryClientProvider>,
@@ -103,5 +93,56 @@ describe('InitiatiefMensen member removal', () => {
     await waitFor(() => expect(byLabel(container, 'Bea verwijderen')).not.toBeNull());
     // Ann is the last eigenaar: the backend says no, so no button.
     expect(byLabel(container, 'Ann verwijderen')).toBeNull();
+  });
+});
+
+describe('InitiatiefMensen eenheid grants', () => {
+  const WITH_EENHEDEN: InitiatiefDetail = {
+    ...INITIATIEF,
+    eenheden: [eenheid('e1', 'Team Recht', 'viewer'), eenheid('e2', 'Team Data', 'contributor')],
+  };
+
+  // Authority over Team Recht's grant, up to contributor; none over Team Data.
+  function eenheidBackend() {
+    fakeBackend(mockFetch, {
+      decide: ({ action, resource }) => {
+        const target = resource.properties?.target_eenheid_id;
+        if (action === 'resource_role:revoke') return target === 'e1';
+        if (action === 'resource_role:grant') return target === 'e1' && resource.properties?.rol !== 'eigenaar';
+        return false;
+      },
+    });
+  }
+
+  const rolSelects = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll<HTMLSelectElement>('select[aria-label="Rol van deze eenheid"]'));
+
+  it('asks revoke and grant with the eenheid as target', async () => {
+    eenheidBackend();
+    renderMensen(WITH_EENHEDEN);
+
+    await waitFor(() =>
+      expect(askedQuestions()).toContainEqual({
+        action: 'resource_role:revoke',
+        resource: { type: 'initiatief', id: 'i1', properties: { rol: 'viewer', target_eenheid_id: 'e1' } },
+      }),
+    );
+    expect(askedQuestions()).toContainEqual({
+      action: 'resource_role:grant',
+      resource: { type: 'initiatief', id: 'i1', properties: { rol: 'contributor', target_eenheid_id: 'e1' } },
+    });
+  });
+
+  it('offers remove and only the grantable rols where the backend allows them', async () => {
+    eenheidBackend();
+    const { container } = renderMensen(WITH_EENHEDEN);
+
+    await waitFor(() => expect(byLabel(container, 'Team Recht verwijderen')).not.toBeNull());
+    expect(byLabel(container, 'Team Data verwijderen')).toBeNull();
+
+    // One select, for Team Recht, without eigenaar; Team Data shows a tag.
+    await waitFor(() => expect(rolSelects(container)).toHaveLength(1));
+    expect(Array.from(rolSelects(container)[0].options).map((o) => o.value)).toEqual(['contributor', 'viewer']);
+    expect(container.querySelector('nldd-tag[text="Bijdrager"]')).not.toBeNull();
   });
 });

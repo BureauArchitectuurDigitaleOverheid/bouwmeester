@@ -10,7 +10,7 @@ import type {
 } from '@/types';
 import { ORGANISATIE_TYPE_OPTIONS, formatFunctie } from '@/types';
 import { useOrganisatieFlat, useOrganisatiePersonen } from '@/hooks/useOrganisatie';
-import { useCan } from '@/hooks/useCan';
+import { useCan, useEenhedenWith } from '@/hooks/useCan';
 import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface OrganisatieFormProps {
@@ -51,11 +51,18 @@ export function OrganisatieForm({
   const { data: flatList = [] } = useOrganisatieFlat();
   const { data: personen = [] } = useOrganisatiePersonen(editData?.id ?? null);
 
-  // Parent options from flat list, excluding self (in edit mode)
+  // A new eenheid goes where the caller may create one (org:create in the
+  // parent, or without parent at the top). Editing keeps every option: the
+  // current parent must stay selectable and the route decides a move.
+  const { includes: mayCreateIn } = useEenhedenWith('org:create');
+  const { allowed: mayCreateTop } = useCan(
+    'org:create',
+    editData ? null : { type: 'organisatie_eenheid' },
+  );
   const parentOptions: SelectOption[] = [
-    { value: '', label: 'Geen (top-niveau)' },
+    ...(editData || mayCreateTop ? [{ value: '', label: 'Geen (top-niveau)' }] : []),
     ...flatList
-      .filter((e) => !editData || e.id !== editData.id)
+      .filter((e) => (editData ? e.id !== editData.id : mayCreateIn(e.id)))
       .map((e) => ({
         value: e.id,
         label: e.naam,

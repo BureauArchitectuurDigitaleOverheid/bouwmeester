@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useSharing, useCreateSharing, useDeleteSharing } from '@/hooks/useSharing';
-import { useEenhedenAllowed, useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { useEenhedenWith } from '@/hooks/useCan';
 import type { SharingGrantCreate } from '@/hooks/useSharing';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
@@ -64,9 +65,8 @@ export function SharingManager() {
   // Sharing (and unsharing) needs org:manage on the source eenheid, as the
   // backend decides it. A shared item's eenheid is not known here: the
   // backend decides that one on submit.
-  const { eenheden: manageable } = useEenhedenAllowed('org:manage');
-  const manageableIds = new Set(manageable.map((e) => e.id));
-  const sourceEenheden = sortedEenheden.filter((e) => manageableIds.has(e.id));
+  const { includes: mayManage } = useEenhedenWith('org:manage');
+  const sourceEenheden = sortedEenheden.filter((e) => mayManage(e.id));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -262,7 +262,7 @@ export function SharingManager() {
               hide-below="lg"
             />
             <nldd-text-cell>
-              {share.source_eenheid_id && !manageableIds.has(share.source_eenheid_id) ? null : confirmDeleteId === share.id ? (
+              {share.source_eenheid_id && !mayManage(share.source_eenheid_id) ? null : confirmDeleteId === share.id ? (
                 <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <NlddButton
                     text="Ja"

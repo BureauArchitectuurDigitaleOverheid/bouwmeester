@@ -1,4 +1,4 @@
-import { apiPost } from './client';
+import { apiGet, apiPost } from './client';
 
 /**
  * Resource types the evaluation endpoint accepts: mirrored by hand from
@@ -49,8 +49,12 @@ export interface AuthzResource {
   /** Grant actions: the rol (resource role) or role handed out ... */
   rol?: string;
   roleId?: string;
-  /** ... and to whom; omitted means someone other than the caller. */
+  /**
+   * ... and to whom: a person, or an eenheid (a grant to everyone placed
+   * there). Neither means someone other than the caller.
+   */
   targetPersonId?: string;
+  targetEenheidId?: string;
 }
 
 /** The `properties` of a resource on the wire, in the backend's names. */
@@ -63,6 +67,7 @@ export function authzProperties(resource: AuthzResource): Record<string, string 
     rol: resource.rol,
     role_id: resource.roleId,
     target_person_id: resource.targetPersonId,
+    target_eenheid_id: resource.targetEenheidId,
   };
   return Object.fromEntries(
     Object.entries(props).filter((entry): entry is [string, string | boolean] => entry[1] !== undefined && entry[1] !== ''),
@@ -161,3 +166,17 @@ export function createAuthzBatcher(send: typeof evaluate = evaluate) {
 }
 
 export const decide = createAuthzBatcher();
+
+/** Answer of `GET /api/authz/eenheden`: `all` means every eenheid. */
+export interface EenhedenWith {
+  all: boolean;
+  ids: string[];
+}
+
+/**
+ * The eenheden where the caller holds `action` (such as `org:manage`), in
+ * one request instead of one evaluation per eenheid.
+ */
+export function getEenhedenWith(action: string): Promise<EenhedenWith> {
+  return apiGet<EenhedenWith>('/api/authz/eenheden', { action });
+}

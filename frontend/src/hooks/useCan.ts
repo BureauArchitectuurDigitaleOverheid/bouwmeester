@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import {
   skipToken,
   useQueries,
@@ -8,7 +8,14 @@ import {
   type QueryClient,
   type UseQueryOptions,
 } from '@tanstack/react-query';
-import { authzProperties, decide, type AuthzResource, type AuthzResourceType } from '@/api/authz';
+import {
+  authzProperties,
+  decide,
+  getEenhedenWith,
+  type AuthzResource,
+  type AuthzResourceType,
+  type EenhedenWith,
+} from '@/api/authz';
 import { onForbidden } from '@/api/client';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -69,6 +76,29 @@ export function useCan(action: string, resource: AuthzResource | null | undefine
     isError: query.isError,
     showAction: allowed || query.isError,
   };
+}
+
+/**
+ * The eenheden where the current user may do `action` (`org:manage`,
+ * `people:assign_role`, ...): one question for the whole list. Cached with
+ * the other decisions, so a mutation with `CHANGES_RIGHTS` refreshes it and
+ * a failure shows in `useAuthzFailures`.
+ */
+export function useEenhedenWith(action: string) {
+  const query = useQuery({
+    // Under AUTHZ_KEY; `'eenheden'` never collides with an action name.
+    queryKey: [...AUTHZ_KEY, 'eenheden', action],
+    queryFn: () => getEenhedenWith(action),
+    staleTime: DECISION_STALE_TIME,
+  });
+  const data: EenhedenWith | undefined = query.data;
+  const includes = useMemo(() => {
+    if (!data) return () => false;
+    if (data.all) return () => true;
+    const ids = new Set(data.ids);
+    return (eenheidId: string) => ids.has(eenheidId);
+  }, [data]);
+  return { includes, isLoading: query.isPending, isError: query.isError };
 }
 
 interface Decisions {

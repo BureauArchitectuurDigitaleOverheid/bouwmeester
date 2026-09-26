@@ -17,7 +17,6 @@ vi.mock('@/hooks/usePermissions', () => ({
     hasPermission: (perm: string) => perm === 'audit:read' && rights.scoped,
     hasAnyPermission: () => false,
     hasSystemPermission: (perm: string) => perm === 'audit:read' && rights.system,
-    managesEenheid: () => false,
     isSuperAdmin: false,
   }),
 }));
