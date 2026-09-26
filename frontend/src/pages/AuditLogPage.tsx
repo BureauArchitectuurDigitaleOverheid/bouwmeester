@@ -329,17 +329,16 @@ export function AuditLogPage() {
         </div>
       </nldd-table>
 
-      {/* Pagination */}
+      {/* Pagination. Stacked, so the pagination gets the full width: it is a
+          size container that swaps its page buttons for a compact select
+          below 400px, and inside a fit-content wrapper it had no width to
+          measure, so the buttons ran off the side of a phone screen. */}
       {totalPages > 1 && (
-        <nldd-container layout="row" gap="16">
-          <nldd-container vertical-alignment="center">
-            <nldd-text size="sm" color="secondary">
-              {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
-            </nldd-text>
-          </nldd-container>
-          <div className="hug hug-stack">
-            <nldd-pagination ref={paginationRef} current={page + 1} total={totalPages} />
-          </div>
+        <nldd-container gap="8">
+          <nldd-text size="sm" color="secondary">
+            {data?.total ?? 0} resultaten — pagina {page + 1} van {totalPages}
+          </nldd-text>
+          <nldd-pagination ref={paginationRef} current={page + 1} total={totalPages} />
         </nldd-container>
       )}
     </nldd-container>
