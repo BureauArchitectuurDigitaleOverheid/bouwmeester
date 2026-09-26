@@ -28,16 +28,14 @@ async def graph_search(
     node_types: list[NodeType] | None = Query(None),
     edge_types: list[str] | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> GraphViewResponse:
-    """Return a graph view filtered by node and/or edge types.
-
-    Uses :class:`GraphRepository.get_full_graph` to fetch all matching
-    nodes and edges in a single pass rather than N+1 queries.
-    """
+    """Return the visible graph, filtered by node and/or edge types."""
     repo = GraphRepository(db)
 
     type_values = [nt.value for nt in node_types] if node_types else None
     result = await repo.get_full_graph(
+        org_ctx=org_ctx,
         node_types=type_values,
         edge_types=edge_types,
     )
@@ -55,14 +53,11 @@ async def find_path(
     to_id: UUID = Query(...),
     max_depth: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> dict:
-    """Find the shortest path between two nodes.
-
-    Uses a recursive CTE (breadth-first search) in
-    :class:`GraphRepository.find_path`.
-    """
+    """Find the shortest path between two nodes, through visible nodes only."""
     repo = GraphRepository(db)
-    path = await repo.find_path(from_id=from_id, to_id=to_id, max_depth=max_depth)
+    path = await repo.find_path(from_id, to_id, org_ctx=org_ctx, max_depth=max_depth)
 
     return {
         "from_id": str(from_id),
