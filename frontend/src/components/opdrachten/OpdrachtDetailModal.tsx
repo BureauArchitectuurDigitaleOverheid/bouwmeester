@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@/components/common/Modal';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Badge } from '@/components/common/Badge';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
@@ -254,9 +255,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
         }
       >
         {isLoading ? (
-          <nldd-container layout="row" horizontal-alignment="center" padding="16">
-            <nldd-activity-indicator size="24" text="Laden..." show-text />
-          </nldd-container>
+          <LoadingSpinner padding="16" text="Laden..." />
         ) : !opdracht ? (
           <nldd-inline-dialog icon="question-mark-circle" text="Opdracht niet gevonden." />
         ) : (

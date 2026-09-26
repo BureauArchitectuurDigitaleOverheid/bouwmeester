@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
 import { useNlddEvent } from '@/components/nldd/events';
 
@@ -73,8 +74,8 @@ export function DocsPage() {
 
   if (tabsLoading) {
     return (
-      <nldd-container max-width="800px" horizontal-alignment="center" padding-block="32">
-        <nldd-activity-indicator size="32" />
+      <nldd-container max-width="800px">
+        <LoadingSpinner padding="32" />
       </nldd-container>
     );
   }
@@ -95,9 +96,7 @@ export function DocsPage() {
       )}
 
       {loading && (
-        <nldd-container horizontal-alignment="center" padding-block="32">
-          <nldd-activity-indicator size="32" />
-        </nldd-container>
+        <LoadingSpinner padding="32" />
       )}
       {error && <nldd-banner variant="critical" size="sm" text={error} />}
       {!loading && !error && <MarkdownRenderer content={content} />}

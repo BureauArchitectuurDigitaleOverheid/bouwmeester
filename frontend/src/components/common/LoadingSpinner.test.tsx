@@ -32,6 +32,13 @@ describe('LoadingSpinner', () => {
     expect(container.querySelector('nldd-activity-indicator')).toHaveAttribute('size', '48');
   });
 
+  it('shows the text when given', () => {
+    const { container } = render(<LoadingSpinner text="Laden..." />);
+    const indicator = container.querySelector('nldd-activity-indicator');
+    expect(indicator).toHaveAttribute('text', 'Laden...');
+    expect(indicator).toHaveAttribute('show-text');
+  });
+
   it('applies the requested padding', () => {
     const { container } = render(<LoadingSpinner padding="16" />);
     expect(container.querySelector('nldd-container')).toHaveAttribute('padding-block', '16');

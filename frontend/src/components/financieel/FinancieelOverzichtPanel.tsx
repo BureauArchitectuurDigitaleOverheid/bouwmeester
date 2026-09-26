@@ -5,6 +5,7 @@ import {
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { formatCurrencyCompact, calculateUtilization } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
@@ -23,7 +24,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
   const { openOpdrachtCreate } = useOpdrachtCreate();
 
   if (loadingOverzicht || loadingOpdrachten) {
-    return <nldd-activity-indicator size="24" text="Laden..." show-text />;
+    return <LoadingSpinner text="Laden..." />;
   }
 
   if (!overzicht || overzicht.per_jaar.length === 0) {
