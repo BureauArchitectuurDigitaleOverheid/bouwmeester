@@ -8,7 +8,9 @@ route test in ``test_grant_authority``.
 """
 
 import pytest
+from sqlalchemy import select
 
+from bouwmeester.models.role import PersonRole
 from tests.factories import client_as, grant_role, make_person, place
 from tests.test_authz import World, _ask, world  # noqa: F401
 
@@ -188,6 +190,28 @@ async def test_grant_actions_ask_the_authority_guards(ew, who, ask, expected):
     async with client_as(ew.db, ew.person[who]) as c:
         resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask(ew)]})
     assert resp.status_code == 200, resp.text
+    assert resp.json() == {"evaluations": [{"decision": expected}]}
+
+
+@pytest.mark.parametrize(
+    ("who", "holder", "role_id", "expected"),
+    [
+        ("ministry_admin", "team_editor", "editor", True),
+        ("manager", "team_editor", "editor", False),  # no people:assign_role
+        ("team_editor", "team_editor", "editor", True),  # stepping down
+        ("super_admin", "super_admin", "super_admin", False),  # last-admin lock
+    ],
+)
+async def test_role_revoke_asks_the_revoke_guard(ew, who, holder, role_id, expected):
+    assignment_id = await ew.db.scalar(
+        select(PersonRole.id).where(
+            PersonRole.person_id == ew.person[holder].id,
+            PersonRole.role_id == role_id,
+        )
+    )
+    ask = _ask("role:revoke", "role", assignment_id)
+    async with client_as(ew.db, ew.person[who]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask]})
     assert resp.json() == {"evaluations": [{"decision": expected}]}
 
 

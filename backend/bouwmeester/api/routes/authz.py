@@ -22,7 +22,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
-from bouwmeester.models.role import Role
+from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.schema.authz import (
     AuthzDecision,
@@ -67,6 +67,15 @@ async def _assign_role(
         eenheid_id=props.eenheid_id,
         target_person_id=props.target_person_id,
     )
+
+
+async def _revoke_role(
+    db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
+) -> None:
+    assignment = await db.get(PersonRole, ev.resource.id) if ev.resource.id else None
+    if assignment is None:
+        raise HTTPException(404)
+    await authority.require_can_revoke_role(db, perm_ctx, assignment)
 
 
 async def _eenheid(db: AsyncSession, ev: AuthzEvaluation) -> OrganisatieEenheid:
@@ -123,6 +132,7 @@ Guard = Callable[[AsyncSession, PermissionContext, AuthzEvaluation], Awaitable[N
 GRANT_ACTIONS: dict[str, Guard] = {
     "resource_role:grant": _grant_resource_role,
     "role:assign": _assign_role,
+    "role:revoke": _revoke_role,
     "eenheid:set_manager": _set_manager,
     "eenheid:dissolve": _dissolve,
     "person:place": _place,
@@ -186,6 +196,8 @@ async def evaluate(
     - ``role:assign``, resource ``{type: "role"}``, ``properties.role_id``,
       optional ``properties.eenheid_id`` (none: a system role) and
       ``properties.target_person_id``.
+    - ``role:revoke``, resource ``{type: "role", id}`` with the id of the
+      role assignment.
     - ``eenheid:set_manager``, resource ``{type: "organisatie_eenheid", id}``,
       optional ``properties.target_person_id`` (none: clear or name someone
       else).
