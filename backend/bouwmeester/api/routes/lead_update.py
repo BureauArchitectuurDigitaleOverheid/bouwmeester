@@ -13,11 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_found
-from bouwmeester.api.routes.leads import (
-    _robust_parse_json,
-    get_lead_or_404,
-    get_visible_lead,
-)
+from bouwmeester.api.routes.leads import _robust_parse_json
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
@@ -48,6 +44,13 @@ router = APIRouter(prefix="/leads", tags=["lead-updates"])
 # would blow past the model's vision-image budget and balloon token cost.
 _MAX_ATTACHMENTS_FOR_PARSE = 6
 _MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024  # per file
+
+
+# Update posts are sub-records of the lead in the path (``core.authz``).
+_READ_LEAD = requires("lead:read", "lead", path_param="lead_id")
+_CREATE_POST = requires("lead_update:create", "lead", path_param="lead_id")
+_UPDATE_POST = requires("lead_update:update", "lead", path_param="lead_id")
+_DELETE_POST = requires("lead_update:delete", "lead", path_param="lead_id")
 
 
 def _to_response(post: LeadUpdatePost) -> LeadUpdatePostResponse:
@@ -252,7 +255,7 @@ async def parse_lead_update(
     include_attachments: bool = Form(False),
     files: list[UploadFile] | None = None,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_update:create", "lead", path_param="lead_id")),
+    _authz=Depends(_CREATE_POST),
 ) -> LeadUpdateExtractResult:
     """Parse raw text/uploaded docs (or just the lead history) into an update draft."""
     from bouwmeester.services.llm.factory import get_llm_service
@@ -373,7 +376,7 @@ async def list_updates(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _visible: Lead = Depends(get_visible_lead),
+    _authz=Depends(_READ_LEAD),
 ) -> list[LeadUpdatePostResponse]:
     stmt = (
         select(LeadUpdatePost)
@@ -395,9 +398,9 @@ async def create_update(
     data: LeadUpdatePostCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_update:create", "lead", path_param="lead_id")),
+    _authz=Depends(_CREATE_POST),
 ) -> LeadUpdatePostResponse:
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     actor_id = current_user.id if current_user else None
     post = LeadUpdatePost(
@@ -445,7 +448,7 @@ async def edit_update(
     data: LeadUpdatePostEdit,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_update:update", "lead", path_param="lead_id")),
+    _authz=Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
     payload = data.model_dump(exclude_unset=True)
@@ -468,7 +471,7 @@ async def publish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_update:update", "lead", path_param="lead_id")),
+    _authz=Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
     post.published_at = datetime.now(UTC)
@@ -488,7 +491,7 @@ async def unpublish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_update:update", "lead", path_param="lead_id")),
+    _authz=Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
     post.published_at = None
@@ -507,7 +510,7 @@ async def delete_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_update:delete", "lead", path_param="lead_id")),
+    _authz=Depends(_DELETE_POST),
 ) -> None:
     post = await _load_post(db, lead_id, post_id)
     if post is None:
@@ -527,7 +530,7 @@ async def download_update_eml(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _visible: Lead = Depends(get_visible_lead),
+    _authz=Depends(_READ_LEAD),
 ) -> Response:
     """Stream a .eml that opens as an editable draft in Outlook (Windows)."""
     post = require_found(await _load_post(db, lead_id, post_id), "Update")

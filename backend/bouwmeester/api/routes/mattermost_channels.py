@@ -21,13 +21,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import (
-    require_initiatief_read,
-    require_lead_read,
-)
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.mattermost_channel_link import (
     SCOPE_INITIATIEF,
@@ -54,10 +51,6 @@ router = APIRouter(tags=["mattermost-channels"])
 # ---------------------------------------------------------------------------
 
 
-def _not_found() -> HTTPException:
-    return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Niet gevonden")
-
-
 # ---------------------------------------------------------------------------
 # Initiatief-scope endpoints
 # ---------------------------------------------------------------------------
@@ -81,9 +74,10 @@ async def _met_teamnaam(db, links: list) -> list[MattermostChannelLinkResponse]:
 async def list_initiatief_channels(
     initiatief_id: UUID,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(
+        requires("initiatief:read", "initiatief", path_param="initiatief_id")
+    ),
 ) -> list[MattermostChannelLinkResponse]:
-    await require_initiatief_read(db, perm_ctx, initiatief_id)
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
     return await _met_teamnaam(db, links)
@@ -160,9 +154,8 @@ async def create_initiatief_channel(
 async def list_lead_channels(
     lead_id: UUID,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(requires("lead:read", "lead", path_param="lead_id")),
 ) -> list[MattermostChannelLinkResponse]:
-    await require_lead_read(db, perm_ctx, lead_id)
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_LEAD, lead_id)
     return await _met_teamnaam(db, links)
@@ -261,9 +254,7 @@ async def update_channel_link(
     ),
 ) -> MattermostChannelLinkResponse:
     repo = MattermostChannelLinkRepository(db)
-    link = await repo.get(link_id)
-    if link is None:
-        raise _not_found()
+    link = require_found(await repo.get(link_id), "Koppeling")
 
     # Reenable mag alleen als de bot daadwerkelijk weer in het kanaal zit
     # — anders zet je `disabled_at=None` op een dode koppeling en raakt de
@@ -332,7 +323,5 @@ async def delete_channel_link(
     ),
 ) -> None:
     repo = MattermostChannelLinkRepository(db)
-    link = await repo.get(link_id)
-    if link is None:
-        raise _not_found()
+    link = require_found(await repo.get(link_id), "Koppeling")
     await repo.delete(link)

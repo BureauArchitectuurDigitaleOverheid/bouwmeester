@@ -11,11 +11,6 @@ from sqlalchemy.orm import selectinload
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    check_resource_org_scope,
-    get_org_context,
-)
 from bouwmeester.core.storage import (
     BRON_ALLOWED_CONTENT_TYPES,
     blob_available,
@@ -31,6 +26,9 @@ from bouwmeester.schema.bron import BronBijlageResponse
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/nodes/{node_id}/bijlage", tags=["bijlage"])
+
+_READ_NODE = requires("node:read", "corpus_node", path_param="node_id")
+_UPDATE_NODE = requires("node:update", "corpus_node", path_param="node_id")
 
 
 async def _get_bron(
@@ -57,7 +55,7 @@ async def upload_bijlage(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("node:update", "corpus_node", path_param="node_id")),
+    _authz=Depends(_UPDATE_NODE),
 ) -> BronBijlageResponse:
     """Upload a file attachment to a bron node. Replaces existing attachment."""
     bron = await _get_bron(node_id, db, load_bijlage=True)
@@ -109,10 +107,9 @@ async def get_bijlage_info(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> BronBijlageResponse | None:
     """Get metadata about a bron node's attachment (filename, size, type)."""
-    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
@@ -129,10 +126,9 @@ async def download_bijlage(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> Response:
     """Download the file attachment of a bron node."""
-    await check_resource_org_scope(db, "corpus_node", node_id, org_ctx)
     bron = await _get_bron(node_id, db)
 
     result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == bron.id))
@@ -152,7 +148,7 @@ async def delete_bijlage(
     node_id: uuid.UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("node:update", "corpus_node", path_param="node_id")),
+    _authz=Depends(_UPDATE_NODE),
 ) -> None:
     """Delete a bron node's file attachment (DB record and stored file)."""
     bron = await _get_bron(node_id, db)

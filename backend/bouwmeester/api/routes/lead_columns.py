@@ -13,11 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import require_initiatief_read
-from bouwmeester.core.permissions import (
-    PermissionContext,
-    get_permission_context,
-)
 from bouwmeester.repositories.lead_column import LeadColumnRepository
 from bouwmeester.schema.lead_column import (
     LeadColumnCreate,
@@ -28,6 +23,18 @@ from bouwmeester.schema.lead_column import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/initiatieven", tags=["lead-columns"])
+
+# Columns are sub-records of the initiatief in the path.
+_READ_INITIATIEF = requires("initiatief:read", "initiatief", path_param="initiatief_id")
+_CREATE_COLUMN = requires(
+    "lead_column:create", "initiatief", path_param="initiatief_id"
+)
+_UPDATE_COLUMN = requires(
+    "lead_column:update", "initiatief", path_param="initiatief_id"
+)
+_DELETE_COLUMN = requires(
+    "lead_column:delete", "initiatief", path_param="initiatief_id"
+)
 
 
 def _to_response(column, lead_count: int = 0) -> LeadColumnResponse:
@@ -53,10 +60,9 @@ def _to_response(column, lead_count: int = 0) -> LeadColumnResponse:
 async def list_columns(
     initiatief_id: UUID,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_READ_INITIATIEF),
 ) -> list[LeadColumnResponse]:
     """List funnel-kolommen for an initiatief. Anyone who may read it."""
-    await require_initiatief_read(db, perm_ctx, initiatief_id)
 
     repo = LeadColumnRepository(db)
     columns = await repo.list_for_initiatief(initiatief_id)
@@ -74,9 +80,7 @@ async def create_column(
     data: LeadColumnCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("lead_column:create", "initiatief", path_param="initiatief_id")
-    ),
+    _authz=Depends(_CREATE_COLUMN),
 ) -> LeadColumnResponse:
     """Create a new funnel-kolom."""
 
@@ -114,9 +118,7 @@ async def update_column(
     data: LeadColumnUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("lead_column:update", "initiatief", path_param="initiatief_id")
-    ),
+    _authz=Depends(_UPDATE_COLUMN),
 ) -> LeadColumnResponse:
     """Update a funnel-kolom (name/color/flags). Slug is immutable."""
 
@@ -162,9 +164,7 @@ async def delete_column(
     current_user: OptionalUser,
     move_to: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("lead_column:delete", "initiatief", path_param="initiatief_id")
-    ),
+    _authz=Depends(_DELETE_COLUMN),
 ) -> None:
     """Delete a kolom. Migrates leads to ``move_to`` if non-empty."""
 
@@ -218,9 +218,7 @@ async def reorder_columns(
     data: LeadColumnReorder,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("lead_column:update", "initiatief", path_param="initiatief_id")
-    ),
+    _authz=Depends(_UPDATE_COLUMN),
 ) -> list[LeadColumnResponse]:
     """Reorder kolommen. Body must list every column id."""
 

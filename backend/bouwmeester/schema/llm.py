@@ -1,5 +1,7 @@
 """Pydantic schemas for LLM-powered features."""
 
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -38,7 +40,7 @@ class GapItem(BaseModel):
 
 
 class GapAnalysisRequest(BaseModel):
-    dossier_id: str
+    dossier_id: UUID
 
 
 class GapAnalysisResponse(BaseModel):
@@ -67,7 +69,7 @@ class CorpusGapOverviewResponse(BaseModel):
 
 
 class KompasGuidanceRequest(BaseModel):
-    dossier_id: str
+    dossier_id: UUID
     step_node_types: list[str]
     step_description: str = ""
     max_candidates: int = Field(default=10, ge=1, le=50)

@@ -3,8 +3,7 @@
 from collections import defaultdict
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
@@ -15,11 +14,11 @@ from bouwmeester.core.authority import (
     require_can_move_eenheid,
     require_can_set_manager,
 )
-from bouwmeester.core.authz import requires
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
     PermissionContext,
-    require_permission,
+    get_permission_context,
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.repositories.org_tree import get_subtree_ids
@@ -42,37 +41,11 @@ from bouwmeester.services.mention_helper import sync_and_notify_mentions
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
-async def _require_can_edit_eenheid(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        requires("org:update", "organisatie_eenheid")
-    ),
-) -> PermissionContext:
-    """Gate for editing or deleting an eenheid (404/403).
-
-    Needs org:update on the eenheid (held there or above it, or as eigenaar
-    of a stakeholder eenheid one created); seeing it is not enough.
-    Structural changes are checked by ``core.authority`` on top.  TOOI,
-    scraped and synthetic rows belong to their sync: only super_admin edits
-    them by hand.
-    """
-    if perm_ctx.is_super_admin:
-        return perm_ctx
-    eenheid_id = UUID(request.path_params["id"])
-    bron = await db.scalar(
-        select(OrganisatieEenheid.bron).where(OrganisatieEenheid.id == eenheid_id)
-    )
-    if bron is not None and bron != "handmatig":
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"Deze organisatie-eenheid is read-only (bron='{bron}'). "
-                "TOOI/scrape/synthetische rijen worden door de sync beheerd; "
-                "alleen super_admin kan ze handmatig wijzigen."
-            ),
-        )
-    return perm_ctx
+# Editing or deleting an eenheid: org:update there (held there or above it,
+# or as eigenaar of a stakeholder eenheid one created).  Synced eenheden
+# (TOOI, scrapes) are read-only except for super_admin (``core.authz``).
+# Structural changes are checked by ``core.authority`` on top.
+_UPDATE_EENHEID = requires("org:update", "organisatie_eenheid")
 
 
 async def _check_structural_changes(
@@ -294,9 +267,7 @@ async def create_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("org:create", "org:manage")
-    ),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
@@ -308,6 +279,9 @@ async def create_organisatie(
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
+    await require(
+        db, perm_ctx, "org:create", "organisatie_eenheid", eenheid_id=data.parent_id
+    )
     await require_can_create_eenheid(
         db, perm_ctx, parent_id=data.parent_id, manager_id=data.manager_id
     )
@@ -363,7 +337,7 @@ async def update_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_require_can_edit_eenheid),
+    perm_ctx: PermissionContext = Depends(_UPDATE_EENHEID),
 ) -> OrganisatieEenheidResponse:
     """Update an org unit. Detects circular parent references."""
     repo = OrganisatieEenheidRepository(db)
@@ -407,7 +381,7 @@ async def delete_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_require_can_edit_eenheid),
+    perm_ctx: PermissionContext = Depends(_UPDATE_EENHEID),
 ) -> None:
     """Delete an org unit. Fails if it has children or members."""
     repo = OrganisatieEenheidRepository(db)

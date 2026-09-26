@@ -293,17 +293,17 @@ async def test_list_tasks_by_node_hides_invisible_org(org_visibility_setup):
 
 
 async def test_get_task_forbidden_for_invisible(org_visibility_setup):
-    """GET /tasks/{id} returns 403 for a task in an invisible org."""
+    """GET /tasks/{id} returns 404 for a task in an invisible org."""
     s = org_visibility_setup
     resp = await s["client"].get(f"/api/tasks/{s['invisible_task'].id}")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 async def test_get_task_subtasks_forbidden_for_invisible(org_visibility_setup):
-    """GET /tasks/{id}/subtasks returns 403 for a parent in an invisible org."""
+    """GET /tasks/{id}/subtasks returns 404 for a parent in an invisible org."""
     s = org_visibility_setup
     resp = await s["client"].get(f"/api/tasks/{s['invisible_task'].id}/subtasks")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 async def test_eenheid_overview_forbids_invisible_eenheid(org_visibility_setup):
@@ -313,7 +313,7 @@ async def test_eenheid_overview_forbids_invisible_eenheid(org_visibility_setup):
         "/api/tasks/eenheid-overview",
         params={"organisatie_eenheid_id": str(s["invisible_org"].id)},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -383,10 +383,10 @@ async def test_summary_excludes_invisible_org(org_visibility_setup):
 
 
 async def test_get_opdracht_forbidden_for_invisible(org_visibility_setup):
-    """Non-admin should get 403 for an opdracht in an invisible org."""
+    """Non-admin should get 404 for an opdracht in an invisible org."""
     s = org_visibility_setup
     resp = await s["client"].get(f"/api/opdrachten/{s['invisible_opdracht'].id}")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 async def test_get_opdracht_allows_visible(org_visibility_setup):
@@ -412,14 +412,14 @@ async def test_get_node_opdrachten_filters_invisible(org_visibility_setup):
 
 
 async def test_get_node_opdrachten_forbids_invisible_node(org_visibility_setup):
-    """An invisible node returns 403 via check_resource_org_scope."""
+    """An invisible node returns 404 via check_resource_org_scope."""
     s = org_visibility_setup
     resp = await s["client"].get(f"/api/nodes/{s['invisible_node'].id}/opdrachten")
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 async def test_get_node_financieel_forbids_invisible_node(org_visibility_setup):
     """Financial overview on an invisible node is forbidden."""
     s = org_visibility_setup
     resp = await s["client"].get(f"/api/nodes/{s['invisible_node'].id}/financieel")
-    assert resp.status_code == 403
+    assert resp.status_code == 404

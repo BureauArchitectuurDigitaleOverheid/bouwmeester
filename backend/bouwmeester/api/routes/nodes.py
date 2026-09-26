@@ -77,6 +77,11 @@ CorpusNodeWithEdges.model_rebuild()
 
 router = APIRouter(prefix="/nodes", tags=["nodes"])
 
+_READ_NODE = requires("node:read", "corpus_node")
+# Editing a node includes linking existing tags to it (a new tag name also
+# needs tag:create, see ``resolve_tag_to_link``).
+_UPDATE_NODE = requires("node:update", "corpus_node")
+
 
 @router.get("", response_model=list[CorpusNodeResponse])
 async def list_nodes(
@@ -176,11 +181,11 @@ async def get_node(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> CorpusNodeWithEdges:
     """Get a single node by ID, including its incoming and outgoing edges."""
     service = NodeService(db)
-    node = require_found(await service.get(id, org_ctx=org_ctx), "Node")
+    node = require_found(await service.get(id), "Node")
     edges_from = [EdgeResponse.model_validate(e) for e in node.edges_from]
     edges_to = [EdgeResponse.model_validate(e) for e in node.edges_to]
     return CorpusNodeWithEdges(
@@ -206,7 +211,7 @@ async def update_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("node:update", "corpus_node")),
+    _authz=Depends(_UPDATE_NODE),
 ) -> CorpusNodeResponse:
     """Update a corpus node. Notifies stakeholders of changes."""
     service = NodeService(db)
@@ -346,11 +351,9 @@ async def get_node_tasks(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> list[TaskResponse]:
     """List all tasks linked to a specific node."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
 
     task_repo = TaskRepository(db)
     tasks = await task_repo.get_by_node(id, skip=skip, limit=limit, org_ctx=org_ctx)
@@ -362,12 +365,9 @@ async def get_node_stakeholders(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> list[NodeStakeholderResponse]:
     """List stakeholders (eigenaar/betrokken/adviseur) of a node."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
 
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource("corpus_node", id)
@@ -547,14 +547,10 @@ async def get_node_tags(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> list[NodeTagResponse]:
     """List all tags applied to a node."""
     from bouwmeester.repositories.tag import TagRepository
-
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
 
     tag_repo = TagRepository(db)
     node_tags = await tag_repo.get_by_node(id)
@@ -572,7 +568,7 @@ async def add_tag_to_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(requires("tag:create", "corpus_node")),
+    perm_ctx: PermissionContext = Depends(_UPDATE_NODE),
 ) -> NodeTagResponse:
     """Add a tag to a node; a new tag_name also needs tenant-wide ``tag:create``."""
     from bouwmeester.repositories.tag import TagRepository
@@ -605,7 +601,7 @@ async def remove_tag_from_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("tag:delete", "corpus_node")),
+    _authz=Depends(_UPDATE_NODE),
 ) -> None:
     """Remove a tag from a node."""
     from bouwmeester.repositories.tag import TagRepository
@@ -630,13 +626,10 @@ async def get_node_title_history(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> list[NodeTitleRecord]:
     """Get temporal history of title changes for a node."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
-    records = await service.get_title_history(id)
+    records = await NodeService(db).get_title_history(id)
     return [NodeTitleRecord.model_validate(r) for r in records]
 
 
@@ -645,13 +638,10 @@ async def get_node_status_history(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> list[NodeStatusRecord]:
     """Get temporal history of status changes for a node."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
-    records = await service.get_status_history(id)
+    records = await NodeService(db).get_status_history(id)
     return [NodeStatusRecord.model_validate(r) for r in records]
 
 
@@ -660,14 +650,13 @@ async def get_node_bron_detail(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> BronResponse | None:
     """Get bron-specific detail fields for a bron node."""
     from sqlalchemy import select
 
     from bouwmeester.models.bron import Bron
 
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     stmt = select(Bron).where(Bron.id == id)
     result = await db.execute(stmt)
     bron = result.scalar_one_or_none()
@@ -682,7 +671,7 @@ async def update_node_bron_detail(
     data: BronUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("node:update", "corpus_node")),
+    _authz=Depends(_UPDATE_NODE),
 ) -> BronResponse:
     """Update bron-specific detail fields for a bron node."""
     from sqlalchemy import select
@@ -711,11 +700,9 @@ async def get_node_financieel(
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("opdracht:read")),
     org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> FinancieelOverzicht:
     """Get financial overview for a node (aggregated from opdrachten)."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
     fin_service = FinancieelService(db)
     return await fin_service.get_financieel_overzicht(id, org_ctx=org_ctx)
 
@@ -727,11 +714,9 @@ async def get_node_opdrachten(
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("opdracht:read")),
     org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> list[OpdrachtResponse]:
     """Get opdrachten linked to a node (via instrument_id or OpdrachtNode)."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    require_found(await service.get(id), "Node")
     repo = OpdrachtRepository(db)
     opdrachten = await repo.get_by_node(id, org_ctx=org_ctx)
     return validate_list(OpdrachtResponse, opdrachten)
@@ -742,7 +727,7 @@ async def get_node_parlementair_item(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> dict | None:
     """Get linked parliamentary item data for a politieke_input node.
 
@@ -753,7 +738,6 @@ async def get_node_parlementair_item(
 
     from bouwmeester.models.parlementair_item import ParlementairItem
 
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     stmt = (
         select(ParlementairItem)
         .where(ParlementairItem.corpus_node_id == id)

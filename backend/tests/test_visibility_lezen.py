@@ -203,12 +203,11 @@ async def test_by_eenheid_lists_only_visible_initiatieven(rw):
     assert [i["initiatief_id"] for i in shown.json()] == [str(rw.res["initiatief"])]
 
 
-async def test_access_level_viewer_follows_visibility(rw):
+async def test_member_below_reads_the_initiatief_above(rw):
     url = f"/api/initiatieven/{rw.res['init_dg']}"
     async with client_as(rw.db, rw.person["viewer"]) as c:
         resp = await c.get(url)
     assert resp.status_code == 200, resp.text
-    assert resp.json()["access_level"] == "viewer"
 
 
 # ---------------------------------------------------------------------------

@@ -52,7 +52,7 @@ def require_found[T](obj: T | None, name: str = "Resource") -> T:
     if obj is None:
         raise HTTPException(
             status_code=404,
-            detail=f"{name} not found",
+            detail=f"{name} niet gevonden",
         )
     return obj
 
@@ -62,7 +62,7 @@ def require_deleted(deleted: bool, name: str = "Resource") -> None:
     if not deleted:
         raise HTTPException(
             status_code=404,
-            detail=f"{name} not found",
+            detail=f"{name} niet gevonden",
         )
 
 

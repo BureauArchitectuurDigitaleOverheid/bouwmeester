@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.org_context import OrgContext, apply_task_filter
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.task import TaskCreate, TaskUpdate
@@ -52,7 +52,7 @@ class TaskRepository(BaseRepository[Task]):
                 stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
         if opdracht_id is not None:
             stmt = stmt.where(Task.opdracht_id == opdracht_id)
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         stmt = stmt.order_by(Task.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -109,7 +109,7 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -133,7 +133,7 @@ class TaskRepository(BaseRepository[Task]):
         if org_ctx is not None and org_ctx.person_id == assignee_id:
             pass  # no org filter - user sees all their own tasks
         else:
-            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+            stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -152,7 +152,7 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -175,7 +175,7 @@ class TaskRepository(BaseRepository[Task]):
         # Skip org filter when listing the caller's own overdue tasks —
         # users always see their own tasks regardless of org-scope.
         if not (org_ctx is not None and org_ctx.person_id == assignee_id):
-            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+            stmt = apply_task_filter(stmt, org_ctx)
         stmt = stmt.order_by(Task.deadline.asc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -199,7 +199,7 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -217,7 +217,7 @@ class TaskRepository(BaseRepository[Task]):
             )
             .options(*_task_options())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         if organisatie_eenheid_id is not None:
             stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
         stmt = stmt.order_by(Task.created_at.desc())
@@ -236,7 +236,7 @@ class TaskRepository(BaseRepository[Task]):
             .options(*_task_options())
             .order_by(Task.order.asc().nulls_last(), Task.created_at.asc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -288,7 +288,7 @@ class TaskRepository(BaseRepository[Task]):
             .where(Task.work_type != "")
             .order_by(Task.work_type)
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return [row[0] for row in result.all()]
 

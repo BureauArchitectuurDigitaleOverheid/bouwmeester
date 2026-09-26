@@ -24,7 +24,7 @@ from bouwmeester.services.activity_service import log_activity
 router = APIRouter(prefix="/eenheid-modules", tags=["eenheid-modules"])
 
 # Module toggles are managed on the eenheid itself (or from above it).
-_ON_EENHEID = requires("org:manage", "organisatie_eenheid", path_param="eenheid_id")
+_MANAGE_EENHEID = requires("org:manage", "organisatie_eenheid", path_param="eenheid_id")
 
 
 @router.get(
@@ -33,7 +33,7 @@ _ON_EENHEID = requires("org:manage", "organisatie_eenheid", path_param="eenheid_
 )
 async def get_eenheid_modules(
     eenheid_id: UUID,
-    _authz=Depends(_ON_EENHEID),
+    _authz=Depends(_MANAGE_EENHEID),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Get module config for an eenheid, including inherited state."""
@@ -53,7 +53,7 @@ async def update_eenheid_module(
     eenheid_id: UUID,
     data: EenheidModuleUpdate,
     current_user: OptionalUser,
-    _authz=Depends(_ON_EENHEID),
+    _authz=Depends(_MANAGE_EENHEID),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Toggle a module on/off for an eenheid."""

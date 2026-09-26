@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -12,11 +12,6 @@ from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import require_initiatief_read
-from bouwmeester.core.permissions import (
-    PermissionContext,
-    get_permission_context,
-)
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
 from bouwmeester.schema.initiatief_update import (
     InitiatiefUpdatePostCreate,
@@ -25,6 +20,19 @@ from bouwmeester.schema.initiatief_update import (
 )
 
 router = APIRouter(prefix="/initiatieven", tags=["initiatief-updates"])
+
+# Posts are sub-records of the initiatief in the path; each handler loads the
+# post scoped by that initiatief (``_load_post``).
+_READ_INITIATIEF = requires("initiatief:read", "initiatief", path_param="initiatief_id")
+_CREATE_POST = requires(
+    "initiatief_update:create", "initiatief", path_param="initiatief_id"
+)
+_UPDATE_POST = requires(
+    "initiatief_update:update", "initiatief", path_param="initiatief_id"
+)
+_DELETE_POST = requires(
+    "initiatief_update:delete", "initiatief", path_param="initiatief_id"
+)
 
 
 def _to_response(post: InitiatiefUpdatePost) -> InitiatiefUpdatePostResponse:
@@ -63,10 +71,9 @@ async def _load_post(
 async def list_updates(
     initiatief_id: UUID,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_READ_INITIATIEF),
 ) -> list[InitiatiefUpdatePostResponse]:
     """All updates (drafts + published) for anyone who may read the initiatief."""
-    await require_initiatief_read(db, perm_ctx, initiatief_id)
 
     stmt = (
         select(InitiatiefUpdatePost)
@@ -88,9 +95,7 @@ async def create_update(
     data: InitiatiefUpdatePostCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("initiatief_update:create", "initiatief", path_param="initiatief_id")
-    ),
+    _authz=Depends(_CREATE_POST),
 ) -> InitiatiefUpdatePostResponse:
     post = InitiatiefUpdatePost(
         initiatief_id=initiatief_id,
@@ -117,9 +122,7 @@ async def edit_update(
     post_id: UUID,
     data: InitiatiefUpdatePostEdit,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("initiatief_update:update", "initiatief_update", path_param="post_id")
-    ),
+    _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
     post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
     payload = data.model_dump(exclude_unset=True)
@@ -140,9 +143,7 @@ async def publish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("initiatief_update:update", "initiatief_update", path_param="post_id")
-    ),
+    _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
     post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
     post.published_at = datetime.now(UTC)
@@ -161,9 +162,7 @@ async def unpublish_update(
     initiatief_id: UUID,
     post_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("initiatief_update:update", "initiatief_update", path_param="post_id")
-    ),
+    _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
     post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
     # Keep published_by_id as audit trail of last publisher; republishing
@@ -183,14 +182,8 @@ async def delete_update(
     initiatief_id: UUID,
     post_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("initiatief_update:delete", "initiatief_update", path_param="post_id")
-    ),
+    _authz=Depends(_DELETE_POST),
 ) -> None:
-    post = await _load_post(db, initiatief_id, post_id)
-    if post is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Update niet gevonden"
-        )
+    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
     await db.delete(post)
     await db.flush()

@@ -274,8 +274,8 @@ async def test_delete_task_in_other_org_returns_403(scope_setup):
 # ---------------------------------------------------------------------------
 
 
-async def test_create_edge_to_node_in_other_org_returns_403(scope_setup):
-    """Creating an edge where to_node is in org_b → 403."""
+async def test_create_edge_to_node_in_other_org_returns_404(scope_setup):
+    """Creating an edge where to_node is in org_b → 404 (it must be visible)."""
     s = scope_setup
     resp = await s["editor_client"].post(
         "/api/edges",
@@ -285,11 +285,11 @@ async def test_create_edge_to_node_in_other_org_returns_403(scope_setup):
             "edge_type_id": s["edge_type"].id,
         },
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
-async def test_create_edge_from_node_in_other_org_returns_403(scope_setup):
-    """Creating an edge where from_node is in org_b → 403."""
+async def test_create_edge_from_node_in_other_org_returns_404(scope_setup):
+    """Creating an edge where from_node is in org_b → 404 (it must be visible)."""
     s = scope_setup
     resp = await s["editor_client"].post(
         "/api/edges",
@@ -299,7 +299,7 @@ async def test_create_edge_from_node_in_other_org_returns_403(scope_setup):
             "edge_type_id": s["edge_type"].id,
         },
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 async def test_create_edge_within_scope_succeeds(scope_setup):

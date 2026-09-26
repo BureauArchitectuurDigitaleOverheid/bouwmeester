@@ -168,4 +168,3 @@ class InitiatiefListItemResponse(InitiatiefResponse):
 class InitiatiefDetailResponse(InitiatiefResponse):
     members: list[InitiatiefMemberResponse] = Field(default_factory=list)
     eenheden: list[InitiatiefEenheidResponse] = Field(default_factory=list)
-    access_level: str | None = None

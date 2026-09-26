@@ -13,11 +13,10 @@ from bouwmeester.core.authority import (
     require_can_change_grants,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import can, require, requires
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
-    check_resource_org_scope,
     get_org_context,
 )
 from bouwmeester.core.permissions import (
@@ -26,6 +25,7 @@ from bouwmeester.core.permissions import (
     require_permission,
     require_system_permission,
 )
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
@@ -51,31 +51,53 @@ from bouwmeester.utils.financieel import calculate_uitnutting
 
 router = APIRouter(prefix="/opdrachten", tags=["opdrachten"])
 
-_UPDATE = requires("opdracht:update", "opdracht")
-_UPDATE_VIA_OPDRACHT_ID = requires(
+_READ_OPDRACHT = requires("opdracht:read", "opdracht")
+_UPDATE_OPDRACHT = requires("opdracht:update", "opdracht")
+_UPDATE_OPDRACHT_BY_OPDRACHT_ID = requires(
     "opdracht:update", "opdracht", path_param="opdracht_id"
 )
+# The opdrachten module (a module toggle can switch it off per eenheid).
+_OPDRACHTEN_MODULE = require_permission("opdracht:read")
+_PLACING_FIELDS = ("opdrachtgever_id", "opdrachtnemer_eenheid_id")
 
 
-async def _require_can_place_opdracht(
+async def _require_can_rescope(
     db: AsyncSession,
     perm_ctx: PermissionContext,
-    permission: str,
-    *eenheid_ids: UUID | None,
+    old: Opdracht,
+    data: OpdrachtUpdate,
 ) -> None:
-    """403 unless *permission* holds where the opdracht (will) live.
+    """Changing an opdracht's eenheden needs rights on every one that changes.
 
-    An opdracht answers to its client and to the team doing the work (see
-    ``resource_scope``), so rights on either one suffice.  Without both it
-    is decided tenant-wide, like an FCC import.
+    Rights on the eenheid it leaves and on the eenheid it lands in (writing
+    implies seeing, so an opdracht never moves out of sight of whoever may
+    still write it).  Taking both eenheden away makes it tenant-wide: only
+    system roles may do that.
     """
-    placed = [eid for eid in eenheid_ids if eid is not None]
-    for eid in placed[:-1]:
-        if await can(db, perm_ctx, permission, "opdracht", eenheid_id=eid):
-            return
-    await require(
-        db, perm_ctx, permission, "opdracht", eenheid_id=placed[-1] if placed else None
-    )
+    new = {
+        f: getattr(data, f) if f in data.model_fields_set else getattr(old, f)
+        for f in _PLACING_FIELDS
+    }
+    for f in _PLACING_FIELDS:
+        before, after = getattr(old, f), new[f]
+        if before == after:
+            continue
+        for eenheid_id in (before, after):
+            if eenheid_id is not None:
+                await require(
+                    db, perm_ctx, "opdracht:update", "opdracht", eenheid_id=eenheid_id
+                )
+    unscoped = all(new[f] is None for f in _PLACING_FIELDS)
+    was_scoped = any(getattr(old, f) is not None for f in _PLACING_FIELDS)
+    if (
+        unscoped
+        and was_scoped
+        and not perm_ctx.has_system_permission("opdracht:update")
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Alleen systeembeheerders halen alle eenheden van een opdracht weg",
+        )
 
 
 @router.get("", response_model=list[OpdrachtResponse])
@@ -91,7 +113,7 @@ async def list_opdrachten(
     skip: int = Query(0, ge=0),
     limit: int = Query(10_000, ge=1, le=10_000),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:read")),
+    _module=Depends(_OPDRACHTEN_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[OpdrachtResponse]:
     repo = OpdrachtRepository(db)
@@ -121,7 +143,7 @@ async def get_opdrachten_summary(
     opdrachtgever_id: UUID | None = None,
     verantwoordelijke_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:read")),
+    _module=Depends(_OPDRACHTEN_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtenSummary:
     """Server-side aggregation of opdrachten totals (respects active filters)."""
@@ -188,13 +210,8 @@ async def create_opdracht(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtResponse:
-    await _require_can_place_opdracht(
-        db,
-        perm_ctx,
-        "opdracht:create",
-        data.opdrachtgever_id,
-        data.opdrachtnemer_eenheid_id,
-    )
+    await require(db, perm_ctx, "node:read", "corpus_node", data.instrument_id)
+    await require(db, perm_ctx, "opdracht:create", "opdracht", place=data)
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
 
@@ -229,10 +246,8 @@ async def get_opdracht(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:read")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_OPDRACHT),
 ) -> OpdrachtResponse:
-    await check_resource_org_scope(db, "opdracht", id, org_ctx)
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(id), "Opdracht")
 
@@ -284,27 +299,16 @@ async def update_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_UPDATE),
+    perm_ctx: PermissionContext = Depends(_UPDATE_OPDRACHT),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
 
     # Capture old state before update
     old = require_found(await repo.get(id), "Opdracht")
 
-    # Moving the opdracht is placing it anew: it must land where you may write.
-    moved = data.model_fields_set & {"opdrachtgever_id", "opdrachtnemer_eenheid_id"}
-    if moved:
-        await _require_can_place_opdracht(
-            db,
-            perm_ctx,
-            "opdracht:update",
-            data.opdrachtgever_id
-            if "opdrachtgever_id" in moved
-            else old.opdrachtgever_id,
-            data.opdrachtnemer_eenheid_id
-            if "opdrachtnemer_eenheid_id" in moved
-            else old.opdrachtnemer_eenheid_id,
-        )
+    await _require_can_rescope(db, perm_ctx, old, data)
+    if "instrument_id" in data.model_fields_set and data.instrument_id is not None:
+        await require(db, perm_ctx, "node:read", "corpus_node", data.instrument_id)
 
     # Reject setting instrument_id to null on non-FCC opdrachten
     if (
@@ -410,10 +414,10 @@ async def add_node_koppeling(
     data: OpdrachtNodeCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_VIA_OPDRACHT_ID),
+    perm_ctx: PermissionContext = Depends(_UPDATE_OPDRACHT_BY_OPDRACHT_ID),
 ) -> OpdrachtNodeResponse:
+    await require(db, perm_ctx, "node:read", "corpus_node", data.node_id)
     repo = OpdrachtRepository(db)
-    require_found(await repo.get(opdracht_id), "Opdracht")
     link = await repo.add_node_koppeling(opdracht_id, data)
     return OpdrachtNodeResponse.model_validate(link)
 
@@ -427,7 +431,7 @@ async def remove_node_koppeling(
     koppeling_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_VIA_OPDRACHT_ID),
+    _authz=Depends(_UPDATE_OPDRACHT_BY_OPDRACHT_ID),
 ) -> None:
     repo = OpdrachtRepository(db)
     require_deleted(
@@ -734,7 +738,7 @@ async def match_contacts(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE),
+    _authz=Depends(_UPDATE_OPDRACHT),
 ) -> list[OpdrachtMemberResponse | OpdrachtEenheidResponse]:
     """Trigger LLM-based matching of persons/eenheden to this opdracht."""
     repo = OpdrachtRepository(db)

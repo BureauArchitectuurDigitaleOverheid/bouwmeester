@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import pytest
 from sqlalchemy import select
 
-from bouwmeester.core.authz import can
+from bouwmeester.core.authz import can, prefetch
 from bouwmeester.core.initiatief_context import build_initiatief_context
 from bouwmeester.models.github_link import SCOPE_LEAD, GitHubLink
 from bouwmeester.models.lead import Lead
@@ -241,7 +241,7 @@ ROUTES = [
         lambda lw: {"stage": "verkennen"},
         200,
     ),
-    # moving a lead into an initiatief needs write access there too
+    # moving a lead is lead:delete where it was and lead:create where it goes
     (
         "team_editor",
         "PUT",
@@ -250,16 +250,39 @@ ROUTES = [
         403,
     ),
     (
-        "afd_editor",
+        "afd_editor",  # may create in the initiatief, may not delete lead_free
+        "PUT",
+        "/api/leads/{lead_free}",
+        lambda lw: {"initiatief_id": str(lw.id("initiatief")), "stage": "verkennen"},
+        403,
+    ),
+    (
+        "manager",
         "PUT",
         "/api/leads/{lead_free}",
         lambda lw: {"initiatief_id": str(lw.id("initiatief")), "stage": "verkennen"},
         200,
     ),
+    # a lead in an initiatief never goes back to none
+    (
+        "manager",
+        "PUT",
+        "/api/leads/{lead}",
+        lambda lw: {"initiatief_id": None},
+        422,
+    ),
+    # a contributor moves nothing out of the initiatief (no lead:delete)
+    (
+        "role_only",
+        "PUT",
+        "/api/leads/{lead}",
+        lambda lw: {"organisatie_eenheid_id": str(lw.id("team"))},
+        403,
+    ),
     # delete: initiatief:delete for a lead in an initiatief
     ("role_only", "DELETE", "/api/leads/{lead_other}", None, 403),
     ("manager", "DELETE", "/api/leads/{lead_other}", None, 204),
-    # merge and reorder need write access on every lead
+    # merge deletes the source (lead:delete) and writes the target
     (
         "opdrachtgever",
         "POST",
@@ -271,7 +294,17 @@ ROUTES = [
         403,
     ),
     (
-        "role_only",
+        "role_only",  # a contributor writes both leads but deletes none
+        "POST",
+        "/api/leads/merge",
+        lambda lw: {
+            "source_id": str(lw.id("lead_other")),
+            "target_id": str(lw.id("lead")),
+        },
+        403,
+    ),
+    (
+        "manager",
         "POST",
         "/api/leads/merge",
         lambda lw: {
@@ -440,6 +473,7 @@ async def _decision_queries(lw, who: str, n: int) -> int:
 
     event.listen(db.sync_session, "do_orm_execute", _count)
     try:
+        await prefetch(db, ctx, "lead", [lead.id for lead in leads])
         for lead in leads:
             assert await can(db, ctx, "lead:update", "lead", lead.id)
     finally:

@@ -1,6 +1,6 @@
 """Tests for eenheid-scoped resource permissions on initiatieven.
 
-Access levels come from ``core.authz`` via ``initiatief_access_level``.
+Rights come from ``core.authz`` (see ``test_authz_initiatief.rights_level``).
 """
 
 from datetime import date, timedelta
@@ -8,13 +8,13 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.initiatief_context import initiatief_access_level
 from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import InitiatiefCreate
 from tests.factories import make_org, make_person
+from tests.test_authz_initiatief import rights_level
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ async def eenheid_rp_setup(db_session: AsyncSession):
 
 async def _level(s) -> str | None:
     ctx = await build_permission_context(s["db"], s["person"])
-    return await initiatief_access_level(s["db"], ctx, s["initiatief"].id)
+    return await rights_level(s["db"], ctx, s["initiatief"].id)
 
 
 async def test_add_eenheid_creates_resource_permission(eenheid_rp_setup):

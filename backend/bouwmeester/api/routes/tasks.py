@@ -9,12 +9,7 @@ from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    check_org_scope,
-    check_resource_org_scope,
-    get_org_context,
-)
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
@@ -42,6 +37,39 @@ from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+_READ_TASK = requires("task:read", "task")
+_UPDATE_TASK = requires("task:update", "task")
+# The tasks module (a module toggle can switch it off per eenheid).
+_TASKS_MODULE = require_permission("task:read")
+
+
+async def _require_links(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    data: TaskCreate | TaskUpdate,
+) -> None:
+    """Every record a task body links to must be one the caller may use.
+
+    The node and the parlementair item must be visible, the opdracht too; a
+    parent task is changed by adding a subtask, so it needs task:update.
+    Only fields sent in the body are checked.
+    """
+    sent = data.model_fields_set
+    if "node_id" in sent and data.node_id is not None:
+        await require(db, perm_ctx, "node:read", "corpus_node", data.node_id)
+    if "opdracht_id" in sent and data.opdracht_id is not None:
+        await require(db, perm_ctx, "opdracht:read", "opdracht", data.opdracht_id)
+    if "parent_id" in sent and data.parent_id is not None:
+        await require(db, perm_ctx, "task:update", "task", data.parent_id)
+    if "parlementair_item_id" in sent and data.parlementair_item_id is not None:
+        await require(
+            db,
+            perm_ctx,
+            "parlementair:read",
+            "parlementair_item",
+            data.parlementair_item_id,
+        )
 
 
 @router.get("", response_model=list[TaskResponse])
@@ -97,13 +125,9 @@ async def create_task(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> TaskResponse:
     """Create a task linked to a node. Notifies assignee and team manager."""
+    await _require_links(db, perm_ctx, data)
     # A task belongs to its eenheid, or to its node when it has none.
-    if data.organisatie_eenheid_id is not None:
-        await require(
-            db, perm_ctx, "task:create", "task", eenheid_id=data.organisatie_eenheid_id
-        )
-    else:
-        await require(db, perm_ctx, "task:create", "corpus_node", data.node_id)
+    await require(db, perm_ctx, "task:create", "task", place=data)
     repo = TaskRepository(db)
     task = await repo.create(data)
 
@@ -190,12 +214,14 @@ async def get_unassigned_tasks(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
+    perm_ctx: PermissionContext = Depends(_TASKS_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks that have no assignee, optionally filtered by org unit."""
     if organisatie_eenheid_id is not None:
-        check_org_scope(organisatie_eenheid_id, org_ctx)
+        await require(
+            db, perm_ctx, "task:read", "task", eenheid_id=organisatie_eenheid_id
+        )
     repo = TaskRepository(db)
     tasks = await repo.get_unassigned(organisatie_eenheid_id, org_ctx=org_ctx)
     return validate_list(TaskResponse, tasks)
@@ -205,7 +231,7 @@ async def get_unassigned_tasks(
 async def get_work_types(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
+    _module=Depends(_TASKS_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[str]:
     """Return distinct work_type values for autocomplete."""
@@ -218,11 +244,10 @@ async def get_eenheid_overview(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(_TASKS_MODULE),
 ) -> EenheidOverviewResponse:
     """Overview of tasks for an organisatie-eenheid."""
-    check_org_scope(organisatie_eenheid_id, org_ctx)
+    await require(db, perm_ctx, "task:read", "task", eenheid_id=organisatie_eenheid_id)
     service = EenheidOverviewService(db)
     return await service.get_overview(organisatie_eenheid_id)
 
@@ -232,11 +257,9 @@ async def get_task(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_TASK),
 ) -> TaskResponse:
     """Get a single task by ID, including assignee and node summaries."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     task = require_found(await repo.get(id), "Task")
     return TaskResponse.model_validate(task)
@@ -247,11 +270,10 @@ async def get_task_subtasks(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
+    _authz=Depends(_READ_TASK),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List subtasks of a parent task."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     subtasks = await repo.get_subtasks(id, org_ctx=org_ctx)
     return [TaskResponse.model_validate(t) for t in subtasks]
@@ -263,7 +285,7 @@ async def reorder_subtasks(
     data: ReorderRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("task:update", "task")),
+    _authz=Depends(_UPDATE_TASK),
 ) -> list[TaskResponse]:
     """Reorder subtasks of a parent task."""
     repo = TaskRepository(db)
@@ -282,7 +304,7 @@ async def update_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(requires("task:update", "task")),
+    perm_ctx: PermissionContext = Depends(_UPDATE_TASK),
 ) -> TaskResponse:
     """Update a task. Notifies on assignee change, completion, or org unit change."""
     repo = TaskRepository(db)
@@ -290,26 +312,19 @@ async def update_task(
     # Capture old state before update
     old_task = require_found(await repo.get(id), "Task")
 
+    await _require_links(db, perm_ctx, data)
     # Moving the task is creating it at its new place: check that place too.
     moved = data.model_fields_set & {"organisatie_eenheid_id", "node_id"}
     if moved:
-        new_eenheid_id = (
-            data.organisatie_eenheid_id
-            if "organisatie_eenheid_id" in moved
-            else old_task.organisatie_eenheid_id
-        )
-        if new_eenheid_id is not None:
-            await require(
-                db, perm_ctx, "task:update", "task", eenheid_id=new_eenheid_id
-            )
-        else:
-            await require(
-                db,
-                perm_ctx,
-                "task:update",
-                "corpus_node",
-                data.node_id or old_task.node_id,
-            )
+        new_place = {
+            "node_id": data.node_id if "node_id" in moved else old_task.node_id,
+            "organisatie_eenheid_id": (
+                data.organisatie_eenheid_id
+                if "organisatie_eenheid_id" in moved
+                else old_task.organisatie_eenheid_id
+            ),
+        }
+        await require(db, perm_ctx, "task:create", "task", place=new_place)
     old_assignee_id = old_task.assignee_id
     old_status = old_task.status
     old_org_unit_id = old_task.organisatie_eenheid_id

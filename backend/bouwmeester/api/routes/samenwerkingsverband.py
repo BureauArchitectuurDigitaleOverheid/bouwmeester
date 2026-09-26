@@ -41,8 +41,8 @@ router = APIRouter(
 )
 
 # Members are part of the verband: managing them is updating the verband.
-_UPDATE = requires("samenwerkingsverband:update", "samenwerkingsverband")
-_DELETE = requires("samenwerkingsverband:delete", "samenwerkingsverband")
+_UPDATE_VERBAND = requires("samenwerkingsverband:update", "samenwerkingsverband")
+_DELETE_VERBAND = requires("samenwerkingsverband:delete", "samenwerkingsverband")
 
 
 def _to_response(
@@ -193,7 +193,7 @@ async def update_samenwerkingsverband(
     data: SamenwerkingsverbandUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE),
+    _authz=Depends(_UPDATE_VERBAND),
 ) -> SamenwerkingsverbandResponse:
     repo = SamenwerkingsverbandRepository(db)
     verband = require_found(await repo.update(id, data), "Samenwerkingsverband")
@@ -216,7 +216,7 @@ async def delete_samenwerkingsverband(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_DELETE),
+    _authz=Depends(_DELETE_VERBAND),
 ) -> None:
     repo = SamenwerkingsverbandRepository(db)
     verband = require_found(await repo.get(id), "Samenwerkingsverband")
@@ -259,7 +259,7 @@ async def add_lid(
     data: SamenwerkingsverbandLidCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE),
+    _authz=Depends(_UPDATE_VERBAND),
 ) -> SamenwerkingsverbandLidResponse:
     verband = require_found(
         await db.get(Samenwerkingsverband, id), "Samenwerkingsverband"
@@ -327,7 +327,7 @@ async def update_lid(
     data: SamenwerkingsverbandLidUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE),
+    _authz=Depends(_UPDATE_VERBAND),
 ) -> SamenwerkingsverbandLidResponse:
     from sqlalchemy import select
 
@@ -368,7 +368,7 @@ async def remove_lid(
     lid_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE),
+    _authz=Depends(_UPDATE_VERBAND),
 ) -> None:
     from sqlalchemy import select
 

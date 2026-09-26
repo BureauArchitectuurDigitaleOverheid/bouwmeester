@@ -11,11 +11,10 @@ import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request
-from sqlalchemy import or_
+from fastapi import Depends, HTTPException
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.authz import write_eenheid_ids
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
@@ -25,7 +24,6 @@ from bouwmeester.repositories.org_tree import (
     get_membership_ids,
     get_subtree_ids,
 )
-from bouwmeester.repositories.resource_scope import resolve_resource_eenheid_id
 
 logger = logging.getLogger(__name__)
 
@@ -91,9 +89,10 @@ async def build_org_context(
     managed_ids = managed_eenheid_ids(perm_ctx)
     managed_subtree = await managed_subtree_ids(db, perm_ctx) or set()
     # Rights inherit downward (core.authz), so what you can write you see.
+    # Managers write in what they manage, so this covers managed_subtree.
     writable_subtree = await get_subtree_ids(db, write_eenheid_ids(perm_ctx))
 
-    all_visible = set(own_ids) | parent_ids | managed_subtree | writable_subtree
+    all_visible = set(own_ids) | parent_ids | writable_subtree
 
     # Query shared access grants targeting the user's eenheden
     from bouwmeester.repositories.shared_access import SharedAccessRepository
@@ -116,24 +115,13 @@ async def build_org_context(
 
 
 async def get_org_context(
-    request: Request,
-    person: Person | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrgContext:
-    """FastAPI dependency that returns the OrgContext for the current user.
+    """FastAPI dependency: the caller's OrgContext (``core.authz`` builds it once)."""
+    from bouwmeester.core.authz import org_visibility
 
-    Results are cached on the request state to avoid re-computation when
-    the dependency is used multiple times in a single request.
-    """
-    cached = getattr(request.state, "org_context", None)
-    if cached is not None:
-        return cached
-
-    ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
-
-    request.state.org_context = ctx
-    return ctx
+    return await org_visibility(db, perm_ctx)
 
 
 def apply_org_filter(stmt, column, ctx: OrgContext | None):
@@ -152,7 +140,7 @@ def apply_org_filter(stmt, column, ctx: OrgContext | None):
         return stmt
     if not ctx.is_authenticated:
         return stmt.where(column.is_(None))
-    all_visible = list(set(ctx.visible_eenheid_ids) | set(ctx.shared_eenheid_ids))
+    all_visible = _visible_ids(ctx)
     return stmt.where(
         or_(
             column.is_(None),
@@ -179,15 +167,68 @@ def org_filter_sql_clause(column: str, ctx: OrgContext | None) -> str:
         return ""
     if not ctx.is_authenticated:
         return f" AND {column} IS NULL"
-    all_visible = list(set(ctx.visible_eenheid_ids) | set(ctx.shared_eenheid_ids))
+    all_visible = _visible_ids(ctx)
     if not all_visible:
         return f" AND {column} IS NULL"
     return f" AND ({column} IS NULL OR {column} = ANY(:visible_eenheid_ids))"
 
 
-# ---------------------------------------------------------------------------
-# Write-side scope enforcement
-# ---------------------------------------------------------------------------
+def _visible_ids(ctx: OrgContext) -> list[UUID]:
+    return list(set(ctx.visible_eenheid_ids) | set(ctx.shared_eenheid_ids))
+
+
+def apply_task_filter(stmt, ctx: OrgContext | None):
+    """Restrict a select over ``Task`` to the visible tasks.
+
+    A task with an eenheid is visible with that eenheid; a task without one
+    is read through its node (``core.authz``), so the node must be visible.
+    """
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.task import Task
+
+    if ctx is None or ctx.is_admin:
+        return stmt
+    visible = _visible_ids(ctx) if ctx.is_authenticated else []
+    node_visible = (
+        select(CorpusNode.id)
+        .where(
+            CorpusNode.id == Task.node_id,
+            or_(
+                CorpusNode.organisatie_eenheid_id.is_(None),
+                CorpusNode.organisatie_eenheid_id.in_(visible),
+            ),
+        )
+        .exists()
+    )
+    return stmt.where(
+        or_(
+            Task.organisatie_eenheid_id.in_(visible),
+            and_(Task.organisatie_eenheid_id.is_(None), node_visible),
+        )
+    )
+
+
+def apply_opdracht_filter(stmt, ctx: OrgContext | None):
+    """Restrict a select over ``Opdracht`` to the visible opdrachten.
+
+    An opdracht is visible when its opdrachtgever or its opdrachtnemer-
+    eenheid is visible, or when it has neither (``core.authz``).
+    """
+    from bouwmeester.models.opdracht import Opdracht
+
+    if ctx is None or ctx.is_admin:
+        return stmt
+    visible = _visible_ids(ctx) if ctx.is_authenticated else []
+    return stmt.where(
+        or_(
+            and_(
+                Opdracht.opdrachtgever_id.is_(None),
+                Opdracht.opdrachtnemer_eenheid_id.is_(None),
+            ),
+            Opdracht.opdrachtgever_id.in_(visible),
+            Opdracht.opdrachtnemer_eenheid_id.in_(visible),
+        )
+    )
 
 
 def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
@@ -206,46 +247,22 @@ def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
     )
 
 
-def check_org_scope(
-    eenheid_id: UUID | None,
-    org_ctx: OrgContext,
-    *,
-    allow_none: bool = True,
-) -> None:
-    """Raise 403 if *eenheid_id* is outside the user's visible org scope.
-
-    Call this in write endpoints before creating or mutating a resource
-    that belongs to an organisatie-eenheid.
-
-    Args:
-        eenheid_id: The organisatie-eenheid to check (``None`` = no scope).
-        org_ctx: The org context for the current user.
-        allow_none: If ``True`` (default), ``None`` eenheid_id is always
-            allowed.  Set to ``False`` to require an eenheid.
-    """
-    if eenheid_id is None and not allow_none:
-        raise HTTPException(status_code=403, detail="Organisatie-eenheid is verplicht")
-    if not sees_eenheid(org_ctx, eenheid_id):
-        raise HTTPException(
-            status_code=403,
-            detail="Geen toegang tot deze organisatie-eenheid",
-        )
-
-
 async def check_resource_org_scope(
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
     org_ctx: OrgContext,
 ) -> None:
-    """Resolve the org unit for a resource and check org scope in one step.
+    """Deprecated: ask ``core.authz.require(..., "<type>:read", ...)`` instead.
 
-    Raises 404 if the resource does not exist, 403 if the resource's
-    eenheid is outside the caller's visible scope.
+    Kept only for callers outside the routes that still hold an OrgContext
+    and no PermissionContext.  404 if the resource does not exist or none
+    of its eenheden is visible.
     """
-    found, eenheid_id = await resolve_resource_eenheid_id(
-        db, resource_type, resource_id
-    )
-    if not found:
-        raise HTTPException(status_code=404, detail=f"{resource_type} not found")
-    check_org_scope(eenheid_id, org_ctx)
+    from bouwmeester.core.authz import get_eenheid_ids
+
+    found, eenheid_ids = await get_eenheid_ids(db, resource_type, resource_id)
+    if not found or not (
+        not eenheid_ids or any(sees_eenheid(org_ctx, e) for e in eenheid_ids)
+    ):
+        raise HTTPException(status_code=404, detail="Niet gevonden")

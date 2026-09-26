@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import can, require, requires
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, check_org_scope, get_org_context
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.edge import EdgeRepository
@@ -62,21 +62,14 @@ async def create_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
-    org_ctx: OrgContext = Depends(get_org_context),
 ) -> EdgeResponse:
     """Create a directed edge between two nodes. Returns 409 if duplicate."""
-    # Validate against edge schema rules
-    from_node = await db.get(CorpusNode, data.from_node_id)
-    to_node = await db.get(CorpusNode, data.to_node_id)
-    if not from_node or not to_node:
-        raise HTTPException(status_code=422, detail="from_node or to_node not found")
-
-    # An edge belongs to both nodes: write access on either end suffices,
-    # and you must be able to see what you link to (visibility, not rights).
-    if not await can(db, perm_ctx, "edge:create", "corpus_node", from_node.id):
-        await require(db, perm_ctx, "edge:create", "corpus_node", to_node.id)
-    check_org_scope(from_node.organisatie_eenheid_id, org_ctx)
-    check_org_scope(to_node.organisatie_eenheid_id, org_ctx)
+    # You must see both ends; write access on either end suffices.
+    await require(db, perm_ctx, "node:read", "corpus_node", data.from_node_id)
+    await require(db, perm_ctx, "node:read", "corpus_node", data.to_node_id)
+    await require(db, perm_ctx, "edge:create", "edge", place=data)
+    from_node = require_found(await db.get(CorpusNode, data.from_node_id), "Node")
+    to_node = require_found(await db.get(CorpusNode, data.to_node_id), "Node")
     error = await EdgeSchemaService(db).validate_edge(
         from_node.node_type, to_node.node_type, data.edge_type_id
     )
@@ -119,11 +112,11 @@ async def get_edge(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(requires("edge:read", "edge")),
 ) -> EdgeWithNodes:
     """Get a single edge by ID, including full from/to node data."""
     repo = EdgeRepository(db)
-    edge = require_found(await repo.get(id, org_ctx=org_ctx), "Edge")
+    edge = require_found(await repo.get(id), "Edge")
     return EdgeWithNodes.model_validate(edge)
 
 

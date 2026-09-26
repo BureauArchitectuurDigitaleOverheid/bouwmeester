@@ -17,8 +17,6 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
-    initiatief_access_level,
-    require_initiatief_read,
 )
 from bouwmeester.core.permissions import (
     PermissionContext,
@@ -42,6 +40,10 @@ from bouwmeester.schema.initiatief import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
+
+_READ_INITIATIEF = requires("initiatief:read", "initiatief")
+_UPDATE_INITIATIEF = requires("initiatief:update", "initiatief")
+_DELETE_INITIATIEF = requires("initiatief:delete", "initiatief")
 
 
 @router.get("", response_model=list[InitiatiefListItemResponse])
@@ -97,14 +99,10 @@ async def create_initiatief(
 async def get_initiatief(
     id: UUID,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(_READ_INITIATIEF),
 ) -> InitiatiefDetailResponse:
-    # The same visibility as the list; 404 hides existence.
-    await require_initiatief_read(db, perm_ctx, id, init_ctx)
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
-    access_level = await initiatief_access_level(db, perm_ctx, id, init_ctx)
     from bouwmeester.repositories.resource_permission import (
         ResourcePermissionRepository,
     )
@@ -140,7 +138,6 @@ async def get_initiatief(
     resp = InitiatiefDetailResponse.model_validate(initiatief)
     resp.members = members
     resp.eenheden = eenheden
-    resp.access_level = access_level
     return resp
 
 
@@ -150,7 +147,7 @@ async def update_initiatief(
     data: InitiatiefUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("initiatief:update", "initiatief")),
+    _authz=Depends(_UPDATE_INITIATIEF),
 ) -> InitiatiefResponse:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.update(id, data), "Initiatief")
@@ -173,7 +170,7 @@ async def update_initiatief_settings(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     # Eigenaar only: initiatief:delete is what only an eigenaar-level role has.
-    _authz=Depends(requires("initiatief:delete", "initiatief")),
+    _authz=Depends(_DELETE_INITIATIEF),
 ) -> InitiatiefResponse:
     """Update settings (slug, toggles, score-labels). Eigenaar only."""
     repo = InitiatiefRepository(db)
@@ -198,7 +195,7 @@ async def delete_initiatief(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("initiatief:delete", "initiatief")),
+    _authz=Depends(_DELETE_INITIATIEF),
 ) -> None:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")

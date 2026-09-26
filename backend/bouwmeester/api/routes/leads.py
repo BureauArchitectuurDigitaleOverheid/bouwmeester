@@ -20,13 +20,12 @@ from bouwmeester.core.authority import (
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import require, requires
+from bouwmeester.core.authz import prefetch, require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
-    require_lead_read,
 )
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.core.storage import (
@@ -118,51 +117,45 @@ def _robust_parse_json(text: str) -> dict:
     )
 
 
-# Writes are decided by core.authz on the lead in the path.  Sub-records ask
-# with their own permission ("lead_attachment:create") so the delegation
-# table in core.authz applies; today that is write access on the lead.
-_WRITE_LEAD = requires("lead:update", "lead", path_param="lead_id")
+# Reads and writes are decided by core.authz on the lead in the path.
+# Sub-records ask with their own permission ("lead_attachment:create") so
+# the delegation table in core.authz applies; today that is write access on
+# the lead.
+_READ_LEAD = requires("lead:read", "lead", path_param="lead_id")
+_UPDATE_LEAD = requires("lead:update", "lead", path_param="lead_id")
 
 
-async def get_visible_lead(
-    lead_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
-) -> Lead:
-    """Dependency for reads: the lead, or 404 when the caller does not see it.
-
-    Same rule as the lists (``core.initiatief_context``).  Visibility never
-    grants writing: writes go through ``core.authz``.
-    """
-    return await require_lead_read(db, perm_ctx, lead_id, init_ctx)
-
-
-async def get_lead_or_404(db: AsyncSession, lead_id: UUID) -> Lead:
-    """The lead after an authz decision (already in the identity map)."""
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Lead niet gevonden"
-        )
-    return lead
-
-
-async def _require_can_place_lead(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    initiatief_id: UUID | None,
-    eenheid_id: UUID | None,
+async def _require_can_move(
+    db: AsyncSession, perm_ctx: PermissionContext, lead: Lead, data: LeadUpdate
 ) -> None:
-    """Placing a lead (create, or move) needs rights where it will live.
+    """Moving a lead is taking it away at the old place and adding it at the new.
 
-    In an initiatief that is write access on the initiatief; a lead without
-    one follows its eenheid, or the tenant-wide rule when it has neither.
+    ``lead:delete`` where it is (in an initiatief: initiatief:delete) and
+    ``lead:create`` where it goes.  A lead in an initiatief stays in one.
     """
-    if initiatief_id is not None:
-        await require(db, perm_ctx, "lead:create", "initiatief", initiatief_id)
-    else:
-        await require(db, perm_ctx, "lead:create", "lead", eenheid_id=eenheid_id)
+    fields = data.model_fields_set
+    new_place = {
+        "initiatief_id": (
+            data.initiatief_id if "initiatief_id" in fields else lead.initiatief_id
+        ),
+        "organisatie_eenheid_id": (
+            data.organisatie_eenheid_id
+            if "organisatie_eenheid_id" in fields
+            else lead.organisatie_eenheid_id
+        ),
+    }
+    if lead.initiatief_id is not None and new_place["initiatief_id"] is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Een lead in een initiatief kan niet meer zonder initiatief",
+        )
+    if new_place == {
+        "initiatief_id": lead.initiatief_id,
+        "organisatie_eenheid_id": lead.organisatie_eenheid_id,
+    }:
+        return
+    await require(db, perm_ctx, "lead:delete", "lead", lead.id)
+    await require(db, perm_ctx, "lead:create", "lead", place=new_place)
 
 
 # ---------------------------------------------------------------------------
@@ -221,9 +214,7 @@ async def create_lead(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadResponse:
     """Create a new lead."""
-    await _require_can_place_lead(
-        db, perm_ctx, data.initiatief_id, data.organisatie_eenheid_id
-    )
+    await require(db, perm_ctx, "lead:create", "lead", place=data)
     author_id = current_user.id if current_user else None
     repo = LeadRepository(db)
     try:
@@ -333,18 +324,18 @@ async def merge_leads(
 ) -> LeadResponse:
     """Merge source lead into target lead.
 
-    Needs write access on both: the source's records all move to the target,
-    so nothing is lost that a write on the source could not change anyway.
+    The source is deleted, so it needs ``lead:delete``; its records all
+    move to the target, which needs write access.
     """
-    await require(db, perm_ctx, "lead:update", "lead", data.source_id)
+    await require(db, perm_ctx, "lead:delete", "lead", data.source_id)
     await require(db, perm_ctx, "lead:update", "lead", data.target_id)
     # The merge moves the source's contacts (opdrachtgever included) to the
     # target without the grant guard on purpose: every moved grant already
     # held on the source, and the caller holds lead:update on the target, so
     # nobody, the caller included, gets a right the caller could not use
     # already.  The guard would wrongly refuse moving the caller's own grant.
-    source = await get_lead_or_404(db, data.source_id)
-    target = await get_lead_or_404(db, data.target_id)
+    source = require_found(await db.get(Lead, data.source_id), "Lead")
+    target = require_found(await db.get(Lead, data.target_id), "Lead")
     if source.initiatief_id != target.initiatief_id:
         raise HTTPException(
             status_code=400,
@@ -374,11 +365,11 @@ async def get_lead(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(_READ_LEAD),
 ) -> LeadDetailResponse:
     """Get lead detail including activities, contacts, and linked nodes."""
     repo = LeadRepository(db)
-    lead = require_found(await repo.get_detail(lead_id, init_ctx=init_ctx), "Lead")
+    lead = require_found(await repo.get_detail(lead_id), "Lead")
 
     # Build contacts from resource_permission
     from bouwmeester.repositories.resource_permission import (
@@ -428,23 +419,14 @@ async def update_lead(
     data: LeadUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_WRITE_LEAD),
+    perm_ctx: PermissionContext = Depends(_UPDATE_LEAD),
 ) -> LeadResponse:
     """Update a lead."""
     actor_id = current_user.id if current_user else None
 
     # Capture old state before update
-    old_lead = await get_lead_or_404(db, lead_id)
-    # Moving the lead to another initiatief or eenheid needs rights there too.
-    fields = data.model_fields_set
-    new_place = (
-        data.initiatief_id if "initiatief_id" in fields else old_lead.initiatief_id,
-        data.organisatie_eenheid_id
-        if "organisatie_eenheid_id" in fields
-        else old_lead.organisatie_eenheid_id,
-    )
-    if new_place != (old_lead.initiatief_id, old_lead.organisatie_eenheid_id):
-        await _require_can_place_lead(db, perm_ctx, *new_place)
+    old_lead = require_found(await db.get(Lead, lead_id), "Lead")
+    await _require_can_move(db, perm_ctx, old_lead, data)
     old_assignee_id = old_lead.assignee_id
     old_stage = old_lead.stage
 
@@ -505,7 +487,7 @@ async def delete_lead(
     _authz=Depends(requires("lead:delete", "lead", path_param="lead_id")),
 ) -> None:
     """Delete a lead permanently."""
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     lead_title = lead.title
 
     # Clean up resource_permission rows (no FK cascade on polymorphic)
@@ -542,7 +524,7 @@ async def move_lead(
     data: LeadMove,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    _authz=Depends(_UPDATE_LEAD),
 ) -> LeadResponse:
     """Move a lead to a new stage."""
     author_id = current_user.id if current_user else None
@@ -589,11 +571,9 @@ async def reorder_leads(
 ) -> list[LeadResponse]:
     """Reorder leads within a stage; needs write access on every lead."""
     lead_ids = list(dict.fromkeys(data.lead_ids))
-    # Load all leads in one query so authz finds them in the identity map;
-    # its per-request cache decides each initiatief only once.
-    found = (await db.scalars(select(Lead).where(Lead.id.in_(lead_ids)))).all()
-    if len(found) != len(lead_ids):
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
+    # Locate all leads in one query; the per-request cache then decides each
+    # initiatief only once.
+    await prefetch(db, perm_ctx, "lead", lead_ids)
     for lead_id in lead_ids:
         await require(db, perm_ctx, "lead:update", "lead", lead_id)
     repo = LeadRepository(db)
@@ -620,7 +600,7 @@ async def add_activity(
 ) -> LeadActivityResponse:
     """Add an activity (note, meeting, call, email) to a lead."""
     # Verify lead exists and get it for notification
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     author_id = current_user.id if current_user else None
     repo = LeadActivityRepository(db)
@@ -669,7 +649,7 @@ async def list_activities(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _visible: Lead = Depends(get_visible_lead),
+    _authz=Depends(_READ_LEAD),
 ) -> list[LeadActivityResponse]:
     """List activities for a lead, newest first."""
     repo = LeadActivityRepository(db)
@@ -695,7 +675,7 @@ async def delete_activity(
     The author may, while they can still write the lead.  Someone else's
     activity needs the right to delete the lead itself.
     """
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     activity = await db.get(LeadActivity, activity_id)
     if activity is None or activity.lead_id != lead_id:
@@ -743,7 +723,7 @@ async def add_contact(
     A contact is a grant (``opdrachtgever`` gives ``lead:update``), so it
     goes through the grant guard rather than plain write access.
     """
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     await require_can_grant_resource_role(
         db,
         perm_ctx,
@@ -804,7 +784,7 @@ async def remove_contact(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     """Remove a contact link from a lead (leaving it yourself is always allowed)."""
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     result = await db.execute(
         select(ResourcePermission).where(
@@ -848,10 +828,11 @@ async def link_node(
     data: LeadNodeCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    perm_ctx: PermissionContext = Depends(_UPDATE_LEAD),
 ) -> LeadNodeResponse:
-    """Link a corpus node to a lead."""
-    lead = await get_lead_or_404(db, lead_id)
+    """Link a corpus node to a lead; the node must be visible to the caller."""
+    await require(db, perm_ctx, "node:read", "corpus_node", data.node_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     link = LeadNode(
         lead_id=lead_id,
         node_id=data.node_id,
@@ -884,10 +865,10 @@ async def unlink_node(
     link_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    _authz=Depends(_UPDATE_LEAD),
 ) -> None:
     """Remove a corpus node link from a lead."""
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     result = await db.execute(
         select(LeadNode).where(
             LeadNode.id == link_id,
@@ -923,7 +904,7 @@ async def get_lead_tags(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _visible: Lead = Depends(get_visible_lead),
+    _authz=Depends(_READ_LEAD),
 ) -> list[LeadTagResponse]:
     """List all tags applied to a lead."""
     from bouwmeester.repositories.tag import TagRepository
@@ -943,12 +924,12 @@ async def add_tag_to_lead(
     data: LeadTagCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_WRITE_LEAD),
+    perm_ctx: PermissionContext = Depends(_UPDATE_LEAD),
 ) -> LeadTagResponse:
     """Add a tag to a lead; a new tag_name also needs ``tag:create``."""
     from bouwmeester.repositories.tag import TagRepository
 
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     tag_id = await resolve_tag_to_link(
         db, perm_ctx, tag_id=data.tag_id, tag_name=data.tag_name
     )
@@ -979,12 +960,12 @@ async def remove_tag_from_lead(
     tag_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    _authz=Depends(_UPDATE_LEAD),
 ) -> None:
     """Remove a tag from a lead."""
     from bouwmeester.repositories.tag import TagRepository
 
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     tag_repo = TagRepository(db)
     require_deleted(await tag_repo.remove_tag_from_lead(lead_id, tag_id), "Tag link")
 
@@ -1019,7 +1000,7 @@ async def upload_attachment(
     _authz=Depends(requires("lead_attachment:create", "lead", path_param="lead_id")),
 ) -> LeadAttachmentResponse:
     """Upload a file attachment to a lead."""
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     content_type = file.content_type or "application/octet-stream"
     content = await read_upload_content(file)
@@ -1068,7 +1049,7 @@ async def download_attachment(
     attachment_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _visible: Lead = Depends(get_visible_lead),
+    _authz=Depends(_READ_LEAD),
 ) -> Response:
     """Download a lead attachment."""
     result = await db.execute(
@@ -1102,7 +1083,7 @@ async def delete_attachment(
     _authz=Depends(requires("lead_attachment:delete", "lead", path_param="lead_id")),
 ) -> None:
     """Delete a lead attachment (DB record and stored file)."""
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
     result = await db.execute(
         select(LeadAttachment).where(
             LeadAttachment.id == attachment_id,
@@ -1146,7 +1127,7 @@ async def list_github_links(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _visible: Lead = Depends(get_visible_lead),
+    _authz=Depends(_READ_LEAD),
 ) -> list[GitHubLinkResponse]:
     repo = GitHubLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_LEAD, lead_id)
@@ -1165,7 +1146,7 @@ async def create_github_link(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(requires("github_link:create", "lead", path_param="lead_id")),
 ) -> GitHubLinkResponse:
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     parsed = parse_github_url(payload.url)
     if parsed is None:
@@ -1246,7 +1227,7 @@ async def delete_github_link(
     db: AsyncSession = Depends(get_db),
     _authz=Depends(requires("github_link:delete", "lead", path_param="lead_id")),
 ) -> None:
-    lead = await get_lead_or_404(db, lead_id)
+    lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     repo = GitHubLinkRepository(db)
     link = await repo.get(link_id)

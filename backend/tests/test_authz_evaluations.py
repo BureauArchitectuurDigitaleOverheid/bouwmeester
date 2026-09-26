@@ -220,7 +220,10 @@ ANYWHERE_CASES = [
     ("team_editor", "task:create", "task", True),
     ("manager", "task:create", "task", True),
     ("viewer", "task:create", "task", False),
-    ("role_only", "task:create", "task", False),
+    # a node role that grants node:update: a task on that node
+    ("role_only", "task:create", "task", True),
+    # a contributor on an initiatief: a lead in it
+    ("role_only", "lead:create", "lead", True),
     ("platform_admin", "task:create", "task", False),
     ("super_admin", "task:create", "task", True),
     ("team_editor", "lead:create", "lead", True),

@@ -234,8 +234,8 @@ APPROVE_CASES = [
     ("team_editor", "node_team", "node_elders", 200),
     # write access on the target end suffices too, like any edge
     ("team_editor", "node_free", "node_team", 200),
-    # ministry_admin reviews in its directie but writes no nodes
-    ("ministry_admin", "node_directie", "node_team", 403),
+    # approving is the reviewer's mandate on the item's node, not edge:create
+    ("ministry_admin", "node_directie", "node_team", 200),
 ]
 
 
@@ -416,7 +416,7 @@ async def test_chat_lead_tools_match_the_decision_point(world):
 @pytest.mark.parametrize("route", ["gap-analysis", "kompas-guidance"])
 @pytest.mark.parametrize(
     ("dossier", "expected"),
-    [("node_team", 200), ("node_elders", 403), ("missing", 404), ("bad", 422)],
+    [("node_team", 200), ("node_elders", 404), ("missing", 404), ("bad", 422)],
 )
 async def test_llm_analysis_needs_a_visible_dossier(world, route, dossier, expected):
     dossier_id = {"missing": str(uuid.uuid4()), "bad": "geen-uuid"}.get(

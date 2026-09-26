@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core import authority
-from bouwmeester.core.authz import can, can_anywhere
+from bouwmeester.core.authz import RESOURCE_TYPES, can, can_anywhere, prefetch
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -139,7 +139,7 @@ GRANT_ACTIONS: dict[str, Guard] = {
 }
 
 
-async def _decide(
+async def _evaluate(
     db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
 ) -> bool:
     if not perm_ctx.is_authenticated:
@@ -170,6 +170,25 @@ async def _decide(
         return False
 
 
+async def _prefetch(
+    db: AsyncSession, perm_ctx: PermissionContext, evaluations: list[AuthzEvaluation]
+) -> None:
+    """Locate every resource asked about in one query per type.
+
+    A board asks about each of its leads, a node page about each of its
+    edges: without this, every question would cost its own lookups.
+    """
+    if not perm_ctx.is_authenticated:
+        return
+    ids: dict[str, set] = {}
+    for ev in evaluations:
+        if ev.resource.id is not None and ev.action not in GRANT_ACTIONS:
+            ids.setdefault(ev.resource.type, set()).add(ev.resource.id)
+    for resource_type, resource_ids in ids.items():
+        if resource_type in RESOURCE_TYPES - {"person"}:
+            await prefetch(db, perm_ctx, resource_type, resource_ids)
+
+
 @router.post("/evaluations", response_model=AuthzEvaluationsResponse)
 async def evaluate(
     data: AuthzEvaluationsRequest,
@@ -182,7 +201,11 @@ async def evaluate(
 
     - ``{action: "<perm>", resource: {type, id}}``: an existing resource.
     - ``{action, resource: {type, properties: {eenheid_id}}}``: creating one
-      in that eenheid (no eenheid: where no eenheid applies).
+      in that eenheid (no eenheid: where no eenheid applies).  For a
+      sub-eenheid: ``org:create`` on ``organisatie_eenheid`` with the parent
+      as ``eenheid_id``.  A child on an existing parent is asked on the
+      parent: ``task:create`` on a ``corpus_node``, ``lead:create`` on an
+      ``initiatief``.
     - ``properties.anywhere: true`` (no id): is there any eenheid where the
       caller may create this?  For generic create buttons (a task, a lead
       without initiatief).
@@ -206,8 +229,9 @@ async def evaluate(
       ``properties.eenheid_id``.  Without an id: place another person's
       account there.
     """
+    await _prefetch(db, perm_ctx, data.evaluations)
     decisions = [
-        AuthzDecision(decision=await _decide(db, perm_ctx, evaluation))
+        AuthzDecision(decision=await _evaluate(db, perm_ctx, evaluation))
         for evaluation in data.evaluations
     ]
     return AuthzEvaluationsResponse(evaluations=decisions)

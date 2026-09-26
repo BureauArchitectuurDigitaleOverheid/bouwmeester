@@ -6,11 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import require_initiatief_read
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
@@ -47,35 +46,6 @@ def _to_response(obj) -> StakeholderAssessmentResponse:
     )
 
 
-async def _check_scope_read_access(
-    db: AsyncSession,
-    scope_type: str,
-    scope_id: UUID,
-    current_user: OptionalUser,
-    perm_ctx: PermissionContext,
-) -> None:
-    """Verify the caller may read assessments on the given scope (403/404).
-
-    Reads follow the visibility of the scope; writes go through core.authz
-    (``stakeholder_assessment`` delegates to its scope there).
-    """
-    if scope_type == "initiatief":
-        await require_initiatief_read(db, perm_ctx, scope_id)
-        return
-    if scope_type == "corpus_node":
-        # The corpus is readable tenant-wide by anyone holding node:read.
-        if not perm_ctx.has_permission("node:read"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Geen rechten om stakeholder-assessments te lezen",
-            )
-        return
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Onbekend scope_type: {scope_type}",
-    )
-
-
 @router.get("", response_model=list[StakeholderAssessmentResponse])
 async def list_assessments(
     scope_type: StakeholderScopeType,
@@ -84,8 +54,9 @@ async def list_assessments(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[StakeholderAssessmentResponse]:
-    await _check_scope_read_access(
-        db, scope_type.value, scope_id, current_user, perm_ctx
+    # Readable when the scope (a node or an initiatief) is (``core.authz``).
+    await require(
+        db, perm_ctx, "stakeholder_assessment:read", scope_type.value, scope_id
     )
     repo = StakeholderAssessmentRepository(db)
     items = await repo.list_for_scope(scope_type.value, scope_id)
@@ -148,7 +119,4 @@ async def delete_assessment(
     _authz=Depends(requires("stakeholder_assessment:delete", "stakeholder_assessment")),
 ) -> None:
     repo = StakeholderAssessmentRepository(db)
-    if not await repo.delete(id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Assessment niet gevonden"
-        )
+    require_deleted(await repo.delete(id), "Assessment")

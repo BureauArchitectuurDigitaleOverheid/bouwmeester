@@ -13,7 +13,7 @@ from datetime import date
 import pytest
 from sqlalchemy import select
 
-from bouwmeester.core.initiatief_context import initiatief_access_level
+from bouwmeester.core.authz import can
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.shared_access import SharedAccess
@@ -73,8 +73,21 @@ async def iw(world: World) -> World:  # noqa: F811
 
 
 # ---------------------------------------------------------------------------
-# Access level: one derivation from authz.can, where each right holds
+# Rights on the initiatief: each right counts only where it holds
 # ---------------------------------------------------------------------------
+
+
+async def rights_level(db, ctx, initiatief_id) -> str | None:
+    """The strongest of delete/update/read the caller holds, as a rol name."""
+    for level, permission in (
+        ("eigenaar", "initiatief:delete"),
+        ("contributor", "initiatief:update"),
+        ("viewer", "initiatief:read"),
+    ):
+        if await can(db, ctx, permission, "initiatief", initiatief_id):
+            return level
+    return None
+
 
 LEVELS = [
     ("super_admin", "eigenaar"),
@@ -93,20 +106,20 @@ LEVELS = [
 
 
 @pytest.mark.parametrize(("who", "expected"), LEVELS, ids=[w for w, _ in LEVELS])
-async def test_access_level_counts_only_where_rights_hold(iw, who, expected):
+async def test_rights_count_only_where_they_hold(iw, who, expected):
     ctx = await _ctx(iw, who)
-    got = await initiatief_access_level(iw.db, ctx, iw.res["initiatief"])
+    got = await rights_level(iw.db, ctx, iw.res["initiatief"])
     assert got == expected
 
 
-async def test_detail_shows_access_level_and_hides_the_rest(iw):
+async def test_detail_shows_to_readers_and_hides_from_the_rest(iw):
     url = f"/api/initiatieven/{iw.res['initiatief']}"
     async with client_as(iw.db, iw.person["rp_viewer"]) as c:
         viewer = await c.get(url)
     async with client_as(iw.db, iw.person["platform_admin"]) as c:
         outsider = await c.get(url)
     assert viewer.status_code == 200, viewer.text
-    assert viewer.json()["access_level"] == "viewer"
+    assert "access_level" not in viewer.json()
     assert outsider.status_code == 404
 
 

@@ -22,9 +22,9 @@ a resource role on the lead itself (opdrachtgever, contactpersoon,
 betrokken), directly or through an eenheid.
 
 Lists filter with ``apply_initiatief_filter`` / ``apply_lead_filter``;
-single items ask ``sees_initiatief`` / ``sees_lead`` on the same context,
-so a list and a detail can never disagree.  Writes are decided by
-``core.authz``; the access level shown in the frontend combines the two.
+single items ask ``core.authz`` (``initiatief:read`` / ``lead:read``),
+which answers from the same context, so a list and a detail can never
+disagree.  Writes are decided by ``core.authz`` too.
 """
 
 from __future__ import annotations
@@ -33,18 +33,12 @@ import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends
 from sqlalchemy import and_, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import get_optional_user
-from bouwmeester.core.authz import can
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    build_org_context,
-    get_org_context,
-)
+from bouwmeester.core.org_context import OrgContext, build_org_context
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
@@ -52,13 +46,6 @@ from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
 
 logger = logging.getLogger(__name__)
-
-# The write levels the frontend shows, strongest first, and the permission
-# that earns them.  Below these, a visible initiatief is ``viewer``.
-ACCESS_LEVEL_PERMISSIONS: tuple[tuple[str, str], ...] = (
-    ("eigenaar", "initiatief:delete"),
-    ("contributor", "initiatief:update"),
-)
 
 
 @dataclass
@@ -78,12 +65,16 @@ class InitiatiefContext:
         return self.is_authenticated and initiatief_id in self.visible_initiatief_ids
 
     def sees_lead(self, lead: Lead) -> bool:
+        return self.sees_lead_in(lead.id, lead.initiatief_id)
+
+    def sees_lead_in(self, lead_id: UUID, initiatief_id: UUID | None) -> bool:
+        """``sees_lead`` for a lead known by its id and initiatief."""
         if self.is_admin:
             return True
         return self.is_authenticated and (
-            lead.initiatief_id is None
-            or lead.initiatief_id in self.visible_initiatief_ids
-            or lead.id in self.lead_role_ids
+            initiatief_id is None
+            or initiatief_id in self.visible_initiatief_ids
+            or lead_id in self.lead_role_ids
         )
 
 
@@ -161,29 +152,14 @@ async def build_initiatief_context(
 
 
 async def get_initiatief_context(
-    request: Request,
-    person: Person | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
-    org_ctx: OrgContext = Depends(get_org_context),
 ) -> InitiatiefContext:
-    """FastAPI dependency that returns the InitiatiefContext."""
-    cached = getattr(request.state, "initiatief_context", None)
-    if cached is not None:
-        return cached
+    """FastAPI dependency: the caller's InitiatiefContext (built once, in authz)."""
+    from bouwmeester.core.authz import visibility
 
-    ctx = await build_initiatief_context(db, person, perm_ctx=perm_ctx, org_ctx=org_ctx)
-
-    request.state.initiatief_context = ctx
-    return ctx
-
-
-async def _context_for(
-    db: AsyncSession, perm_ctx: PermissionContext
-) -> InitiatiefContext:
-    """The context for callers that only hold a PermissionContext."""
-    person = await db.get(Person, perm_ctx.person_id) if perm_ctx.person_id else None
-    return await build_initiatief_context(db, person, perm_ctx=perm_ctx)
+    _, init_ctx = await visibility(db, perm_ctx)
+    return init_ctx
 
 
 def apply_initiatief_filter(stmt, ctx: InitiatiefContext | None):
@@ -208,46 +184,3 @@ def apply_lead_filter(stmt, ctx: InitiatiefContext | None):
             Lead.id.in_(ctx.lead_role_ids),
         )
     )
-
-
-async def require_initiatief_read(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    initiatief_id: UUID,
-    init_ctx: InitiatiefContext | None = None,
-) -> None:
-    """404 unless the caller sees this initiatief.
-
-    404 rather than 403: that an initiatief exists is information too.
-    """
-    ctx = init_ctx or await _context_for(db, perm_ctx)
-    if not ctx.sees_initiatief(initiatief_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Initiatief niet gevonden")
-
-
-async def require_lead_read(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    lead_id: UUID,
-    init_ctx: InitiatiefContext | None = None,
-) -> Lead:
-    """The lead, or 404 unless the caller sees it."""
-    lead = await db.get(Lead, lead_id)
-    ctx = init_ctx or await _context_for(db, perm_ctx)
-    if lead is None or not ctx.sees_lead(lead):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lead niet gevonden")
-    return lead
-
-
-async def initiatief_access_level(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    initiatief_id: UUID,
-    init_ctx: InitiatiefContext | None = None,
-) -> str | None:
-    """The caller's access level: a write level from ``authz.can``, else viewer."""
-    for level, permission in ACCESS_LEVEL_PERMISSIONS:
-        if await can(db, perm_ctx, permission, "initiatief", initiatief_id):
-            return level
-    ctx = init_ctx or await _context_for(db, perm_ctx)
-    return "viewer" if ctx.sees_initiatief(initiatief_id) else None
