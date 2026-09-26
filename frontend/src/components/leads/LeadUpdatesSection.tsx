@@ -18,6 +18,7 @@ import {
 import { formatDateLong } from '@/utils/dates';
 import type { LeadUpdatePost } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 interface Draft {
   titel: string;
@@ -41,6 +42,8 @@ const emptyDraft = (): Draft => ({
 
 export function LeadUpdatesSection({ leadId }: { leadId: string }) {
   const { data: posts = [] } = useLeadUpdates(leadId);
+  // Updates are written with the rights on their lead: one decision covers them all.
+  const { allowed: canEdit } = useCan('lead_update:create', { type: 'lead', id: leadId });
   const createMutation = useCreateLeadUpdate();
   const editMutation = useEditLeadUpdate();
   const publishMutation = usePublishLeadUpdate();
@@ -184,7 +187,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
         <nldd-text size="xs" color="secondary">
           {posts.length === 0 ? 'Nog geen updates' : `${posts.length} totaal`}
         </nldd-text>
-        {!composing && (
+        {canEdit && !composing && (
           <NlddButton variant="secondary" size="sm" onClick={startCompose} text="Nieuwe update" />
         )}
       </nldd-container>
@@ -311,6 +314,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                 key={post.id}
                 leadId={leadId}
                 post={post}
+                canEdit={canEdit}
                 onEdit={() => startEdit(post)}
                 onPublish={() =>
                   publishMutation.mutate({ leadId, postId: post.id })
@@ -334,6 +338,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                 key={post.id}
                 leadId={leadId}
                 post={post}
+                canEdit={canEdit}
                 onEdit={() => startEdit(post)}
                 onPublish={() =>
                   publishMutation.mutate({ leadId, postId: post.id })
@@ -369,6 +374,7 @@ function eventTargetValue(e: Event): string {
 function UpdateRow({
   leadId,
   post,
+  canEdit,
   onEdit,
   onPublish,
   onUnpublish,
@@ -376,6 +382,7 @@ function UpdateRow({
 }: {
   leadId: string;
   post: LeadUpdatePost;
+  canEdit: boolean;
   onEdit: () => void;
   onPublish: () => void;
   onUnpublish: () => void;
@@ -413,15 +420,19 @@ function UpdateRow({
         <Icon name="envelope" size="sm" />
         Outlook
       </nldd-list-item-segment>
-      <nldd-list-item-segment ref={editRef} button accessible-label="Bewerken">
-        <Icon name="pencil" size="sm" />
-      </nldd-list-item-segment>
-      <nldd-list-item-segment ref={publishRef} button accessible-label={isPublished ? 'Depubliceren' : 'Publiceren'}>
-        <Icon name={isPublished ? 'eye-slash' : 'globe'} size="sm" />
-      </nldd-list-item-segment>
-      <nldd-list-item-segment ref={deleteRef} button accessible-label="Verwijderen">
-        <Icon name="trash" size="sm" />
-      </nldd-list-item-segment>
+      {canEdit && (
+        <>
+          <nldd-list-item-segment ref={editRef} button accessible-label="Bewerken">
+            <Icon name="pencil" size="sm" />
+          </nldd-list-item-segment>
+          <nldd-list-item-segment ref={publishRef} button accessible-label={isPublished ? 'Depubliceren' : 'Publiceren'}>
+            <Icon name={isPublished ? 'eye-slash' : 'globe'} size="sm" />
+          </nldd-list-item-segment>
+          <nldd-list-item-segment ref={deleteRef} button accessible-label="Verwijderen">
+            <Icon name="trash" size="sm" />
+          </nldd-list-item-segment>
+        </>
+      )}
     </nldd-list-item>
   );
 }

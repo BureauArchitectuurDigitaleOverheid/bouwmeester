@@ -40,6 +40,7 @@ import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { PublicInitiatiefPage } from '@/pages/PublicInitiatiefPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { refreshAuthzOnMutation } from '@/hooks/useCan';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +51,7 @@ const queryClient = new QueryClient({
     },
   },
 });
+refreshAuthzOnMutation(queryClient);
 
 /**
  * A state that owns the whole viewport: the auth check running, or failing.

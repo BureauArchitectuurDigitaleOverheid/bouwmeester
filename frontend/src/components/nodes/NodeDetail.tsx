@@ -35,11 +35,13 @@ import { useToast } from '@/contexts/ToastContext';
 import { formatDate } from '@/utils/dates';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
-/** A single removable tag chip: `nldd-token` with its `dismiss` event bridged to React. */
-function NlddTagToken({ text, onDismiss }: { text: string; onDismiss: () => void }) {
+/** A tag chip: `nldd-token`, removable (its `dismiss` event bridged) when given `onDismiss`. */
+function NlddTagToken({ text, onDismiss }: { text: string; onDismiss?: () => void }) {
   const ref = useRef<HTMLElement>(null);
   useNlddEvent(ref, 'dismiss', onDismiss);
+  if (!onDismiss) return <nldd-token text={text} />;
   return <nldd-token ref={ref} text={text} control="dismiss" dismiss-text={`Verwijder tag ${text}`} />;
 }
 
@@ -117,6 +119,13 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const [bronPublicatieDatum, setBronPublicatieDatum] = useState('');
   const [bronUrl, setBronUrl] = useState('');
   const [bijlageUploading, setBijlageUploading] = useState(false);
+  const nodeResource = { type: 'corpus_node', id: nodeId } as const;
+  const { allowed: canUpdate } = useCan('node:update', nodeResource);
+  const { allowed: canDelete } = useCan('node:delete', nodeResource);
+  const { allowed: canAddTag } = useCan('tag:create', nodeResource);
+  const { allowed: canRemoveTag } = useCan('tag:delete', nodeResource);
+  // Betrokkenen are resource roles: a grant, decided by core.authority.
+  const { allowed: canManageStakeholders } = useCan('resource_permission:manage', nodeResource);
 
   const { data: allTags } = useTags();
   const existingTagIds = new Set(nodeTags?.map((nt) => nt.tag.id) ?? []);
@@ -174,14 +183,18 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         </div>
         <nldd-spacer direction="horizontal" size="flexible" />
         <div className="hug hug-gap-8">
-          <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={() => setShowEditForm(true)} text="Bewerken" />
-          <NlddButton
-            variant="destructive"
-            size="sm"
-            startIcon="trash"
-            onClick={() => setShowDeleteConfirm(true)}
-            text="Verwijder"
-          />
+          {canUpdate && (
+            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={() => setShowEditForm(true)} text="Bewerken" />
+          )}
+          {canDelete && (
+            <NlddButton
+              variant="destructive"
+              size="sm"
+              startIcon="trash"
+              onClick={() => setShowDeleteConfirm(true)}
+              text="Verwijder"
+            />
+          )}
         </div>
       </nldd-container>
 
@@ -267,7 +280,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               <Card>
                 <nldd-title size={3}>
                   <h3>Brongegevens</h3>
-                  {!bronEditing && (
+                  {canUpdate && !bronEditing && (
                     <span slot="end">
                       <NlddActionText
                         text="Bewerken"
@@ -388,16 +401,18 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                           onClick={() => window.open(getBijlageDownloadUrl(nodeId), '_blank')}
                         />
                       )}
-                      <NlddIconButton
-                        icon="trash"
-                        variant="critical-transparent"
-                        size="sm"
-                        accessibleLabel="Verwijderen"
-                        onClick={() => setShowBijlageDeleteConfirm(true)}
-                      />
+                      {canUpdate && (
+                        <NlddIconButton
+                          icon="trash"
+                          variant="critical-transparent"
+                          size="sm"
+                          accessibleLabel="Verwijderen"
+                          onClick={() => setShowBijlageDeleteConfirm(true)}
+                        />
+                      )}
                     </nldd-list-item>
                   </nldd-list>
-                ) : (
+                ) : canUpdate ? (
                   <FileUpload
                     accept=".pdf,.doc,.docx,.odt,.txt,.png,.jpg,.jpeg"
                     disabled={bijlageUploading}
@@ -415,6 +430,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       }
                     }}
                   />
+                ) : (
+                  <nldd-text size="xs" color="secondary">Geen bijlage</nldd-text>
                 )}
               </Card>
             )}
@@ -427,7 +444,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   <NlddTagToken
                     key={nt.id}
                     text={nt.tag.name}
-                    onDismiss={() => removeTag.mutate({ nodeId, tagId: nt.tag.id })}
+                    onDismiss={canRemoveTag ? () => removeTag.mutate({ nodeId, tagId: nt.tag.id }) : undefined}
                   />
                 ))}
                 {(!nodeTags || nodeTags.length === 0) && (
@@ -435,18 +452,20 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 )}
               </nldd-container>
               {/* Add tag: search existing or create a new one */}
-              <CreatableSelect
-                value=""
-                onChange={handleSelectTag}
-                options={(allTags ?? [])
-                  .filter((t) => !existingTagIds.has(t.id))
-                  .map((t) => ({ value: t.id, label: t.name }))}
-                placeholder="Tag zoeken of toevoegen..."
-                onCreate={async (text) => {
-                  addTag.mutate({ nodeId, data: { tag_name: text } });
-                  return null;
-                }}
-              />
+              {canAddTag && (
+                <CreatableSelect
+                  value=""
+                  onChange={handleSelectTag}
+                  options={(allTags ?? [])
+                    .filter((t) => !existingTagIds.has(t.id))
+                    .map((t) => ({ value: t.id, label: t.name }))}
+                  placeholder="Tag zoeken of toevoegen..."
+                  onCreate={async (text) => {
+                    addTag.mutate({ nodeId, data: { tag_name: text } });
+                    return null;
+                  }}
+                />
+              )}
             </Card>
 
             {/* Verwijzingen (back-references from mentions) */}
@@ -570,6 +589,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                         <nldd-container width="160px">
                           <Select
                             value={s.rol}
+                            disabled={!canManageStakeholders}
                             aria-label={`Rol van ${s.person.naam}`}
                             onChange={(e) => {
                               updateStakeholder.mutate({
@@ -581,13 +601,15 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                             options={Object.entries(STAKEHOLDER_ROL_LABELS).map(([value, label]) => ({ value, label }))}
                           />
                         </nldd-container>
-                        <NlddIconButton
-                          icon="trash"
-                          variant="critical-transparent"
-                          size="sm"
-                          accessibleLabel={`${s.person.naam} verwijderen`}
-                          onClick={() => setRemoveStakeholderId({ id: s.id, naam: s.person.naam })}
-                        />
+                        {canManageStakeholders && (
+                          <NlddIconButton
+                            icon="trash"
+                            variant="critical-transparent"
+                            size="sm"
+                            accessibleLabel={`${s.person.naam} verwijderen`}
+                            onClick={() => setRemoveStakeholderId({ id: s.id, naam: s.person.naam })}
+                          />
+                        )}
                       </div>
                     </nldd-container>
                   ))}
@@ -601,6 +623,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
               {/* Add form. Persoon gets a line of its own, so the select and
                   its "Nieuwe persoon aanmaken" option have room; Rol and the
                   button share the next line and wrap together on a phone. */}
+              {canManageStakeholders && (
               <Card>
                 <nldd-container gap="12">
                   <nldd-title size={6}><h4>Betrokkene toevoegen</h4></nldd-title>
@@ -651,6 +674,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   </nldd-container>
                 </nldd-container>
               </Card>
+              )}
             </nldd-container>
 
             <nldd-container gap="8">

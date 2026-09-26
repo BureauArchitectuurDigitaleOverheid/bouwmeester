@@ -5,6 +5,7 @@ import { NlddButton } from '@/components/nldd/NlddButton';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { orUndef, useNlddEvent, useNlddOverlay } from '@/components/nldd/events';
 import { useLeads, useUpdateLead, useMoveLead } from '@/hooks/useLeads';
+import { useCan, useCanAll } from '@/hooks/useCan';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePeople } from '@/hooks/usePeople';
@@ -58,6 +59,10 @@ export function LeadInboxView({
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [assignDropdownId, setAssignDropdownId] = useState<string | null>(null);
+  const { allowed: canUpdateSelected } = useCanAll(
+    'lead:update',
+    Array.from(selectedIds, (id) => ({ type: 'lead', id }) as const),
+  );
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
@@ -175,18 +180,22 @@ export function LeadInboxView({
       {selectedIds.size > 0 && (
         <nldd-banner variant="accent" size="sm" text={`${selectedIds.size} geselecteerd`}>
           <div slot="actions">
-            <NlddButton
-              size="sm"
-              text="Oppakken"
-              onClick={handleBatchClaim}
-              disabled={!currentPerson}
-            />
-            <NlddButton
-              size="sm"
-              variant="secondary"
-              text="Koelkast"
-              onClick={handleBatchKoelkast}
-            />
+            {canUpdateSelected && (
+              <>
+                <NlddButton
+                  size="sm"
+                  text="Oppakken"
+                  onClick={handleBatchClaim}
+                  disabled={!currentPerson}
+                />
+                <NlddButton
+                  size="sm"
+                  variant="secondary"
+                  text="Koelkast"
+                  onClick={handleBatchKoelkast}
+                />
+              </>
+            )}
             <NlddButton
               size="sm"
               variant="neutral-transparent"
@@ -287,6 +296,8 @@ function LeadInboxRow({
   const assignTriggerRef = useRef<HTMLElement>(null);
   const koelkastRef = useRef<HTMLElement>(null);
   const popoverRef = useRef<HTMLElement & { show?: () => void; hide?: () => void }>(null);
+  // Claiming, assigning and parking all update the lead.
+  const { allowed: canUpdate } = useCan('lead:update', { type: 'lead', id: lead.id });
 
   useNlddEvent(checkboxRef, 'change', onToggleSelect);
   useNlddEvent(openRef, 'click', onOpen);
@@ -373,6 +384,8 @@ function LeadInboxRow({
         </nldd-text-cell>
       </nldd-list-item-segment>
 
+      {canUpdate && (
+      <>
       <nldd-list-item-segment ref={claimRef} button disabled={orUndef(!canClaim)} accessible-label="Zelf oppakken">
         Oppakken
       </nldd-list-item-segment>
@@ -406,6 +419,8 @@ function LeadInboxRow({
       <nldd-list-item-segment ref={koelkastRef} button accessible-label="Naar koelkast">
         <nldd-icon name="snowflake" size="16" aria-hidden="true" />
       </nldd-list-item-segment>
+      </>
+      )}
     </nldd-list-item>
   );
 }

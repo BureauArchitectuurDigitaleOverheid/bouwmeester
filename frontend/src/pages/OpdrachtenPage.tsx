@@ -9,6 +9,7 @@ import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCan } from '@/hooks/useCan';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
@@ -191,7 +192,9 @@ export function OpdrachtenPage() {
   const { openOpdrachtDetail } = useOpdrachtDetail();
   const { openOpdrachtCreate } = useOpdrachtCreate();
   const { currentPerson } = useCurrentPerson();
-  const { hasPermission } = usePermissions();
+  // Matching every opdracht and the FCC sync are tenant-wide: system roles only.
+  const { hasSystemPermission } = usePermissions();
+  const { allowed: canCreate } = useCan('opdracht:create', { type: 'opdracht' });
   const [searchParams, setSearchParams] = useSearchParams();
 
   // API-level filters (sent to backend), seeded from URL params
@@ -369,7 +372,7 @@ export function OpdrachtenPage() {
             <OpdrachtenSearchField value={searchInput} onChange={setSearchInput} />
           </nldd-container>
         </nldd-toolbar-item>
-        {hasPermission('opdracht:update') && (
+        {hasSystemPermission('opdracht:update') && (
           <nldd-toolbar-item slot="end" priority={1}>
             <NlddButton
               variant="secondary"
@@ -383,7 +386,7 @@ export function OpdrachtenPage() {
             <nldd-menu-item slot="overflow" text="Contacten & eenheden matchen" icon="sparkles"></nldd-menu-item>
           </nldd-toolbar-item>
         )}
-        {fccEnabled && hasPermission('fcc:sync') && (
+        {fccEnabled && hasSystemPermission('fcc:sync') && (
           <nldd-toolbar-item slot="end" priority={2}>
             <NlddButton
               variant="secondary"
@@ -397,10 +400,12 @@ export function OpdrachtenPage() {
             <nldd-menu-item slot="overflow" text="FCC Sync" icon="refresh"></nldd-menu-item>
           </nldd-toolbar-item>
         )}
-        <nldd-toolbar-item slot="end" priority={4}>
-          <NlddButton startIcon="plus" onClick={() => openOpdrachtCreate()} text="Nieuwe opdracht" compactBelowSm />
-          <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
-        </nldd-toolbar-item>
+        {canCreate && (
+          <nldd-toolbar-item slot="end" priority={4}>
+            <NlddButton startIcon="plus" onClick={() => openOpdrachtCreate()} text="Nieuwe opdracht" compactBelowSm />
+            <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {/* Filters. From `sm` up they are always shown, as a grid of equal

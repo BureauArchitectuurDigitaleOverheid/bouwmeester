@@ -26,6 +26,7 @@ import {
 } from '@/types';
 import type { TaskSubtask } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -63,6 +64,8 @@ function DetailLinkAction({ text, startIcon, onClick }: DetailLinkActionProps) {
 
 interface SubtaskRowProps {
   subtask: TaskSubtask;
+  /** Whether the move buttons show at all (reordering edits the parent). */
+  reorderable: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
   reorderPending: boolean;
@@ -81,6 +84,7 @@ interface SubtaskRowProps {
  */
 function SubtaskRow({
   subtask,
+  reorderable,
   canMoveUp,
   canMoveDown,
   reorderPending,
@@ -99,22 +103,26 @@ function SubtaskRow({
 
   return (
     <nldd-list-item>
-      <nldd-list-item-segment
-        ref={upRef}
-        button
-        accessible-label="Omhoog"
-        disabled={orUndef(!canMoveUp || reorderPending)}
-      >
-        <Icon name="chevron-up" size="xs" />
-      </nldd-list-item-segment>
-      <nldd-list-item-segment
-        ref={downRef}
-        button
-        accessible-label="Omlaag"
-        disabled={orUndef(!canMoveDown || reorderPending)}
-      >
-        <Icon name="chevron-down" size="xs" />
-      </nldd-list-item-segment>
+      {reorderable && (
+        <>
+          <nldd-list-item-segment
+            ref={upRef}
+            button
+            accessible-label="Omhoog"
+            disabled={orUndef(!canMoveUp || reorderPending)}
+          >
+            <Icon name="chevron-up" size="xs" />
+          </nldd-list-item-segment>
+          <nldd-list-item-segment
+            ref={downRef}
+            button
+            accessible-label="Omlaag"
+            disabled={orUndef(!canMoveDown || reorderPending)}
+          >
+            <Icon name="chevron-down" size="xs" />
+          </nldd-list-item-segment>
+        </>
+      )}
       <nldd-list-item-segment ref={openRef} button width="full">
         <nldd-icon-cell icon={subDone ? 'check-mark-circle' : 'circle'} color={subDone ? 'success' : 'content'} />
         <nldd-spacer-cell size="8" />
@@ -153,6 +161,12 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
   const { openTaskDetail, taskParentLabel } = useTaskDetail();
   const navigate = useNavigate();
   const reorderSubtasks = useReorderSubtasks();
+  const { allowed: canUpdate } = useCan('task:update', taskId ? { type: 'task', id: taskId } : null);
+  // A new subtask gets the parent's node and no eenheid, so it is created on that node.
+  const { allowed: canAddSubtask } = useCan(
+    'task:create',
+    task?.node_id ? { type: 'corpus_node', id: task.node_id } : null,
+  );
 
   const handleMoveSubtask = (index: number, direction: 'up' | 'down') => {
     if (!task) return;
@@ -202,14 +216,16 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
           <DetailModalFooter
             onClose={onClose}
             actions={
-              <NlddButton
-                variant="secondary"
-                size="sm"
-                startIcon="pencil"
-                onClick={() => setShowEdit(true)}
-                disabled={!task}
-                text="Bewerken"
-              />
+              canUpdate && (
+                <NlddButton
+                  variant="secondary"
+                  size="sm"
+                  startIcon="pencil"
+                  onClick={() => setShowEdit(true)}
+                  disabled={!task}
+                  text="Bewerken"
+                />
+              )
             }
           />
         }
@@ -334,13 +350,15 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
               icon={<Icon name="tree-structure" size="sm" />}
               count={subtasks.length}
               action={
-                <NlddButton
-                  variant="neutral-transparent"
-                  size="sm"
-                  startIcon="plus"
-                  onClick={() => setShowSubtaskCreate(true)}
-                  text="Subtaak toevoegen"
-                />
+                canAddSubtask && (
+                  <NlddButton
+                    variant="neutral-transparent"
+                    size="sm"
+                    startIcon="plus"
+                    onClick={() => setShowSubtaskCreate(true)}
+                    text="Subtaak toevoegen"
+                  />
+                )
               }
             >
               {subtasks.length > 0 ? (
@@ -349,6 +367,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
                     <SubtaskRow
                       key={sub.id}
                       subtask={sub}
+                      reorderable={canUpdate}
                       canMoveUp={idx > 0}
                       canMoveDown={idx < subtasks.length - 1}
                       reorderPending={reorderSubtasks.isPending}

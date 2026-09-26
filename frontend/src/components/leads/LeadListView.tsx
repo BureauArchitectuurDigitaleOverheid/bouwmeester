@@ -7,6 +7,7 @@ import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useLeads, useMergeLeads, useDeleteLead } from '@/hooks/useLeads';
+import { useCanAll } from '@/hooks/useCan';
 import { useLeadColumns } from '@/hooks/useLeadColumns';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { LeadMetricsBar } from './LeadMetricsBar';
@@ -64,6 +65,10 @@ export function LeadListView({
   const { openLeadDetail } = useLeadDetail();
   const mergeMutation = useMergeLeads();
   const deleteLead = useDeleteLead();
+  // Merging writes both leads; the bulk delete needs the right on each one.
+  const selectedLeads = Array.from(selectedIds, (id) => ({ type: 'lead', id }) as const);
+  const { allowed: canMergeSelected } = useCanAll('lead:update', selectedLeads);
+  const { allowed: canDeleteSelected } = useCanAll('lead:delete', selectedLeads);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -133,15 +138,17 @@ export function LeadListView({
           text={`${selectedIds.size} lead${selectedIds.size !== 1 ? 's' : ''} geselecteerd`}
         >
           <div slot="actions">
-            {selectedIds.size === 2 && (
+            {selectedIds.size === 2 && canMergeSelected && (
               <NlddButton size="sm" text="Samenvoegen" onClick={() => setShowMergeDialog(true)} />
             )}
-            <NlddButton
-              size="sm"
-              variant="critical-transparent"
-              text="Verwijderen"
-              onClick={() => setShowBulkDeleteConfirm(true)}
-            />
+            {canDeleteSelected && (
+              <NlddButton
+                size="sm"
+                variant="critical-transparent"
+                text="Verwijderen"
+                onClick={() => setShowBulkDeleteConfirm(true)}
+              />
+            )}
             <NlddButton
               variant="neutral-transparent"
               size="sm"

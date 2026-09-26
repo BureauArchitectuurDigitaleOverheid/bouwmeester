@@ -20,6 +20,7 @@ import {
   type SamenwerkingsverbandCreate,
 } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 const ALL_TYPE_OPTIONS: SelectOption[] = [
   { value: '', label: 'Alle types' },
@@ -101,6 +102,7 @@ export function SamenwerkingsverbandenPage() {
   const [typeFilter, setTypeFilter] = useState('');
   const [actiefOnly, setActiefOnly] = useState(true);
   const [search, setSearch] = useState('');
+  const { allowed: canCreate } = useCan('samenwerkingsverband:create', { type: 'samenwerkingsverband' });
   const { data = [], isLoading } = useSamenwerkingsverbanden({
     type: typeFilter || undefined,
     actief: actiefOnly ? true : undefined,
@@ -161,16 +163,18 @@ export function SamenwerkingsverbandenPage() {
             <ActiefOnlyCheckbox checked={actiefOnly} onChange={setActiefOnly} />
           </nldd-container>
         </nldd-toolbar-item>
-        <nldd-toolbar-item slot="end">
-          <NlddButton
-            variant="primary"
-            startIcon="plus"
-            onClick={() => { resetForm(); setShowForm(true); }}
-            text="Nieuw samenwerkingsverband"
-            compactBelowSm
-          />
-          <nldd-menu-item slot="overflow" text="Nieuw samenwerkingsverband" icon="plus"></nldd-menu-item>
-        </nldd-toolbar-item>
+        {canCreate && (
+          <nldd-toolbar-item slot="end">
+            <NlddButton
+              variant="primary"
+              startIcon="plus"
+              onClick={() => { resetForm(); setShowForm(true); }}
+              text="Nieuw samenwerkingsverband"
+              compactBelowSm
+            />
+            <nldd-menu-item slot="overflow" text="Nieuw samenwerkingsverband" icon="plus"></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {showForm && (

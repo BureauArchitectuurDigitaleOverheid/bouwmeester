@@ -7,6 +7,7 @@ import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { Icon } from '@/components/nldd/Icon';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useCan } from '@/hooks/useCan';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
@@ -256,6 +257,9 @@ export function OrganisatieDetail({
 }: OrganisatieDetailProps) {
   const { data: eenheid, isLoading } = useOrganisatieEenheid(selectedId);
   const { isSuperAdmin } = usePermissions();
+  // Editing, dissolving and adding below this eenheid all need org:manage on
+  // it (held here or higher up); the backend decides, managers included.
+  const { allowed: canManage } = useCan('org:manage', { type: 'organisatie_eenheid', id: selectedId });
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
   const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;
@@ -353,20 +357,24 @@ export function OrganisatieDetail({
             </dl>
           )}
         </nldd-container>
-        <nldd-container layout="row" gap="8">
-          <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} text="Bewerken" />
-          <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} text="Verwijderen" />
-        </nldd-container>
+        {canManage && (
+          <nldd-container layout="row" gap="8">
+            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} text="Bewerken" />
+            <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} text="Verwijderen" />
+          </nldd-container>
+        )}
       </div>
 
       {/* Action buttons */}
-      <nldd-container layout="wrap" gap="8">
-        <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={onAddChild} text="Subeenheid toevoegen" />
-        <NlddButton variant="secondary" size="sm" startIcon="person" onClick={onAddPerson} text="Persoon toevoegen" />
-        {isSuperAdmin && (
-          <NlddButton variant="secondary" size="sm" startIcon="sparkles" onClick={onAddAgent} text="Agent toevoegen" />
-        )}
-      </nldd-container>
+      {canManage && (
+        <nldd-container layout="wrap" gap="8">
+          <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={onAddChild} text="Subeenheid toevoegen" />
+          <NlddButton variant="secondary" size="sm" startIcon="person" onClick={onAddPerson} text="Persoon toevoegen" />
+          {isSuperAdmin && (
+            <NlddButton variant="secondary" size="sm" startIcon="sparkles" onClick={onAddAgent} text="Agent toevoegen" />
+          )}
+        </nldd-container>
+      )}
 
       {/* People — recursive grouped view */}
       <nldd-container gap="12">

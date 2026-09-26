@@ -3,6 +3,7 @@ import { Card } from '@/components/common/Card';
 import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { useUpdateTask } from '@/hooks/useTasks';
+import { useCan } from '@/hooks/useCan';
 import {
   TaskStatus,
   TaskPriority,
@@ -72,6 +73,7 @@ function TaskTitleButton({
 
 export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
   const updateTask = useUpdateTask();
+  const { allowed: canUpdate } = useCan('task:update', { type: 'task', id: task.id });
   const isDone = task.status === TaskStatus.DONE;
   const isOverdue =
     task.due_date && checkOverdue(task.due_date) && !isDone;
@@ -99,15 +101,19 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
     >
       <nldd-container layout="row" gap="12" vertical-alignment="top">
         {/* Checkbox */}
-        <div onClick={(e) => e.stopPropagation()}>
-          <NlddIconButton
-            icon={isDone ? 'check-mark-circle' : 'circle'}
-            variant="neutral-transparent"
-            size="sm"
-            accessibleLabel={isDone ? 'Markeer als niet afgerond' : 'Markeer als afgerond'}
-            onClick={handleToggleDone}
-          />
-        </div>
+        {canUpdate ? (
+          <div onClick={(e) => e.stopPropagation()}>
+            <NlddIconButton
+              icon={isDone ? 'check-mark-circle' : 'circle'}
+              variant="neutral-transparent"
+              size="sm"
+              accessibleLabel={isDone ? 'Markeer als niet afgerond' : 'Markeer als afgerond'}
+              onClick={handleToggleDone}
+            />
+          </div>
+        ) : (
+          <Icon name={isDone ? 'check-mark-circle' : 'circle'} size="sm" label={isDone ? 'Afgerond' : 'Niet afgerond'} />
+        )}
 
         {/* Content */}
         <nldd-container width="full" gap="4">

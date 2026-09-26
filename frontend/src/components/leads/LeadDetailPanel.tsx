@@ -35,7 +35,8 @@ import {
   useAddTagToLead,
   useRemoveTagFromLead,
 } from '@/hooks/useLeads';
-import { useAuth } from '@/contexts/AuthContext';
+import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
+import { useCan } from '@/hooks/useCan';
 import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useInitiatieven, useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { getLeadAttachmentDownloadUrl } from '@/api/leads';
@@ -123,7 +124,12 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   const deleteLead = useDeleteLead();
   const createActivity = useCreateLeadActivity();
   const deleteActivity = useDeleteLeadActivity();
-  const { person } = useAuth();
+  const { currentPerson } = useCurrentPerson();
+  // Every change to a lead (fields, contacts, bijlagen, notes, links) is
+  // decided as an update of the lead; deleting it is its own right.
+  const leadResource = leadId ? ({ type: 'lead', id: leadId } as const) : null;
+  const { allowed: canUpdate } = useCan('lead:update', leadResource);
+  const { allowed: canDelete } = useCan('lead:delete', leadResource);
   const removeContact = useRemoveLeadContact();
   const unlinkNode = useUnlinkLeadNode();
   const uploadAttachment = useUploadLeadAttachment();
@@ -320,8 +326,12 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             onClose={onClose}
             actions={
               <nldd-container layout="row" gap="8">
-                <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={startEditing} disabled={!lead} text="Bewerken" />
-                <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={handleDelete} disabled={!lead} text="Verwijderen" />
+                {canUpdate && (
+                  <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={startEditing} disabled={!lead} text="Bewerken" />
+                )}
+                {canDelete && (
+                  <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={handleDelete} disabled={!lead} text="Verwijderen" />
+                )}
               </nldd-container>
             }
           />
@@ -688,16 +698,18 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             count={lead.attachments.length}
             separated
             action={
-              <>
-                <NlddButton variant="neutral-transparent" size="sm" startIcon="upload" onClick={() => fileInputRef.current?.click()} text="Uploaden" />
-                <input
-                  type="file"
-                  multiple
-                  hidden
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                />
-              </>
+              canUpdate && (
+                <>
+                  <NlddButton variant="neutral-transparent" size="sm" startIcon="upload" onClick={() => fileInputRef.current?.click()} text="Uploaden" />
+                  <input
+                    type="file"
+                    multiple
+                    hidden
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                  />
+                </>
+              )
             }
           >
             {lead.attachments.length > 0 ? (
@@ -707,7 +719,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                     key={att.id}
                     attachment={att}
                     downloadUrl={getLeadAttachmentDownloadUrl(lead.id, att.id)}
-                    onDelete={() => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id })}
+                    onDelete={canUpdate ? () => deleteAttachment.mutate({ leadId: lead.id, attachmentId: att.id }) : undefined}
                     onZoom={(src, alt) => setLightboxSrc({ src, alt })}
                   />
                 ))}
@@ -726,7 +738,9 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             count={lead.contacts.length}
             separated
             action={
-              <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddContact(true)} text="Toevoegen" />
+              canUpdate && (
+                <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddContact(true)} text="Toevoegen" />
+              )
             }
           >
             {lead.contacts.length > 0 ? (
@@ -737,7 +751,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                     naam={contact.person_naam}
                     expertise={contact.person_expertise}
                     rolLabel={LEAD_CONTACT_ROL_LABELS[contact.rol] ?? contact.rol}
-                    onRemove={() => removeContact.mutate({ leadId: lead.id, contactId: contact.id })}
+                    onRemove={canUpdate ? () => removeContact.mutate({ leadId: lead.id, contactId: contact.id }) : undefined}
                   />
                 ))}
               </nldd-list>
@@ -758,7 +772,9 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             count={lead.linked_nodes.length}
             separated
             action={
-              <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowLinkNode(true)} text="Koppelen" />
+              canUpdate && (
+                <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowLinkNode(true)} text="Koppelen" />
+              )
             }
           >
             {lead.linked_nodes.length > 0 ? (
@@ -768,7 +784,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                     key={ln.id}
                     title={ln.node_title}
                     nodeType={ln.node_type}
-                    onUnlink={() => unlinkNode.mutate({ leadId: lead.id, linkId: ln.id })}
+                    onUnlink={canUpdate ? () => unlinkNode.mutate({ leadId: lead.id, linkId: ln.id }) : undefined}
                   />
                 ))}
               </nldd-list>
@@ -785,6 +801,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             separated
           >
             {/* Add activity form */}
+            {canUpdate && (
             <nldd-container gap="8" padding-bottom="16">
               <RichTextEditor
                 value={activityContent}
@@ -829,15 +846,17 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                 />
               </nldd-container>
             </nldd-container>
+            )}
 
             {/* Activity list */}
             {lead.activities.length > 0 ? (
               <nldd-container gap="12">
                 {[...lead.activities].reverse().map((activity) => {
-                  const canDelete =
-                    !!person &&
-                    (person.is_admin ||
-                      (person.id !== null && activity.author_id === person.id));
+                  // Your own note while you may write the lead; anyone's
+                  // with the right to delete the lead (as the backend decides).
+                  const canDeleteActivity =
+                    canDelete ||
+                    (canUpdate && !!currentPerson && activity.author_id === currentPerson.id);
                   return (
                   // `group`/`group-hover` reveals the delete icon-button only
                   // on hover or keyboard focus of this row — real CSS-group
@@ -885,7 +904,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                           })()
                         )}
                         <nldd-text size="xs" color="secondary">{timeAgo(activity.created_at)}</nldd-text>
-                        {canDelete && (
+                        {canDeleteActivity && (
                           // Pushed to the end of the row and revealed only on
                           // hover/focus of it (`group` on the wrapping div,
                           // above the `sm` breakpoint) — real CSS classes in
@@ -1086,7 +1105,7 @@ function ActivityTextArea({ value, onChange, placeholder, accessibleLabel }: Act
 interface AttachmentRowProps {
   attachment: LeadAttachment;
   downloadUrl: string;
-  onDelete: () => void;
+  onDelete?: () => void;
   onZoom: (src: string, alt: string) => void;
 }
 
@@ -1126,13 +1145,15 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
               />
             </>
           ) : null}
-          <NlddIconButton
-            icon="close"
-            accessibleLabel="Verwijderen"
-            variant="neutral-transparent"
-            size="sm"
-            onClick={onDelete}
-          />
+          {onDelete && (
+            <NlddIconButton
+              icon="close"
+              accessibleLabel="Verwijderen"
+              variant="neutral-transparent"
+              size="sm"
+              onClick={onDelete}
+            />
+          )}
         </nldd-container>
         {isImage && (
           // The hover-reveal zoom affordance over the thumbnail is a real
@@ -1176,7 +1197,7 @@ interface ContactRowProps {
   naam: string;
   expertise: string | null | undefined;
   rolLabel: string;
-  onRemove: () => void;
+  onRemove?: () => void;
 }
 
 // Expertise is free text, and a tag never shrinks below its full label. As a
@@ -1194,9 +1215,11 @@ function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
       <nldd-cell>
         <nldd-tag text={rolLabel} color="neutral" size="sm" />
       </nldd-cell>
-      <nldd-cell>
-        <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
-      </nldd-cell>
+      {onRemove && (
+        <nldd-cell>
+          <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onRemove} />
+        </nldd-cell>
+      )}
     </nldd-list-item>
   );
 }
@@ -1204,7 +1227,7 @@ function ContactRow({ naam, expertise, rolLabel, onRemove }: ContactRowProps) {
 interface LinkedNodeRowProps {
   title: string;
   nodeType: string;
-  onUnlink: () => void;
+  onUnlink?: () => void;
 }
 
 function LinkedNodeRow({ title, nodeType, onUnlink }: LinkedNodeRowProps) {
@@ -1215,9 +1238,11 @@ function LinkedNodeRow({ title, nodeType, onUnlink }: LinkedNodeRowProps) {
       <nldd-cell>
         <nldd-tag text={nodeType} color="neutral" size="sm" />
       </nldd-cell>
-      <nldd-cell>
-        <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
-      </nldd-cell>
+      {onUnlink && (
+        <nldd-cell>
+          <NlddIconButton icon="close" accessibleLabel="Ontkoppelen" variant="neutral-transparent" size="sm" onClick={onUnlink} />
+        </nldd-cell>
+      )}
     </nldd-list-item>
   );
 }
