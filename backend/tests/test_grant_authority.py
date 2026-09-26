@@ -30,6 +30,7 @@ from bouwmeester.core.permissions import PermissionContext, get_admin_user
 from bouwmeester.middleware.auth_required import is_public_path
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
+from bouwmeester.models.notification import Notification
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -38,7 +39,14 @@ from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole
-from tests.factories import client_as, grant_role, make_org, make_person, place
+from tests.factories import (
+    YESTERDAY,
+    client_as,
+    grant_role,
+    make_org,
+    make_person,
+    place,
+)
 
 
 @dataclass
@@ -202,6 +210,35 @@ async def test_manager_cannot_place_outside_subtree(tree: Tree):
             f"/api/people/{tree.member.id}/organisaties", json=_placement(tree.dg)
         )
     assert resp.status_code == 403
+
+
+async def test_manager_cannot_place_self_below(tree: Tree):
+    """Nobody grants themselves anything, a manager neither."""
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/people/{tree.directie_manager.id}/organisaties",
+            json=_placement(tree.team),
+        )
+    assert resp.status_code == 403
+
+
+async def test_placing_someone_unnamed_is_a_managers_call(tree: Tree):
+    """``person=None`` asks about another account without revealing anyone's."""
+    from bouwmeester.core.authority import require_can_place
+    from bouwmeester.core.permissions import build_permission_context
+
+    member_ctx = await build_permission_context(tree.db, tree.member)
+    with pytest.raises(HTTPException):
+        await require_can_place(tree.db, member_ctx, None, tree.team)
+    with pytest.raises(HTTPException):
+        await require_can_place(tree.db, member_ctx, None, tree.team, ending=True)
+    await require_can_place(tree.db, member_ctx, None, tree.team, contact=True)
+    manager_ctx = await build_permission_context(tree.db, tree.directie_manager)
+    await require_can_place(tree.db, manager_ctx, None, tree.team)
+    anonymous = PermissionContext(is_authenticated=True)
+    with pytest.raises(HTTPException) as refused:
+        await require_can_place(tree.db, anonymous, None, tree.team, contact=True)
+    assert refused.value.status_code == 403
 
 
 async def test_member_links_contact_to_external_org(tree: Tree):
@@ -651,6 +688,101 @@ async def test_editor_adds_node_stakeholder_but_not_owner(tree: Tree):
     assert eigenaar.status_code == 403
 
 
+async def test_editor_cannot_make_colleague_initiatief_eigenaar(tree: Tree):
+    """eigenaar gives initiatief:delete, which an editor above the team lacks.
+
+    resource_permission:manage used to be enough: two such editors could
+    make each other eigenaar and then delete the initiatief.
+    """
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "eigenaar")
+    directie_editor = await make_person(tree.db, "Directieredacteur")
+    await place(tree.db, directie_editor, tree.directie)
+    await grant_role(tree.db, directie_editor, "editor", tree.directie)
+    url = f"/api/resource-permissions/initiatief/{initiatief.id}"
+    async with client_as(tree.db, directie_editor) as c:
+        owner = await c.post(
+            url, json={"person_id": str(tree.contact.id), "rol": "eigenaar"}
+        )
+        contributor = await c.post(
+            url, json={"person_id": str(tree.contact.id), "rol": "contributor"}
+        )
+    assert owner.status_code == 403
+    assert contributor.status_code == 200, contributor.text
+
+
+async def test_manager_makes_colleague_initiatief_eigenaar(tree: Tree):
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "eigenaar")
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/resource-permissions/initiatief/{initiatief.id}",
+            json={"person_id": str(tree.member.id), "rol": "eigenaar"},
+        )
+    assert resp.status_code == 200, resp.text
+
+
+async def test_grants_are_listed_only_where_you_may_grant(tree: Tree):
+    """resource_permission:manage somewhere else no longer lists the grants."""
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "eigenaar")
+    elsewhere = await make_person(tree.db, "Redacteur elders")
+    await place(tree.db, elsewhere, tree.sibling)
+    await grant_role(tree.db, elsewhere, "editor", tree.sibling)
+    url = f"/api/resource-permissions/initiatief/{initiatief.id}"
+    async with client_as(tree.db, elsewhere) as c:
+        refused = await c.get(url)
+    async with client_as(tree.db, tree.editor) as c:
+        allowed = await c.get(url)
+    assert refused.status_code == 403
+    assert allowed.status_code == 200, allowed.text
+
+
+async def test_member_leaves_node_without_any_rights(tree: Tree):
+    """Leaving is always possible, whatever you may do on the node."""
+    node = await _node(tree.db)
+    grant = ResourcePermission(
+        person_id=tree.member.id,
+        resource_type="corpus_node",
+        resource_id=node.id,
+        rol="adviseur",
+    )
+    tree.db.add(grant)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.member) as c:
+        resp = await c.delete(f"/api/resource-permissions/{grant.id}")
+    assert resp.status_code == 200, resp.text
+
+
+async def test_owner_steps_down_but_cannot_step_up(tree: Tree):
+    initiatief = await _initiatief(tree.db)
+    grants = [
+        ResourcePermission(
+            person_id=person.id,
+            resource_type="initiatief",
+            resource_id=initiatief.id,
+            rol=rol,
+        )
+        for person, rol in (
+            (tree.member, "eigenaar"),
+            (tree.editor, "viewer"),
+            (tree.directie_manager, "eigenaar"),
+        )
+    ]
+    tree.db.add_all(grants)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        up = await c.put(
+            f"/api/resource-permissions/{grants[1].id}", json={"rol": "eigenaar"}
+        )
+    async with client_as(tree.db, tree.member) as c:
+        down = await c.put(
+            f"/api/resource-permissions/{grants[0].id}", json={"rol": "viewer"}
+        )
+    assert up.status_code == 403
+    assert down.status_code == 200, down.text
+
+
 # ---------------------------------------------------------------------------
 # Tenant-wide admin actions
 # ---------------------------------------------------------------------------
@@ -966,17 +1098,135 @@ async def test_managed_subtree_in_org_context(tree: Tree):
     assert tree.dg.id not in ctx.managed_subtree_ids
 
 
+async def _first_login(tree: Tree, person: Person) -> Person:
+    email = await _email_of(tree.db, person)
+    return await get_or_create_person(
+        tree.db,
+        sub=f"login-{uuid.uuid4().hex}",
+        email=email,
+        name="",
+        email_verified=True,
+    )
+
+
+async def _pending_requests(tree: Tree, person: Person) -> set[uuid.UUID]:
+    rows = await tree.db.scalars(
+        select(OrgPlacementRequest.organisatie_eenheid_id).where(
+            OrgPlacementRequest.person_id == person.id,
+            OrgPlacementRequest.status == "pending",
+        )
+    )
+    return set(rows)
+
+
 async def test_first_login_keeps_placements(tree: Tree):
     """A manager who placed a new hire before their first login keeps it."""
-    await place(tree.db, tree.contact, tree.team)
-    email = await _email_of(tree.db, tree.contact)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties", json=_placement(tree.team)
+        )
+    assert resp.status_code == 201, resp.text
 
-    person = await get_or_create_person(
-        tree.db, sub="new-colleague", email=email, name="C", email_verified=True
-    )
+    person = await _first_login(tree, tree.contact)
 
     assert person.id == tree.contact.id
     assert await _placement_of(tree.db, tree.contact, tree.team) is not None
+    assert await _pending_requests(tree, tree.contact) == set()
+
+
+async def test_contact_placement_waits_for_a_manager_at_first_login(tree: Tree):
+    """A member may place a contact, but that grants no access on login."""
+    async with client_as(tree.db, tree.member) as c:
+        internal = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties", json=_placement(tree.team)
+        )
+        external = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties",
+            json=_placement(tree.gemeente),
+        )
+    assert internal.status_code == 201, internal.text
+    assert external.status_code == 201, external.text
+
+    await _first_login(tree, tree.contact)
+
+    assert await _placement_of(tree.db, tree.contact, tree.team) is None
+    assert await _pending_requests(tree, tree.contact) == {tree.team.id}
+    assert await _placement_of(tree.db, tree.contact, tree.gemeente) is not None
+    notified = await tree.db.scalar(
+        select(Notification.id).where(
+            Notification.person_id == tree.directie_manager.id,
+            Notification.type == "placement_request",
+        )
+    )
+    assert notified is not None
+
+
+def _migration(name: str):
+    import importlib.util
+    from pathlib import Path
+
+    import bouwmeester.migrations
+
+    versions = Path(bouwmeester.migrations.__file__).parent / "versions"
+    spec = importlib.util.spec_from_file_location(name, versions / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
+    """A manager's placement from before the fix survives the first login."""
+    from sqlalchemy import text
+
+    below_team = await make_org(tree.db, "Stichting", "stichting", tree.team)
+    ended = await make_person(tree.db, "Vertrokken", account=False)
+    for person, org in (
+        (tree.contact, tree.team),
+        (tree.contact, below_team),
+        (tree.contact, tree.gemeente),
+        (ended, tree.team),
+    ):
+        await place(tree.db, person, org)
+    (await _placement_of(tree.db, ended, tree.team)).eind_datum = YESTERDAY
+    await tree.db.flush()
+
+    migration = _migration("7c1e5a9d3b20_confirm_existing_placements")
+    await tree.db.execute(text(migration.CONFIRM_SQL))
+
+    async def bron(person: Person, org: OrganisatieEenheid) -> str:
+        return await tree.db.scalar(
+            select(PersonOrganisatieEenheid.bron).where(
+                PersonOrganisatieEenheid.person_id == person.id,
+                PersonOrganisatieEenheid.organisatie_eenheid_id == org.id,
+            )
+        )
+
+    assert await bron(tree.contact, tree.team) == "leidinggevende"
+    assert await bron(tree.contact, below_team) == "leidinggevende"
+    assert await bron(tree.contact, tree.gemeente) == "handmatig"
+    assert await bron(ended, tree.team) == "handmatig"
+
+    await _first_login(tree, tree.contact)
+    assert await _placement_of(tree.db, tree.contact, tree.team) is not None
+    assert await _pending_requests(tree, tree.contact) == set()
+
+
+async def test_reopened_contact_placement_is_no_longer_confirmed(tree: Tree):
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties", json=_placement(tree.team)
+        )
+    placement_id = resp.json()["id"]
+    async with client_as(tree.db, tree.member) as c:
+        resp = await c.put(
+            f"/api/people/{tree.contact.id}/organisaties/{placement_id}",
+            json={"dienstverband": "ingehuurd"},
+        )
+    assert resp.status_code == 200, resp.text
+
+    await _first_login(tree, tree.contact)
+
+    assert await _pending_requests(tree, tree.contact) == {tree.team.id}
 
 
 async def _opdracht(db: AsyncSession, **eenheden) -> Opdracht:

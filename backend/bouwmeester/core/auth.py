@@ -304,11 +304,19 @@ async def get_or_create_person(
     # Person is not already bound to another identity.
     if email_owner is not None and email_verified:
         if email_owner.oidc_subject is None:
+            # Local import: core.authority builds on core.permissions, which
+            # imports this module.
+            from bouwmeester.core.authority import hold_unconfirmed_placements
+
             email_owner.oidc_subject = sub
             email_owner.oidc_email = email
             if name and not email_owner.naam:
                 email_owner.naam = name
             await db.flush()
+            # The contact becomes an account: placements anyone with
+            # people:update made while it was a contact grant nothing until a
+            # manager confirms them.
+            await hold_unconfirmed_placements(db, email_owner)
             await db.refresh(email_owner)
             return email_owner
         logger.warning(

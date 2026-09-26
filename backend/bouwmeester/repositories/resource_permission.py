@@ -88,21 +88,12 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
             stmt = stmt.where(ResourcePermission.organisatie_eenheid_id == eenheid_id)
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def get_roles_for_person_resource(
-        self, person_id: UUID, resource_type: str, resource_id: UUID
-    ) -> set[str]:
-        """Return all roles a person has on a resource (direct + via eenheid)."""
-        result = await self.session.execute(
-            _person_roles_stmt(person_id, resource_type, resource_id)
-        )
-        return {rol for _rid, rol in result.all()}
-
     async def get_roles_for_person_by_resource(
         self, person_id: UUID, resource_type: str
     ) -> dict[UUID, set[str]]:
         """Every role a person has on resources of one type, in one query."""
         result = await self.session.execute(
-            _person_roles_stmt(person_id, resource_type, None)
+            _person_roles_stmt(person_id, resource_type)
         )
         roles: dict[UUID, set[str]] = {}
         for rid, rol in result.all():
@@ -148,12 +139,10 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         return mapping
 
 
-def _person_roles_stmt(person_id: UUID, resource_type: str, resource_id: UUID | None):
+def _person_roles_stmt(person_id: UUID, resource_type: str):
     """(resource_id, rol) a person holds, directly or through a placement."""
     today = date.today()
     on_resource = [ResourcePermission.resource_type == resource_type]
-    if resource_id is not None:
-        on_resource.append(ResourcePermission.resource_id == resource_id)
 
     direct_stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
         ResourcePermission.person_id == person_id, *on_resource

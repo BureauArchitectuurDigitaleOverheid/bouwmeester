@@ -18,23 +18,22 @@ on E or on any ancestor of E.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import can, rights_on_eenheid
-from bouwmeester.core.permissions import (
-    RESOURCE_ROLE_PERMISSIONS,
-    PermissionContext,
-    check_resource_permission,
-)
+from bouwmeester.core.authz import can, require, rights_on_eenheid
+from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS, PermissionContext
+from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
     OrganisatieEenheid,
 )
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.org_tree import (
@@ -74,8 +73,6 @@ async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
     Everyone holding a manager role on the eenheid or on any eenheid above
     it: the same set ``can_manage_members`` lets through.
     """
-    from datetime import date
-
     chain = await get_self_and_ancestor_ids(db, eenheid_id)
     today = date.today()
     result = await db.execute(
@@ -124,32 +121,53 @@ async def is_account(db: AsyncSession, person: Person) -> bool:
 async def require_can_place(
     db: AsyncSession,
     perm_ctx: PermissionContext,
-    person: Person,
+    person: Person | None,
     eenheid: OrganisatieEenheid,
     *,
     ending: bool = False,
+    contact: bool = False,
 ) -> None:
     """Guard creating, changing or ending a placement of *person* in *eenheid*.
 
-    A placement of an account grants access (implicit viewer, visibility of
-    the eenheid and its ancestors), so only a manager of the eenheid or of
-    an ancestor may create or change it; everyone else files a placement
-    request.  Ending your own placement only gives access up, so that is
-    always allowed.
+    Every placement change needs ``people:update``.  A placement of an
+    account grants access (implicit viewer, visibility of the eenheid and
+    its ancestors), so only a manager of the eenheid or of an ancestor may
+    create or change it; everyone else files a placement request.  Nobody
+    places themselves, managers included (a manager would otherwise join any
+    eenheid below them); ending your own placement only gives access up, so
+    that is always allowed.
 
     Placing a contact is ordinary contact administration (a counterpart at
     another ministry or a gemeente) and stays open to ``people:update``.
+    Such a placement grants nothing until the contact logs in, and then
+    ``hold_unconfirmed_placements`` turns it into a placement request.
+
+    Without a concrete person (the evaluation endpoint), ``person=None``
+    asks about someone else: another account (strictest), or a contact
+    with ``contact=True``.  ``contact`` is ignored when *person* is given.
     """
-    if ending and person.id == perm_ctx.person_id:
+    if not perm_ctx.is_authenticated:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Niet ingelogd")
+    if not perm_ctx.has_permission("people:update"):
+        raise _forbidden("Onvoldoende rechten")
+    own = person is not None and person.id == perm_ctx.person_id
+    if own and ending:
         return
+    if own and not perm_ctx.is_super_admin:
+        raise _forbidden(
+            f"Je kunt jezelf niet in {eenheid.naam} plaatsen. Dien een "
+            "plaatsingsverzoek in; een leidinggevende beslist."
+        )
     if await can_manage_members(db, perm_ctx, eenheid.id):
         return
-    if perm_ctx.has_permission("people:update") and not await is_account(db, person):
+    if contact if person is None else not await is_account(db, person):
         return
     # Linking your own staff to an external organisation (a detachering) is
     # the person's manager's call: it grants nothing inside the organisation.
-    if eenheid.type not in INTERNAL_EENHEID_TYPES and await _manages_person(
-        db, perm_ctx, person
+    if (
+        person is not None
+        and eenheid.type not in INTERNAL_EENHEID_TYPES
+        and await _manages_person(db, perm_ctx, person)
     ):
         return
     ask = await _who_decides(db, eenheid)
@@ -158,14 +176,104 @@ async def require_can_place(
             "Alleen de persoon zelf of een leidinggevende kan deze plaatsing "
             f"beëindigen. {ask}"
         )
-    if person.id == perm_ctx.person_id:
-        raise _forbidden(
-            f"Je kunt jezelf niet in {eenheid.naam} plaatsen. Dien een "
-            "plaatsingsverzoek in; een leidinggevende beslist."
-        )
     raise _forbidden(
         f"Alleen een leidinggevende kan iemand in {eenheid.naam} plaatsen. {ask}"
     )
+
+
+# ``PersonOrganisatieEenheid.bron`` of a placement a manager made or approved.
+# Manual placements with any other bron ("handmatig") were contact
+# administration and are not trusted when the contact logs in.
+CONFIRMED_PLACEMENT_BRON = "leidinggevende"
+_UNCONFIRMED_PLACEMENT_BRON = "handmatig"
+
+
+async def placement_bron(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
+) -> str:
+    """The bron to record for a placement the caller makes in *eenheid_id*."""
+    if await can_manage_members(db, perm_ctx, eenheid_id):
+        return CONFIRMED_PLACEMENT_BRON
+    return _UNCONFIRMED_PLACEMENT_BRON
+
+
+async def _touches_organisation(db: AsyncSession, eenheid_id: UUID) -> bool:
+    """True if *eenheid_id* or an eenheid above it is internal.
+
+    Members see their eenheid and everything above it, so membership of an
+    external organisation that hangs below a ministerie reaches inside too.
+    """
+    chain = await get_self_and_ancestor_ids(db, eenheid_id)
+    hit = await db.scalar(
+        select(OrganisatieEenheid.id)
+        .where(
+            OrganisatieEenheid.id.in_(chain),
+            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
+        )
+        .limit(1)
+    )
+    return hit is not None
+
+
+async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
+    """Turn unconfirmed placements into requests when a contact becomes an account.
+
+    Anyone with ``people:update`` may place a contact anywhere (contact
+    administration).  When that contact's first login links to the record,
+    those placements would suddenly grant access (implicit viewer,
+    visibility up the line).  So every active manual placement in or below
+    the internal organisation that no manager made or approved becomes a
+    pending placement request, which a manager of that eenheid decides.
+    Placements from authoritative imports (ROO, kabinet, TK, ABD) and in
+    external organisations are kept.
+    """
+    from bouwmeester.services.notification_service import NotificationService
+
+    today = date.today()
+    placements = (
+        await db.scalars(
+            select(PersonOrganisatieEenheid).where(
+                PersonOrganisatieEenheid.person_id == person.id,
+                PersonOrganisatieEenheid.bron == _UNCONFIRMED_PLACEMENT_BRON,
+                (PersonOrganisatieEenheid.eind_datum.is_(None))
+                | (PersonOrganisatieEenheid.eind_datum >= today),
+            )
+        )
+    ).all()
+    pending = set(
+        (
+            await db.scalars(
+                select(OrgPlacementRequest.organisatie_eenheid_id).where(
+                    OrgPlacementRequest.person_id == person.id,
+                    OrgPlacementRequest.status == "pending",
+                )
+            )
+        ).all()
+    )
+    for placement in placements:
+        eenheid_id = placement.organisatie_eenheid_id
+        if not await _touches_organisation(db, eenheid_id):
+            continue
+        await db.delete(placement)
+        if eenheid_id in pending:
+            continue
+        pending.add(eenheid_id)
+        db.add(
+            OrgPlacementRequest(
+                person_id=person.id,
+                organisatie_eenheid_id=eenheid_id,
+                dienstverband=placement.dienstverband,
+            )
+        )
+        eenheid_naam = await db.scalar(
+            select(OrganisatieEenheid.naam).where(OrganisatieEenheid.id == eenheid_id)
+        )
+        await NotificationService(db).notify_placement_request(
+            person_naam=person.naam,
+            eenheid_id=eenheid_id,
+            eenheid_naam=eenheid_naam or "",
+        )
+    await db.flush()
 
 
 async def _who_decides(db: AsyncSession, eenheid: OrganisatieEenheid) -> str:
@@ -519,8 +627,8 @@ async def _grant_reaches_caller(
 ) -> bool:
     """True if a grant to this person or eenheid would benefit the caller.
 
-    An eenheid grant counts for every member of that eenheid
-    (``ResourcePermissionRepository.get_roles_for_person_resource``).
+    An eenheid grant counts for every member of that eenheid, as in
+    ``core.authz`` (resource roles, step 2).
     """
     if perm_ctx.person_id is None:
         return False
@@ -531,39 +639,44 @@ async def _grant_reaches_caller(
     return False
 
 
-# Resource types whose non-owner roles are contact administration: without
-# an owning eenheid, anyone who manages resource roles may keep them current.
+# The permission that lets someone hand out roles on a resource.  Leads have
+# no eigenaar: whoever may edit the lead keeps its roles current.
+_GRANT_PERMISSION = {"lead": "lead:update"}
+
+# Resource types that often live in no eenheid (corpus nodes; opdrachten,
+# because FCC does not fill one).  There, registering yourself as a contact
+# is allowed, see ``_may_register_self``.
 _UNSCOPED_CONTACT_TYPES = frozenset({"corpus_node", "opdracht"})
 
-# Resource types without an eigenaar role: whoever may edit the resource
-# keeps its roles current.  The rols listed here give that edit right
-# themselves, so they are handed out only by an editor, never to themselves
-# (a grant never exceeds what the grantor holds).
-_EDITOR_GRANTED_TYPES: dict[str, tuple[str, frozenset[str]]] = {
-    "lead": ("lead:update", frozenset({"opdrachtgever"})),
-}
+
+def grant_permission(resource_type: str) -> str:
+    """The permission that decides who hands out roles on *resource_type*."""
+    return _GRANT_PERMISSION.get(resource_type, "resource_permission:manage")
 
 
-async def _require_editor_grant_authority(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    *,
-    resource_type: str,
-    resource_id: UUID,
-    rols: frozenset[str],
-    target_person_id: UUID | None,
-    target_eenheid_id: UUID | None,
-) -> None:
-    edit_perm, editor_rols = _EDITOR_GRANTED_TYPES[resource_type]
-    if not await can(db, perm_ctx, edit_perm, resource_type, resource_id):
-        raise _forbidden("Alleen wie dit item mag bewerken, kan hier rollen toekennen")
-    if rols & editor_rols and await _grant_reaches_caller(
-        db,
-        perm_ctx,
-        target_person_id=target_person_id,
-        target_eenheid_id=target_eenheid_id,
-    ):
-        raise _forbidden("Je kunt jezelf geen rol op dit item geven")
+def _rol_permissions(resource_type: str, rols: frozenset[str]) -> set[str]:
+    type_roles = RESOURCE_ROLE_PERMISSIONS.get(resource_type, {})
+    return set().union(*(type_roles.get(rol, set()) for rol in rols))
+
+
+async def _may_register_self(
+    db: AsyncSession, resource_type: str, resource_id: UUID, rols: frozenset[str]
+) -> bool:
+    """True if a grant of *rols* to yourself is a contact registration.
+
+    Never a rol that carries grant authority (eigenaar, opdrachtgever): that
+    would be taking control.  Other rols only on a lead (it has no eigenaar)
+    or on a corpus node or opdracht without an eenheid, where the rights are
+    tenant-wide anyway.  The grant never exceeds what the caller holds.
+    """
+    if grant_permission(resource_type) in _rol_permissions(resource_type, rols):
+        return False
+    if resource_type in _GRANT_PERMISSION:
+        return True
+    if resource_type not in _UNSCOPED_CONTACT_TYPES:
+        return False
+    _, eenheid_ids = await get_authority_eenheid_ids(db, resource_type, resource_id)
+    return not eenheid_ids
 
 
 async def _require_grant_authority(
@@ -578,55 +691,37 @@ async def _require_grant_authority(
 ) -> None:
     """Authority to hand out (or change) *rols* on a resource.
 
-    - an eigenaar of the resource may hand out any rol;
-    - otherwise ``resource_permission:manage`` must be effective on one of
-      the eenheden that own the resource, and not for yourself (a grant to
-      an eenheid you are a member of reaches you too);
-    - a resource without such an eenheid only has its eigenaars, except that
-      corpus nodes and opdrachten (both mostly without an eenheid today, the
-      latter because FCC does not fill one) take non-owner contacts, yourself
-      included, from anyone with ``resource_permission:manage``;
-    - a type in ``_EDITOR_GRANTED_TYPES`` (leads) has no eigenaar: its
-      editors decide, see there.
+    ``core.authz`` decides the rights, with the same rules as any other
+    action on the resource (resource roles, rights on its eenheid, the
+    tenant-wide fallback for unscoped nodes and opdrachten):
+
+    - the caller must hold the grant permission on the resource
+      (``resource_permission:manage``, for leads ``lead:update``);
+    - a grant never exceeds what the grantor holds: every permission the
+      rols give must be the caller's on this resource too, so an editor
+      cannot make a colleague eigenaar (``node:delete``);
+    - the grant must not reach the caller (directly or through an eenheid
+      they are placed in), except a contact registration
+      (``_may_register_self``).
     """
     if perm_ctx.is_super_admin:
         return
-    if resource_type in _EDITOR_GRANTED_TYPES:
-        await _require_editor_grant_authority(
-            db,
-            perm_ctx,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            rols=rols,
-            target_person_id=target_person_id,
-            target_eenheid_id=target_eenheid_id,
-        )
-        return
-    owner_rol = "eigenaar" in rols
-    if perm_ctx.person_id is not None and await check_resource_permission(
-        db, perm_ctx.person_id, resource_type, resource_id, "resource_permission:manage"
-    ):
-        return
-
-    found, eenheid_ids = await get_authority_eenheid_ids(db, resource_type, resource_id)
-    if not found:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Item niet gevonden")
-    if resource_type in _UNSCOPED_CONTACT_TYPES and not eenheid_ids and not owner_rol:
-        if perm_ctx.has_permission("resource_permission:manage"):
-            return
-        raise _forbidden("Onvoldoende rechten")
+    await require(
+        db, perm_ctx, grant_permission(resource_type), resource_type, resource_id
+    )
+    for perm in sorted(_rol_permissions(resource_type, rols)):
+        if not await can(db, perm_ctx, perm, resource_type, resource_id):
+            raise _forbidden(
+                "Je kunt geen rol toekennen die meer rechten geeft dan je hier "
+                "zelf hebt"
+            )
     if await _grant_reaches_caller(
         db,
         perm_ctx,
         target_person_id=target_person_id,
         target_eenheid_id=target_eenheid_id,
-    ):
+    ) and not await _may_register_self(db, resource_type, resource_id, rols):
         raise _forbidden("Je kunt jezelf geen rol op dit item geven")
-    for eenheid_id in eenheid_ids:
-        rights = await rights_on_eenheid(db, perm_ctx, eenheid_id)
-        if rights.has("resource_permission:manage"):
-            return
-    raise _forbidden("Alleen de eigenaar kan hier rollen toekennen")
 
 
 async def _require_keeps_an_owner(
@@ -650,6 +745,39 @@ async def _require_keeps_an_owner(
             status_code=status.HTTP_409_CONFLICT,
             detail="Er moet minstens één eigenaar overblijven",
         )
+
+
+async def require_can_name_first_owner(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    node_id: UUID,
+    target_person_id: UUID,
+) -> None:
+    """Guard naming the first eigenaar of a node that has none (a review).
+
+    Naming who owns a freshly imported parliamentary item is the point of
+    reviewing it, so whoever may review it (``parlementair:review`` on the
+    node) may do so, but never name themselves.  Once the node has an
+    eigenaar, changing that is a grant like any other.
+    """
+    has_owner = await db.scalar(
+        select(ResourcePermission.id)
+        .where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id == node_id,
+            ResourcePermission.rol == "eigenaar",
+        )
+        .limit(1)
+    )
+    if has_owner is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dit item heeft al een eigenaar",
+        )
+    await require(db, perm_ctx, "parlementair:review", "corpus_node", node_id)
+    if not perm_ctx.is_super_admin and target_person_id == perm_ctx.person_id:
+        raise _forbidden("Je kunt jezelf geen eigenaar maken")
 
 
 async def require_can_grant_resource_role(
@@ -710,15 +838,21 @@ async def require_can_change_resource_role(
 ) -> None:
     """Guard changing (``new_rol``) or removing (``None``) an existing grant.
 
-    A resource never loses its last eigenaar this way.  Otherwise leaving a
-    resource yourself is always allowed; anything else needs the authority
-    to hand out both the current and the new rol.
+    A resource never loses its last eigenaar this way (409).  Otherwise
+    giving up rights yourself (leaving, or stepping down to a rol that gives
+    no more) is always allowed; anything else needs the authority to hand
+    out both the current and the new rol.  The evaluation endpoint asks this
+    as ``resource_role:revoke`` on the grant.
     """
     await _require_keeps_an_owner(db, grant, new_rol)
-    if new_rol is None and grant.person_id == perm_ctx.person_id:
-        return
     if new_rol is not None:
         _require_known_rol(grant.resource_type, new_rol)
+    if grant.person_id is not None and grant.person_id == perm_ctx.person_id:
+        kept = _rol_permissions(
+            grant.resource_type, frozenset({new_rol} if new_rol else set())
+        )
+        if kept <= _rol_permissions(grant.resource_type, frozenset({grant.rol})):
+            return
     await _require_grant_authority(
         db,
         perm_ctx,

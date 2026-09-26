@@ -13,18 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authority import (
+    grant_permission,
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
+from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    check_resource_org_scope,
-    get_org_context,
-)
 from bouwmeester.core.permissions import (
     PermissionContext,
-    check_resource_permission,
     get_permission_context,
     require_permission,
 )
@@ -61,27 +57,23 @@ def _validate_resource_type(resource_type: str) -> None:
         )
 
 
+_READ_PERMISSION = {"corpus_node": "node:read"}
+
+
 async def _require_can_list_grants(
     perm: PermissionContext,
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
-    org_ctx: OrgContext,
 ) -> None:
     """Read gate for listing who holds which rol on a resource.
 
-    An eigenaar of the resource, or someone with ``resource_permission:manage``
-    who can see the resource.  Changing grants is decided in
-    ``core.authority``.
+    Whoever may hand out roles here and can see the resource.  Changing
+    grants is decided in ``core.authority``.
     """
-    if perm.is_super_admin:
-        return
-    has_resource = perm.person_id is not None and await check_resource_permission(
-        db, perm.person_id, resource_type, resource_id, "resource_permission:manage"
-    )
-    if not has_resource and not perm.has_permission("resource_permission:manage"):
-        raise HTTPException(403, "Onvoldoende rechten")
-    await check_resource_org_scope(db, resource_type, resource_id, org_ctx)
+    await require(db, perm, grant_permission(resource_type), resource_type, resource_id)
+    read = _READ_PERMISSION.get(resource_type, f"{resource_type}:read")
+    await require(db, perm, read, resource_type, resource_id)
 
 
 def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:
@@ -166,14 +158,11 @@ async def list_resource_permissions(
     resource_type: str,
     resource_id: UUID,
     perm: PermissionContext = Depends(get_permission_context),
-    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """List people and roles on a resource."""
     _validate_resource_type(resource_type)
-    if not perm.is_authenticated:
-        raise HTTPException(401, "Niet ingelogd")
-    await _require_can_list_grants(perm, db, resource_type, resource_id, org_ctx)
+    await _require_can_list_grants(perm, db, resource_type, resource_id)
 
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource(resource_type, resource_id)
