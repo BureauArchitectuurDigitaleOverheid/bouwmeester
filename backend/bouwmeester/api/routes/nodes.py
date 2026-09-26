@@ -22,7 +22,6 @@ from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
-    require_permission,
 )
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
@@ -703,7 +702,6 @@ async def get_node_financieel(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:read")),
     org_ctx: OrgContext = Depends(get_org_context),
     _authz=Depends(_READ_NODE),
 ) -> FinancieelOverzicht:
@@ -717,7 +715,6 @@ async def get_node_opdrachten(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("opdracht:read")),
     org_ctx: OrgContext = Depends(get_org_context),
     _authz=Depends(_READ_NODE),
 ) -> list[OpdrachtResponse]:

@@ -2,18 +2,65 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select, text
+from sqlalchemy import (
+    String,
+    case,
+    func,
+    literal,
+    literal_column,
+    null,
+    select,
+    text,
+    union_all,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.initiatief_context import InitiatiefContext, apply_lead_filter
 from bouwmeester.core.org_context import (
     OrgContext,
-    org_filter_sql_clause,
-    org_filter_sql_params,
+    apply_node_filter,
+    apply_task_filter,
 )
 from bouwmeester.core.query_utils import escape_like
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.lead import Lead
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.parlementair_item import ParlementairItem
+from bouwmeester.models.person import Person
+from bouwmeester.models.tag import Tag
+from bouwmeester.models.task import Task
 from bouwmeester.utils.tiptap import tiptap_to_plain
+
+# Per result type: the model and its (title, subtitle, description) columns.
+# Visibility is applied per type with the same filters as the list routes;
+# people, eenheden, parlementaire items and tags are tenant-wide (the route
+# gates those types on their permission).
+_ENTITIES = {
+    "corpus_node": (
+        CorpusNode,
+        lambda: (CorpusNode.title, CorpusNode.node_type, CorpusNode.description),
+    ),
+    "task": (Task, lambda: (Task.title, Task.status, Task.description)),
+    "person": (Person, lambda: (Person.naam, Person.functie, Person.email)),
+    "organisatie_eenheid": (
+        OrganisatieEenheid,
+        lambda: (
+            OrganisatieEenheid.naam,
+            OrganisatieEenheid.type,
+            OrganisatieEenheid.beschrijving,
+        ),
+    ),
+    "parlementair_item": (
+        ParlementairItem,
+        lambda: (
+            ParlementairItem.titel,
+            ParlementairItem.type,
+            ParlementairItem.onderwerp,
+        ),
+    ),
+    "tag": (Tag, lambda: (Tag.name, null(), Tag.description)),
+    "lead": (Lead, lambda: (Lead.title, Lead.stage, Lead.description)),
+}
 
 
 class SearchRepository:
@@ -30,178 +77,52 @@ class SearchRepository:
     ) -> list[dict]:
         """Search across all entity types using stored tsvector + GIN indexes.
 
-        Returns unified results from corpus_node, task, person,
-        organisatie_eenheid, parlementair_item, and tag tables.
+        Each type is matched on its ``search_vector`` (stemmed words) or on
+        a substring of its title (abbreviations like "JenV" inside
+        "MinJenV"), and restricted to what the caller sees: nodes, tasks
+        and leads through the same filters as their list routes.
         """
-        all_types = {
-            "corpus_node",
-            "task",
-            "person",
-            "organisatie_eenheid",
-            "parlementair_item",
-            "tag",
-            "lead",
+        active_types = [
+            t for t in _ENTITIES if result_types is None or t in result_types
+        ]
+        tsquery = func.plainto_tsquery("dutch", query)
+        pattern = f"%{escape_like(query.strip())}%"
+        visibility = {
+            "corpus_node": lambda stmt: apply_node_filter(stmt, org_ctx),
+            "task": lambda stmt: apply_task_filter(stmt, org_ctx),
+            "lead": lambda stmt: apply_lead_filter(stmt, init_ctx),
         }
-        active_types = set(result_types) if result_types else all_types
 
         sub_queries = []
-
-        # title_col per entity for ILIKE fallback
-        entity_title_cols = {
-            "corpus_node": "title",
-            "task": "title",
-            "person": "naam",
-            "organisatie_eenheid": "naam",
-            "parlementair_item": "titel",
-            "tag": "name",
-            "lead": "title",
-        }
-
-        def _where(title_col: str) -> str:
-            # FTS for stemmed word matching, ILIKE for substring-in-title
-            # fallback (handles abbreviations like "JenV" inside "MinJenV").
-            fts = "search_vector @@ plainto_tsquery('dutch', :query)"
-            return f"({fts} OR {title_col} ILIKE :ilike_pattern)"
-
-        def _score(title_col: str) -> str:
-            # FTS rank dominates; ILIKE-only matches get a low base score
-            # so they appear below proper FTS hits.
-            rank = "ts_rank(search_vector, plainto_tsquery('dutch', :query))"
-            return (
-                f"GREATEST({rank}, "
-                f"CASE WHEN {title_col} ILIKE :ilike_pattern THEN 0.05 ELSE 0 END)"
-            )
-
-        def _org_sql(col: str = "organisatie_eenheid_id") -> str:
-            return org_filter_sql_clause(col, org_ctx)
-
-        if "corpus_node" in active_types:
-            tc = entity_title_cols["corpus_node"]
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'corpus_node' AS result_type,
-                    title,
-                    node_type AS subtitle,
-                    description,
-                    {_score(tc)} AS score
-                FROM corpus_node
-                WHERE {_where(tc)}{_org_sql()}
-            """)
-
-        if "task" in active_types:
-            tc = entity_title_cols["task"]
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'task' AS result_type,
-                    title,
-                    status AS subtitle,
-                    description,
-                    {_score(tc)} AS score
-                FROM task
-                WHERE {_where(tc)}{_org_sql()}
-            """)
-
-        if "person" in active_types:
-            tc = entity_title_cols["person"]
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'person' AS result_type,
-                    naam AS title,
-                    functie AS subtitle,
-                    email AS description,
-                    {_score(tc)} AS score
-                FROM person
-                WHERE {_where(tc)}
-            """)
-
-        if "organisatie_eenheid" in active_types:
-            tc = entity_title_cols["organisatie_eenheid"]
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'organisatie_eenheid' AS result_type,
-                    naam AS title,
-                    type AS subtitle,
-                    beschrijving AS description,
-                    {_score(tc)} AS score
-                FROM organisatie_eenheid
-                WHERE {_where(tc)}
-            """)
-
-        if "parlementair_item" in active_types:
-            tc = entity_title_cols["parlementair_item"]
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'parlementair_item' AS result_type,
-                    titel AS title,
-                    type AS subtitle,
-                    onderwerp AS description,
-                    {_score(tc)} AS score
-                FROM parlementair_item
-                WHERE {_where(tc)}
-            """)
-
-        if "tag" in active_types:
-            tc = entity_title_cols["tag"]
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'tag' AS result_type,
-                    name AS title,
-                    NULL AS subtitle,
-                    description,
-                    {_score(tc)} AS score
-                FROM tag
-                WHERE {_where(tc)}
-            """)
-
-        lead_filter = ""
-        if "lead" in active_types:
-            tc = entity_title_cols["lead"]
-            if init_ctx is not None and not init_ctx.is_admin:
-                # The one lead visibility rule, not the org filter of nodes.
-                visible = await self.session.scalars(
-                    apply_lead_filter(select(Lead.id), init_ctx)
+        for result_type in active_types:
+            model, columns = _ENTITIES[result_type]
+            title, subtitle, description = columns()
+            vector = literal_column(f"{model.__tablename__}.search_vector")
+            rank = func.ts_rank(vector, tsquery)
+            title_match = title.ilike(pattern)
+            stmt = (
+                select(
+                    model.id.label("id"),
+                    literal(result_type, String).label("result_type"),
+                    title.label("title"),
+                    subtitle.label("subtitle"),
+                    description.label("description"),
+                    func.greatest(rank, case((title_match, 0.05), else_=0.0)).label(
+                        "score"
+                    ),
                 )
-                visible_lead_ids = [str(lid) for lid in visible.all()]
-                lead_filter = " AND id = ANY(:visible_lead_ids)"
-            sub_queries.append(f"""
-                SELECT
-                    id,
-                    'lead' AS result_type,
-                    title,
-                    stage AS subtitle,
-                    description,
-                    {_score(tc)} AS score
-                FROM lead
-                WHERE {_where(tc)}{lead_filter}
-            """)
+                .select_from(model)
+                .where(vector.op("@@")(tsquery) | title_match)
+            )
+            restrict = visibility.get(result_type)
+            sub_queries.append(restrict(stmt) if restrict else stmt)
 
         if not sub_queries:
             return []
 
-        union_sql = " UNION ALL ".join(sub_queries)
-        full_sql = f"""
-            SELECT * FROM ({union_sql}) AS combined
-            ORDER BY score DESC
-            LIMIT :limit
-        """
-
-        params: dict = {
-            "query": query,
-            "limit": limit,
-            "ilike_pattern": f"%{escape_like(query.strip())}%",
-        }
-        if lead_filter:
-            params["visible_lead_ids"] = visible_lead_ids
-        params.update(org_filter_sql_params(org_ctx))
-
-        result = await self.session.execute(text(full_sql), params)
-        rows = result.all()
+        combined = union_all(*sub_queries).subquery("combined")
+        full = select(combined).order_by(combined.c.score.desc()).limit(limit)
+        rows = (await self.session.execute(full)).all()
 
         url_map = {
             "corpus_node": "/nodes/{id}",
@@ -252,44 +173,20 @@ class SearchRepository:
         Returns a list of dicts with id, title, node_type, similarity score.
         Requires the pg_trgm extension.
         """
-        params: dict = {"title": title, "limit": limit}
-
-        exclude_clause = ""
+        tsquery = func.plainto_tsquery("dutch", title)
+        vector = literal_column("corpus_node.search_vector")
+        trigram = func.similarity(CorpusNode.title, title)
+        fts = case((vector.op("@@")(tsquery), func.ts_rank(vector, tsquery)), else_=0.0)
+        # Composite score: trigram similarity on title + FTS on the vector.
+        combined_score = (trigram * 0.7 + fts * 0.3).label("combined_score")
+        stmt = select(
+            CorpusNode.id, CorpusNode.title, CorpusNode.node_type, combined_score
+        ).where(trigram > 0.15)
         if exclude_node_id:
-            exclude_clause = "AND id != :exclude_id"
-            params["exclude_id"] = exclude_node_id
-
-        org_clause = org_filter_sql_clause("organisatie_eenheid_id", org_ctx)
-        params.update(org_filter_sql_params(org_ctx))
-
-        # Composite score: trigram similarity on title + optional FTS on description
-        sql = f"""
-            SELECT
-                id,
-                title,
-                node_type,
-                similarity(title, :title) AS trgm_score,
-                CASE
-                    WHEN search_vector @@ plainto_tsquery('dutch', :title)
-                    THEN ts_rank(search_vector, plainto_tsquery('dutch', :title))
-                    ELSE 0.0
-                END AS fts_score,
-                (similarity(title, :title) * 0.7
-                 + CASE
-                     WHEN search_vector @@ plainto_tsquery('dutch', :title)
-                     THEN ts_rank(search_vector, plainto_tsquery('dutch', :title)) * 0.3
-                     ELSE 0.0
-                   END
-                ) AS combined_score
-            FROM corpus_node
-            WHERE similarity(title, :title) > 0.15
-            {exclude_clause}{org_clause}
-            ORDER BY combined_score DESC
-            LIMIT :limit
-        """
-
-        result = await self.session.execute(text(sql), params)
-        rows = result.all()
+            stmt = stmt.where(CorpusNode.id != exclude_node_id)
+        stmt = apply_node_filter(stmt, org_ctx)
+        stmt = stmt.order_by(combined_score.desc()).limit(limit)
+        rows = (await self.session.execute(stmt)).all()
 
         return [
             {

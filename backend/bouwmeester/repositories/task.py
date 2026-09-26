@@ -128,12 +128,8 @@ class TaskRepository(BaseRepository[Task]):
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        # Exception: you always see your own tasks, so if the assignee
-        # matches the current user we skip org filtering entirely.
-        if org_ctx is not None and org_ctx.person_id == assignee_id:
-            pass  # no org filter - user sees all their own tasks
-        else:
-            stmt = apply_task_filter(stmt, org_ctx)
+        # Your own tasks are always visible (``apply_task_filter``).
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -172,10 +168,8 @@ class TaskRepository(BaseRepository[Task]):
         )
         if assignee_id is not None:
             stmt = stmt.where(Task.assignee_id == assignee_id)
-        # Skip org filter when listing the caller's own overdue tasks —
-        # users always see their own tasks regardless of org-scope.
-        if not (org_ctx is not None and org_ctx.person_id == assignee_id):
-            stmt = apply_task_filter(stmt, org_ctx)
+        # Your own tasks are always visible (``apply_task_filter``).
+        stmt = apply_task_filter(stmt, org_ctx)
         stmt = stmt.order_by(Task.deadline.asc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

@@ -40,6 +40,38 @@ async def get_self_and_ancestor_ids(
     return set(result.scalars().all())
 
 
+async def get_chains(
+    session: AsyncSession, eenheid_ids: list[UUID]
+) -> dict[UUID, set[UUID]]:
+    """``{eenheid: itself plus every eenheid above it}`` for many, in one query.
+
+    The bulk form of :func:`get_self_and_ancestor_ids`.  An id that does not
+    exist maps to just itself, like the single form.
+    """
+    if not eenheid_ids:
+        return {}
+    cte = (
+        select(
+            OrganisatieEenheid.id.label("start_id"),
+            OrganisatieEenheid.id.label("id"),
+            OrganisatieEenheid.parent_id.label("parent_id"),
+        )
+        .where(OrganisatieEenheid.id.in_(eenheid_ids))
+        .cte(name="chains", recursive=True)
+    )
+    cte = cte.union(
+        select(
+            cte.c.start_id, OrganisatieEenheid.id, OrganisatieEenheid.parent_id
+        ).where(OrganisatieEenheid.id == cte.c.parent_id)
+    )
+    chains: dict[UUID, set[UUID]] = {eid: {eid} for eid in eenheid_ids}
+    for start_id, eid in (
+        await session.execute(select(cte.c.start_id, cte.c.id))
+    ).all():
+        chains[start_id].add(eid)
+    return chains
+
+
 async def get_ancestor_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
     """Return every eenheid above any of *eenheid_ids* (not the ids themselves)."""
     if not eenheid_ids:

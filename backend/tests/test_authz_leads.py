@@ -208,12 +208,13 @@ ROUTES = [
     ),
     # update and move
     ("opdrachtgever", "PUT", "/api/leads/{lead}", lambda lw: {"title": "Ja"}, 200),
+    # a lead the opdrachtgever cannot see answers as missing
     (
         "opdrachtgever",
         "PUT",
         "/api/leads/{lead_other}",
         lambda lw: {"title": "Nee"},
-        403,
+        404,
     ),
     (
         "opdrachtgever",
@@ -222,20 +223,21 @@ ROUTES = [
         lambda lw: {"stage": "verkennen"},
         200,
     ),
-    # moving a lead is lead:delete where it was and lead:create where it goes
+    # a lead without initiatief moves with lead:update where it is and
+    # lead:create where it goes
     (
-        "team_editor",
+        "team_editor",  # updates lead_free, may not create in the initiatief
         "PUT",
         "/api/leads/{lead_free}",
         lambda lw: {"initiatief_id": str(lw.id("initiatief"))},
         403,
     ),
     (
-        "afd_editor",  # may create in the initiatief, may not delete lead_free
+        "afd_editor",  # updates lead_free and creates in the initiatief
         "PUT",
         "/api/leads/{lead_free}",
         lambda lw: {"initiatief_id": str(lw.id("initiatief")), "stage": "verkennen"},
-        403,
+        200,
     ),
     (
         "manager",
@@ -252,13 +254,13 @@ ROUTES = [
         lambda lw: {"initiatief_id": None},
         422,
     ),
-    # a contributor moves nothing out of the initiatief (no lead:delete)
+    # in an initiatief the eenheid is a label, changing it moves nothing
     (
         "role_only",
         "PUT",
         "/api/leads/{lead}",
         lambda lw: {"organisatie_eenheid_id": str(lw.id("team"))},
-        403,
+        200,
     ),
     # delete: initiatief:delete for a lead in an initiatief
     ("role_only", "DELETE", "/api/leads/{lead_other}", None, 403),
@@ -295,14 +297,14 @@ ROUTES = [
         200,
     ),
     (
-        "opdrachtgever",
+        "opdrachtgever",  # lead_other is not visible to them
         "POST",
         "/api/leads/reorder",
         lambda lw: {
             "lead_ids": [str(lw.id("lead")), str(lw.id("lead_other"))],
             "stage": "verkennen",
         },
-        403,
+        404,
     ),
     (
         "role_only",

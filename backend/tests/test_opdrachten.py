@@ -314,7 +314,9 @@ async def test_financieel_overzicht_counts_opdrachten_visible_by_either_eenheid(
     )
     await db_session.flush()
     org_ctx = OrgContext(
-        is_authenticated=True, visible_eenheid_ids=[extern_org_eenheid.id]
+        is_authenticated=True,
+        visible_eenheid_ids=[extern_org_eenheid.id],
+        readable_modules=frozenset({"opdracht"}),
     )
 
     overzicht = await FinancieelService(db_session).get_financieel_overzicht(

@@ -147,7 +147,7 @@ REVIEW_CASES = [
     ("team_editor", "node_team", 200),
     ("afd_editor", "node_team", 200),  # a role applies to everything below
     ("team_editor", "node_directie", 403),  # visible above, not writable
-    ("manager", "node_elders", 403),
+    ("manager", "node_elders", 404),  # not visible: as if it did not exist
     ("team_editor", "node_free", 200),  # a node without eenheid is tenant-wide
     ("viewer", "node_free", 403),  # viewers do not review
     ("team_editor", None, 200),  # no node yet: like a new node without eenheid
@@ -250,7 +250,8 @@ async def test_fcc_push_is_decided_on_the_opdracht(world):
             results[who] = (await c.post(url)).status_code
     async with client_as(world.db, world.person["super_admin"]) as c:
         missing = await c.post(f"/api/fcc/opdrachten/{uuid.uuid4()}/push")
-    assert results == {"above": 400, "beside": 403, "manager": 403, "super_admin": 400}
+    # beside cannot see the opdracht, so a refusal does not reveal it (404)
+    assert results == {"above": 400, "beside": 404, "manager": 403, "super_admin": 400}
     assert missing.status_code == 404
 
 

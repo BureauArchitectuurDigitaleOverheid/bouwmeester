@@ -16,10 +16,12 @@ write permission on the owning eenheid or above it, and such eenheden make
 their subtree visible).  Plain members of an eenheid above the owner do not
 read down: they only see that far through a role that lets them write.
 
-A lead is visible when it has no initiatief (tenant-wide during the
-migration period), when its initiatief is visible, or when the person holds
-a resource role on the lead itself (opdrachtgever, contactpersoon,
-betrokken), directly or through an eenheid.
+A lead is visible when its initiatief is visible, when the person holds a
+resource role on the lead itself (opdrachtgever, contactpersoon,
+betrokken; directly or through an eenheid), or when it has no initiatief
+and its eenheid is visible in the org chart.  Only a lead with neither an
+initiatief nor an eenheid is tenant-wide (leads from before initiatieven
+existed).
 
 Lists filter with ``apply_initiatief_filter`` / ``apply_lead_filter``;
 single items ask ``core.authz`` (``initiatief:read`` / ``lead:read``),
@@ -38,7 +40,12 @@ from sqlalchemy import and_, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, build_org_context
+from bouwmeester.core.org_context import (
+    OrgContext,
+    build_org_context,
+    org_eenheid_clause,
+    sees_eenheid,
+)
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
@@ -54,6 +61,8 @@ class InitiatiefContext:
 
     person_id: UUID | None = None
     visible_initiatief_ids: list[UUID] = field(default_factory=list)
+    # The caller's org visibility, for leads without initiatief.
+    org_ctx: OrgContext | None = None
     # Leads the person holds a resource role on (seen regardless of initiatief).
     lead_role_ids: list[UUID] = field(default_factory=list)
     is_admin: bool = False
@@ -65,16 +74,24 @@ class InitiatiefContext:
         return self.is_authenticated and initiatief_id in self.visible_initiatief_ids
 
     def sees_lead(self, lead: Lead) -> bool:
-        return self.sees_lead_in(lead.id, lead.initiatief_id)
+        return self.sees_lead_in(
+            lead.id, lead.initiatief_id, lead.organisatie_eenheid_id
+        )
 
-    def sees_lead_in(self, lead_id: UUID, initiatief_id: UUID | None) -> bool:
-        """``sees_lead`` for a lead known by its id and initiatief."""
+    def sees_lead_in(
+        self, lead_id: UUID, initiatief_id: UUID | None, eenheid_id: UUID | None
+    ) -> bool:
+        """``sees_lead`` for a lead known by its id, initiatief and eenheid."""
         if self.is_admin:
             return True
-        return self.is_authenticated and (
-            initiatief_id is None
-            or initiatief_id in self.visible_initiatief_ids
-            or lead_id in self.lead_role_ids
+        if not self.is_authenticated:
+            return False
+        if lead_id in self.lead_role_ids:
+            return True
+        if initiatief_id is not None:
+            return initiatief_id in self.visible_initiatief_ids
+        return eenheid_id is None or (
+            self.org_ctx is not None and sees_eenheid(self.org_ctx, eenheid_id)
         )
 
 
@@ -145,6 +162,7 @@ async def build_initiatief_context(
     return InitiatiefContext(
         person_id=person.id,
         visible_initiatief_ids=list(initiatief_ids.all()),
+        org_ctx=org_ctx,
         lead_role_ids=list(lead_ids.all()),
         is_admin=False,
         is_authenticated=True,
@@ -177,9 +195,14 @@ def apply_lead_filter(stmt, ctx: InitiatiefContext | None):
         return stmt
     if not ctx.is_authenticated:
         return stmt.where(false())
+    eenheid_visible = (
+        org_eenheid_clause(Lead.organisatie_eenheid_id, ctx.org_ctx)
+        if ctx.org_ctx is not None
+        else Lead.organisatie_eenheid_id.is_(None)
+    )
     return stmt.where(
         or_(
-            Lead.initiatief_id.is_(None),
+            and_(Lead.initiatief_id.is_(None), eenheid_visible),
             Lead.initiatief_id.in_(ctx.visible_initiatief_ids),
             Lead.id.in_(ctx.lead_role_ids),
         )

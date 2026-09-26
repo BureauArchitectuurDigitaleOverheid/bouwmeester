@@ -20,7 +20,7 @@ from bouwmeester.core.authority import (
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import prefetch, require, requires
+from bouwmeester.core.authz import prefetch, require, require_move, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
@@ -123,39 +123,6 @@ def _robust_parse_json(text: str) -> dict:
 # the lead.
 _READ_LEAD = requires("lead:read", "lead", path_param="lead_id")
 _UPDATE_LEAD = requires("lead:update", "lead", path_param="lead_id")
-
-
-async def _require_can_move(
-    db: AsyncSession, perm_ctx: PermissionContext, lead: Lead, data: LeadUpdate
-) -> None:
-    """Moving a lead is taking it away at the old place and adding it at the new.
-
-    ``lead:delete`` where it is (in an initiatief: initiatief:delete) and
-    ``lead:create`` where it goes.  A lead in an initiatief stays in one.
-    """
-    fields = data.model_fields_set
-    new_place = {
-        "initiatief_id": (
-            data.initiatief_id if "initiatief_id" in fields else lead.initiatief_id
-        ),
-        "organisatie_eenheid_id": (
-            data.organisatie_eenheid_id
-            if "organisatie_eenheid_id" in fields
-            else lead.organisatie_eenheid_id
-        ),
-    }
-    if lead.initiatief_id is not None and new_place["initiatief_id"] is None:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "Een lead in een initiatief kan niet meer zonder initiatief",
-        )
-    if new_place == {
-        "initiatief_id": lead.initiatief_id,
-        "organisatie_eenheid_id": lead.organisatie_eenheid_id,
-    }:
-        return
-    await require(db, perm_ctx, "lead:delete", "lead", lead.id)
-    await require(db, perm_ctx, "lead:create", "lead", place=new_place)
 
 
 # ---------------------------------------------------------------------------
@@ -426,7 +393,9 @@ async def update_lead(
 
     # Capture old state before update
     old_lead = require_found(await db.get(Lead, lead_id), "Lead")
-    await _require_can_move(db, perm_ctx, old_lead, data)
+    await require_move(
+        db, perm_ctx, "lead", old_lead, data.model_dump(exclude_unset=True)
+    )
     old_assignee_id = old_lead.assignee_id
     old_stage = old_lead.stage
 

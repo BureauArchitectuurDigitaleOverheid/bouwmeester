@@ -238,7 +238,8 @@ ROUTES = [
     ("viewer", "DELETE", "/api/nodes/{node_team}", None, 403),
     ("team_editor", "PUT", "/api/nodes/{node_team}", {"title": "Ja"}, 200),
     ("team_editor", "PUT", "/api/nodes/{node_directie}", {"title": "Nee"}, 403),
-    ("team_editor", "DELETE", "/api/nodes/{node_elders}", None, 403),
+    # writes on what the caller cannot see answer as missing
+    ("team_editor", "DELETE", "/api/nodes/{node_elders}", None, 404),
     ("team_editor", "PUT", f"/api/nodes/{_MISSING}", {"title": "?"}, 404),
     # edges: one writable end, the other end must be visible
     ("viewer", "POST", "/api/edges", _edge("node_team", "node_free"), 403),
@@ -260,8 +261,8 @@ ROUTES = [
         403,
     ),
     ("team_editor", "PUT", "/api/tasks/{task_team}", {"title": "Ja"}, 200),
-    ("team_editor", "PUT", "/api/tasks/{task_elders}", {"title": "Nee"}, 403),
-    ("team_editor", "DELETE", "/api/tasks/{task_elders}", None, 403),
+    ("team_editor", "PUT", "/api/tasks/{task_elders}", {"title": "Nee"}, 404),
+    ("team_editor", "DELETE", "/api/tasks/{task_elders}", None, 404),
     ("team_editor", "DELETE", f"/api/tasks/{_MISSING}", None, 404),
 ]  # fmt: skip
 

@@ -164,7 +164,10 @@ from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.opdracht import Opdracht
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.organisatie_eenheid import (
+    INTERNAL_EENHEID_TYPES,
+    OrganisatieEenheid,
+)
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.resource_permission import ResourcePermission
@@ -175,8 +178,10 @@ from bouwmeester.models.suggested_lead import SuggestedLead
 from bouwmeester.models.tag import Tag
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
+    get_chains,
     get_membership_ids,
     get_self_and_ancestor_ids,
+    get_subtree_ids,
 )
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.shared_access import share_active_today
@@ -241,6 +246,16 @@ async def _chain(db: AsyncSession, perm_ctx: PermissionContext, eid: UUID) -> se
     return perm_ctx.authz_cache[key]
 
 
+async def _prefetch_chains(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid_ids: Iterable[UUID]
+) -> None:
+    """Load the ancestor chains of many eenheden in one query (see ``_chain``)."""
+    cache = perm_ctx.authz_cache
+    missing = list({eid for eid in eenheid_ids if ("chain", eid) not in cache})
+    for eid, chain in (await get_chains(db, missing)).items():
+        cache[("chain", eid)] = chain
+
+
 async def _memberships(db: AsyncSession, perm_ctx: PermissionContext) -> list[UUID]:
     """The eenheden the caller is placed in today, once per request."""
     key = ("memberships",)
@@ -266,6 +281,10 @@ class _Location:
     parents: tuple[tuple[str, UUID | None], ...] = ()
     node_id: UUID | None = None  # the node itself, for node shares
     read_only: bool = False  # a synced eenheid: only super_admin writes
+    assignee_id: UUID | None = None  # a task's assignee, who always reads it
+    # A new resource that may go anywhere: the permission anywhere decides
+    # (an external organisatie_eenheid).
+    free_create: bool = False
 
 
 # A locator finds many resources of one type in one query.
@@ -319,11 +338,29 @@ def _node_location(rid: UUID | None, eenheid_id: UUID | None) -> _Location:
     return _Location(eenheid_ids=_eenheden(eenheid_id), node_id=rid)
 
 
-def _task_location(node_id: UUID | None, eenheid_id: UUID | None) -> _Location:
+def _task_location(
+    node_id: UUID | None, eenheid_id: UUID | None, assignee_id: UUID | None = None
+) -> _Location:
     # A team's task is its team's; a task without eenheid is its node's.
     if eenheid_id is not None:
-        return _Location(eenheid_ids=(eenheid_id,))
-    return _Location(parents=(("corpus_node", node_id),) if node_id else ())
+        return _Location(eenheid_ids=(eenheid_id,), assignee_id=assignee_id)
+    return _Location(
+        parents=(("corpus_node", node_id),) if node_id else (),
+        assignee_id=assignee_id,
+    )
+
+
+def _eenheid_place(place: Any) -> _Location:
+    """Where a new eenheid goes: internal ones under their parent, others free.
+
+    An internal eenheid (ministerie down to team) becomes part of the
+    organisation below its parent, so ``org:create`` on the parent decides
+    (no parent: system roles only).  An external one (a gemeente, a
+    stakeholder) lives anywhere: ``org:create`` held anywhere suffices.
+    """
+    if _field(place, "type") in INTERNAL_EENHEID_TYPES:
+        return _Location(eenheid_ids=_eenheden(_field(place, "parent_id")))
+    return _Location(free_create=True)
 
 
 def _synced(bron: str | None) -> bool:
@@ -398,7 +435,7 @@ _LOCATORS: dict[str, _Locator] = {
     ),
     "initiatief": _locate_initiatieven,
     "task": _locator(
-        _rows(Task, Task.node_id, Task.organisatie_eenheid_id),
+        _rows(Task, Task.node_id, Task.organisatie_eenheid_id, Task.assignee_id),
         lambda rid, row: _task_location(*row),
     ),
     "lead": _locate_leads,
@@ -474,6 +511,7 @@ _PLACES: dict[str, _PlaceLocator] = {
         )
     ),
     "lead": _place_lead,
+    "organisatie_eenheid": _sync_place(_eenheid_place),
     "opdracht": _sync_place(
         lambda p: _Location(
             eenheid_ids=_eenheden(
@@ -530,14 +568,20 @@ async def prefetch(
     deciding the same action on many resources (a board of leads, the edges
     of a node) so the decisions cost a constant number of queries.
     """
+    ids = list(ids)
     cache = perm_ctx.authz_cache
     await _locate_many(db, cache, resource_type, ids)
     parents: dict[str, set[UUID]] = {}
+    eenheden: set[UUID] = set()
     for rid in ids:
         loc = cache[("loc", resource_type, rid)]
-        for parent_type, parent_id in loc.parents if loc else ():
+        if loc is None:
+            continue
+        eenheden.update(loc.eenheid_ids)
+        for parent_type, parent_id in loc.parents:
             if parent_id is not None:
                 parents.setdefault(parent_type, set()).add(parent_id)
+    await _prefetch_chains(db, perm_ctx, eenheden)
     for parent_type, parent_ids in parents.items():
         await prefetch(db, perm_ctx, parent_type, parent_ids)
 
@@ -607,17 +651,22 @@ _TENANT_WIDE_WHEN_UNSCOPED = frozenset(
     }
 )
 
-# Creating one needs the permission anywhere (the parent is still passed).
-_CREATE_ANYWHERE = frozenset({"organisatie_eenheid"})
-
 # Every resource type can() knows (for input validation by callers).
 RESOURCE_TYPES = frozenset(set(_LOCATORS) | _CREATE_ONLY_TYPES)
+
+# A new one of these lands in every eenheid it names (an opdracht in both
+# its opdrachtgever and its opdrachtnemer-eenheid), so creating it needs
+# the permission in each of them, not in one.
+_CREATE_IN_EVERY_EENHEID = frozenset({"opdracht"})
 
 # Types whose eenheid can be shared for editing (``SharedAccess``).
 _SHAREABLE_TYPES = frozenset({"corpus_node", "task"})
 
 # Read by visibility of the eenheden they live in (step 0).
 _READ_BY_EENHEID = frozenset({"corpus_node", "task", "opdracht"})
+
+# Types whose existence is hidden from whoever cannot read them (step 0).
+_READ_BY_VISIBILITY = _READ_BY_EENHEID | {"initiatief", "lead"} | set(_DELEGATIONS)
 
 # Modules whose routes are gated as a whole on ``<type>:read`` (a module
 # toggle can take that permission away per eenheid).
@@ -635,6 +684,34 @@ _DOMAIN_TYPE = {v: k for k, v in _PERM_DOMAIN.items()}
 
 def _domain(resource_type: str) -> str:
     return _PERM_DOMAIN.get(resource_type, resource_type)
+
+
+def readable_modules(perm_ctx: PermissionContext) -> frozenset[str]:
+    """The switchable modules (``_MODULE_GATED``) the caller reads somewhere."""
+    return frozenset(
+        t for t in _MODULE_GATED if perm_ctx.has_permission(f"{_domain(t)}:read")
+    )
+
+
+async def role_read_ids(
+    db: AsyncSession, perm_ctx: PermissionContext, resource_type: str
+) -> list[UUID]:
+    """The resources of one type the caller reads through a resource role.
+
+    Step 2 for ``<type>:read``: a role held directly or through an eenheid
+    the caller is placed in, that grants reading.  ``core.org_context``
+    adds these to the visibility, so writing through a role implies seeing.
+    """
+    if perm_ctx.person_id is None:
+        return []
+    read = f"{_domain(resource_type)}:read"
+    granting = {
+        rol
+        for rol, perms in RESOURCE_ROLE_PERMISSIONS.get(resource_type, {}).items()
+        if read in perms
+    }
+    held = await _resource_roles(db, perm_ctx, resource_type)
+    return [rid for rid, rols in held.items() if rols & granting]
 
 
 def _parent_permission(
@@ -758,11 +835,15 @@ async def _read_decision(
     resource_id: UUID | None,
     loc: _Location,
 ) -> bool | None:
-    """The answer to ``<resource_type>:read``, or None when rights decide."""
-    from bouwmeester.core.org_context import sees_eenheid
+    """The answer to ``<resource_type>:read``, or None when rights decide.
 
-    if resource_type in _MODULE_GATED and not perm_ctx.has_permission(
-        f"{_domain(resource_type)}:read"
+    The row forms of ``core.org_context`` / ``core.initiatief_context``, the
+    same rules the list filters apply.
+    """
+    from bouwmeester.core.org_context import sees_node, sees_opdracht, sees_task
+
+    if resource_type in _MODULE_GATED and resource_type not in readable_modules(
+        perm_ctx
     ):
         return False
     if resource_type in ("initiatief", "lead"):
@@ -772,14 +853,19 @@ async def _read_decision(
         if resource_type == "initiatief":
             return init_ctx.sees_initiatief(resource_id)
         initiatief_id = next((pid for _, pid in loc.parents), None)
-        return init_ctx.sees_lead_in(resource_id, initiatief_id)
+        own_eenheid = None if initiatief_id else next(iter(loc.eenheid_ids), None)
+        return init_ctx.sees_lead_in(resource_id, initiatief_id, own_eenheid)
     if resource_type in _READ_BY_EENHEID:
-        if loc.eenheid_ids:
-            org_ctx = await org_visibility(db, perm_ctx)
-            return any(sees_eenheid(org_ctx, eid) for eid in loc.eenheid_ids)
-        if not loc.parents:
-            return True  # no eenheid: visible to everyone logged in
-    if resource_type in _DELEGATIONS or resource_type in _READ_BY_EENHEID:
+        org_ctx = await org_visibility(db, perm_ctx)
+        if resource_type == "corpus_node":
+            return sees_node(org_ctx, resource_id, next(iter(loc.eenheid_ids), None))
+        if resource_type == "opdracht":
+            return sees_opdracht(org_ctx, resource_id, loc.eenheid_ids)
+        seen = sees_task(org_ctx, next(iter(loc.eenheid_ids), None), loc.assignee_id)
+        if seen is not None:
+            return seen
+        # A task without eenheid is read through its node (below).
+    if resource_type in _DELEGATIONS:
         if not loc.parents:
             return False
         reads = [
@@ -951,6 +1037,18 @@ async def _resolve(
             return True
 
     # 4. Rights on the resource's eenheid, inherited downward; edit shares.
+    if (
+        resource_id is None
+        and verb == "create"
+        and resource_type in _CREATE_IN_EVERY_EENHEID
+        and loc.eenheid_ids
+    ):
+        return all(
+            [
+                await _holds_on_eenheden(db, perm_ctx, permission, [eid])
+                for eid in loc.eenheid_ids
+            ]
+        )
     if await _holds_on_eenheden(db, perm_ctx, permission, loc.eenheid_ids):
         return True
     if (
@@ -967,7 +1065,7 @@ async def _resolve(
     return (
         resource_id is None
         and verb == "create"
-        and resource_type in _CREATE_ANYWHERE
+        and loc.free_create
         and perm_ctx.has_permission(permission)
     )
 
@@ -1051,6 +1149,45 @@ async def can_anywhere(
     return await _holds_parent_role_for(db, perm_ctx, permission, resource_type)
 
 
+async def eenheid_ids_where(
+    db: AsyncSession, perm_ctx: PermissionContext, permission: str
+) -> set[UUID] | None:
+    """The eenheden where ``can`` allows an ``org:*`` *permission*; None: all.
+
+    ``org:update`` / ``org:manage`` are asked on the eenheid itself,
+    ``org:create`` as creating an internal eenheid below it.  Candidates are
+    the subtrees of the eenheden where a scoped role grants the permission
+    (it applies below them) and the eenheden a resource role covers; each
+    is then decided by :func:`can`, so this list and the decisions agree.
+    """
+    if perm_ctx.is_super_admin or perm_ctx.has_system_permission(permission):
+        return None
+    roots = [
+        eid for eid, perms in perm_ctx.scoped_permissions.items() if permission in perms
+    ]
+    candidates = await get_subtree_ids(db, roots)
+    creating = permission.endswith(":create")
+    if not creating and perm_ctx.person_id is not None:
+        granting = RESOURCE_ROLE_PERMISSIONS["organisatie_eenheid"]
+        for eid, rols in (
+            await _resource_roles(db, perm_ctx, "organisatie_eenheid")
+        ).items():
+            if any(permission in granting.get(rol, ()) for rol in rols):
+                candidates.add(eid)
+    await prefetch(db, perm_ctx, "organisatie_eenheid", candidates)
+    allowed = set()
+    for eid in candidates:
+        if creating:
+            ok = await can(
+                db, perm_ctx, permission, "organisatie_eenheid", eenheid_id=eid
+            )
+        else:
+            ok = await can(db, perm_ctx, permission, "organisatie_eenheid", eid)
+        if ok:
+            allowed.add(eid)
+    return allowed
+
+
 async def require(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -1063,14 +1200,22 @@ async def require(
 ) -> None:
     """Like :func:`can`, but raises 401, 404 or 403.
 
-    404 when the resource does not exist, and when a ``*:read`` is refused:
-    that something exists is information too.
+    404 when the resource does not exist, and whenever the caller may not
+    read it: a refused ``*:read``, and a refused write on something they
+    cannot see (that something exists is information too).  403 only for
+    a refused write on something they can see.
     """
     if not perm_ctx.is_authenticated:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, _NOT_LOGGED_IN)
     loc = await _place_location(db, perm_ctx, resource_type, eenheid_id, place)
     decision = await _decide(db, perm_ctx, permission, resource_type, resource_id, loc)
-    if decision is None or (not decision and permission.endswith(":read")):
+    if decision is None or (
+        not decision
+        and (
+            permission.endswith(":read")
+            or not await _readable(db, perm_ctx, resource_type, resource_id)
+        )
+    ):
         raise HTTPException(status.HTTP_404_NOT_FOUND, _NOT_FOUND)
     if not decision:
         located = perm_ctx.authz_cache.get(("loc", resource_type, resource_id))
@@ -1086,6 +1231,114 @@ async def require(
             "Je hebt hier geen rechten voor: je rechten gelden alleen binnen je "
             "eigen organisatie-eenheden en de items waar je een rol op hebt",
         )
+
+
+# The fields that say where a resource lives, per type that can move.
+_PLACING_FIELDS: dict[str, tuple[str, ...]] = {
+    "lead": ("initiatief_id", "organisatie_eenheid_id"),
+    "task": ("node_id", "organisatie_eenheid_id"),
+    "opdracht": ("opdrachtgever_id", "opdrachtnemer_eenheid_id"),
+}
+
+
+async def require_move(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    resource_type: str,
+    record: Any,
+    changes: dict[str, Any],
+) -> None:
+    """Guard changing where an existing lead, task or opdracht lives.
+
+    *record* is the resource as it is; *changes* holds the fields of the
+    update (only those sent), of which the placing fields count.  Moving is
+    taking it away where it is and adding it where it goes:
+
+    - lead in an initiatief: another initiatief needs ``lead:delete`` on the
+      lead and ``lead:create`` in the new initiatief; back to no initiatief
+      is refused (422).  Its ``organisatie_eenheid_id`` is only a label
+      there (the initiatief decides), so changing it is a plain update.
+    - lead without initiatief: ``lead:update`` on the lead and
+      ``lead:create`` at the new place; clearing its eenheid makes it
+      tenant-wide, which only system roles may do.
+    - task: ``task:update`` on the task and ``task:create`` at the new place.
+    - opdracht: ``opdracht:update`` on every eenheid that changes, the one it
+      leaves and the one it lands in; taking all its eenheden away makes it
+      tenant-wide, which only system roles may do.
+    """
+    fields = _PLACING_FIELDS[resource_type]
+    old = {f: getattr(record, f) for f in fields}
+    new = {f: changes.get(f, old[f]) for f in fields}
+    if new == old:
+        return
+    if resource_type == "opdracht":
+        await _require_opdracht_move(db, perm_ctx, old, new)
+        return
+    old_initiatief = old.get("initiatief_id")
+    if resource_type == "lead" and old_initiatief is not None:
+        if new["initiatief_id"] is None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "Een lead in een initiatief kan niet meer zonder initiatief",
+            )
+        if new["initiatief_id"] == old_initiatief:
+            return
+        take_away = "lead:delete"
+    else:
+        take_away = f"{resource_type}:update"
+    if (
+        resource_type == "lead"
+        and new["initiatief_id"] is None
+        and new["organisatie_eenheid_id"] is None
+        and not perm_ctx.has_system_permission("lead:update")
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Alleen systeembeheerders maken een lead weer organisatiebreed",
+        )
+    await require(db, perm_ctx, take_away, resource_type, record.id)
+    await require(db, perm_ctx, f"{resource_type}:create", resource_type, place=new)
+
+
+async def _require_opdracht_move(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    old: dict[str, Any],
+    new: dict[str, Any],
+) -> None:
+    for field, before in old.items():
+        if new[field] == before:
+            continue
+        for eenheid_id in (before, new[field]):
+            if eenheid_id is not None:
+                await require(
+                    db, perm_ctx, "opdracht:update", "opdracht", eenheid_id=eenheid_id
+                )
+    if all(v is None for v in new.values()) and not perm_ctx.has_system_permission(
+        "opdracht:update"
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Alleen systeembeheerders halen alle eenheden van een opdracht weg",
+        )
+
+
+async def _readable(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    resource_type: str,
+    resource_id: UUID | None,
+) -> bool:
+    """May the caller see that this existing resource exists?
+
+    Only for types read by visibility (step 0); the others (an eenheid, a
+    tag, a samenwerkingsverband) are known tenant-wide.  A new resource
+    (no id) has nothing to hide.
+    """
+    if resource_id is None or resource_type not in _READ_BY_VISIBILITY:
+        return True
+    read = f"{_domain(resource_type)}:read"
+    return bool(await _decide(db, perm_ctx, read, resource_type, resource_id, None))
 
 
 def requires(permission: str, resource_type: str, *, path_param: str = "id"):

@@ -13,7 +13,7 @@ from bouwmeester.core.authority import (
     require_can_change_grants,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import require, requires
+from bouwmeester.core.authz import require, require_move, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
@@ -22,10 +22,8 @@ from bouwmeester.core.org_context import (
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
-    require_permission,
     require_system_permission,
 )
-from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
@@ -56,48 +54,6 @@ _UPDATE_OPDRACHT = requires("opdracht:update", "opdracht")
 _UPDATE_OPDRACHT_BY_OPDRACHT_ID = requires(
     "opdracht:update", "opdracht", path_param="opdracht_id"
 )
-# The opdrachten module (a module toggle can switch it off per eenheid).
-_OPDRACHTEN_MODULE = require_permission("opdracht:read")
-_PLACING_FIELDS = ("opdrachtgever_id", "opdrachtnemer_eenheid_id")
-
-
-async def _require_can_rescope(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    old: Opdracht,
-    data: OpdrachtUpdate,
-) -> None:
-    """Changing an opdracht's eenheden needs rights on every one that changes.
-
-    Rights on the eenheid it leaves and on the eenheid it lands in (writing
-    implies seeing, so an opdracht never moves out of sight of whoever may
-    still write it).  Taking both eenheden away makes it tenant-wide: only
-    system roles may do that.
-    """
-    new = {
-        f: getattr(data, f) if f in data.model_fields_set else getattr(old, f)
-        for f in _PLACING_FIELDS
-    }
-    for f in _PLACING_FIELDS:
-        before, after = getattr(old, f), new[f]
-        if before == after:
-            continue
-        for eenheid_id in (before, after):
-            if eenheid_id is not None:
-                await require(
-                    db, perm_ctx, "opdracht:update", "opdracht", eenheid_id=eenheid_id
-                )
-    unscoped = all(new[f] is None for f in _PLACING_FIELDS)
-    was_scoped = any(getattr(old, f) is not None for f in _PLACING_FIELDS)
-    if (
-        unscoped
-        and was_scoped
-        and not perm_ctx.has_system_permission("opdracht:update")
-    ):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Alleen systeembeheerders halen alle eenheden van een opdracht weg",
-        )
 
 
 @router.get("", response_model=list[OpdrachtResponse])
@@ -113,7 +69,6 @@ async def list_opdrachten(
     skip: int = Query(0, ge=0),
     limit: int = Query(10_000, ge=1, le=10_000),
     db: AsyncSession = Depends(get_db),
-    _module=Depends(_OPDRACHTEN_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[OpdrachtResponse]:
     repo = OpdrachtRepository(db)
@@ -143,7 +98,6 @@ async def get_opdrachten_summary(
     opdrachtgever_id: UUID | None = None,
     verantwoordelijke_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    _module=Depends(_OPDRACHTEN_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> OpdrachtenSummary:
     """Server-side aggregation of opdrachten totals (respects active filters)."""
@@ -306,7 +260,9 @@ async def update_opdracht(
     # Capture old state before update
     old = require_found(await repo.get(id), "Opdracht")
 
-    await _require_can_rescope(db, perm_ctx, old, data)
+    await require_move(
+        db, perm_ctx, "opdracht", old, data.model_dump(exclude_unset=True)
+    )
     if "instrument_id" in data.model_fields_set and data.instrument_id is not None:
         await require(db, perm_ctx, "node:read", "corpus_node", data.instrument_id)
 

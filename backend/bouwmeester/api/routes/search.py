@@ -26,16 +26,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
-# Maps each search result type to the permission required to see it
+# The tenant-wide result types and the permission that reads them.  Nodes,
+# tasks and leads are restricted per row by the caller's visibility (the
+# same filters as their list routes); tags are shared by everyone.
 _TYPE_PERMISSION: dict[str, str] = {
-    "corpus_node": "node:read",
-    "task": "task:read",
     "person": "people:read",
     "organisatie_eenheid": "org:read",
-    "parlementair_item": "node:read",
-    "tag": "node:read",
-    "lead": "lead:read",
+    "parlementair_item": "parlementair:read",
 }
+_ROW_FILTERED_TYPES = frozenset({"corpus_node", "task", "lead", "tag"})
 
 
 @router.get("", response_model=SearchResponse)
@@ -49,21 +48,20 @@ async def search(
     perm_ctx: PermissionContext = Depends(get_permission_context),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> SearchResponse:
-    """Full-text search across nodes, tasks, people, and org units.
+    """Full-text search across nodes, tasks, leads, people, eenheden and more.
 
-    Results are filtered by the user's RBAC permissions — entity types
-    the user lacks read access for are excluded.
+    Every result is one the caller may read: nodes, tasks and leads by
+    their visibility, the tenant-wide types by their read permission.
     """
     type_values = [rt.value for rt in result_types] if result_types else None
 
-    # Filter to only types the user has permission for
-    allowed_types = {
+    allowed_types = _ROW_FILTERED_TYPES | {
         t for t, perm in _TYPE_PERMISSION.items() if perm_ctx.has_permission(perm)
     }
     if type_values:
         type_values = [t for t in type_values if t in allowed_types]
     else:
-        type_values = list(allowed_types) if not perm_ctx.is_super_admin else None
+        type_values = list(allowed_types)
 
     if type_values is not None and not type_values:
         return SearchResponse(results=[], total=0, query=q)

@@ -7,14 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser, effective_person_id
-from bouwmeester.core.authz import require, requires
+from bouwmeester.core.authz import require, require_move, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
-from bouwmeester.core.permissions import (
-    PermissionContext,
-    get_permission_context,
-    require_permission,
-)
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
@@ -40,8 +36,6 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 _READ_TASK = requires("task:read", "task")
 _UPDATE_TASK = requires("task:update", "task")
-# The tasks module (a module toggle can switch it off per eenheid).
-_TASKS_MODULE = require_permission("task:read")
 
 
 async def _require_links(
@@ -214,7 +208,7 @@ async def get_unassigned_tasks(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_TASKS_MODULE),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks that have no assignee, optionally filtered by org unit."""
@@ -231,7 +225,6 @@ async def get_unassigned_tasks(
 async def get_work_types(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _module=Depends(_TASKS_MODULE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[str]:
     """Return distinct work_type values for autocomplete."""
@@ -244,7 +237,7 @@ async def get_eenheid_overview(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(_TASKS_MODULE),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> EenheidOverviewResponse:
     """Overview of tasks for an organisatie-eenheid."""
     await require(db, perm_ctx, "task:read", "task", eenheid_id=organisatie_eenheid_id)
@@ -313,18 +306,9 @@ async def update_task(
     old_task = require_found(await repo.get(id), "Task")
 
     await _require_links(db, perm_ctx, data)
-    # Moving the task is creating it at its new place: check that place too.
-    moved = data.model_fields_set & {"organisatie_eenheid_id", "node_id"}
-    if moved:
-        new_place = {
-            "node_id": data.node_id if "node_id" in moved else old_task.node_id,
-            "organisatie_eenheid_id": (
-                data.organisatie_eenheid_id
-                if "organisatie_eenheid_id" in moved
-                else old_task.organisatie_eenheid_id
-            ),
-        }
-        await require(db, perm_ctx, "task:create", "task", place=new_place)
+    await require_move(
+        db, perm_ctx, "task", old_task, data.model_dump(exclude_unset=True)
+    )
     old_assignee_id = old_task.assignee_id
     old_status = old_task.status
     old_org_unit_id = old_task.organisatie_eenheid_id
