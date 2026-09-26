@@ -242,8 +242,8 @@ _WRITE_ALLOWLIST: dict[str, str] = {
     "POST /api/chat": "own conversation; write tools ask authz in chat_service",
     "POST /api/chat/confirm": "own conversation; tools ask authz in chat_service",
     "POST /api/chat/upload": "own chat attachment",
-    "POST /api/llm/gap-analysis": "no mutation: advice on text in the request",
-    "POST /api/llm/kompas-guidance": "no mutation: advice on text in the request",
+    "POST /api/llm/gap-analysis": "no mutation: reads a dossier the caller can see",
+    "POST /api/llm/kompas-guidance": "no mutation: reads a dossier the caller can see",
     "POST /api/llm/suggest-tags": "no mutation: advice on text in the request",
     "POST /api/leads/parse-intake": "no mutation: parses text in the request",
     "POST /api/mattermost/link-code": "self-scoped: link own Mattermost account",
@@ -269,14 +269,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     # bijlage.py: require_permission + check_resource_org_scope
     "POST /api/nodes/{node_id}/bijlage",
     "DELETE /api/nodes/{node_id}/bijlage",
-    # fcc.py: require_permission (fcc:sync)
-    "POST /api/fcc/conflicts/{opdracht_id}/resolve",
-    "POST /api/fcc/opdrachten/{opdracht_id}/push",
-    "POST /api/fcc/sync/trigger",
-    # import_export.py: require_permission (import_export:import)
-    "POST /api/import/edges",
-    "POST /api/import/nodes",
-    "POST /api/import/politieke-inputs",
     # initiatief.py: _require_access / _resolve_access_level; create unchecked
     "POST /api/initiatieven",
     "PUT /api/initiatieven/{id}",
@@ -335,15 +327,6 @@ _WRITE_KNOWN_DEBT: set[str] = {
     "DELETE /api/opdrachten/{opdracht_id}/koppelingen/{koppeling_id}",
     # organisatie.py: require_permission + _check_eenheid_write_access
     "PUT /api/organisatie/{id}",
-    # parlementair.py: require_permission (parlementair:review / :import)
-    "PATCH /api/parlementair/edges/{edge_id}",
-    "PUT /api/parlementair/edges/{edge_id}/approve",
-    "PUT /api/parlementair/edges/{edge_id}/reject",
-    "PUT /api/parlementair/edges/{edge_id}/reset",
-    "POST /api/parlementair/imports/reprocess",
-    "POST /api/parlementair/imports/trigger",
-    "PUT /api/parlementair/imports/{import_id}/reject",
-    "PUT /api/parlementair/imports/{import_id}/reopen",
     # parlementair_abonnement.py: _require_initiatief_toegang (visibility)
     "POST /api/initiatieven/{initiatief_id}/abonnementen",
     "POST /api/initiatieven/{initiatief_id}/abonnementen/suggesties",
