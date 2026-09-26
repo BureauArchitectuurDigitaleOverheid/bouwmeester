@@ -4,6 +4,7 @@ import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 const STATUS_COLOR = {
   pending: 'warning',
@@ -41,7 +42,7 @@ export function AccessRequestManager() {
   };
 
   if (isLoading) {
-    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
+    return <LoadingSpinner padding="32" />;
   }
 
   return (

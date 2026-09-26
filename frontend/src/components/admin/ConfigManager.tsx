@@ -2,6 +2,7 @@ import { useCallback, useRef, useState, useMemo, type ReactNode } from 'react';
 import { useAppConfig, useUpdateAppConfig, type AppConfigEntry } from '@/hooks/useAdmin';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 interface ConfigGroup {
   label: string;
@@ -63,7 +64,7 @@ export function ConfigManager() {
   const groups = useMemo(() => groupConfig(config ?? []), [config]);
 
   if (isLoading) {
-    return <nldd-text size="sm" color="secondary">Laden...</nldd-text>;
+    return <LoadingSpinner padding="32" />;
   }
 
   if (groups.length === 0) {

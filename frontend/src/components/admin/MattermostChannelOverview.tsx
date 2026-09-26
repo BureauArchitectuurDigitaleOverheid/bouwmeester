@@ -3,6 +3,7 @@ import {
   type MattermostChannelOverview as Channel,
 } from '@/hooks/useAdmin';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 function formatRelative(iso: string | null): string {
   if (!iso) return 'nog niets gezien';
@@ -74,7 +75,7 @@ export function MattermostChannelOverviewTable() {
   const { data, isLoading, error } = useMattermostChannelOverview();
 
   if (isLoading) {
-    return <nldd-text size="sm" color="secondary">Kanalen laden…</nldd-text>;
+    return <LoadingSpinner size="sm" padding="16" />;
   }
   if (error) {
     return <nldd-text size="sm" color="critical">Kon kanaaloverzicht niet ophalen.</nldd-text>;

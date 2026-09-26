@@ -158,7 +158,9 @@ export function DatabaseBackup() {
               loading={exporting}
             />
             {loadingInfo ? (
-              <nldd-text size="xs" color="secondary">Laden...</nldd-text>
+              // Inline next to the export button, so a bare indicator rather
+              // than the full-width LoadingSpinner block.
+              <nldd-activity-indicator size="16" />
             ) : info ? (
               <nldd-text size="xs" color="secondary">
                 versie <code>{info.alembic_revision}</code>

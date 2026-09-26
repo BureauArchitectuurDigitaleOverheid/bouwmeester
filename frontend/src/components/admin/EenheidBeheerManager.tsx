@@ -1,9 +1,10 @@
 import { useRef, useState, useMemo } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { NlddButton } from '@/components/nldd/NlddButton';
-import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -28,6 +29,11 @@ const MODULE_DESCRIPTIONS: Record<string, string> = {
   opdrachten: 'Opdrachten en financieel overzicht',
   taken: 'Taakbeheer gekoppeld aan corpus-items',
 };
+
+const ROL_OPTIONS = Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
 
 export function EenheidBeheerManager() {
   const { data: organisatie = [], isLoading } = useOrganisatieFlat();
@@ -55,11 +61,7 @@ export function EenheidBeheerManager() {
   }, [allEenheden, search]);
 
   if (isLoading) {
-    return (
-      <nldd-container padding="48">
-        <LoadingSpinner />
-      </nldd-container>
-    );
+    return <LoadingSpinner padding="48" />;
   }
 
   return (
@@ -203,14 +205,10 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
       <nldd-container gap="12">
         <nldd-container layout="row" gap="6" vertical-alignment="center">
           <nldd-icon name="lightbulb" size="16" />
-          <h3><nldd-text size="xs" color="secondary" weight="bold">Initiatieven</nldd-text></h3>
+          <nldd-title size={6}><h3>Initiatieven</h3></nldd-title>
         </nldd-container>
 
-        {initiativeLoading && (
-          <nldd-container padding="16">
-            <LoadingSpinner />
-          </nldd-container>
-        )}
+        {initiativeLoading && <LoadingSpinner padding="16" />}
 
         {(addEenheidMutation.isError || removeEenheidMutation.isError || updateRolMutation.isError) && (
           <nldd-inline-dialog variant="alert" text="Kon initiatief-koppeling niet bijwerken." />
@@ -254,14 +252,10 @@ function EenheidDetailPanel({ eenheidId }: { eenheidId: string }) {
       <nldd-container gap="12">
         <nldd-container layout="row" gap="6" vertical-alignment="center">
           <nldd-icon name="blocks-9" size="16" />
-          <h3><nldd-text size="xs" color="secondary" weight="bold">Modules</nldd-text></h3>
+          <nldd-title size={6}><h3>Modules</h3></nldd-title>
         </nldd-container>
 
-        {modulesLoading && (
-          <nldd-container padding="16">
-            <LoadingSpinner />
-          </nldd-container>
-        )}
+        {modulesLoading && <LoadingSpinner padding="16" />}
 
         {updateModuleMutation.isError && (
           <nldd-inline-dialog variant="alert" text="Kon module-instelling niet opslaan." />
@@ -306,14 +300,6 @@ function InitiatiefRow({
   onRolChange: (rol: string) => void;
   onRemove: () => void;
 }) {
-  const rolRef = useRef<HTMLElement>(null);
-  useNlddEvent(rolRef, 'change', (e) => onRolChange(eventValue(e)));
-  // The value goes onto the DOM property rather than a JSX `value`: React
-  // would read that as a controlled field missing its onChange, since the
-  // handler lives on the nldd-dropdown around it.
-  const rolSelectRef = useRef<HTMLSelectElement>(null);
-  useNlddValue(rolSelectRef, rol);
-
   // Every control sits in a cell of its own. A bare nldd-dropdown in the row
   // stretches to fill it (that is its default without `width`), which on a
   // phone left the name cell one character wide: "RegelRecht" came out as a
@@ -323,13 +309,14 @@ function InitiatiefRow({
     <nldd-list-item>
       <nldd-text-cell text={naam} />
       <nldd-cell width="fit-content">
-        <nldd-dropdown ref={rolRef} size="sm" width="128px">
-          <select ref={rolSelectRef} aria-label={`Rol van ${naam}`}>
-            {Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </nldd-dropdown>
+        <Select
+          size="sm"
+          width="128px"
+          aria-label={`Rol van ${naam}`}
+          value={rol}
+          onChange={(e) => onRolChange(e.target.value)}
+          options={ROL_OPTIONS}
+        />
       </nldd-cell>
       <nldd-cell width="fit-content">
         <NlddIconButton

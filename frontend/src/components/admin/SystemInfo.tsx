@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useVersionInfo } from '@/hooks/useAdmin';
 import { MattermostChannelOverviewTable } from './MattermostChannelOverview';
 import { WorkerHealthTable } from './WorkerHealthTable';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 const FRONTEND_GIT_SHA = (import.meta.env.VITE_GIT_SHA ?? '') as string;
 const FRONTEND_BUILD_TIME = (import.meta.env.VITE_BUILD_TIME ?? '') as string;
@@ -40,7 +41,7 @@ function InfoRow({ label, children }: { label: string; children: ReactNode }) {
 export function SystemInfo() {
   const { data, isLoading, error } = useVersionInfo();
 
-  if (isLoading) return <nldd-text size="sm" color="secondary">Laden…</nldd-text>;
+  if (isLoading) return <LoadingSpinner padding="32" />;
 
   if (error) {
     return <nldd-text size="sm" color="critical">Kon versie-informatie niet ophalen.</nldd-text>;

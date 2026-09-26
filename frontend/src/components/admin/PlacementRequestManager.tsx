@@ -6,6 +6,7 @@ import type { OrgPlacementRequest } from '@/api/orgPlacements';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { EmptyState } from '@/components/common/EmptyState';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 
 export function PlacementRequestManager() {
   const { data: requests, isLoading } = usePendingPlacements();
@@ -25,7 +26,7 @@ export function PlacementRequestManager() {
   };
 
   if (isLoading) {
-    return <nldd-activity-indicator size="32" style={{ margin: '2rem auto', display: 'block' }} />;
+    return <LoadingSpinner padding="32" />;
   }
 
   return (
