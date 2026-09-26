@@ -39,7 +39,6 @@ if TYPE_CHECKING:
     from bouwmeester.core.initiatief_context import InitiatiefContext
     from bouwmeester.core.org_context import OrgContext
     from bouwmeester.core.permissions import PermissionContext
-    from bouwmeester.models.person import Person
 
 logger = logging.getLogger(__name__)
 
@@ -752,6 +751,13 @@ _WRITE_TOOLS: dict[str, dict] = {
                             " om een subtaak te maken (optioneel)"
                         ),
                     },
+                    "organisatie_eenheid_id": {
+                        "type": "string",
+                        "description": (
+                            "UUID van de organisatie-eenheid die de taak"
+                            " oppakt (optioneel)"
+                        ),
+                    },
                 },
                 "required": ["title", "node_id"],
             },
@@ -1076,6 +1082,7 @@ async def _execute_read_tool(
 ) -> str:
     """Execute a read-only tool and return a JSON string result."""
     try:
+        caller = await _caller(db, person_id)
         if tool_name == "search_nodes":
             from bouwmeester.repositories.search import SearchRepository
 
@@ -1086,7 +1093,7 @@ async def _execute_read_tool(
                 query,
                 result_types=["corpus_node"],
                 limit=10,
-                org_ctx=await _build_chat_org_context(db, person_id),
+                org_ctx=caller.org_ctx,
             )
             if node_type:
                 results = [r for r in results if r.get("subtitle") == node_type]
@@ -1104,9 +1111,9 @@ async def _execute_read_tool(
         elif tool_name == "get_node":
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 
-            repo = CorpusNodeRepository(db)
-            node = await repo.get(UUID(args["node_id"]))
-            if not node:
+            node_id = UUID(args["node_id"])
+            node = await CorpusNodeRepository(db).get(node_id)
+            if not node or not await _sees_node(db, caller, node_id):
                 return _safe_dumps({"error": "Node niet gevonden"})
             return _safe_dumps(
                 {
@@ -1119,10 +1126,11 @@ async def _execute_read_tool(
             )
 
         elif tool_name == "get_node_neighbors":
-            from bouwmeester.repositories.corpus_node import CorpusNodeRepository
+            from bouwmeester.repositories.graph import GraphRepository
 
-            repo = CorpusNodeRepository(db)
-            data = await repo.get_neighbors(UUID(args["node_id"]))
+            data = await GraphRepository(db).get_neighbors(
+                UUID(args["node_id"]), org_ctx=caller.org_ctx
+            )
             if not data.get("node"):
                 return _safe_dumps({"error": "Node niet gevonden"})
             neighbors = [
@@ -1140,9 +1148,8 @@ async def _execute_read_tool(
             from bouwmeester.repositories.task import TaskRepository
 
             repo = TaskRepository(db)
-            org_ctx = await _build_chat_org_context(db, person_id)
             tasks = await repo.get_by_node(
-                UUID(args["node_id"]), limit=20, org_ctx=org_ctx
+                UUID(args["node_id"]), limit=20, org_ctx=caller.org_ctx
             )
             items = [_task_to_dict(t) for t in tasks]
             return _safe_dumps({"tasks": items, "count": len(items)})
@@ -1151,9 +1158,8 @@ async def _execute_read_tool(
             from bouwmeester.repositories.task import TaskRepository
 
             repo = TaskRepository(db)
-            org_ctx = await _build_chat_org_context(db, person_id)
             tasks = await repo.get_by_assignee(
-                UUID(args["person_id"]), limit=20, org_ctx=org_ctx
+                UUID(args["person_id"]), limit=20, org_ctx=caller.org_ctx
             )
             items = [_task_to_dict(t) for t in tasks]
             return _safe_dumps({"tasks": items, "count": len(items)})
@@ -1162,9 +1168,10 @@ async def _execute_read_tool(
             from bouwmeester.repositories.task import TaskRepository
 
             repo = TaskRepository(db)
-            org_ctx = await _build_chat_org_context(db, person_id)
             assignee_id = UUID(args["assignee_id"]) if args.get("assignee_id") else None
-            tasks = await repo.get_overdue(assignee_id=assignee_id, org_ctx=org_ctx)
+            tasks = await repo.get_overdue(
+                assignee_id=assignee_id, org_ctx=caller.org_ctx
+            )
             items = [_task_to_dict(t) for t in tasks[:20]]
             return _safe_dumps({"tasks": items, "count": len(items)})
 
@@ -1253,7 +1260,9 @@ async def _execute_read_tool(
                 return _safe_dumps({"error": "Persoon niet gevonden"})
 
             task_repo = TaskRepository(db)
-            tasks = await task_repo.get_by_assignee(person.id, limit=10)
+            tasks = await task_repo.get_by_assignee(
+                person.id, limit=10, org_ctx=caller.org_ctx
+            )
             open_tasks = [t for t in tasks if t.status not in ("done", "cancelled")]
 
             # Find current org unit via active placement
@@ -1287,9 +1296,10 @@ async def _execute_read_tool(
         elif tool_name == "find_path":
             from bouwmeester.repositories.graph import GraphRepository
 
-            repo = GraphRepository(db)
-            path = await repo.find_path(
-                UUID(args["from_node_id"]), UUID(args["to_node_id"])
+            path = await GraphRepository(db).find_path(
+                UUID(args["from_node_id"]),
+                UUID(args["to_node_id"]),
+                org_ctx=caller.org_ctx,
             )
             if not path:
                 return _safe_dumps(
@@ -1314,6 +1324,7 @@ async def _execute_read_tool(
                 title=args["title"],
                 description=args.get("description"),
                 limit=5,
+                org_ctx=caller.org_ctx,
             )
             items = [
                 {
@@ -1330,13 +1341,12 @@ async def _execute_read_tool(
             from bouwmeester.repositories.opdracht import OpdrachtRepository
 
             repo = OpdrachtRepository(db)
-            org_ctx = await _build_chat_org_context(db, person_id)
             opdrachten = await repo.get_all(
                 limit=15,
                 begrotingsjaar=args.get("begrotingsjaar"),
                 status=args.get("status"),
                 type=args.get("type"),
-                org_ctx=org_ctx,
+                org_ctx=caller.org_ctx,
             )
             items = [
                 {
@@ -1353,21 +1363,17 @@ async def _execute_read_tool(
             return _safe_dumps({"opdrachten": items, "count": len(items)})
 
         elif tool_name == "get_opdracht":
+            from bouwmeester.core.org_context import sees_eenheid
             from bouwmeester.repositories.opdracht import OpdrachtRepository
 
             repo = OpdrachtRepository(db)
-            org_ctx = await _build_chat_org_context(db, person_id)
             opdracht_id = UUID(args["opdracht_id"])
             o = await repo.get(opdracht_id)
             if not o:
                 return _safe_dumps({"error": "Opdracht niet gevonden"})
             # Respect org-context: hide opdrachten from invisible eenheden.
-            if not org_ctx.is_admin and o.opdrachtgever_id is not None:
-                visible = set(org_ctx.visible_eenheid_ids) | set(
-                    org_ctx.shared_eenheid_ids
-                )
-                if o.opdrachtgever_id not in visible:
-                    return _safe_dumps({"error": "Geen toegang tot deze opdracht"})
+            if not sees_eenheid(caller.org_ctx, o.opdrachtgever_id):
+                return _safe_dumps({"error": "Geen toegang tot deze opdracht"})
             return _safe_dumps(
                 {
                     "id": str(o.id),
@@ -1393,6 +1399,11 @@ async def _execute_read_tool(
         elif tool_name == "get_recent_activity":
             from bouwmeester.repositories.activity import ActivityRepository
 
+            # The audit log is tenant-wide: the REST feed needs a system grant.
+            if not caller.perm_ctx.has_system_permission("audit:read"):
+                return _safe_dumps(
+                    {"error": "Alleen systeembeheerders mogen het auditlog lezen."}
+                )
             repo = ActivityRepository(db)
             limit = min(int(args.get("limit", 10)), 20)
             activities = await repo.get_recent(limit=limit)
@@ -1437,7 +1448,6 @@ async def _execute_read_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadStage
 
-            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
 
             # Text search via find_similar if query provided
@@ -1446,7 +1456,7 @@ async def _execute_read_tool(
                 leads = await repo.find_similar(
                     title=query,
                     organization=query,
-                    init_ctx=init_ctx,
+                    init_ctx=caller.init_ctx,
                 )
             else:
                 stage = None
@@ -1463,7 +1473,7 @@ async def _execute_read_tool(
                     stage=stage,
                     assignee_id=assignee_id_val,
                     next_action_filter=args.get("next_action_filter"),
-                    init_ctx=init_ctx,
+                    init_ctx=caller.init_ctx,
                 )
             items = [
                 {
@@ -1493,9 +1503,10 @@ async def _execute_read_tool(
         elif tool_name == "get_lead":
             from bouwmeester.repositories.lead import LeadRepository
 
-            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            lead = await repo.get_detail(UUID(args["lead_id"]), init_ctx=init_ctx)
+            lead = await repo.get_detail(
+                UUID(args["lead_id"]), init_ctx=caller.init_ctx
+            )
             if not lead:
                 return _safe_dumps({"error": "Lead niet gevonden"})
             activities = [
@@ -1545,9 +1556,8 @@ async def _execute_read_tool(
         elif tool_name == "get_lead_metrics":
             from bouwmeester.repositories.lead import LeadRepository
 
-            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            metrics = await repo.get_metrics(init_ctx=init_ctx)
+            metrics = await repo.get_metrics(init_ctx=caller.init_ctx)
             return _safe_dumps(metrics)
 
         return _safe_dumps({"error": f"Onbekende tool: {tool_name}"})
@@ -1560,97 +1570,78 @@ async def _execute_read_tool(
         )
 
 
-async def _resolve_person_org_eenheid(
-    db: AsyncSession, person_id: UUID | None
-) -> UUID | None:
-    """Find the active organisatie_eenheid_id for a person."""
-    if not person_id:
-        return None
-    from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-    from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+@dataclass(frozen=True)
+class _ChatCaller:
+    """Who the chat acts for: rights and visibility, built once per request."""
 
-    stmt = (
-        select(OrganisatieEenheid.id)
-        .join(PersonOrganisatieEenheid)
-        .where(
-            PersonOrganisatieEenheid.person_id == person_id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
-        )
-        # Deterministic: authorizing and creating must pick the same eenheid.
-        .order_by(PersonOrganisatieEenheid.start_datum, OrganisatieEenheid.id)
-        .limit(1)
-    )
-    result = await db.execute(stmt)
-    row = result.scalar_one_or_none()
-    return row if row else None
-
-
-@dataclass
-class _ChatAccess:
-    """Who the chat acts for, with contexts built at most once per session."""
-
-    person: "Person | None"
+    person_id: UUID | None
     perm_ctx: "PermissionContext"
-    org_ctx: "OrgContext | None" = None
-    init_ctx: "InitiatiefContext | None" = None
+    org_ctx: "OrgContext"
+    init_ctx: "InitiatiefContext"
 
 
-async def _chat_access(db: AsyncSession, person_id: UUID | None) -> _ChatAccess:
-    """Resolve the chat user once per database session (one per request)."""
+async def _caller(db: AsyncSession, person_id: UUID | None) -> _ChatCaller:
+    """Resolve the chat user once per database session (one per request).
+
+    Dev mode without a person sees everything, anonymous sees nothing, like
+    the REST dependencies.
+    """
+    from bouwmeester.core.authz import _contexts
     from bouwmeester.core.permissions import (
         anonymous_permission_context,
         build_permission_context,
     )
     from bouwmeester.models.person import Person
 
-    key = ("chat_access", person_id)
-    access = db.info.get(key)
-    if access is None:
+    key = ("chat_caller", person_id)
+    caller = db.info.get(key)
+    if caller is None:
         person = await db.get(Person, person_id) if person_id else None
         perm_ctx = (
             await build_permission_context(db, person)
             if person is not None
             else anonymous_permission_context()
         )
-        access = db.info[key] = _ChatAccess(person=person, perm_ctx=perm_ctx)
-    return access
+        org_ctx, init_ctx = await _contexts(db, perm_ctx)
+        caller = db.info[key] = _ChatCaller(person_id, perm_ctx, org_ctx, init_ctx)
+    return caller
 
 
-async def _build_chat_org_context(
-    db: AsyncSession, person_id: UUID | None
-) -> "OrgContext":
-    """OrgContext for the chat user (dev mode: everything, anonymous: nothing)."""
-    from bouwmeester.core.org_context import build_org_context
+async def _sees_node(db: AsyncSession, caller: _ChatCaller, node_id: UUID) -> bool:
+    """``node:read``: the same visibility as the node routes."""
+    from bouwmeester.core.authz import can
 
-    access = await _chat_access(db, person_id)
-    if access.org_ctx is None:
-        access.org_ctx = await build_org_context(
-            db, access.person, perm_ctx=access.perm_ctx
-        )
-    return access.org_ctx
+    return await can(db, caller.perm_ctx, "node:read", "corpus_node", node_id)
 
 
-async def _build_chat_initiatief_context(
-    db: AsyncSession, person_id: UUID | None
-) -> "InitiatiefContext":
-    """InitiatiefContext for the chat user (lead access), same rules."""
-    from bouwmeester.core.initiatief_context import build_initiatief_context
+async def _lead_eenheid(db: AsyncSession, caller: _ChatCaller) -> UUID | None:
+    """The eenheid a lead made in the chat goes into.
 
-    access = await _chat_access(db, person_id)
-    if access.init_ctx is None:
-        access.init_ctx = await build_initiatief_context(
-            db, access.person, perm_ctx=access.perm_ctx
-        )
-    return access.init_ctx
+    The first of the user's own eenheden (active placements, in a fixed
+    order) where ``lead:create`` holds, so authorizing and creating pick the
+    same one; ``None`` when there is none.
+    """
+    from bouwmeester.core.authz import can
+    from bouwmeester.repositories.org_tree import get_membership_ids
+
+    if caller.person_id is None:
+        return None
+    for eenheid_id in sorted(await get_membership_ids(db, caller.person_id), key=str):
+        if await can(db, caller.perm_ctx, "lead:create", "lead", eenheid_id=eenheid_id):
+            return eenheid_id
+    return None
 
 
 # Each write tool stands in for a REST route and asks ``core.authz`` the
 # same question: ``(permission, resource type, argument with the resource
 # id)``, where ``None`` means a new resource without an eenheid.  Several
-# entries are alternatives: an edge needs write access on either end.  A new
-# lead goes into the user's own eenheid (see ``create_lead``), so that is
-# where ``lead:create`` must hold.  Granting a stakeholder role goes through
-# the same authority check as the REST routes.
+# entries are alternatives: an edge needs write access on either end.
+# ``create_task`` and ``create_lead`` are placed in an eenheid and decided in
+# ``_authorize_write_tool``: a task like ``POST /tasks`` (its eenheid when
+# given, else its node), a lead in one of the user's own eenheden where
+# ``lead:create`` holds.  Linking an existing tag is ``node:update`` (the
+# chat never creates tags).  Granting a stakeholder role goes through the
+# same authority check as the REST routes.
 _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "create_node": (("node:create", "corpus_node", None),),
     "update_node": (("node:update", "corpus_node", "node_id"),),
@@ -1658,9 +1649,9 @@ _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
         ("edge:create", "corpus_node", "from_node_id"),
         ("edge:create", "corpus_node", "to_node_id"),
     ),
-    "create_task": (("task:create", "corpus_node", "node_id"),),
+    "create_task": (),
     "update_task": (("task:update", "task", "task_id"),),
-    "add_tag_to_node": (("tag:create", "corpus_node", "node_id"),),
+    "add_tag_to_node": (("node:update", "corpus_node", "node_id"),),
     "add_stakeholder": (),
     "attach_to_bron": (("node:update", "corpus_node", "node_id"),),
     "create_lead": (),
@@ -1670,8 +1661,8 @@ _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
 }
 
 _NO_EENHEID_FOR_LEAD = (
-    "Kan geen lead aanmaken: geen organisatie-eenheid gevonden"
-    " voor de ingelogde gebruiker."
+    "Kan geen lead aanmaken: je mag in geen van je eigen"
+    " organisatie-eenheden leads aanmaken."
 )
 
 # Resources a tool links to that the user must at least be able to see.
@@ -1698,8 +1689,8 @@ async def _authorize_write_tool(
     if checks is None:
         return f"Onbekende tool: {tool_name}"
 
-    access = await _chat_access(db, person_id)
-    perm_ctx = access.perm_ctx
+    caller = await _caller(db, person_id)
+    perm_ctx = caller.perm_ctx
     if not perm_ctx.is_authenticated:
         return "Niet ingelogd"
     try:
@@ -1719,15 +1710,24 @@ async def _authorize_write_tool(
                 await require(db, perm_ctx, *asks[-1])
         for resource_type, arg in _MUST_SEE.get(tool_name, ()):
             if args.get(arg):
-                org_ctx = await _build_chat_org_context(db, person_id)
                 await check_resource_org_scope(
-                    db, resource_type, UUID(args[arg]), org_ctx
+                    db, resource_type, UUID(args[arg]), caller.org_ctx
                 )
-        if tool_name == "create_lead":
-            eenheid_id = await _resolve_person_org_eenheid(db, person_id)
-            if eenheid_id is None:
-                return _NO_EENHEID_FOR_LEAD
-            await require(db, perm_ctx, "lead:create", "lead", eenheid_id=eenheid_id)
+        if tool_name == "create_task":
+            if args.get("organisatie_eenheid_id"):
+                await require(
+                    db,
+                    perm_ctx,
+                    "task:create",
+                    "task",
+                    eenheid_id=UUID(args["organisatie_eenheid_id"]),
+                )
+            else:
+                await require(
+                    db, perm_ctx, "task:create", "corpus_node", UUID(args["node_id"])
+                )
+        if tool_name == "create_lead" and await _lead_eenheid(db, caller) is None:
+            return _NO_EENHEID_FOR_LEAD
         if tool_name == "add_stakeholder":
             await require_can_grant_resource_role(
                 db,
@@ -1754,6 +1754,7 @@ async def _execute_write_tool(
         refusal = await _authorize_write_tool(tool_name, args, db, person_id)
         if refusal is not None:
             return {"success": False, "summary": refusal}
+        caller = await _caller(db, person_id)
 
         if tool_name == "create_node":
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
@@ -1890,6 +1891,10 @@ async def _execute_write_tool(
                 task_data["assignee_id"] = UUID(args["assignee_id"])
             if args.get("parent_task_id"):
                 task_data["parent_id"] = UUID(args["parent_task_id"])
+            if args.get("organisatie_eenheid_id"):
+                task_data["organisatie_eenheid_id"] = UUID(
+                    args["organisatie_eenheid_id"]
+                )
             data = TaskCreate(**task_data)
             task = await repo.create(data)
             await db.commit()
@@ -2105,8 +2110,7 @@ async def _execute_write_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadCreate, LeadStage
 
-            # Resolve user's org unit for the lead
-            org_eenheid_id = await _resolve_person_org_eenheid(db, person_id)
+            org_eenheid_id = await _lead_eenheid(db, caller)
             if not org_eenheid_id:
                 return {"success": False, "summary": _NO_EENHEID_FOR_LEAD}
 
@@ -2157,9 +2161,8 @@ async def _execute_write_tool(
             from bouwmeester.schema.lead import LeadUpdate
 
             # Visibility, as in the lead routes (the write was authorized above)
-            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            existing = await repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
+            existing = await repo.get(UUID(args["lead_id"]), init_ctx=caller.init_ctx)
             if not existing:
                 return {"success": False, "summary": "Lead niet gevonden"}
 
@@ -2213,9 +2216,8 @@ async def _execute_write_tool(
             from bouwmeester.schema.lead import LeadStage
 
             # Visibility, as in the lead routes (the write was authorized above)
-            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            existing = await repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
+            existing = await repo.get(UUID(args["lead_id"]), init_ctx=caller.init_ctx)
             if not existing:
                 return {"success": False, "summary": "Lead niet gevonden"}
 
@@ -2249,9 +2251,8 @@ async def _execute_write_tool(
             from bouwmeester.schema.lead import LeadActivityCreate
 
             # Visibility, as in the lead routes (the write was authorized above)
-            init_ctx = await _build_chat_initiatief_context(db, person_id)
             lead_repo = LeadRepository(db)
-            lead = await lead_repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
+            lead = await lead_repo.get(UUID(args["lead_id"]), init_ctx=caller.init_ctx)
             if not lead:
                 return {"success": False, "summary": "Lead niet gevonden"}
 
