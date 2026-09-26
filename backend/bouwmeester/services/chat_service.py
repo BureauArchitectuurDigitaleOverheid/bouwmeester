@@ -6,7 +6,6 @@ import json
 import logging
 import re
 import uuid
-from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -25,6 +24,7 @@ from bouwmeester.schema.chat import (
     ChatMessage,
     PendingAction,
 )
+from bouwmeester.services.caller import Caller, caller_for
 from bouwmeester.services.document_extract import (
     IMAGE_CONTENT_TYPES,
     extract_text_from_bytes,
@@ -36,9 +36,7 @@ from bouwmeester.services.llm.prompts import (
 )
 
 if TYPE_CHECKING:
-    from bouwmeester.core.initiatief_context import InitiatiefContext
-    from bouwmeester.core.org_context import OrgContext
-    from bouwmeester.core.permissions import PermissionContext
+    from bouwmeester.schema.task import TaskCreate
 
 logger = logging.getLogger(__name__)
 
@@ -1082,7 +1080,7 @@ async def _execute_read_tool(
 ) -> str:
     """Execute a read-only tool and return a JSON string result."""
     try:
-        caller = await _caller(db, person_id)
+        caller = await caller_for(db, person_id)
         if tool_name == "search_nodes":
             from bouwmeester.repositories.search import SearchRepository
 
@@ -1569,41 +1567,14 @@ async def _execute_read_tool(
         )
 
 
-@dataclass(frozen=True)
-class _ChatCaller:
-    """Who the chat acts for: rights and visibility, built once per request."""
-
-    person_id: UUID | None
-    perm_ctx: "PermissionContext"
-    org_ctx: "OrgContext"
-    init_ctx: "InitiatiefContext"
-
-
-async def _caller(db: AsyncSession, person_id: UUID | None) -> _ChatCaller:
-    """Resolve the chat user once per database session (one per request).
-
-    Dev mode without a person sees everything, anonymous sees nothing, like
-    the REST dependencies.
-    """
-    from bouwmeester.core.authz import perm_ctx_for, visibility
-
-    key = ("chat_caller", person_id)
-    caller = db.info.get(key)
-    if caller is None:
-        perm_ctx = await perm_ctx_for(db, person_id)
-        org_ctx, init_ctx = await visibility(db, perm_ctx)
-        caller = db.info[key] = _ChatCaller(person_id, perm_ctx, org_ctx, init_ctx)
-    return caller
-
-
-async def _sees_node(db: AsyncSession, caller: _ChatCaller, node_id: UUID) -> bool:
+async def _sees_node(db: AsyncSession, caller: Caller, node_id: UUID) -> bool:
     """``node:read``: the same visibility as the node routes."""
     from bouwmeester.core.authz import can
 
     return await can(db, caller.perm_ctx, "node:read", "corpus_node", node_id)
 
 
-async def _lead_eenheid(db: AsyncSession, caller: _ChatCaller) -> UUID | None:
+async def _lead_eenheid(db: AsyncSession, caller: Caller) -> UUID | None:
     """The eenheid a lead made in the chat goes into.
 
     The first of the user's own eenheden (active placements, in a fixed
@@ -1660,8 +1631,30 @@ _MUST_SEE: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("node:read", "corpus_node", "from_node_id"),
         ("node:read", "corpus_node", "to_node_id"),
     ),
-    "create_task": (("task:read", "task", "parent_task_id"),),
 }
+
+
+def _task_create_from_args(args: dict) -> "TaskCreate":
+    """The ``POST /tasks`` body the ``create_task`` tool stands for.
+
+    Authorizing and creating use the same body, so they cannot disagree
+    about where the task goes or what it links to.
+    """
+    from bouwmeester.schema.task import TaskCreate
+
+    optional = {
+        "assignee_id": "assignee_id",
+        "parent_id": "parent_task_id",
+        "organisatie_eenheid_id": "organisatie_eenheid_id",
+    }
+    return TaskCreate(
+        title=args["title"],
+        node_id=UUID(args["node_id"]),
+        description=args.get("description"),
+        priority=args.get("priority", "normaal"),
+        status="open",
+        **{field: UUID(args[arg]) for field, arg in optional.items() if args.get(arg)},
+    )
 
 
 async def _authorize_write_tool(
@@ -1675,12 +1668,13 @@ async def _authorize_write_tool(
 
     from bouwmeester.core.authority import require_can_grant_resource_role
     from bouwmeester.core.authz import can, require
+    from bouwmeester.services.task_rules import require_task_create
 
     checks = _WRITE_TOOL_POLICY.get(tool_name)
     if checks is None:
         return f"Onbekende tool: {tool_name}"
 
-    caller = await _caller(db, person_id)
+    caller = await caller_for(db, person_id)
     perm_ctx = caller.perm_ctx
     if not perm_ctx.is_authenticated:
         return "Niet ingelogd"
@@ -1703,18 +1697,7 @@ async def _authorize_write_tool(
             if args.get(arg):
                 await require(db, perm_ctx, perm, resource_type, UUID(args[arg]))
         if tool_name == "create_task":
-            if args.get("organisatie_eenheid_id"):
-                await require(
-                    db,
-                    perm_ctx,
-                    "task:create",
-                    "task",
-                    eenheid_id=UUID(args["organisatie_eenheid_id"]),
-                )
-            else:
-                await require(
-                    db, perm_ctx, "task:create", "corpus_node", UUID(args["node_id"])
-                )
+            await require_task_create(db, perm_ctx, _task_create_from_args(args))
         if tool_name == "create_lead" and await _lead_eenheid(db, caller) is None:
             return _NO_EENHEID_FOR_LEAD
         if tool_name == "add_stakeholder":
@@ -1743,7 +1726,7 @@ async def _execute_write_tool(
         refusal = await _authorize_write_tool(tool_name, args, db, person_id)
         if refusal is not None:
             return {"success": False, "summary": refusal}
-        caller = await _caller(db, person_id)
+        caller = await caller_for(db, person_id)
 
         if tool_name == "create_node":
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
@@ -1828,7 +1811,6 @@ async def _execute_write_tool(
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
             from bouwmeester.repositories.person import PersonRepository
             from bouwmeester.repositories.task import TaskRepository
-            from bouwmeester.schema.task import TaskCreate
 
             # Validate node exists
             node_repo = CorpusNodeRepository(db)
@@ -1869,23 +1851,7 @@ async def _execute_write_tool(
                     }
 
             repo = TaskRepository(db)
-            task_data: dict = {
-                "title": args["title"],
-                "node_id": UUID(args["node_id"]),
-                "description": args.get("description"),
-                "priority": args.get("priority", "normaal"),
-                "status": "open",
-            }
-            if args.get("assignee_id"):
-                task_data["assignee_id"] = UUID(args["assignee_id"])
-            if args.get("parent_task_id"):
-                task_data["parent_id"] = UUID(args["parent_task_id"])
-            if args.get("organisatie_eenheid_id"):
-                task_data["organisatie_eenheid_id"] = UUID(
-                    args["organisatie_eenheid_id"]
-                )
-            data = TaskCreate(**task_data)
-            task = await repo.create(data)
+            task = await repo.create(_task_create_from_args(args))
             await db.commit()
             is_subtask = bool(args.get("parent_task_id"))
             label = "Subtaak" if is_subtask else "Taak"

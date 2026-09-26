@@ -9,15 +9,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.authz import can, perm_ctx_for, visibility
+from bouwmeester.core.authz import can
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.initiatief_context import (
-    InitiatiefContext,
     apply_initiatief_filter,
     apply_lead_filter,
 )
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
-from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.core.org_context import apply_org_filter
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
@@ -36,6 +34,7 @@ from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
 from bouwmeester.repositories.search import SearchRepository
+from bouwmeester.services.caller import Caller, caller_for
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
 
 logger = logging.getLogger(__name__)
@@ -50,6 +49,11 @@ _NOT_A_MEMBER = (
     "Dit is een besloten kanaal: alleen leden mogen het koppelen, want de "
     "berichten erin komen daarna in Bouwmeester terecht."
 )
+_NOT_IN_TEAM = (
+    "Dit kanaal hoort bij een Mattermost-team waar je geen lid van bent: "
+    "alleen teamleden mogen het koppelen, want de berichten erin komen daarna "
+    "in Bouwmeester terecht."
+)
 _MEMBERSHIP_UNKNOWN = (
     "Kon bij Mattermost niet nagaan of je lid bent van dit kanaal. "
     "Probeer het later opnieuw."
@@ -61,9 +65,10 @@ async def channel_link_refusal(
 ) -> str | None:
     """Why *person_id* may not link this channel, or ``None`` when they may.
 
-    A linked channel's posts are ingested, so a private channel (or group
-    message) may only be linked by one of its members; an open channel can
-    be joined by anyone in the team anyway.  Fails closed when Mattermost
+    A linked channel's posts are ingested, so only someone who can read
+    them may link it: for an open channel a member of its team, for any
+    other channel one of its members (``MattermostService.may_link_channel``).
+    Fails closed without a linked Mattermost account and when Mattermost
     cannot confirm.  The REST link routes and ``/bouwmeester koppel`` ask
     this after ``mattermost_channel_link:create``.
     """
@@ -74,18 +79,16 @@ async def channel_link_refusal(
 
     service = MattermostService(db)
     try:
-        if await service.is_open_channel(channel_id):
-            return None
+        channel = await service.get_channel(channel_id) or {"id": channel_id}
         mapping = (
             await MattermostUserRepository(db).get_by_person_id(person_id)
             if person_id
             else None
         )
-        if mapping is not None and await service.is_member_of_channel(
-            channel_id, mapping.mattermost_user_id
-        ):
+        user_id = mapping.mattermost_user_id if mapping else None
+        if await service.may_link_channel(channel, user_id):
             return None
-        return _NOT_A_MEMBER
+        return _NOT_IN_TEAM if channel.get("type") == "O" else _NOT_A_MEMBER
     except (MattermostUnavailableError, ValueError):
         return _MEMBERSHIP_UNKNOWN
     finally:
@@ -99,37 +102,25 @@ class _ChannelCtx:
     team_id: str | None
 
 
-@dataclass(frozen=True)
-class _Caller:
-    """Rights and visibility of the person behind a command."""
-
-    perm_ctx: PermissionContext
-    org_ctx: OrgContext
-    init_ctx: InitiatiefContext
-
-
 class MattermostSlashService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = MattermostUserRepository(session)
-        self._callers: dict[UUID, _Caller | None] = {}
 
     async def _resolve_person_id(self, mattermost_user_id: str) -> UUID | None:
         """Resolve a Mattermost user ID to a Bouwmeester person ID."""
         mapping = await self.repo.get_by_mattermost_user_id(mattermost_user_id)
         return mapping.person_id if mapping else None
 
-    async def _caller(self, person_id: UUID) -> _Caller | None:
-        """Rights and visibility of *person_id*, built once per command."""
-        if person_id not in self._callers:
-            person = await self.session.get(Person, person_id)
-            caller = None
-            if person is not None:
-                perm_ctx = await perm_ctx_for(self.session, person_id)
-                org_ctx, init_ctx = await visibility(self.session, perm_ctx)
-                caller = _Caller(perm_ctx, org_ctx, init_ctx)
-            self._callers[person_id] = caller
-        return self._callers[person_id]
+    async def _caller(self, person_id: UUID) -> Caller | None:
+        """Rights and visibility of *person_id*; ``None`` for an unknown person.
+
+        Unlike the chat, a command always comes from a linked person: an
+        unknown id is refused, never treated as anonymous (dev mode).
+        """
+        if await self.session.get(Person, person_id) is None:
+            return None
+        return await caller_for(self.session, person_id)
 
     async def _may(
         self, person_id: UUID, permission: str, resource_type: str, resource_id: UUID

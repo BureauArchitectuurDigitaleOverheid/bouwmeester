@@ -354,35 +354,59 @@ class NotificationService:
         to_node: CorpusNode,
         actor_id: UUID | None = None,
     ) -> list[Notification]:
-        """Notify stakeholders of both nodes about a new edge."""
-        node_ids = [from_node.id, to_node.id]
-        stmt = select(ResourcePermission).where(
-            ResourcePermission.resource_type == "corpus_node",
-            ResourcePermission.resource_id.in_(node_ids),
+        """Notify the stakeholders of both nodes about a new edge.
+
+        A stakeholder of one end only hears the other end's title when they
+        can read that node; otherwise the message names their own node only.
+        Grants to an eenheid have no person to notify and are skipped.
+        """
+        from bouwmeester.core.authz import can, perm_ctx_for
+
+        nodes = {from_node.id: from_node, to_node.id: to_node}
+        rows = await self.session.execute(
+            select(ResourcePermission.person_id, ResourcePermission.resource_id).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id.in_(nodes),
+                ResourcePermission.person_id.isnot(None),
+            )
         )
-        result = await self.session.execute(stmt)
-        all_stakeholders = result.scalars().all()
+        own_nodes: dict[UUID, set[UUID]] = defaultdict(set)
+        for person_id, node_id in rows.all():
+            if person_id != actor_id:
+                own_nodes[person_id].add(node_id)
 
         notifications: list[Notification] = []
-        notified_ids: set[UUID] = set()
-        if actor_id:
-            notified_ids.add(actor_id)
-
-        for sh in all_stakeholders:
-            if sh.person_id in notified_ids:
-                continue
-            notified_ids.add(sh.person_id)
-            data = NotificationCreate(
-                person_id=sh.person_id,
-                type="edge_created",
-                title=f"Nieuwe verbinding: {from_node.title} — {to_node.title}",
-                message=(
+        for person_id, own in own_nodes.items():
+            # Visibility is per person: one decision per stakeholder of one
+            # end only (a stakeholder of both ends sees both).
+            sees_both = len(own) == len(nodes) or await can(
+                self.session,
+                await perm_ctx_for(self.session, person_id),
+                "node:read",
+                "corpus_node",
+                next(nid for nid in nodes if nid not in own),
+            )
+            if sees_both:
+                title = f"Nieuwe verbinding: {from_node.title} - {to_node.title}"
+                message = (
                     f"Er is een verbinding gelegd tussen "
                     f"'{from_node.title}' en '{to_node.title}'."
-                ),
-                related_node_id=from_node.id,
+                )
+                related = from_node.id
+            else:
+                node = nodes[next(iter(own))]
+                title = f"Nieuwe verbinding: {node.title}"
+                message = f"Er is een verbinding gelegd met '{node.title}'."
+                related = node.id
+            notification = await self.repo.create(
+                NotificationCreate(
+                    person_id=person_id,
+                    type="edge_created",
+                    title=title,
+                    message=message,
+                    related_node_id=related,
+                )
             )
-            notification = await self.repo.create(data)
             self._send_to_mattermost(notification)
             notifications.append(notification)
 

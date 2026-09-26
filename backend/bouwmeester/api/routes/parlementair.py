@@ -6,7 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,12 +36,15 @@ from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
 )
+from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.parlementair_item import (
     ParlementairItemResponse,
     SuggestedEdgeResponse,
 )
+from bouwmeester.schema.task import TaskCreate
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.edge_schema_service import EdgeSchemaService
+from bouwmeester.services.task_rules import require_task_create
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +52,8 @@ SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire impor
 
 
 class FollowUpTask(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
     assignee_id: UUID | None = None
     deadline: date | None = None
 
@@ -81,25 +84,38 @@ async def _require_can_review(
     return item
 
 
+def _sees_target(edge: SuggestedEdge, org_ctx: OrgContext) -> bool:
+    """Does the caller see the suggestion's (loaded) target node?
+
+    Suggestions embed their target node; ``parlementair:read`` must not
+    reveal nodes the org filter hides.  Decided on the loaded row with the
+    same rule as ``node:read``, so a list costs no extra queries.
+    """
+    return edge.target_node is not None and sees_eenheid(
+        org_ctx, edge.target_node.organisatie_eenheid_id
+    )
+
+
 def _item_response(
     item: ParlementairItem, org_ctx: OrgContext
 ) -> ParlementairItemResponse:
-    """The item with only the suggestions whose target node the caller sees.
-
-    Suggestions embed their target node; ``parlementair:read`` must not
-    reveal nodes the org filter hides.  Decided on the loaded rows with the
-    same rule as ``node:read``, so a list costs no extra queries.
-    """
+    """The item with only the suggestions whose target node the caller sees."""
     response = ParlementairItemResponse.model_validate(item)
-    visible = {
-        edge.id
-        for edge in item.suggested_edges
-        if edge.target_node is not None
-        and sees_eenheid(org_ctx, edge.target_node.organisatie_eenheid_id)
-    }
+    visible = {edge.id for edge in item.suggested_edges if _sees_target(edge, org_ctx)}
     response.suggested_edges = [
         edge for edge in response.suggested_edges if edge.id in visible
     ]
+    return response
+
+
+def _edge_response(edge: SuggestedEdge, org_ctx: OrgContext) -> SuggestedEdgeResponse:
+    """One suggestion, its target node left out when the caller cannot see it.
+
+    A reviewer acts on the item's node; the target may lie elsewhere.
+    """
+    response = SuggestedEdgeResponse.model_validate(edge)
+    if not _sees_target(edge, org_ctx):
+        response.target_node = None
     return response
 
 
@@ -374,6 +390,21 @@ async def complete_review(
     if person is None:
         raise HTTPException(status_code=404, detail="Eigenaar person not found")
 
+    # Follow-up tasks are new tasks like any other: the POST /tasks rules.
+    follow_ups = [
+        TaskCreate(
+            node_id=item.corpus_node_id,
+            parlementair_item_id=import_id,
+            title=t.title,
+            description=t.description,
+            assignee_id=t.assignee_id,
+            deadline=t.deadline,
+        )
+        for t in body.tasks
+    ]
+    for follow_up in follow_ups:
+        await require_task_create(db, perm_ctx, follow_up)
+
     await _make_sole_person_owner(db, perm_ctx, item.corpus_node_id, body.eigenaar_id)
 
     # Auto-complete existing review tasks before creating new ones
@@ -386,20 +417,9 @@ async def complete_review(
         task.status = "done"
     await db.flush()
 
-    # Create optional follow-up tasks
-    for t in body.tasks:
-        db.add(
-            Task(
-                node_id=item.corpus_node_id,
-                parlementair_item_id=import_id,
-                title=t.title,
-                description=t.description,
-                assignee_id=t.assignee_id,
-                deadline=t.deadline,
-                priority="normaal",
-            )
-        )
-    await db.flush()
+    task_repo = TaskRepository(db)
+    for follow_up in follow_ups:
+        await task_repo.create(follow_up)
 
     # Update item status to reviewed
     item = await repo.update_status(
@@ -428,6 +448,7 @@ async def update_suggested_edge(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
     suggested_edge = require_found(
@@ -439,7 +460,7 @@ async def update_suggested_edge(
     suggested_edge.edge_type_id = body.edge_type_id
     await db.flush()
     updated = await repo.get_by_id(edge_id)
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/approve", response_model=SuggestedEdgeResponse)
@@ -449,6 +470,7 @@ async def approve_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
     suggested_edge = require_found(
@@ -500,7 +522,7 @@ async def approve_edge(
     )
 
     updated = await suggested_edge_repo.get_by_id(edge_id)
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/reject", response_model=SuggestedEdgeResponse)
@@ -510,6 +532,7 @@ async def reject_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Reject a suggested edge (sets status to rejected)."""
     repo = SuggestedEdgeRepository(db)
@@ -529,7 +552,7 @@ async def reject_edge(
         details={"suggested_edge_id": str(edge_id)},
     )
 
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/reset", response_model=SuggestedEdgeResponse)
@@ -539,6 +562,7 @@ async def reset_suggested_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_RESET_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Reset a suggested edge back to pending, undoing approve/reject.
 
@@ -571,4 +595,4 @@ async def reset_suggested_edge(
         details={"suggested_edge_id": str(edge_id)},
     )
 
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
