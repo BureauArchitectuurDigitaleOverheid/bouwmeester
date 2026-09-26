@@ -26,6 +26,7 @@ import {
 import { FUNCTIE_LABELS, DIENSTVERBAND_LABELS, PHONE_LABELS, formatFunctie } from '@/types';
 import type { Person, PersonFormSubmitParams } from '@/types';
 import { matchEmailOrganisatie } from '@/api/people';
+import { usePermissions } from '@/hooks/usePermissions';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
 const KARAKTER_NAMEN = [
@@ -218,6 +219,7 @@ export function PersonEditForm({
   const [showKey, setShowKey] = useState(false);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const rotateApiKeyMutation = useRotateApiKey();
+  const { isSuperAdmin } = usePermissions();
 
   // Search/select existing person state (create mode, non-agent only)
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -785,7 +787,7 @@ export function PersonEditForm({
                         onClick={() => setConfirmRotate(false)}
                       />
                     </nldd-container>
-                  ) : (
+                  ) : isSuperAdmin ? (
                     <NlddButton
                       text="Roteer"
                       startIcon="refresh"
@@ -793,7 +795,7 @@ export function PersonEditForm({
                       size="sm"
                       onClick={handleRotateKey}
                     />
-                  )}
+                  ) : null}
                 </nldd-container>
               ) : (
                 <nldd-text size="sm" color="secondary">

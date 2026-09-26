@@ -285,48 +285,66 @@ async def get_or_create_person(
     person = result.scalar_one_or_none()
 
     if person is not None:
-        # Auto-accumulate emails across logins
-        await _ensure_email_linked(db, person.id, email)
+        if person.oidc_email != normalize_email(email):
+            person.oidc_email = normalize_email(email)
+            await db.flush()
+        # Auto-accumulate verified emails across logins.
+        if email_verified:
+            await _ensure_email_linked(db, person.id, email)
         return person
 
-    # Only link by email if the OIDC provider has verified the email address.
-    if email_verified:
-        person = await find_person_by_email(db, email)
+    email_owner = await find_person_by_email(db, email)
 
-        if person is not None:
-            person.oidc_subject = sub
-            if name and not person.naam:
-                person.naam = name
-            await _ensure_email_linked(db, person.id, email)
+    # Link to an existing Person only on a verified email, and only if that
+    # Person is not already bound to another identity.
+    if email_owner is not None and email_verified:
+        if email_owner.oidc_subject is None:
+            email_owner.oidc_subject = sub
+            email_owner.oidc_email = normalize_email(email)
+            if name and not email_owner.naam:
+                email_owner.naam = name
             await db.flush()
-            await db.refresh(person)
-            return person
+            await db.refresh(email_owner)
+            return email_owner
+        logger.warning(
+            "Verified email %s belongs to person %s with another OIDC subject; "
+            "creating a separate person for subject %s",
+            email,
+            email_owner.id,
+            sub,
+        )
+    elif email_owner is not None:
+        logger.warning(
+            "Unverified email %s belongs to person %s; not linking subject %s",
+            email,
+            email_owner.id,
+            sub,
+        )
 
-    # Create brand-new person from OIDC claims.
+    # Create a brand-new Person.  It only claims the email address when
+    # nobody holds it yet; a duplicate can be merged by an admin later.
     try:
         person = Person(
             naam=name or email,
             email=email,
             oidc_subject=sub,
+            oidc_email=normalize_email(email),
         )
         db.add(person)
         await db.flush()
-        # Create PersonEmail row for the new person
-        email_obj = PersonEmail(person_id=person.id, email=email, is_default=True)
-        db.add(email_obj)
-        await db.flush()
+        if email_owner is None:
+            db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
+            await db.flush()
         await db.refresh(person)
         return person
     except IntegrityError:
-        # Concurrent insert — roll back and re-fetch.
+        # Concurrent login with the same subject: use the row that won.
         await db.rollback()
         stmt = select(Person).where(Person.oidc_subject == sub)
         result = await db.execute(stmt)
         person = result.scalar_one_or_none()
         if person is None:
-            person = await find_person_by_email(db, email)
-        if person is None:
-            raise  # Unexpected — re-raise the original error.
+            raise
         return person
 
 
@@ -463,6 +481,28 @@ async def validate_session_token(
     return False
 
 
+async def validate_bearer_token(token: str, settings: Settings) -> dict | None:
+    """Validate a Bearer token from the ``Authorization`` header.
+
+    Stricter than a session token: it must be a JWT that validates locally
+    against our issuer *and* our client (``aud``/``azp``), and its email
+    must be on the whitelist.  There is no userinfo fallback, because
+    userinfo accepts any token of any client in the realm.
+    """
+    from bouwmeester.core.whitelist import is_email_allowed
+
+    jwks = await get_jwks(settings)
+    if not jwks:
+        return None
+    claims = validate_jwt_locally(token, jwks, settings)
+    if not claims:
+        return None
+    if not is_email_allowed(claims.get("email") or ""):
+        logger.warning("Bearer token rejected: email not on whitelist")
+        return None
+    return claims
+
+
 async def _validate_token(request: Request, settings: Settings) -> dict | None:
     """Validate the Bearer token or session access token.
 
@@ -493,6 +533,9 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
 
     if not token:
         return None
+
+    if is_bearer:
+        return await validate_bearer_token(token, settings)
 
     # Try local JWT validation first (avoids network call).
     jwks = await get_jwks(settings)
@@ -801,8 +844,23 @@ async def get_optional_user(
 
     Checks API key first, then WebAuthn session, then OIDC.  If none are
     present/configured, returns ``None`` (dev mode).
+
+    With OIDC configured, ``None`` is only returned on public routes.  Many
+    handlers treat ``None`` as "dev mode, allow everything", so a request
+    that got past the middleware but maps to no Person (e.g. a token
+    without an ``email`` claim) must be rejected here instead of silently
+    running as that dev-mode user.
     """
-    return await _resolve_user(request, db, settings)
+    person = await _resolve_user(request, db, settings)
+    if person is None and settings.OIDC_ISSUER:
+        from bouwmeester.middleware.auth_required import is_public_path
+
+        if not is_public_path(request.url.path):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
+    return person
 
 
 async def get_admin_user(
@@ -813,13 +871,19 @@ async def get_admin_user(
     """Dependency that requires the current user to be an admin.
 
     Checks API key first, then WebAuthn session, then OIDC.  In development
-    mode (no OIDC and no API key) returns ``None`` (all access open).
+    mode (no OIDC and no API key) returns ``None`` (all access open).  With
+    OIDC configured an unresolved user is a 401, never ``None``.
     Raises 403 if the user is authenticated but not an admin.
 
     Uses the RBAC system (``super_admin`` or ``platform_admin`` person_role).
     """
     person = await _resolve_user(request, db, settings)
     if person is None:
+        if settings.OIDC_ISSUER:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+            )
         return None
     from bouwmeester.core.permissions import build_permission_context
 
@@ -829,6 +893,29 @@ async def get_admin_user(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin access required",
+    )
+
+
+async def get_super_admin_user(
+    admin: Person | None = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+) -> Person | None:
+    """Like :func:`get_admin_user`, but refuses ``platform_admin``.
+
+    For actions that can mint or take over rights (granting super_admin,
+    restoring a database, merging persons, rotating an agent's key).
+    platform_admin is an infra role and must not be able to promote itself.
+    """
+    if admin is None:
+        return None  # dev mode; get_admin_user already failed closed in prod
+    from bouwmeester.core.permissions import build_permission_context
+
+    perm_ctx = await build_permission_context(db, admin)
+    if perm_ctx.is_super_admin:
+        return admin
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Super-admin access required",
     )
 
 
@@ -848,6 +935,7 @@ async def get_admin_user(
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
 AdminUser = Annotated[Person | None, Depends(get_admin_user)]
+SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
 
 # New RBAC dependency — returns the resolved PermissionContext.
 # Import here to avoid circular imports at module level.

@@ -28,6 +28,7 @@ async def webauthn_person(db_session: AsyncSession):
         id=uid,
         naam="WebAuthn Tester",
         email=f"webauthn-{uid.hex[:8]}@example.com",
+        oidc_email=f"webauthn-{uid.hex[:8]}@example.com",
         functie="tester",
         is_active=True,
     )
@@ -479,7 +480,7 @@ async def test_init_webauthn_session(webauthn_person, db_session):
 
     assert session["webauthn_session"] is True
     assert session["person_db_id"] == str(webauthn_person.id)
-    assert session["person_email"] == webauthn_person.email
+    assert session["person_email"] == webauthn_person.oidc_email
     assert session["person_name"] == webauthn_person.naam
     assert session["is_admin"] is False  # No super_admin role assigned
     assert session["_rotate"] is True

@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import require_system_permission
 from bouwmeester.services.detect_orphan_handmatig import (
     detect_orphan_handmatig_matches,
 )
@@ -37,7 +37,7 @@ async def sync_log(
     bron: str | None = None,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> list[dict]:
     """Levert tot `limit` recente TooiSyncLog-rijen, optioneel per bron.
 
@@ -76,7 +76,7 @@ async def sync_log(
 )
 async def sync_status(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     """Geef laatste sync-run per bron + bron-tellingen.
 
@@ -130,7 +130,7 @@ async def sync_status(
 @router.post("/tooi", summary="Trigger TOOI-waardelijsten sync")
 async def trigger_tooi(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     stats = await sync_tooi(db)
     return {
@@ -150,7 +150,7 @@ async def trigger_tooi(
 )
 async def trigger_orphan_handmatig_scan(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     """Vind handmatige rijen (FCC-import zonder YAML-entry) die op afkorting
     of genormaliseerde naam matchen met een TOOI-rij. Genereert
@@ -169,7 +169,7 @@ async def trigger_orphan_handmatig_scan(
 @router.post("/ministeries-csv", summary="Trigger Ministeries.csv verrijking")
 async def trigger_ministeries_csv(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     stats = await sync_ministeries_csv(db)
     return {
@@ -182,7 +182,7 @@ async def trigger_ministeries_csv(
 @router.post("/rio", summary="Trigger RIO email-domeinen sync")
 async def trigger_rio(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     stats = await sync_rio(db)
     return {
@@ -196,7 +196,7 @@ async def trigger_rio(
 @router.post("/organogram", summary="Trigger DG/directie-scrape per ministerie")
 async def trigger_organogram(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     stats = await sync_organogram(db)
     return {
@@ -213,7 +213,7 @@ async def trigger_organogram(
 )
 async def trigger_onderwijsinstellingen(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     from pathlib import Path
 
@@ -241,7 +241,7 @@ async def trigger_onderwijsinstellingen(
 )
 async def trigger_wikidata_qid(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     from bouwmeester.services.wikidata_qid_sync import sync_wikidata_qid
 
@@ -260,7 +260,7 @@ async def trigger_wikidata_qid(
 )
 async def trigger_historische_kabinetten(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     from pathlib import Path
 
@@ -289,7 +289,7 @@ async def trigger_historische_kabinetten(
 )
 async def trigger_abd(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     from bouwmeester.services.abd_scrape import sync_abd
 
@@ -306,7 +306,7 @@ async def trigger_abd(
 @router.post("/tk-personen", summary="Trigger Tweede Kamer personen sync")
 async def trigger_tk_personen(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     stats = await sync_tk_personen(db)
     return {
@@ -324,7 +324,7 @@ async def trigger_tk_personen(
 )
 async def trigger_kabinet(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     kab_yaml = kabinet_yaml_path()
     aantal = await write_kabinet_yaml(db, str(kab_yaml))
@@ -346,7 +346,7 @@ async def trigger_kabinet(
 )
 async def trigger_all(
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     """Volledige sync-cyclus. Volgorde is belangrijk: TOOI eerst (anders geen
     TOOI-URI's om CSV/RIO tegen te matchen), kabinet pas na TOOI omdat hij

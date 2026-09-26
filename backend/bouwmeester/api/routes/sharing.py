@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.authz import require_permission_on_eenheid
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import PermissionContext, require_permission
@@ -63,34 +64,36 @@ async def list_shares(
     return [_to_response(s) for s in shares]
 
 
+async def _require_share_authority(
+    db: AsyncSession,
+    perm: PermissionContext,
+    source_eenheid_id: UUID | None,
+    source_node_id: UUID | None,
+) -> None:
+    """Sharing (or unsharing) needs org:manage on the source eenheid.
+
+    Being able to see an eenheid is not enough: that would let a member of
+    a team share its whole directorate onward.
+    """
+    if source_node_id is not None:
+        node = await db.get(CorpusNode, source_node_id)
+        if node is None:
+            raise HTTPException(404, "Source node not found")
+        source_eenheid_id = source_eenheid_id or node.organisatie_eenheid_id
+    if source_eenheid_id is not None:
+        await require_permission_on_eenheid(db, perm, "org:manage", source_eenheid_id)
+
+
 @router.post("", response_model=SharedAccessResponse)
 async def create_share(
     data: SharedAccessCreate,
     perm: PermissionContext = Depends(require_permission("org:manage")),
-    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a shared access grant."""
-    # Scope enforcement: user must have authority over the source
-    if not perm.is_super_admin:
-        if data.source_eenheid_id:
-            if (
-                not org_ctx.is_admin
-                and data.source_eenheid_id not in org_ctx.visible_eenheid_ids
-            ):
-                raise HTTPException(
-                    403, "Cannot share from an eenheid outside your scope"
-                )
-        if data.source_node_id:
-            node = await db.get(CorpusNode, data.source_node_id)
-            if node is None:
-                raise HTTPException(404, "Source node not found")
-            if (
-                node.organisatie_eenheid_id
-                and not org_ctx.is_admin
-                and node.organisatie_eenheid_id not in org_ctx.visible_eenheid_ids
-            ):
-                raise HTTPException(403, "Cannot share a node outside your scope")
+    await _require_share_authority(
+        db, perm, data.source_eenheid_id, data.source_node_id
+    )
 
     from bouwmeester.models.shared_access import SharedAccess
 
@@ -144,7 +147,6 @@ async def create_share(
 async def revoke_share(
     share_id: UUID,
     _perm: PermissionContext = Depends(require_permission("org:manage")),
-    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """Revoke a shared access grant."""
@@ -154,18 +156,9 @@ async def revoke_share(
     if share is None:
         raise HTTPException(404, "Share not found")
 
-    # Scope enforcement: user must have authority over the source
-    if not _perm.is_super_admin and not org_ctx.is_admin:
-        if share.source_eenheid_id:
-            if share.source_eenheid_id not in org_ctx.visible_eenheid_ids:
-                raise HTTPException(403, "Cannot revoke a share outside your scope")
-        elif share.source_node_id:
-            node = await db.get(CorpusNode, share.source_node_id)
-            if node and (
-                node.organisatie_eenheid_id
-                and node.organisatie_eenheid_id not in org_ctx.visible_eenheid_ids
-            ):
-                raise HTTPException(403, "Cannot revoke a share outside your scope")
+    await _require_share_authority(
+        db, _perm, share.source_eenheid_id, share.source_node_id
+    )
 
     repo = SharedAccessRepository(db)
     await repo.delete(share_id)

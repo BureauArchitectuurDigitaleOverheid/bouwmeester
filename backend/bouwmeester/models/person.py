@@ -31,6 +31,10 @@ class Person(Base):
     expertise: Mapped[str | None] = mapped_column(nullable=True)
     description: Mapped[str | None] = mapped_column(nullable=True)
     oidc_subject: Mapped[str | None] = mapped_column(unique=True, nullable=True)
+    # Email claim from the most recent OIDC login.  Unlike ``email`` and the
+    # PersonEmail rows it cannot be edited through the API, so it is what the
+    # whitelist is checked against when someone signs in without OIDC.
+    oidc_email: Mapped[str | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     is_agent: Mapped[bool] = mapped_column(default=False, server_default="false")
 

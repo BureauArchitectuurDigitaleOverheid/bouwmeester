@@ -18,6 +18,11 @@ from bouwmeester.services.llm.base import DataSensitivity
 
 logger = logging.getLogger(__name__)
 
+# Links the LLM creates on its own are read-only.  Its input is external FCC
+# text, so it must never hand out a role that can manage the opdracht or
+# grant further rights; a person promotes a contact to eigenaar by hand.
+AI_GRANTED_ROL = "betrokken"
+
 # Module-level lock to prevent concurrent bulk matching operations
 _bulk_matching_lock = asyncio.Lock()
 
@@ -176,7 +181,7 @@ class OpdrachtMatchingService:
                 rp = await repo.add_member(
                     opdracht_id=opdracht.id,
                     person_id=target_id,
-                    rol=match.suggested_rol,
+                    rol=AI_GRANTED_ROL,
                     source="ai",
                     ai_confidence=match.confidence,
                     ai_reason=match.reason,
@@ -192,7 +197,7 @@ class OpdrachtMatchingService:
                 rp = await repo.add_eenheid(
                     opdracht_id=opdracht.id,
                     eenheid_id=target_id,
-                    rol=match.suggested_rol,
+                    rol=AI_GRANTED_ROL,
                     source="ai",
                     ai_confidence=match.confidence,
                     ai_reason=match.reason,

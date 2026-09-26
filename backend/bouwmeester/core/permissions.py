@@ -298,6 +298,27 @@ def require_permission(*perms: str):
     return _check
 
 
+def require_system_permission(perm: str):
+    """Dependency factory: 403 unless *perm* comes from a system-level role.
+
+    For tenant-wide operations (org syncs, merging eenheden) that a role
+    scoped to one eenheid must not be able to trigger, even though
+    ``require_permission`` would accept it (it checks any scope).
+    """
+
+    async def _check(
+        perm_ctx: PermissionContext = Depends(require_permission(perm)),
+    ) -> PermissionContext:
+        if perm_ctx.is_super_admin or perm in perm_ctx.system_permissions:
+            return perm_ctx
+        raise HTTPException(
+            status_code=403,
+            detail="Alleen systeembeheerders mogen dit uitvoeren",
+        )
+
+    return _check
+
+
 def require_any_permission(*perms: str):
     """Alias for require_permission (OR logic)."""
     return require_permission(*perms)

@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import AdminUser
+from bouwmeester.core.auth import AdminUser, SuperAdminUser
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.encryption import decrypt_value, encrypt_value
@@ -181,7 +181,7 @@ async def list_admin_users(
 async def toggle_admin(
     id: UUID,
     data: AdminToggleRequest,
-    admin: AdminUser,
+    admin: SuperAdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserResponse:
     """Grant or revoke admin status. Cannot revoke your own admin rights."""
@@ -599,7 +599,7 @@ async def export_database_info(
 @router.post("/database/import", response_model=DatabaseRestoreResult)
 async def import_database(
     file: UploadFile,
-    admin: AdminUser,
+    admin: SuperAdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> DatabaseRestoreResult:
     """Upload a database backup and restore it."""
@@ -717,7 +717,7 @@ _ALL_MODEL_TABLES = [
 @router.post("/database/reset", response_model=DatabaseResetResult)
 async def reset_database(
     data: DatabaseResetRequest,
-    admin: AdminUser,
+    admin: SuperAdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> DatabaseResetResult:
     """Wipe all data except whitelist, sessions, and alembic version.

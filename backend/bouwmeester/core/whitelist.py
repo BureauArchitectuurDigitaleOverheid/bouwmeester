@@ -76,25 +76,21 @@ def _load_emails_from_file(json_path: Path, age_path: Path) -> set[str] | None:
 async def _get_person_ids_by_emails(
     session: AsyncSession, emails: set[str]
 ) -> set[UUID]:
-    """Return person IDs matching the given emails (person_email + legacy)."""
-    from bouwmeester.models.person import Person
+    """Return person IDs matching the given emails.
+
+    Only ``PersonEmail`` counts: it is unique, while the legacy
+    ``Person.email`` column is free text that any editor could set.
+    """
     from bouwmeester.models.person_email import PersonEmail
 
     result = await session.execute(
         select(PersonEmail.person_id).where(func.lower(PersonEmail.email).in_(emails))
     )
-    ids = {row[0] for row in result.all()}
-
-    legacy = await session.execute(
-        select(Person.id).where(func.lower(Person.email).in_(emails))
-    )
-    ids |= {row[0] for row in legacy.all()}
-    return ids
+    return {row[0] for row in result.all()}
 
 
 async def _get_existing_emails(session: AsyncSession, emails: set[str]) -> set[str]:
     """Return the subset of *emails* that already exist in the DB."""
-    from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
 
     result = await session.execute(
@@ -102,13 +98,7 @@ async def _get_existing_emails(session: AsyncSession, emails: set[str]) -> set[s
             func.lower(PersonEmail.email).in_(emails)
         )
     )
-    found = {row[0] for row in result.all()}
-
-    legacy = await session.execute(
-        select(func.lower(Person.email)).where(func.lower(Person.email).in_(emails))
-    )
-    found |= {row[0] for row in legacy.all() if row[0]}
-    return found
+    return {row[0] for row in result.all()}
 
 
 async def seed_admins_from_file(session: AsyncSession) -> int:

@@ -1426,7 +1426,7 @@ async def _execute_read_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadStage
 
-            org_ctx = await _build_chat_org_context(db, person_id)
+            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
 
             # Text search via find_similar if query provided
@@ -1435,7 +1435,7 @@ async def _execute_read_tool(
                 leads = await repo.find_similar(
                     title=query,
                     organization=query,
-                    org_ctx=org_ctx,
+                    init_ctx=init_ctx,
                 )
             else:
                 stage = None
@@ -1452,7 +1452,7 @@ async def _execute_read_tool(
                     stage=stage,
                     assignee_id=assignee_id_val,
                     next_action_filter=args.get("next_action_filter"),
-                    org_ctx=org_ctx,
+                    init_ctx=init_ctx,
                 )
             items = [
                 {
@@ -1482,9 +1482,9 @@ async def _execute_read_tool(
         elif tool_name == "get_lead":
             from bouwmeester.repositories.lead import LeadRepository
 
-            org_ctx = await _build_chat_org_context(db, person_id)
+            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            lead = await repo.get_detail(UUID(args["lead_id"]), org_ctx=org_ctx)
+            lead = await repo.get_detail(UUID(args["lead_id"]), init_ctx=init_ctx)
             if not lead:
                 return _safe_dumps({"error": "Lead niet gevonden"})
             activities = [
@@ -1534,9 +1534,9 @@ async def _execute_read_tool(
         elif tool_name == "get_lead_metrics":
             from bouwmeester.repositories.lead import LeadRepository
 
-            org_ctx = await _build_chat_org_context(db, person_id)
+            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            metrics = await repo.get_metrics(org_ctx=org_ctx)
+            metrics = await repo.get_metrics(init_ctx=init_ctx)
             return _safe_dumps(metrics)
 
         return _safe_dumps({"error": f"Onbekende tool: {tool_name}"})
@@ -1586,6 +1586,90 @@ async def _build_chat_org_context(db: AsyncSession, person_id: UUID | None) -> o
     return await build_org_context(db, person)
 
 
+async def _build_chat_initiatief_context(
+    db: AsyncSession, person_id: UUID | None
+) -> object:
+    """Build an InitiatiefContext for the chat user (lead access)."""
+    from bouwmeester.core.initiatief_context import (
+        InitiatiefContext,
+        build_initiatief_context,
+    )
+    from bouwmeester.models.person import Person
+
+    person = await db.get(Person, person_id) if person_id else None
+    if person is None:
+        return InitiatiefContext(is_authenticated=False)
+    return await build_initiatief_context(db, person)
+
+
+# Each write tool stands in for a REST route and must pass that route's
+# checks: its permission, plus org scope on every resource the tool touches
+# (``(resource_type, argument name)``).  Lead tools are scoped through the
+# initiatief context inside the tool itself, as the lead routes are.
+_WRITE_TOOL_POLICY: dict[str, tuple[str | None, tuple[tuple[str, str], ...]]] = {
+    "create_node": ("node:create", ()),
+    "update_node": ("node:update", (("corpus_node", "node_id"),)),
+    "create_edge": (
+        "edge:create",
+        (("corpus_node", "from_node_id"), ("corpus_node", "to_node_id")),
+    ),
+    "create_task": ("task:create", (("corpus_node", "node_id"),)),
+    "update_task": ("task:update", (("task", "task_id"),)),
+    "add_tag_to_node": ("tag:create", (("corpus_node", "node_id"),)),
+    "add_stakeholder": ("resource_permission:manage", (("corpus_node", "node_id"),)),
+    "attach_to_bron": ("node:update", (("corpus_node", "node_id"),)),
+    "create_lead": (None, ()),
+    "update_lead": (None, ()),
+    "move_lead": (None, ()),
+    "add_lead_activity": (None, ()),
+}
+
+
+async def _authorize_write_tool(
+    tool_name: str,
+    args: dict,
+    db: AsyncSession,
+    person_id: UUID | None,
+) -> str | None:
+    """Return a refusal message, or ``None`` when the user may run the tool."""
+    from fastapi import HTTPException
+
+    from bouwmeester.core.authz import require_valid_resource_role
+    from bouwmeester.core.config import get_settings
+    from bouwmeester.core.org_context import (
+        build_org_context,
+        check_resource_org_scope,
+    )
+    from bouwmeester.core.permissions import build_permission_context
+    from bouwmeester.models.person import Person
+
+    policy = _WRITE_TOOL_POLICY.get(tool_name)
+    if policy is None:
+        return f"Onbekende tool: {tool_name}"
+    perm, targets = policy
+
+    person = await db.get(Person, person_id) if person_id else None
+    if person is None:
+        # Only reachable without a user in dev mode (no OIDC).
+        return "Niet ingelogd" if get_settings().OIDC_ISSUER else None
+
+    perm_ctx = await build_permission_context(db, person)
+    if perm is not None and not perm_ctx.has_permission(perm):
+        return "Je hebt geen rechten voor deze actie."
+    try:
+        if tool_name == "add_stakeholder":
+            require_valid_resource_role("corpus_node", args.get("rol", ""))
+        if targets:
+            org_ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
+            for resource_type, arg in targets:
+                await check_resource_org_scope(
+                    db, resource_type, UUID(args[arg]), org_ctx
+                )
+    except HTTPException as exc:
+        return str(exc.detail)
+    return None
+
+
 async def _execute_write_tool(
     tool_name: str,
     args: dict,
@@ -1595,6 +1679,10 @@ async def _execute_write_tool(
 ) -> dict:
     """Execute a write tool. Returns { success, summary, entity_id, entity_type }."""
     try:
+        refusal = await _authorize_write_tool(tool_name, args, db, person_id)
+        if refusal is not None:
+            return {"success": False, "summary": refusal}
+
         if tool_name == "create_node":
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
             from bouwmeester.schema.corpus_node import CorpusNodeCreate
@@ -2004,9 +2092,9 @@ async def _execute_write_tool(
             from bouwmeester.schema.lead import LeadUpdate
 
             # Verify access via org context
-            org_ctx = await _build_chat_org_context(db, person_id)
+            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            existing = await repo.get(UUID(args["lead_id"]), org_ctx=org_ctx)
+            existing = await repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
             if not existing:
                 return {"success": False, "summary": "Lead niet gevonden"}
 
@@ -2060,9 +2148,9 @@ async def _execute_write_tool(
             from bouwmeester.schema.lead import LeadStage
 
             # Verify access via org context
-            org_ctx = await _build_chat_org_context(db, person_id)
+            init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
-            existing = await repo.get(UUID(args["lead_id"]), org_ctx=org_ctx)
+            existing = await repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
             if not existing:
                 return {"success": False, "summary": "Lead niet gevonden"}
 
@@ -2096,9 +2184,9 @@ async def _execute_write_tool(
             from bouwmeester.schema.lead import LeadActivityCreate
 
             # Verify lead exists and user has access
-            org_ctx = await _build_chat_org_context(db, person_id)
+            init_ctx = await _build_chat_initiatief_context(db, person_id)
             lead_repo = LeadRepository(db)
-            lead = await lead_repo.get(UUID(args["lead_id"]), org_ctx=org_ctx)
+            lead = await lead_repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
             if not lead:
                 return {"success": False, "summary": "Lead niet gevonden"}
 

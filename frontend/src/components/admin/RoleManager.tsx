@@ -156,7 +156,8 @@ function PersonRolesPanel({
   const assignableRoles = useMemo(() => {
     if (!roles) return [];
     if (isAdmin) return roles;
-    return roles.filter((r) => r.rank < myMaxRank);
+    // System roles are super_admin-only; the backend refuses them otherwise.
+    return roles.filter((r) => r.level !== 'system' && r.rank < myMaxRank);
   }, [roles, myMaxRank, isAdmin]);
 
   const handleAssign = (e: React.FormEvent) => {
@@ -220,9 +221,11 @@ function PersonRolesPanel({
           </nldd-table-row>
           {assignments.map((a) => {
             const roleRank = roles?.find((r) => r.id === a.role_id)?.rank ?? 0;
-            const canRevoke =
-              !(isSelf && a.role_id === 'super_admin') &&
-              (isAdmin || roleRank < myMaxRank);
+            // Stepping down from your own role is always allowed, except
+            // super_admin; anyone else's role needs a higher rank.
+            const canRevoke = isSelf
+              ? a.role_id !== 'super_admin'
+              : isAdmin || roleRank < myMaxRank;
             return (
               <AssignmentRow
                 key={a.id}
@@ -238,8 +241,9 @@ function PersonRolesPanel({
         <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
       )}
 
-      {/* Add role button / form — directly after roles */}
-      {!showForm ? (
+      {/* Add role button / form — directly after roles. Nobody but a
+          super_admin assigns roles to themselves. */}
+      {isSelf && !isAdmin ? null : !showForm ? (
         <NlddButton
           text="Rol toewijzen"
           startIcon="plus"
@@ -708,8 +712,8 @@ export function RoleManager() {
         accessible-label="Zoek personen"
       />
 
-      {/* Merge bar */}
-      {selectedIds.size >= 2 && !showMergeConfirm && (
+      {/* Merge bar: merging moves roles and placements, super_admin-only */}
+      {authPerson?.is_admin && selectedIds.size >= 2 && !showMergeConfirm && (
         <nldd-banner variant="accent" size="sm" text={`${selectedIds.size} personen geselecteerd`}>
           <div slot="actions">
             <NlddButton

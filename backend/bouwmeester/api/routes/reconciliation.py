@@ -26,7 +26,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
-    require_permission,
+    require_system_permission,
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
@@ -88,7 +88,7 @@ def _backfill_target_fields(
 async def list_reconciliations(
     status: str = "open",
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> list[ReconciliationResponse]:
     """Open conflict-lijst. Pass status=resolved/ignored om historisch te zien."""
     rows = (
@@ -136,7 +136,7 @@ async def merge_reconciliation(
     rec_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     """Merge: alle referenties (plaatsingen, leads, opdrachten, children,
     permissions, modules, namen, parents, polymorphic resource_id-velden)
@@ -198,7 +198,7 @@ async def ignore_reconciliation(
     rec_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     """Negeer: beide rijen blijven bestaan."""
     rec = await db.get(PendingReconciliation, rec_id)
@@ -217,7 +217,7 @@ async def manual_merge(
     body: ManualMergeRequest,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
-    _perm=Depends(require_permission("org:manage")),
+    _perm=Depends(require_system_permission("org:manage")),
 ) -> dict:
     """Merge twee willekeurige eenheden zonder voorafgaande reconciliation.
 

@@ -71,5 +71,20 @@ export function usePermissions() {
     [isAdmin, systemPermissions, scopedPermissions],
   );
 
-  return { hasPermission, hasAnyPermission, hasPermissionForEenheid, permissions, scopedPermissions };
+  // Tenant-wide actions (syncs, merges, restoring a backup) need the
+  // permission from a system role, not from a role scoped to one eenheid.
+  const hasSystemPermission = useCallback(
+    (perm: string): boolean => isAdmin || systemPermissions.has(perm),
+    [isAdmin, systemPermissions],
+  );
+
+  return {
+    hasPermission,
+    hasAnyPermission,
+    hasPermissionForEenheid,
+    hasSystemPermission,
+    isSuperAdmin: isAdmin,
+    permissions,
+    scopedPermissions,
+  };
 }

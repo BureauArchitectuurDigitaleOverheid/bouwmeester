@@ -22,7 +22,6 @@ import logging
 import time
 from collections import defaultdict
 
-import httpx
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -48,6 +47,11 @@ _PUBLIC_PREFIXES = (
     "/api/mattermost/slash",
     "/api/mattermost/verify-link",
 )
+
+
+def is_public_path(path: str) -> bool:
+    """Return True for routes that are reachable without authentication."""
+    return any(path.startswith(prefix) for prefix in _PUBLIC_PREFIXES)
 
 
 def _get_bearer_token(scope: Scope) -> str | None:
@@ -128,48 +132,13 @@ class AuthRequiredMiddleware:
             return False
 
     async def _validate_bearer(self, token: str) -> bool:
-        """Validate a Bearer token using the shared auth helpers.
-
-        Tries local JWT validation first (no network call), then falls back
-        to the OIDC userinfo endpoint with HTTPS enforcement.
-        """
+        """Validate a Bearer token (see :func:`validate_bearer_token`)."""
         if not self.settings:
             return False
 
-        from bouwmeester.core.auth import (
-            get_http_client,
-            get_jwks,
-            get_oidc_metadata,
-            require_https,
-            validate_jwt_locally,
-        )
+        from bouwmeester.core.auth import validate_bearer_token
 
-        # 1. Try local JWT validation (fast, no network).
-        jwks = await get_jwks(self.settings)
-        if jwks:
-            claims = validate_jwt_locally(token, jwks, self.settings)
-            if claims:
-                return True
-
-        # 2. Fall back to userinfo endpoint.
-        metadata = await get_oidc_metadata(self.settings)
-        if not metadata:
-            return False
-        userinfo_url = metadata.get("userinfo_endpoint")
-        if not userinfo_url:
-            return False
-        if not require_https(userinfo_url, "Userinfo endpoint"):
-            return False
-
-        client = get_http_client()
-        try:
-            resp = await client.get(
-                userinfo_url,
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            return resp.status_code == 200
-        except httpx.HTTPError:
-            return False
+        return await validate_bearer_token(token, self.settings) is not None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
@@ -191,7 +160,7 @@ class AuthRequiredMiddleware:
 
         # Allow public endpoints through.  Still resolve API-key identity
         # (without enforcing) so /api/auth/me works for agents.
-        if any(path.startswith(prefix) for prefix in _PUBLIC_PREFIXES):
+        if is_public_path(path):
             bearer_token = _get_bearer_token(scope)
             if bearer_token and bearer_token.startswith("bm_"):
                 await self._validate_api_key(bearer_token, scope)

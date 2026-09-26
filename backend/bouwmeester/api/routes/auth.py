@@ -122,6 +122,7 @@ async def callback(
     if userinfo:
         session["person_sub"] = userinfo.get("sub", "")
         session["person_email"] = userinfo.get("email", "")
+        session["person_email_verified"] = bool(userinfo.get("email_verified"))
         session["person_name"] = userinfo.get(
             "name", userinfo.get("preferred_username", "")
         )
@@ -265,7 +266,13 @@ async def auth_status(
 
             # Resolve from DB on first call.
             if person_id is None and sub and email:
-                person = await get_or_create_person(db, sub=sub, email=email, name=name)
+                person = await get_or_create_person(
+                    db,
+                    sub=sub,
+                    email=email,
+                    name=name,
+                    email_verified=request.session.get("person_email_verified", False),
+                )
                 person_id = str(person.id)
 
                 session_dismissed = _get_session_dismissed(request)

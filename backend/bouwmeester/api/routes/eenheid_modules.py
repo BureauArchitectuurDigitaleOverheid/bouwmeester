@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import require_permission_on_eenheid
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import PermissionContext, require_permission
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.repositories.eenheid_module import EenheidModuleRepository
 from bouwmeester.schema.eenheid_module import (
@@ -29,11 +30,12 @@ router = APIRouter(prefix="/eenheid-modules", tags=["eenheid-modules"])
 )
 async def get_eenheid_modules(
     eenheid_id: UUID,
-    _perm=Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Get module config for an eenheid, including inherited state."""
     require_found(await db.get(OrganisatieEenheid, eenheid_id), "Eenheid")
+    await require_permission_on_eenheid(db, perm_ctx, "org:manage", eenheid_id)
     repo = EenheidModuleRepository(db)
     configs = await repo.get_full_config(eenheid_id)
     return EenheidModulesResponse(
@@ -50,11 +52,12 @@ async def update_eenheid_module(
     eenheid_id: UUID,
     data: EenheidModuleUpdate,
     current_user: OptionalUser,
-    _perm=Depends(require_permission("org:manage")),
+    perm_ctx: PermissionContext = Depends(require_permission("org:manage")),
     db: AsyncSession = Depends(get_db),
 ) -> EenheidModulesResponse:
     """Toggle a module on/off for an eenheid."""
     eenheid = require_found(await db.get(OrganisatieEenheid, eenheid_id), "Eenheid")
+    await require_permission_on_eenheid(db, perm_ctx, "org:manage", eenheid_id)
 
     repo = EenheidModuleRepository(db)
 

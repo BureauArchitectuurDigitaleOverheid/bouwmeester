@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import require_can_attach, require_can_set_manager
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
@@ -88,6 +89,39 @@ async def _check_eenheid_write_access(
     raise HTTPException(
         status_code=403, detail="Geen toegang tot deze organisatie-eenheid"
     )
+
+
+async def _check_structural_changes(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    repo: OrganisatieEenheidRepository,
+    current: OrganisatieEenheid,
+    data: OrganisatieEenheidUpdate,
+) -> None:
+    """Guard the parts of an update that change who controls the eenheid.
+
+    Name and description are ordinary edits.  Moving the eenheid, changing
+    it between internal and external, naming a manager and dissolving it
+    (which ends the manager's role) all shift rights, so each goes through
+    the same checks as the equivalent direct action.
+    """
+    fields = data.model_fields_set
+    new_parent = data.parent_id if "parent_id" in fields else current.parent_id
+    new_type = data.type if "type" in fields and data.type else current.type
+    if new_parent != current.parent_id or new_type != current.type:
+        await require_can_attach(
+            db, perm_ctx, eenheid_type=new_type, parent_id=new_parent
+        )
+    if "manager_id" in fields:
+        current_manager = await repo.get_current_manager_id(current.id)
+        if data.manager_id != current_manager:
+            await require_can_set_manager(
+                db, perm_ctx, eenheid_id=current.id, new_manager_id=data.manager_id
+            )
+    if "geldig_tot" in fields and data.geldig_tot != current.geldig_tot:
+        await require_can_set_manager(
+            db, perm_ctx, eenheid_id=current.id, new_manager_id=None
+        )
 
 
 async def _enrich_with_managers(
@@ -290,6 +324,17 @@ async def create_organisatie(
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
+    # Creating is free (stakeholder eenheden live anywhere): a new eenheid
+    # has no members, so it grants nobody anything.  Naming a manager does.
+    if data.manager_id is not None and not perm_ctx.is_super_admin:
+        if data.parent_id is None:
+            raise HTTPException(
+                403, "Alleen systeembeheerders benoemen hier een leidinggevende"
+            )
+        # The new eenheid inherits its parent's rights, so the parent decides.
+        await require_can_set_manager(
+            db, perm_ctx, eenheid_id=data.parent_id, new_manager_id=data.manager_id
+        )
     eenheid = await repo.create(data)
 
     if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
@@ -350,6 +395,8 @@ async def update_organisatie(
     """Update an org unit. Detects circular parent references."""
     await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
+    current = require_found(await repo.get(id), "Eenheid")
+    await _check_structural_changes(db, perm_ctx, repo, current, data)
 
     # Cycle detection for parent_id changes
     if data.parent_id is not None:
