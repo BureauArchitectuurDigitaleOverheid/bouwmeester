@@ -1363,17 +1363,16 @@ async def _execute_read_tool(
             return _safe_dumps({"opdrachten": items, "count": len(items)})
 
         elif tool_name == "get_opdracht":
-            from bouwmeester.core.org_context import sees_eenheid
+            from bouwmeester.core.authz import can
             from bouwmeester.repositories.opdracht import OpdrachtRepository
 
-            repo = OpdrachtRepository(db)
             opdracht_id = UUID(args["opdracht_id"])
-            o = await repo.get(opdracht_id)
+            # A refused read looks like a missing one: existence is information.
+            o = None
+            if await can(db, caller.perm_ctx, "opdracht:read", "opdracht", opdracht_id):
+                o = await OpdrachtRepository(db).get(opdracht_id)
             if not o:
                 return _safe_dumps({"error": "Opdracht niet gevonden"})
-            # Respect org-context: hide opdrachten from invisible eenheden.
-            if not sees_eenheid(caller.org_ctx, o.opdrachtgever_id):
-                return _safe_dumps({"error": "Geen toegang tot deze opdracht"})
             return _safe_dumps(
                 {
                     "id": str(o.id),
@@ -1656,9 +1655,12 @@ _NO_EENHEID_FOR_LEAD = (
 )
 
 # Resources a tool links to that the user must at least be able to see.
-_MUST_SEE: dict[str, tuple[tuple[str, str], ...]] = {
-    "create_edge": (("corpus_node", "from_node_id"), ("corpus_node", "to_node_id")),
-    "create_task": (("task", "parent_task_id"),),
+_MUST_SEE: dict[str, tuple[tuple[str, str, str], ...]] = {
+    "create_edge": (
+        ("node:read", "corpus_node", "from_node_id"),
+        ("node:read", "corpus_node", "to_node_id"),
+    ),
+    "create_task": (("task:read", "task", "parent_task_id"),),
 }
 
 
@@ -1673,7 +1675,6 @@ async def _authorize_write_tool(
 
     from bouwmeester.core.authority import require_can_grant_resource_role
     from bouwmeester.core.authz import can, require
-    from bouwmeester.core.org_context import check_resource_org_scope
 
     checks = _WRITE_TOOL_POLICY.get(tool_name)
     if checks is None:
@@ -1698,11 +1699,9 @@ async def _authorize_write_tool(
         else:
             if asks:
                 await require(db, perm_ctx, *asks[-1])
-        for resource_type, arg in _MUST_SEE.get(tool_name, ()):
+        for perm, resource_type, arg in _MUST_SEE.get(tool_name, ()):
             if args.get(arg):
-                await check_resource_org_scope(
-                    db, resource_type, UUID(args[arg]), caller.org_ctx
-                )
+                await require(db, perm_ctx, perm, resource_type, UUID(args[arg]))
         if tool_name == "create_task":
             if args.get("organisatie_eenheid_id"):
                 await require(

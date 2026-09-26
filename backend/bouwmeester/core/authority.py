@@ -25,7 +25,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import can, require, rights_on_eenheid
+from bouwmeester.core.authz import can, get_eenheid_ids, require, rights_on_eenheid
 from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS, PermissionContext
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import (
@@ -41,7 +41,6 @@ from bouwmeester.repositories.org_tree import (
     get_self_and_ancestor_ids,
     get_subtree_ids,
 )
-from bouwmeester.repositories.resource_scope import get_authority_eenheid_ids
 
 # Roles that make someone responsible for the members of an eenheid (and
 # of everything below it).
@@ -675,7 +674,7 @@ async def _may_register_self(
         return True
     if resource_type not in _UNSCOPED_CONTACT_TYPES:
         return False
-    _, eenheid_ids = await get_authority_eenheid_ids(db, resource_type, resource_id)
+    _, eenheid_ids = await get_eenheid_ids(db, resource_type, resource_id)
     return not eenheid_ids
 
 

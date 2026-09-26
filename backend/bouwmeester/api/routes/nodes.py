@@ -18,11 +18,7 @@ from bouwmeester.core.authority import (
 )
 from bouwmeester.core.authz import can, prefetch, require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    check_resource_org_scope,
-    get_org_context,
-)
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
@@ -321,9 +317,9 @@ async def get_neighbors(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> GraphNeighborsResponse:
     """Get the visible direct neighbors of a node with their connecting edges."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     result = await GraphRepository(db).get_neighbors(id, org_ctx=org_ctx)
     require_found(result["node"], "Node")
     return GraphNeighborsResponse(
@@ -345,9 +341,9 @@ async def get_graph(
     depth: int = Query(2, ge=1, le=5),
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
+    _authz=Depends(_READ_NODE),
 ) -> GraphViewResponse:
     """Get the visible subgraph around a node (configurable depth 1-5)."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     result = await GraphRepository(db).get_subgraph(id, org_ctx=org_ctx, depth=depth)
     return GraphViewResponse(
         nodes=validate_list(CorpusNodeResponse, result["nodes"]),

@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -259,24 +259,3 @@ def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
         or eenheid_id in org_ctx.visible_eenheid_ids
         or eenheid_id in org_ctx.shared_eenheid_ids
     )
-
-
-async def check_resource_org_scope(
-    db: AsyncSession,
-    resource_type: str,
-    resource_id: UUID,
-    org_ctx: OrgContext,
-) -> None:
-    """Deprecated: ask ``core.authz.require(..., "<type>:read", ...)`` instead.
-
-    Kept only for callers outside the routes that still hold an OrgContext
-    and no PermissionContext.  404 if the resource does not exist or none
-    of its eenheden is visible.
-    """
-    from bouwmeester.core.authz import get_eenheid_ids
-
-    found, eenheid_ids = await get_eenheid_ids(db, resource_type, resource_id)
-    if not found or not (
-        not eenheid_ids or any(sees_eenheid(org_ctx, e) for e in eenheid_ids)
-    ):
-        raise HTTPException(status_code=404, detail="Niet gevonden")
