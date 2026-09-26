@@ -644,7 +644,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                         className="group"
                         style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                       >
-                        <Badge variant="green">
+                        <Badge color="groen">
                           <span
                             className="group-hover-underline"
                             style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
@@ -655,7 +655,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                         </Badge>
                       </a>
                     ) : (
-                      <Badge variant="gray">Niet zichtbaar</Badge>
+                      <Badge color="coolgray">Niet zichtbaar</Badge>
                     )}
                   </nldd-container>
                   {!status.visible && status.reason && (
@@ -686,7 +686,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             <DetailSection title="Tags">
               <nldd-container layout="wrap" gap="6">
                 {(leadTags ?? []).map((lt) => (
-                  <Badge key={lt.id} variant="gray">{lt.tag.name}</Badge>
+                  <Badge key={lt.id} color="coolgray">{lt.tag.name}</Badge>
                 ))}
               </nldd-container>
             </DetailSection>
@@ -876,7 +876,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                         {activity.author_naam && (
                           <nldd-text size="xs" weight="medium">{activity.author_naam}</nldd-text>
                         )}
-                        <Badge variant="gray">
+                        <Badge color="coolgray">
                           {LEAD_ACTIVITY_TYPE_LABELS[activity.activity_type]}
                         </Badge>
                         {activity.metadata_?.source === 'mattermost' && (

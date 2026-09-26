@@ -154,7 +154,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
         />
         <nldd-container layout="row" gap="8" vertical-alignment="center">
           <Badge
-            variant={TASK_PRIORITY_COLORS[task.priority]}
+            color={TASK_PRIORITY_COLORS[task.priority]}
             dot
           >
             {TASK_PRIORITY_LABELS[task.priority]}

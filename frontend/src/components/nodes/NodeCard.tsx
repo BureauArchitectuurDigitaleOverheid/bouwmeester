@@ -31,11 +31,11 @@ export function NodeCard({ node }: NodeCardProps) {
       <nldd-container layout="row" gap="12" vertical-alignment="top">
         <nldd-container gap="4" min-width="0px">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
+            <Badge color={color} dot title={nodeAltLabel(node.node_type)}>
               {nodeLabel(node.node_type)}
             </Badge>
             {node.status && (
-              <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>
+              <Badge color="coolgray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>
             )}
           </nldd-container>
 

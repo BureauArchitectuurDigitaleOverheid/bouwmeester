@@ -1,26 +1,6 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
-import type { BadgeVariant } from '@/types';
+import type { EntityColor } from '@/types';
 import { useNlddEvent, useNlddOverlay } from '@/components/nldd/events';
-
-/**
- * Accent color per entity type, as a Rijkshuisstijl color the design system
- * knows. Drawn as a 3px line along the top of the window, which is how this
- * app signals "you are looking at a lead / a node / an opdracht".
- */
-const ACCENT_COLOR: Record<BadgeVariant, string> = {
-  blue: 'lintblauw',
-  green: 'groen',
-  purple: 'paars',
-  amber: 'geel',
-  cyan: 'hemelblauw',
-  rose: 'roze',
-  slate: 'donkerblauw',
-  gray: 'coolgray',
-  red: 'rood',
-  orange: 'oranje',
-  emerald: 'mosgroen',
-  indigo: 'violet',
-};
 
 /** Window width per size step. */
 const SIZE_WIDTH = {
@@ -40,7 +20,7 @@ interface ModalProps {
   closeable?: boolean;
   headerIcon?: ReactNode;
   entityLabel?: string;
-  accentColor?: BadgeVariant;
+  accentColor?: EntityColor;
   /** Small back-link above the title for modal stacking navigation */
   backLabel?: string;
   onBack?: () => void;
@@ -115,12 +95,13 @@ export function Modal({
       width={SIZE_WIDTH[size]}
       {...(closeable ? {} : { 'no-light-dismiss': true })}
     >
-      {/* A 3px line in the entity's colour along the top edge. */}
+      {/* A 3px line in the entity color along the top edge, which is how this app
+          signals "you are looking at a lead / a node / an opdracht". */}
       {accentColor && (
         <div
           style={{
             height: '3px',
-            backgroundColor: `var(--primitives-color-${ACCENT_COLOR[accentColor]}-500)`,
+            backgroundColor: `var(--primitives-color-${accentColor}-500)`,
           }}
         />
       )}

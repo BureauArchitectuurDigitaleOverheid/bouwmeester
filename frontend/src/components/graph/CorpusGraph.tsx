@@ -20,7 +20,16 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateEdge } from '@/hooks/useEdges';
-import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
+import { NodeType, nodeTypeColor } from '@/types';
+import { resolveColor } from '@/utils/resolveColor';
+import {
+  EDGE_COLOR,
+  EDGE_LABEL_BG_COLOR,
+  EDGE_LABEL_COLOR,
+  FLOATING_PANEL_BORDER,
+  GRID_COLOR,
+  MINIMAP_MASK_COLOR,
+} from './graphColors';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
@@ -184,7 +193,8 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
       const fromPos = positions.get(edge.from_node_id);
       const toPos = positions.get(edge.to_node_id);
       const goesUpward = fromPos && toPos && fromPos.y > toPos.y;
-      const color = isDashed ? '#F43F5E' : '#94a3b8';
+      // A dashed edge is a conflict, so it takes the critical role.
+      const color = isDashed ? 'var(--semantics-content-critical-color)' : EDGE_COLOR;
       const marker = { type: MarkerType.ArrowClosed, width: 16, height: 16, color };
 
       return {
@@ -204,11 +214,11 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
         },
         labelStyle: {
           fontSize: 10,
-          fill: '#64748b',
+          fill: EDGE_LABEL_COLOR,
           fontWeight: 500,
         },
         labelBgStyle: {
-          fill: '#ffffff',
+          fill: EDGE_LABEL_BG_COLOR,
           fillOpacity: 0.9,
         },
         labelBgPadding: [4, 2] as [number, number],
@@ -268,7 +278,7 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
         const fromPos = positionMap.get(bridge.from_node_id);
         const toPos = positionMap.get(bridge.to_node_id);
         const goesUp = fromPos && toPos && fromPos.y > toPos.y;
-        const bMarker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: '#94a3b8' };
+        const bMarker = { type: MarkerType.ArrowClosed, width: 14, height: 14, color: EDGE_COLOR };
         return {
           id: bridge.id,
           source: goesUp ? bridge.to_node_id : bridge.from_node_id,
@@ -278,19 +288,19 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
           animated: false,
           ...(goesUp ? { markerStart: bMarker } : { markerEnd: bMarker }),
           style: {
-            stroke: '#94a3b8',
+            stroke: EDGE_COLOR,
             strokeWidth: 1.5,
             strokeDasharray: '3 3',
             opacity: 0.6,
           },
           labelStyle: {
             fontSize: 9,
-            fill: '#94a3b8',
+            fill: EDGE_COLOR,
             fontStyle: 'italic',
             fontWeight: 400,
           },
           labelBgStyle: {
-            fill: '#ffffff',
+            fill: EDGE_LABEL_BG_COLOR,
             fillOpacity: 0.9,
           },
           labelBgPadding: [4, 2] as [number, number],
@@ -337,7 +347,8 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
   // Minimap node color
   const minimapNodeColor = useCallback((node: RFNode) => {
     const nodeType = (node.data as GraphNodeData)?.nodeType;
-    return NODE_TYPE_HEX_COLORS[nodeType] ?? '#9ca3af';
+    // The minimap paints this as an SVG attribute, which cannot read a var().
+    return resolveColor(nodeTypeColor(nodeType));
   }, []);
 
   if (isLoading) {
@@ -382,22 +393,22 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
           }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="#e2e8f0" gap={20} size={1} />
+          <Background color={resolveColor(GRID_COLOR)} gap={20} size={1} />
           <Controls
             showInteractive={false}
             style={{
               borderRadius: '10px',
-              border: '1px solid #e2e8f0',
+              border: FLOATING_PANEL_BORDER,
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             }}
           />
           {!isMobile && (
             <MiniMap
               nodeColor={minimapNodeColor}
-              maskColor="rgba(248, 249, 250, 0.7)"
+              maskColor={resolveColor(MINIMAP_MASK_COLOR)}
               style={{
                 borderRadius: '10px',
-                border: '1px solid #e2e8f0',
+                border: FLOATING_PANEL_BORDER,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}
             />

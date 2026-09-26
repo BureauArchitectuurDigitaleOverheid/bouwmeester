@@ -119,7 +119,7 @@ export function KompasStepSuggestions({
             return (
               <nldd-list-item key={s.target_node_id}>
                 <nldd-text-cell width="fit-content">
-                  <Badge variant={NODE_TYPE_COLORS[s.target_node_type as NodeType]} dot>
+                  <Badge color={NODE_TYPE_COLORS[s.target_node_type as NodeType]} dot>
                     {nodeLabel(s.target_node_type)}
                   </Badge>
                 </nldd-text-cell>

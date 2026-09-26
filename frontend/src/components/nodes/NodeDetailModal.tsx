@@ -178,10 +178,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
           <nldd-container gap="20">
             {/* Type, status, edge count badges */}
             <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-              <Badge variant={NODE_TYPE_COLORS[node.node_type] ?? 'gray'} dot title={nodeAltLabel(node.node_type)}>
+              <Badge color={NODE_TYPE_COLORS[node.node_type] ?? 'coolgray'} dot title={nodeAltLabel(node.node_type)}>
                 {nodeLabel(node.node_type)}
               </Badge>
-              {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
+              {node.status && <Badge color="coolgray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
               {node.edge_count != null && (
                 <div className="hug">
                   <nldd-icon name="link" size="16" aria-hidden="true" />
@@ -272,7 +272,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                     label: neighbor.title,
                     badge: {
                       text: nodeLabel(neighbor.node_type),
-                      variant: NODE_TYPE_COLORS[neighbor.node_type] ?? 'gray',
+                      color: NODE_TYPE_COLORS[neighbor.node_type] ?? 'coolgray',
                       dot: true,
                     },
                     onClick: () => openNodeDetail(neighbor.id, node.title),

@@ -398,7 +398,7 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
                     <nldd-list-item key={k.id}>
                       {k.node_type && (
                         <nldd-text-cell width="fit-content">
-                          <Badge variant={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'gray'} dot>
+                          <Badge color={NODE_TYPE_COLORS[k.node_type as NodeType] ?? 'coolgray'} dot>
                             {k.node_type}
                           </Badge>
                         </nldd-text-cell>

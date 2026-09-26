@@ -20,15 +20,11 @@ function managerLabelForType(orgType: string, functie?: string | null): string {
   return COORDINATOR_TYPES.has(orgType) ? 'Coördinator' : 'Manager';
 }
 
-// Rijkshuisstijl primitive per badge color, at 40% opacity against the page
-// background, mirroring Badge's own color families (see ORGANISATIE_TYPE_BADGE_COLORS).
-const BADGE_TINT_PRIMITIVE: Record<string, string> = {
-  blue: 'hemelblauw', purple: 'paars', amber: 'oranje',
-  cyan: 'lichtblauw', green: 'mintgroen', gray: 'coolgray',
-};
+// The group tint is the type's entity color at step 50, 40% over the page
+// background, so it reads as the same family as the type badge.
 function orgTypeBg(type: string): string {
-  const primitive = BADGE_TINT_PRIMITIVE[ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'gray'] ?? 'coolgray';
-  return `color-mix(in oklch, var(--primitives-color-${primitive}-50) 40%, transparent)`;
+  const color = ORGANISATIE_TYPE_BADGE_COLORS[type] ?? 'coolgray';
+  return `color-mix(in oklch, var(--primitives-color-${color}-50) 40%, transparent)`;
 }
 
 function countAllPersonen(group: OrganisatieEenheidPersonenGroup): number {
@@ -179,7 +175,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
         >
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="sm" />
-            <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
+            <Badge color={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'coolgray'}>
               {formatOrganisatieType(group.eenheid.type)}
             </Badge>
             <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -286,7 +282,7 @@ export function OrganisatieDetail({
       <div className="sm-row-header" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <nldd-container gap="4">
           <Badge
-            variant={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'gray'}
+            color={ORGANISATIE_TYPE_BADGE_COLORS[eenheid.type] || 'coolgray'}
             dot
           >
             {formatOrganisatieType(eenheid.type)}

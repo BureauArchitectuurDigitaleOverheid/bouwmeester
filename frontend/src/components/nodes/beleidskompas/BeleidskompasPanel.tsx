@@ -129,7 +129,7 @@ function StepTypeGroups({
         {status.nodes.map((node) => (
           <ClickableListItem key={node.id} onClick={() => openNodeDetail(node.id)}>
             <nldd-text-cell width="fit-content">
-              <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+              <Badge color={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
                 {NODE_TYPE_LABELS[node.node_type as NodeType]}
               </Badge>
             </nldd-text-cell>
@@ -161,7 +161,7 @@ function StepTypeGroups({
               {typeNodes.map((node) => (
                 <ClickableListItem key={node.id} onClick={() => openNodeDetail(node.id)}>
                   <nldd-text-cell width="fit-content">
-                    <Badge variant={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
+                    <Badge color={NODE_TYPE_COLORS[node.node_type as NodeType]} dot>
                       {NODE_TYPE_LABELS[node.node_type as NodeType]}
                     </Badge>
                   </nldd-text-cell>

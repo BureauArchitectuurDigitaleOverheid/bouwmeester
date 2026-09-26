@@ -11,7 +11,7 @@ import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
-import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
+import { NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -118,7 +118,6 @@ export function CorpusPage() {
     ALL_NODE_TYPES.map((t) => ({
       value: t,
       label: nodeLabel(t),
-      color: NODE_TYPE_HEX_COLORS[t],
     })),
   [nodeLabel]);
 

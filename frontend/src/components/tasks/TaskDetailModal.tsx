@@ -125,7 +125,7 @@ function SubtaskRow({
         {subtask.work_type && (
           <>
             <nldd-spacer-cell size="8" />
-            <Badge variant="slate">{subtask.work_type}</Badge>
+            <Badge color="donkerblauw">{subtask.work_type}</Badge>
           </>
         )}
         <nldd-spacer-cell size="flexible" />
@@ -225,10 +225,10 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
           <nldd-container gap="20">
             {/* Status / Priority / Deadline row */}
             <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-              <Badge variant={TASK_STATUS_COLORS[task.status] ?? 'gray'} dot>
+              <Badge color={TASK_STATUS_COLORS[task.status] ?? 'coolgray'} dot>
                 {TASK_STATUS_LABELS[task.status]}
               </Badge>
-              <Badge variant={TASK_PRIORITY_COLORS[task.priority] ?? 'gray'} dot>
+              <Badge color={TASK_PRIORITY_COLORS[task.priority] ?? 'coolgray'} dot>
                 {TASK_PRIORITY_LABELS[task.priority]}
               </Badge>
               {task.due_date && (

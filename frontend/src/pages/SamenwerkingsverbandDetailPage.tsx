@@ -300,7 +300,7 @@ export function SamenwerkingsverbandDetailPage() {
                     route's h1 ("Samenwerkingsverbanden"). */}
                 <nldd-title size={3}><h2>{swv.naam}</h2></nldd-title>
                 <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-                  <Badge variant={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'gray'}>
+                  <Badge color={SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[swv.type] ?? 'coolgray'}>
                     {SAMENWERKINGSVERBAND_TYPE_LABELS[swv.type] ?? swv.type}
                   </Badge>
                   <div className="hug">

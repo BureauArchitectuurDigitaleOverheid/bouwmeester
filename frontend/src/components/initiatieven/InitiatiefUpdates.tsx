@@ -243,9 +243,9 @@ function PostRow({
           <nldd-container layout="row" gap="8" vertical-alignment="center">
             <nldd-text-cell text={post.titel} width="fit-content" />
             {isPublished ? (
-              <Badge variant="green">Gepubliceerd</Badge>
+              <Badge color="groen">Gepubliceerd</Badge>
             ) : (
-              <Badge variant="gray">Concept</Badge>
+              <Badge color="coolgray">Concept</Badge>
             )}
           </nldd-container>
           {post.body && (

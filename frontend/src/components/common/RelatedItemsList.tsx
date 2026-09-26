@@ -1,12 +1,12 @@
 import { useRef, type ReactNode } from 'react';
 import { Badge } from './Badge';
 import { useNlddEvent } from '@/components/nldd/events';
-import type { BadgeVariant } from '@/types';
+import type { EntityColor } from '@/types';
 
 interface RelatedItem {
   id: string;
   label: string;
-  badge?: { text: string; variant: BadgeVariant; dot?: boolean };
+  badge?: { text: string; color: EntityColor; dot?: boolean };
   secondaryText?: string;
   icon?: ReactNode;
   onClick: () => void;
@@ -31,7 +31,7 @@ function ItemRow({ item }: { item: RelatedItem }) {
       {item.icon && <nldd-cell width="fit-content">{item.icon}</nldd-cell>}
       {item.badge && (
         <nldd-cell width="fit-content">
-          <Badge variant={item.badge.variant} dot={item.badge.dot}>
+          <Badge color={item.badge.color} dot={item.badge.dot}>
             {item.badge.text}
           </Badge>
         </nldd-cell>

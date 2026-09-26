@@ -30,23 +30,23 @@ import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import {
   LEAD_STAGE_LABELS,
   LeadStage,
-  NODE_TYPE_HEX_COLORS,
   NodeType,
+  entityColorVar,
+  nodeTypeColor,
   formatFunctie,
   SAMENWERKINGSVERBAND_TYPE_LABELS,
 } from '@/types';
 import type { CommunityGraphNode, CommunityGraphEdge } from '@/types';
 import { stageTagColor } from './stageColors';
-
-// ---- Hex colors per lead stage (for graph nodes) ----
-const LEAD_STAGE_HEX: Record<string, string> = {
-  verkennen: '#60A5FA',
-  eerste_gesprek: '#FBBF24',
-  interne_check: '#FB923C',
-  follow_up: '#A78BFA',
-  in_the_pocket: '#34D399',
-  koelkast: '#9CA3AF',
-};
+import { resolveColor } from '@/utils/resolveColor';
+import {
+  EDGE_COLOR,
+  EDGE_LABEL_BG_COLOR,
+  EDGE_LABEL_COLOR,
+  FLOATING_PANEL_BORDER,
+  GRID_COLOR,
+  MINIMAP_MASK_COLOR,
+} from '@/components/graph/graphColors';
 
 /** `stageTagColor` gives an nldd-tag color name, which is also a valid
  * Rijkshuisstijl/semantic token segment (`--primitives-color-<name>-500` or
@@ -64,11 +64,12 @@ function stageTagColorVar(stage: string): string {
   return `var(--primitives-color-${name}-500)`;
 }
 
-const PERSON_INTERN_COLOR = '#EC4899';
-const PERSON_EXTERN_COLOR = '#F97316';
-const ORG_COLOR = '#14B8A6';
-const SWV_COLOR = '#8B5CF6';
-const CORPUS_NODE_FALLBACK = '#6B7280';
+const PERSON_INTERN_COLOR = entityColorVar('roze');
+const PERSON_EXTERN_COLOR = entityColorVar('oranje');
+// Teal, which no entity color is; mintgroen is the nearest Rijkshuisstijl hue.
+const ORG_COLOR = 'var(--primitives-color-mintgroen-500)';
+const SWV_COLOR = entityColorVar('paars');
+const CORPUS_NODE_FALLBACK = entityColorVar('coolgray');
 
 // ---- Community node type to rank (swim-lane y) ----
 // Strikte horizontale swim-lanes per node-type, top-down. Y wordt opgelegd
@@ -119,19 +120,19 @@ interface EdgeStyle {
 function edgeStyle(edgeType: string): EdgeStyle {
   switch (edgeType) {
     case 'verantwoordelijke':
-      return { color: '#3B82F6', strokeWidth: 1.5, label: 'verantwoordelijk' };
+      return { color: entityColorVar('lintblauw'), strokeWidth: 1.5, label: 'verantwoordelijk' };
     case 'contact':
-      return { color: '#10B981', strokeDasharray: '5 5', strokeWidth: 1.5, label: 'contact' };
+      return { color: entityColorVar('groen'), strokeDasharray: '5 5', strokeWidth: 1.5, label: 'contact' };
     case 'organisatie':
-      return { color: '#14B8A6', strokeWidth: 1.5, label: 'organisatie' };
+      return { color: ORG_COLOR, strokeWidth: 1.5, label: 'organisatie' };
     case 'gelinkt':
-      return { color: '#6B7280', strokeWidth: 1.5, label: 'gelinkt' };
+      return { color: entityColorVar('coolgray'), strokeWidth: 1.5, label: 'gelinkt' };
     case 'eigenaar':
     case 'betrokken':
     case 'adviseur':
-      return { color: '#8B5CF6', strokeDasharray: '2 4', strokeWidth: 1.5, label: edgeType };
+      return { color: SWV_COLOR, strokeDasharray: '2 4', strokeWidth: 1.5, label: edgeType };
     case 'lid_van':
-      return { color: '#9CA3AF', strokeWidth: 1, label: 'lid van' };
+      return { color: EDGE_COLOR, strokeWidth: 1, label: 'lid van' };
     case 'lid_van_swv':
       return {
         color: SWV_COLOR,
@@ -141,7 +142,7 @@ function edgeStyle(edgeType: string): EdgeStyle {
       };
     default:
       // Corpus node edges and anything else
-      return { color: '#94a3b8', strokeWidth: 1.5, label: edgeType.replace(/_/g, ' ') };
+      return { color: EDGE_COLOR, strokeWidth: 1.5, label: edgeType.replace(/_/g, ' ') };
   }
 }
 
@@ -171,7 +172,7 @@ interface CommunityGraphNodeData {
 
 function getNodeColor(data: CommunityGraphNodeData): string {
   if (data.nodeType === 'lead') {
-    return LEAD_STAGE_HEX[data.stage ?? ''] ?? '#9CA3AF';
+    return stageTagColorVar(data.stage ?? '');
   }
   if (data.nodeType === 'person') {
     return data.personRole === 'extern' ? PERSON_EXTERN_COLOR : PERSON_INTERN_COLOR;
@@ -179,7 +180,7 @@ function getNodeColor(data: CommunityGraphNodeData): string {
   if (data.nodeType === 'organisation') return ORG_COLOR;
   if (data.nodeType === 'samenwerkingsverband') return SWV_COLOR;
   if (data.nodeType === 'corpus_node' && data.corpusNodeType) {
-    return NODE_TYPE_HEX_COLORS[data.corpusNodeType as NodeType] ?? CORPUS_NODE_FALLBACK;
+    return nodeTypeColor(data.corpusNodeType as NodeType);
   }
   return CORPUS_NODE_FALLBACK;
 }
@@ -299,10 +300,11 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
     <div
       onClick={data.onClick}
       style={{
-        background: '#ffffff',
+        background: 'var(--semantics-surfaces-base-background-color)',
         borderRadius: '10px',
         boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
-        border: `1px solid ${borderColor}55`,
+        // The node color at a third: a var() takes no hex alpha suffix, so mix instead.
+        border: `1px solid color-mix(in oklch, ${borderColor} 33%, transparent)`,
         minWidth: '160px',
         maxWidth: '220px',
         cursor: data.onClick ? 'pointer' : 'default',
@@ -320,7 +322,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
           style={{
             fontSize: '13px',
             fontWeight: 500,
-            color: '#1A1A2E',
+            color: 'var(--semantics-content-color)',
             lineHeight: '1.4',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -347,7 +349,9 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
             height: '20px',
             borderRadius: '50%',
             background: color,
-            color: '#fff',
+            // The icon reads this as currentColor and flips it to white or black,
+            // whichever contrasts with the fill.
+            color,
             border: 'none',
             cursor: 'pointer',
             display: 'flex',
@@ -362,18 +366,22 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
             (e.currentTarget as HTMLButtonElement).style.opacity = '0.8';
           }}
         >
-          <Icon name="plus" size="inherit" style={{ fontSize: '12px' }} />
+          <Icon
+            name="plus"
+            size="inherit"
+            style={{ fontSize: '12px', color: 'var(--semantics-content-contrast-color)' }}
+          />
         </button>
       )}
       <Handle
         type="target"
         position={Position.Top}
-        style={{ width: '8px', height: '8px', background: color, border: '2px solid white', top: '-4px' }}
+        style={{ width: '8px', height: '8px', background: color, border: '2px solid var(--semantics-surfaces-base-background-color)', top: '-4px' }}
       />
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ width: '8px', height: '8px', background: color, border: '2px solid white', bottom: '-4px' }}
+        style={{ width: '8px', height: '8px', background: color, border: '2px solid var(--semantics-surfaces-base-background-color)', bottom: '-4px' }}
       />
     </div>
   );
@@ -572,8 +580,8 @@ function CommunityGraphInner({
           strokeWidth: style.strokeWidth,
           strokeDasharray: style.strokeDasharray,
         },
-        labelStyle: { fontSize: 10, fill: '#64748b', fontWeight: 500 },
-        labelBgStyle: { fill: '#ffffff', fillOpacity: 0.9 },
+        labelStyle: { fontSize: 10, fill: EDGE_LABEL_COLOR, fontWeight: 500 },
+        labelBgStyle: { fill: EDGE_LABEL_BG_COLOR, fillOpacity: 0.9 },
         labelBgPadding: [4, 2] as [number, number],
         labelBgBorderRadius: 4,
       };
@@ -684,7 +692,8 @@ function CommunityGraphInner({
   // Minimap coloring
   const minimapNodeColor = useCallback((node: RFNode) => {
     const d = node.data as CommunityGraphNodeData;
-    return getNodeColor(d);
+    // The minimap paints this as an SVG attribute, which cannot read a var().
+    return resolveColor(getNodeColor(d));
   }, []);
 
   if (isLoading) {
@@ -764,22 +773,22 @@ function CommunityGraphInner({
           defaultEdgeOptions={{ type: 'bezier' }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="#e2e8f0" gap={20} size={1} />
+          <Background color={resolveColor(GRID_COLOR)} gap={20} size={1} />
           <Controls
             showInteractive={false}
             style={{
               borderRadius: '10px',
-              border: '1px solid #e2e8f0',
+              border: FLOATING_PANEL_BORDER,
               boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             }}
           />
           {!isMobile && (
             <MiniMap
               nodeColor={minimapNodeColor}
-              maskColor="rgba(248, 249, 250, 0.7)"
+              maskColor={resolveColor(MINIMAP_MASK_COLOR)}
               style={{
                 borderRadius: '10px',
-                border: '1px solid #e2e8f0',
+                border: FLOATING_PANEL_BORDER,
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
               }}
             />

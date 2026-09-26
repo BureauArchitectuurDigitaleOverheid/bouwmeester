@@ -165,7 +165,7 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
     <nldd-container layout="row" width="full" gap="12" vertical-alignment="top">
       <nldd-container width="full" min-width="0" gap="2">
         <nldd-container layout="row" gap="8" vertical-alignment="center">
-          <Badge variant={SEARCH_RESULT_TYPE_COLORS[result.result_type]} dot>
+          <Badge color={SEARCH_RESULT_TYPE_COLORS[result.result_type]} dot>
             {SEARCH_RESULT_TYPE_LABELS[result.result_type]}
           </Badge>
           {result.subtitle && (

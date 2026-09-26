@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import type { NodeProps } from 'reactflow';
-import { NodeType, NODE_TYPE_HEX_COLORS, NODE_TYPE_BG_COLORS } from '@/types';
+import { NodeType, nodeTypeColor } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 
 export interface GraphNodeData {
@@ -13,18 +13,19 @@ export interface GraphNodeData {
 
 function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
   const { nodeLabel } = useVocabulary();
-  const color = NODE_TYPE_HEX_COLORS[data.nodeType] ?? '#9ca3af';
-  const bgColor = NODE_TYPE_BG_COLORS[data.nodeType] ?? '#F9FAFB';
+  const color = nodeTypeColor(data.nodeType);
+  const bgColor = nodeTypeColor(data.nodeType, 50);
   const label = nodeLabel(data.nodeType);
 
   return (
     <div
       onClick={data.onClick}
       style={{
-        background: '#ffffff',
+        background: 'var(--semantics-surfaces-base-background-color)',
         borderRadius: '10px',
         boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
-        border: `1px solid ${color}33`,
+        // The type color at 20%: a var() takes no hex alpha suffix, so mix instead.
+        border: `1px solid color-mix(in oklch, ${color} 20%, transparent)`,
         minWidth: '180px',
         maxWidth: '240px',
         cursor: 'pointer',
@@ -64,7 +65,7 @@ function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
           style={{
             fontSize: '13px',
             fontWeight: 500,
-            color: '#1A1A2E',
+            color: 'var(--semantics-content-color)',
             lineHeight: '1.4',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -84,7 +85,7 @@ function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
           width: '8px',
           height: '8px',
           background: color,
-          border: '2px solid white',
+          border: '2px solid var(--semantics-surfaces-base-background-color)',
           top: '-4px',
         }}
       />
@@ -95,7 +96,7 @@ function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
           width: '8px',
           height: '8px',
           background: color,
-          border: '2px solid white',
+          border: '2px solid var(--semantics-surfaces-base-background-color)',
           bottom: '-4px',
         }}
       />

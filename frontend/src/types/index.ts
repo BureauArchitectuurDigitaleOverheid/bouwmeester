@@ -40,50 +40,30 @@ export const NODE_TYPE_LABELS_PLURAL: Partial<Record<NodeType, string>> = {
   [NodeType.EFFECT]: 'effecten',
 };
 
-export const NODE_TYPE_COLORS: Record<NodeType, BadgeVariant> = {
-  [NodeType.DOSSIER]: 'blue',
-  [NodeType.DOEL]: 'green',
-  [NodeType.INSTRUMENT]: 'purple',
-  [NodeType.BELEIDSKADER]: 'amber',
-  [NodeType.MAATREGEL]: 'cyan',
-  [NodeType.POLITIEKE_INPUT]: 'rose',
-  [NodeType.PROBLEEM]: 'red',
-  [NodeType.EFFECT]: 'emerald',
-  [NodeType.BELEIDSOPTIE]: 'indigo',
-  [NodeType.BRON]: 'orange',
-  [NodeType.NOTITIE]: 'slate',
-  [NodeType.OVERIG]: 'gray',
+export const NODE_TYPE_COLORS: Record<NodeType, EntityColor> = {
+  [NodeType.DOSSIER]: 'lintblauw',
+  [NodeType.DOEL]: 'groen',
+  [NodeType.INSTRUMENT]: 'paars',
+  [NodeType.BELEIDSKADER]: 'geel',
+  [NodeType.MAATREGEL]: 'hemelblauw',
+  [NodeType.POLITIEKE_INPUT]: 'roze',
+  [NodeType.PROBLEEM]: 'rood',
+  [NodeType.EFFECT]: 'mosgroen',
+  [NodeType.BELEIDSOPTIE]: 'violet',
+  [NodeType.BRON]: 'oranje',
+  [NodeType.NOTITIE]: 'donkerblauw',
+  [NodeType.OVERIG]: 'coolgray',
 };
 
-export const NODE_TYPE_HEX_COLORS: Record<NodeType, string> = {
-  [NodeType.DOSSIER]: '#3B82F6',
-  [NodeType.DOEL]: '#10B981',
-  [NodeType.INSTRUMENT]: '#8B5CF6',
-  [NodeType.BELEIDSKADER]: '#F59E0B',
-  [NodeType.MAATREGEL]: '#06B6D4',
-  [NodeType.POLITIEKE_INPUT]: '#F43F5E',
-  [NodeType.PROBLEEM]: '#EF4444',
-  [NodeType.EFFECT]: '#059669',
-  [NodeType.BELEIDSOPTIE]: '#6366F1',
-  [NodeType.BRON]: '#F97316',
-  [NodeType.NOTITIE]: '#64748b',
-  [NodeType.OVERIG]: '#9ca3af',
-};
-
-export const NODE_TYPE_BG_COLORS: Record<NodeType, string> = {
-  [NodeType.DOSSIER]: '#EFF6FF',
-  [NodeType.DOEL]: '#ECFDF5',
-  [NodeType.INSTRUMENT]: '#F5F3FF',
-  [NodeType.BELEIDSKADER]: '#FFFBEB',
-  [NodeType.MAATREGEL]: '#ECFEFF',
-  [NodeType.POLITIEKE_INPUT]: '#FFF1F2',
-  [NodeType.PROBLEEM]: '#FEF2F2',
-  [NodeType.EFFECT]: '#ECFDF5',
-  [NodeType.BELEIDSOPTIE]: '#EEF2FF',
-  [NodeType.BRON]: '#FFF7ED',
-  [NodeType.NOTITIE]: '#F8FAFC',
-  [NodeType.OVERIG]: '#F9FAFB',
-};
+/**
+ * A node type's color as a CSS value: step 500 is the full tone (accent bars,
+ * edges, dots), step 50 the pale tint behind a label in that tone. The graph
+ * views paint from this instead of keeping a second table next to
+ * NODE_TYPE_COLORS, so a node looks the same in a badge, a modal and a graph.
+ */
+export function nodeTypeColor(type: NodeType, step: EntityColorStep = 500): string {
+  return entityColorVar(NODE_TYPE_COLORS[type] ?? 'coolgray', step);
+}
 
 export const BRON_TYPE_LABELS: Record<string, string> = {
   rapport: 'Rapport',
@@ -243,18 +223,18 @@ export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   [TaskPriority.LAAG]: 'Laag',
 };
 
-export const TASK_PRIORITY_COLORS: Record<TaskPriority, BadgeVariant> = {
-  [TaskPriority.KRITIEK]: 'red',
-  [TaskPriority.HOOG]: 'orange',
-  [TaskPriority.NORMAAL]: 'blue',
-  [TaskPriority.LAAG]: 'gray',
+export const TASK_PRIORITY_COLORS: Record<TaskPriority, EntityColor> = {
+  [TaskPriority.KRITIEK]: 'rood',
+  [TaskPriority.HOOG]: 'oranje',
+  [TaskPriority.NORMAAL]: 'lintblauw',
+  [TaskPriority.LAAG]: 'coolgray',
 };
 
-export const TASK_STATUS_COLORS: Record<TaskStatus, BadgeVariant> = {
-  [TaskStatus.OPEN]: 'blue',
-  [TaskStatus.IN_PROGRESS]: 'amber',
-  [TaskStatus.DONE]: 'green',
-  [TaskStatus.CANCELLED]: 'gray',
+export const TASK_STATUS_COLORS: Record<TaskStatus, EntityColor> = {
+  [TaskStatus.OPEN]: 'lintblauw',
+  [TaskStatus.IN_PROGRESS]: 'geel',
+  [TaskStatus.DONE]: 'groen',
+  [TaskStatus.CANCELLED]: 'coolgray',
 };
 
 export interface TaskOrgEenheidSummary {
@@ -474,35 +454,52 @@ export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   hogeschool: 'Hogeschool',
 };
 
-export type BadgeVariant = 'blue' | 'green' | 'purple' | 'amber' | 'cyan' | 'rose' | 'slate' | 'gray' | 'red' | 'orange' | 'emerald' | 'indigo';
+/**
+ * The color an entity type is known by: its badge, its modal accent, its graph
+ * node. Each value is a Rijkshuisstijl primitive name, so it names a design
+ * system color scale as is (see entityColorVar). Badge translates the ones that
+ * carry meaning to a semantic tag role (see common/Badge.tsx).
+ */
+export type EntityColor = 'lintblauw' | 'groen' | 'paars' | 'geel' | 'hemelblauw' | 'roze' | 'donkerblauw' | 'coolgray' | 'rood' | 'oranje' | 'mosgroen' | 'violet';
 
-export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
-  ministerie: 'blue',
-  directoraat_generaal: 'purple',
-  directie: 'amber',
-  dienst: 'gray',
-  bureau: 'gray',
-  cluster: 'gray',
-  afdeling: 'cyan',
-  team: 'green',
-  zbo: 'indigo',
-  gemeente: 'emerald',
-  provincie: 'rose',
-  waterschap: 'cyan',
-  samenwerkingsorganisatie: 'slate',
-  caribisch_openbaar_lichaam: 'orange',
-  hoge_college_van_staat: 'red',
-  rechtspraak: 'red',
-  openbaar_ministerie: 'red',
-  synthetische_groep: 'slate',
-  overig: 'gray',
-  uitvoeringsorganisatie: 'indigo',
-  koepelorganisatie: 'slate',
-  stichting: 'gray',
-  marktpartij: 'orange',
-  onderwijsinstelling: 'purple',
-  universiteit: 'purple',
-  hogeschool: 'purple',
+/** The steps of the Rijkshuisstijl scale this app paints entity colors at. */
+export type EntityColorStep = 50 | 400 | 500;
+
+/**
+ * An entity color as a CSS value. The primitive is `light-dark()` underneath,
+ * so the tint follows the color scheme without a second table.
+ */
+export function entityColorVar(color: EntityColor, step: EntityColorStep = 500): string {
+  return `var(--primitives-color-${color}-${step})`;
+}
+
+export const ORGANISATIE_TYPE_BADGE_COLORS: Record<string, EntityColor> = {
+  ministerie: 'lintblauw',
+  directoraat_generaal: 'paars',
+  directie: 'geel',
+  dienst: 'coolgray',
+  bureau: 'coolgray',
+  cluster: 'coolgray',
+  afdeling: 'hemelblauw',
+  team: 'groen',
+  zbo: 'violet',
+  gemeente: 'mosgroen',
+  provincie: 'roze',
+  waterschap: 'hemelblauw',
+  samenwerkingsorganisatie: 'donkerblauw',
+  caribisch_openbaar_lichaam: 'oranje',
+  hoge_college_van_staat: 'rood',
+  rechtspraak: 'rood',
+  openbaar_ministerie: 'rood',
+  synthetische_groep: 'donkerblauw',
+  overig: 'coolgray',
+  uitvoeringsorganisatie: 'violet',
+  koepelorganisatie: 'donkerblauw',
+  stichting: 'coolgray',
+  marktpartij: 'oranje',
+  onderwijsinstelling: 'paars',
+  universiteit: 'paars',
+  hogeschool: 'paars',
 };
 
 export function formatOrganisatieType(type: string): string {
@@ -753,7 +750,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
 /**
  * Notification type → `nldd-tag` color.
  *
- * Same rule as VARIANT_COLORS in common/Badge.tsx: a type that carries meaning
+ * Same rule as TAG_COLOR in common/Badge.tsx: a type that carries meaning
  * gets the semantic role, which keeps it right in dark mode and for colorblind
  * users, and the rest get the nearest Rijkshuisstijl color. node_updated,
  * direct_message and placement_approved deliberately share `success`: all
@@ -950,14 +947,14 @@ export const SEARCH_RESULT_TYPE_LABELS: Record<SearchResultType, string> = {
   lead: 'Lead',
 };
 
-export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, BadgeVariant> = {
-  corpus_node: 'blue',
-  task: 'amber',
-  person: 'green',
-  organisatie_eenheid: 'purple',
-  parlementair_item: 'rose',
-  tag: 'cyan',
-  lead: 'orange',
+export const SEARCH_RESULT_TYPE_COLORS: Record<SearchResultType, EntityColor> = {
+  corpus_node: 'lintblauw',
+  task: 'geel',
+  person: 'groen',
+  organisatie_eenheid: 'paars',
+  parlementair_item: 'roze',
+  tag: 'hemelblauw',
+  lead: 'oranje',
 };
 
 export interface SearchResult {
@@ -1020,29 +1017,19 @@ export const PARLEMENTAIR_TYPE_LABELS: Record<string, string> = {
   interpellatie: 'Interpellatie',
 };
 
-export const PARLEMENTAIR_TYPE_COLORS: Record<string, BadgeVariant> = {
-  motie: 'rose',
-  kamervraag: 'blue',
-  toezegging: 'amber',
-  amendement: 'purple',
-  commissiedebat: 'cyan',
-  schriftelijk_overleg: 'slate',
-  interpellatie: 'red',
+export const PARLEMENTAIR_TYPE_COLORS: Record<string, EntityColor> = {
+  motie: 'roze',
+  kamervraag: 'lintblauw',
+  toezegging: 'geel',
+  amendement: 'paars',
+  commissiedebat: 'hemelblauw',
+  schriftelijk_overleg: 'donkerblauw',
+  interpellatie: 'rood',
 };
 
 export const ALL_PARLEMENTAIR_TYPES: ParlementairItemType[] = Object.keys(
   PARLEMENTAIR_TYPE_LABELS,
 ) as ParlementairItemType[];
-
-export const PARLEMENTAIR_TYPE_HEX_COLORS: Record<string, string> = {
-  motie: '#F43F5E',
-  kamervraag: '#3B82F6',
-  toezegging: '#F59E0B',
-  amendement: '#8B5CF6',
-  commissiedebat: '#06B6D4',
-  schriftelijk_overleg: '#64748b',
-  interpellatie: '#EF4444',
-};
 
 export interface ParlementairItem {
   id: string;
@@ -1091,12 +1078,12 @@ export const PARLEMENTAIR_ITEM_STATUS_LABELS: Record<ParlementairItemStatus, str
   out_of_scope: 'Buiten scope',
 };
 
-export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, BadgeVariant> = {
-  pending: 'amber',
-  imported: 'blue',
-  reviewed: 'green',
-  rejected: 'gray',
-  out_of_scope: 'gray',
+export const PARLEMENTAIR_ITEM_STATUS_COLORS: Record<ParlementairItemStatus, EntityColor> = {
+  pending: 'geel',
+  imported: 'lintblauw',
+  reviewed: 'groen',
+  rejected: 'coolgray',
+  out_of_scope: 'coolgray',
 };
 
 // Access Requests
@@ -1381,9 +1368,9 @@ export const OPDRACHT_TYPE_LABELS: Record<OpdrachtType, string> = {
   [OpdrachtType.SUBSIDIE]: 'Subsidie',
 };
 
-export const OPDRACHT_TYPE_COLORS: Record<OpdrachtType, BadgeVariant> = {
-  [OpdrachtType.OPDRACHT]: 'blue',
-  [OpdrachtType.SUBSIDIE]: 'green',
+export const OPDRACHT_TYPE_COLORS: Record<OpdrachtType, EntityColor> = {
+  [OpdrachtType.OPDRACHT]: 'lintblauw',
+  [OpdrachtType.SUBSIDIE]: 'groen',
 };
 
 export enum OpdrachtStatus {
@@ -1402,12 +1389,12 @@ export const OPDRACHT_STATUS_LABELS: Record<OpdrachtStatus, string> = {
   [OpdrachtStatus.GEANNULEERD]: 'Geannuleerd',
 };
 
-export const OPDRACHT_STATUS_COLORS: Record<OpdrachtStatus, BadgeVariant> = {
-  [OpdrachtStatus.CONCEPT]: 'slate',
-  [OpdrachtStatus.ACTIEF]: 'blue',
-  [OpdrachtStatus.AFGEROND]: 'green',
-  [OpdrachtStatus.VERANTWOORD]: 'emerald',
-  [OpdrachtStatus.GEANNULEERD]: 'gray',
+export const OPDRACHT_STATUS_COLORS: Record<OpdrachtStatus, EntityColor> = {
+  [OpdrachtStatus.CONCEPT]: 'donkerblauw',
+  [OpdrachtStatus.ACTIEF]: 'lintblauw',
+  [OpdrachtStatus.AFGEROND]: 'groen',
+  [OpdrachtStatus.VERANTWOORD]: 'mosgroen',
+  [OpdrachtStatus.GEANNULEERD]: 'coolgray',
 };
 
 export enum Kostensoort {
@@ -2306,19 +2293,19 @@ export const SAMENWERKINGSVERBAND_TYPE_LABELS: Record<string, string> = {
   raad: 'Raad',
 };
 
-export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, BadgeVariant> = {
-  programma: 'purple',
-  werkgroep: 'cyan',
-  opschalingsticket: 'amber',
-  ketenproject: 'emerald',
-  stuurgroep: 'indigo',
-  taskforce: 'red',
-  innovatiebudget: 'green',
-  community_of_practice: 'blue',
-  pilot: 'orange',
-  convenant: 'slate',
-  commissie: 'rose',
-  raad: 'gray',
+export const SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS: Record<string, EntityColor> = {
+  programma: 'paars',
+  werkgroep: 'hemelblauw',
+  opschalingsticket: 'geel',
+  ketenproject: 'mosgroen',
+  stuurgroep: 'violet',
+  taskforce: 'rood',
+  innovatiebudget: 'groen',
+  community_of_practice: 'lintblauw',
+  pilot: 'oranje',
+  convenant: 'donkerblauw',
+  commissie: 'roze',
+  raad: 'coolgray',
 };
 
 export const SAMENWERKINGSVERBAND_TYPE_OPTIONS: { value: string; label: string }[] =

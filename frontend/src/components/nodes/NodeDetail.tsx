@@ -198,10 +198,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
       {/* Header */}
       <nldd-container gap="8">
         <nldd-container layout="row" gap="8" vertical-alignment="center">
-          <Badge variant={color} dot title={nodeAltLabel(node.node_type)}>
+          <Badge color={color} dot title={nodeAltLabel(node.node_type)}>
             {nodeLabel(node.node_type)}
           </Badge>
-          {node.status && <Badge variant="gray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
+          {node.status && <Badge color="coolgray">{NODE_STATUS_LABELS[node.status as NodeStatus] ?? node.status}</Badge>}
         </nldd-container>
         {/* h2, not h1: `nldd-top-title-bar` in the app header renders the
             page's h1 and nothing here anchors it away (`collapse-anchor` is
@@ -473,7 +473,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       }}
                     >
                       <nldd-text-cell width="fit-content">
-                        <Badge variant="gray">
+                        <Badge color="coolgray">
                           {ref.source_type === 'node' ? 'Node' : ref.source_type === 'task' ? 'Taak' : ref.source_type}
                         </Badge>
                       </nldd-text-cell>
@@ -507,7 +507,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       key={s.id}
                       person={s.person}
                       extraBadge={
-                        <Badge variant="slate">
+                        <Badge color="donkerblauw">
                           {STAKEHOLDER_ROL_LABELS[s.rol] ?? s.rol}
                         </Badge>
                       }
@@ -532,7 +532,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   {neighbors.slice(0, 5).map((neighbor) => (
                     <ClickableListItem key={neighbor.id} onClick={() => navigate(`/nodes/${neighbor.id}`)}>
                       <nldd-text-cell width="fit-content">
-                        <Badge variant={NODE_TYPE_COLORS[neighbor.node_type]} dot title={nodeAltLabel(neighbor.node_type)}>
+                        <Badge color={NODE_TYPE_COLORS[neighbor.node_type]} dot title={nodeAltLabel(neighbor.node_type)}>
                           {nodeLabel(neighbor.node_type)}
                         </Badge>
                       </nldd-text-cell>
