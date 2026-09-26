@@ -82,9 +82,6 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     # gevoelige interne contactdata.
     "/api/externe-organisaties": "externe org-referentie, publieke NL-data",
     "/api/externe-organisaties/{id}": "externe org-referentie, publieke NL-data",
-    # LLM corpus-gaps geeft ministerie-brede dossier-overview voor
-    # planningsdoeleinden; geen gevoelige PII.
-    "/api/llm/corpus-gaps": "ministerie-brede planningsdata, geen PII",
     # Graph endpoints bouwen op CorpusNode dat al via apply_org_filter
     # gescopeerd is (zie nodes/list_nodes en repository).
     "/api/graph/search": "bouwt op CorpusNode (al gefilterd via PR #263)",

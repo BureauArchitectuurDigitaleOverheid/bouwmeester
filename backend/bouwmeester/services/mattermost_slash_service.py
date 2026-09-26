@@ -171,9 +171,15 @@ class MattermostSlashService:
                 "Je account is niet gekoppeld. Ga naar Instellingen in Bouwmeester."
             )
 
+        from bouwmeester.core.org_context import build_org_context
+        from bouwmeester.models.person import Person
+
+        # The same node visibility as GET /nodes.
+        person = await self.session.get(Person, person_id)
+        org_ctx = await build_org_context(self.session, person)
         search_repo = SearchRepository(self.session)
         results = await search_repo.full_text_search(
-            query=args, result_types=["corpus_node"], limit=10
+            query=args, result_types=["corpus_node"], limit=10, org_ctx=org_ctx
         )
 
         if not results:
@@ -449,29 +455,19 @@ class MattermostSlashService:
 
     async def _mag_scope_zien(self, link, person_id: UUID) -> bool:
         """Mag deze persoon het initiatief/de lead achter dit kanaal zien?"""
-        from bouwmeester.core.initiatief_context import build_initiatief_context
+        from bouwmeester.core.initiatief_context import (
+            build_initiatief_context,
+        )
         from bouwmeester.models.person import Person
 
         person = await self.session.get(Person, person_id)
         if person is None:
             return False
         ctx = await build_initiatief_context(self.session, person)
-        if ctx.is_admin:
-            return True
-
         if link.scope_type == SCOPE_INITIATIEF:
-            return link.scope_id in ctx.visible_initiatief_ids
-
-        # Een lead erft de zichtbaarheid van zijn initiatief; een lead
-        # zonder initiatief is voor iedereen zichtbaar, net als in
-        # `_lookup_lead`.
+            return ctx.sees_initiatief(link.scope_id)
         lead = await self.session.get(Lead, link.scope_id)
-        if lead is None:
-            return False
-        return (
-            lead.initiatief_id is None
-            or lead.initiatief_id in ctx.visible_initiatief_ids
-        )
+        return lead is not None and ctx.sees_lead(lead)
 
     async def _scope_naam(self, link) -> str:
         if link.scope_type == SCOPE_INITIATIEF:
@@ -618,16 +614,16 @@ class MattermostSlashService:
         self, query: str, person_id: UUID
     ) -> Initiatief | None:
         """Zoek initiatief op slug of naam, gerespecteerd door visibility."""
-        from bouwmeester.core.initiatief_context import build_initiatief_context
+        from bouwmeester.core.initiatief_context import (
+            apply_initiatief_filter,
+            build_initiatief_context,
+        )
         from bouwmeester.models.person import Person
 
         person = await self.session.get(Person, person_id)
         if person is None:
             return None
         ctx = await build_initiatief_context(self.session, person)
-        if not ctx.is_admin and not ctx.visible_initiatief_ids:
-            return None
-
         escaped = escape_like(query)
         stmt = select(Initiatief).where(
             or_(
@@ -635,9 +631,7 @@ class MattermostSlashService:
                 Initiatief.naam.ilike(f"%{escaped}%", escape="\\"),
             )
         )
-        if not ctx.is_admin:
-            stmt = stmt.where(Initiatief.id.in_(ctx.visible_initiatief_ids))
-        stmt = stmt.limit(1)
+        stmt = apply_initiatief_filter(stmt, ctx).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -649,7 +643,10 @@ class MattermostSlashService:
         except ValueError:
             lead_uuid = None
 
-        from bouwmeester.core.initiatief_context import build_initiatief_context
+        from bouwmeester.core.initiatief_context import (
+            apply_lead_filter,
+            build_initiatief_context,
+        )
         from bouwmeester.models.person import Person
 
         person = await self.session.get(Person, person_id)
@@ -659,29 +656,13 @@ class MattermostSlashService:
 
         if lead_uuid is not None:
             lead = await self.session.get(Lead, lead_uuid)
-            if lead is None:
-                return None
-            if ctx.is_admin:
-                return lead
-            if (
-                lead.initiatief_id is None
-                or lead.initiatief_id in ctx.visible_initiatief_ids
-            ):
-                return lead
-            return None
+            return lead if lead is not None and ctx.sees_lead(lead) else None
 
         escaped = escape_like(query)
         stmt = select(Lead).where(
             Lead.title.ilike(f"%{escaped}%", escape="\\"),
         )
-        if not ctx.is_admin:
-            stmt = stmt.where(
-                or_(
-                    Lead.initiatief_id.is_(None),
-                    Lead.initiatief_id.in_(ctx.visible_initiatief_ids),
-                )
-            )
-        stmt = stmt.limit(1)
+        stmt = apply_lead_filter(stmt, ctx).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 

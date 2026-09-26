@@ -12,13 +12,13 @@ from bouwmeester.core.authority import (
     require_can_change_grants,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import require, requires
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.initiatief_context import (
-    ACCESS_LEVEL_PERMISSIONS,
     InitiatiefContext,
     get_initiatief_context,
     initiatief_access_level,
+    require_initiatief_read,
 )
 from bouwmeester.core.permissions import (
     PermissionContext,
@@ -42,26 +42,6 @@ from bouwmeester.schema.initiatief import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
-
-
-async def _require_access(
-    repo: InitiatiefRepository,
-    initiatief_id: UUID,
-    user: OptionalUser,
-    perm_ctx: PermissionContext,
-    required_level: str,
-) -> None:
-    """Deprecated: only stakeholder_assessments still calls this.
-
-    Delete once that route asks ``core.authz`` itself.
-    """
-    await require(
-        repo.session,
-        perm_ctx,
-        dict(ACCESS_LEVEL_PERMISSIONS)[required_level],
-        "initiatief",
-        initiatief_id,
-    )
 
 
 @router.get("", response_model=list[InitiatiefListItemResponse])
@@ -118,16 +98,13 @@ async def get_initiatief(
     id: UUID,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> InitiatiefDetailResponse:
+    # The same visibility as the list; 404 hides existence.
+    await require_initiatief_read(db, perm_ctx, id, init_ctx)
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
-    # The access level doubles as the read check; 404 hides existence.
-    access_level = await initiatief_access_level(db, perm_ctx, id)
-    if access_level is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Initiatief niet gevonden",
-        )
+    access_level = await initiatief_access_level(db, perm_ctx, id, init_ctx)
     from bouwmeester.repositories.resource_permission import (
         ResourcePermissionRepository,
     )
@@ -540,13 +517,13 @@ async def update_eenheid_rol(
 async def list_initiatieven_for_eenheid(
     eenheid_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(get_permission_context),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> list[InitiatiefEenheidWithNameResponse]:
-    """List all initiatieven linked to an eenheid via resource_permission."""
+    """The visible initiatieven linked to an eenheid via resource_permission."""
     from bouwmeester.models.initiatief import Initiatief
 
     repo = InitiatiefRepository(db)
-    perms = await repo.list_for_eenheid(eenheid_id)
+    perms = await repo.list_for_eenheid(eenheid_id, init_ctx)
 
     if not perms:
         return []

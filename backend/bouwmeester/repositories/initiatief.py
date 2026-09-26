@@ -6,7 +6,10 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.initiatief_context import InitiatiefContext
+from bouwmeester.core.initiatief_context import (
+    InitiatiefContext,
+    apply_initiatief_filter,
+)
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.core.slug import is_valid_slug, slugify
 from bouwmeester.models.initiatief import Initiatief
@@ -37,8 +40,7 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
             escaped = escape_like(search)
             pattern = f"%{escaped}%"
             stmt = stmt.where(Initiatief.naam.ilike(pattern, escape="\\"))
-        if init_ctx and not init_ctx.is_admin and init_ctx.is_authenticated:
-            stmt = stmt.where(Initiatief.id.in_(init_ctx.visible_initiatief_ids))
+        stmt = apply_initiatief_filter(stmt, init_ctx)
         stmt = stmt.order_by(Initiatief.naam)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -308,15 +310,19 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         await self.session.flush()
         return True
 
-    async def list_for_eenheid(self, eenheid_id: UUID) -> list[ResourcePermission]:
-        """List all initiatief permissions for a given eenheid."""
+    async def list_for_eenheid(
+        self, eenheid_id: UUID, init_ctx: InitiatiefContext | None = None
+    ) -> list[ResourcePermission]:
+        """List the eenheid's links to the initiatieven the caller sees."""
         stmt = (
             select(ResourcePermission)
+            .join(Initiatief, Initiatief.id == ResourcePermission.resource_id)
             .where(
                 ResourcePermission.resource_type == "initiatief",
                 ResourcePermission.organisatie_eenheid_id == eenheid_id,
             )
             .order_by(ResourcePermission.created_at.desc())
         )
+        stmt = apply_initiatief_filter(stmt, init_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

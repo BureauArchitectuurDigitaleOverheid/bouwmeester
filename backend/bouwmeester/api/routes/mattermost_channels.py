@@ -22,9 +22,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import can, requires
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import require_initiatief_read
+from bouwmeester.core.initiatief_context import (
+    require_initiatief_read,
+    require_lead_read,
+)
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.mattermost_channel_link import (
     SCOPE_INITIATIEF,
@@ -159,9 +162,7 @@ async def list_lead_channels(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[MattermostChannelLinkResponse]:
-    # 404 rather than 403: that a lead exists is information too.
-    if not await can(db, perm_ctx, "lead:read", "lead", lead_id):
-        raise _not_found()
+    await require_lead_read(db, perm_ctx, lead_id)
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_LEAD, lead_id)
     return await _met_teamnaam(db, links)

@@ -84,9 +84,11 @@ LEVELS = [
     ("role_only", "contributor"),  # direct resource role
     ("partner_member", "contributor"),  # via the eenheid's resource role
     ("rp_viewer", "viewer"),
-    # initiatief:update in another eenheid no longer counts here
-    ("team_editor", None),
-    ("viewer", None),
+    # initiatief:update in another eenheid does not count here, but members
+    # below the owning afdeling read up the line (core.initiatief_context)
+    ("team_editor", "viewer"),
+    ("viewer", "viewer"),
+    ("platform_admin", None),
 ]
 
 
@@ -101,7 +103,7 @@ async def test_detail_shows_access_level_and_hides_the_rest(iw):
     url = f"/api/initiatieven/{iw.res['initiatief']}"
     async with client_as(iw.db, iw.person["rp_viewer"]) as c:
         viewer = await c.get(url)
-    async with client_as(iw.db, iw.person["team_editor"]) as c:
+    async with client_as(iw.db, iw.person["platform_admin"]) as c:
         outsider = await c.get(url)
     assert viewer.status_code == 200, viewer.text
     assert viewer.json()["access_level"] == "viewer"
@@ -207,7 +209,7 @@ async def test_viewer_may_read_what_they_may_not_write(iw):
                 "/mattermost-channels",
             )
         ]
-    async with client_as(iw.db, iw.person["team_editor"]) as c:
+    async with client_as(iw.db, iw.person["platform_admin"]) as c:
         hidden = await c.get(base + "/abonnementen")
     assert [r.status_code for r in reads] == [200] * 5
     assert hidden.status_code == 404

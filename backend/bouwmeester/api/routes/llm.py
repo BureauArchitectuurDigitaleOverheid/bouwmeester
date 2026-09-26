@@ -107,12 +107,13 @@ async def gap_analysis(
 async def corpus_gap_overview(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> CorpusGapOverviewResponse:
-    """Overview of completeness for all dossier nodes."""
+    """Completeness of the dossiers the caller sees (as in ``GET /nodes``)."""
     from bouwmeester.services.gap_detection_service import GapDetectionService
 
     gap_service = GapDetectionService(db)
-    items = await gap_service.corpus_gap_overview()
+    items = await gap_service.corpus_gap_overview(org_ctx)
     return CorpusGapOverviewResponse(items=items, total=len(items))
 
 
@@ -137,5 +138,6 @@ async def kompas_guidance(
         step_node_types=request.step_node_types,
         step_description=request.step_description,
         max_candidates=request.max_candidates,
+        org_ctx=org_ctx,
     )
     return KompasGuidanceResponse(suggestions=suggestions)
