@@ -9,6 +9,7 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import { richTextToPlain } from '@/utils/richtext';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 import {
   SEARCH_RESULT_TYPE_LABELS,
   SEARCH_RESULT_TYPE_COLORS,
@@ -43,7 +44,7 @@ const SUBTITLE_LABEL_MAPS: Partial<
   lead: LEAD_STAGE_LABELS as Record<string, string>,
 };
 
-export function formatSubtitle(result: SearchResult): string | undefined {
+function formatSubtitle(result: SearchResult): string | undefined {
   if (!result.subtitle) return undefined;
   if (result.result_type === 'person') {
     return formatFunctie(result.subtitle);
@@ -55,7 +56,7 @@ export function formatSubtitle(result: SearchResult): string | undefined {
   return map?.[result.subtitle] ?? result.subtitle;
 }
 
-export function groupResults(results: SearchResult[]) {
+function groupResults(results: SearchResult[]) {
   return results.reduce(
     (groups, result) => {
       const key = result.result_type;
@@ -149,14 +150,11 @@ export function FilterChips({
  * (the button `onClick` below) without DOM focus ever leaving the input — see
  * `nldd-list type="listbox"` in list.js.
  */
-export function ResultItem({ result, onClick }: { result: SearchResult; onClick: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-
+function ResultItem({ result, onClick }: { result: SearchResult; onClick: () => void }) {
   return (
-    <nldd-list-item ref={ref} button size="md">
+    <NlddListItemButton onClick={onClick}>
       <ResultItemContent result={result} compact />
-    </nldd-list-item>
+    </NlddListItemButton>
   );
 }
 
@@ -174,29 +172,25 @@ function ResultItemContent({ result, compact }: { result: SearchResult; compact?
         </nldd-container>
         <nldd-text size="sm" weight="medium">{result.title}</nldd-text>
         {result.description && (
-          // line-clamp-* has no nldd-text equivalent, so the wrapper carries
-          // it as plain CSS while color and size stay on nldd-text.
-          <div className={compact ? 'line-clamp-1' : 'line-clamp-2'}>
-            <nldd-text size="xs" color="secondary">{richTextToPlain(result.description)}</nldd-text>
-          </div>
+          <nldd-text size="xs" color="secondary" className={compact ? 'line-clamp-1' : 'line-clamp-2'}>
+            {richTextToPlain(result.description)}
+          </nldd-text>
         )}
         {result.highlights &&
           result.highlights.length > 0 &&
           (compact ? (
             // Sanitized <mark> HTML goes on an inner span, not on nldd-text:
             // setting innerHTML on the custom element itself would bypass its
-            // slot rendering. line-clamp has no nldd-text equivalent.
-            <div className="line-clamp-1">
-              <nldd-text size="xs" color="secondary">
-                <span
-                  dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(result.highlights[0], {
-                      ALLOWED_TAGS: ['mark'],
-                    }),
-                  }}
-                />
-              </nldd-text>
-            </div>
+            // slot rendering.
+            <nldd-text size="xs" color="secondary" className="line-clamp-1">
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(result.highlights[0], {
+                    ALLOWED_TAGS: ['mark'],
+                  }),
+                }}
+              />
+            </nldd-text>
           ) : (
             <nldd-container gap="2">
               {result.highlights.map((h, i) => (

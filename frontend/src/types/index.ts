@@ -166,14 +166,6 @@ export interface NodeStatusRecord {
   geldig_tot?: string | null;
 }
 
-// Edge Types
-export interface EdgeType {
-  id: string;
-  name: string;
-  label: string;
-  description?: string;
-}
-
 // Edges
 export interface Edge {
   id: string;
@@ -425,7 +417,7 @@ export interface OrganisatieEenheidPersonenGroup {
   children: OrganisatieEenheidPersonenGroup[];
 }
 
-export const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
+const ORGANISATIE_TYPE_LABELS: Record<string, string> = {
   ministerie: 'Ministerie',
   directoraat_generaal: 'Directoraat-Generaal',
   directie: 'Directie',
@@ -990,12 +982,6 @@ export interface Tag {
   children?: Tag[];
 }
 
-export interface TagCreate {
-  name: string;
-  parent_id?: string | null;
-  description?: string | null;
-}
-
 export interface NodeTagResponse {
   id: string;
   tag: Tag;
@@ -1176,11 +1162,6 @@ export interface CorpusGapSummaryItem {
   has_stakeholders: boolean;
 }
 
-export interface CorpusGapOverviewResponse {
-  items: CorpusGapSummaryItem[];
-  total: number;
-}
-
 // Kompas guidance (A5)
 export interface KompasGuidanceResponse {
   suggestions: EdgeSuggestionItem[];
@@ -1200,13 +1181,6 @@ export interface SimilarNodesResponse {
 }
 
 // Mention types
-export interface MentionSearchResult {
-  id: string;
-  label: string;
-  type: string;
-  subtitle?: string;
-}
-
 export interface MentionReference {
   source_type: string;
   source_id: string;
@@ -1320,12 +1294,6 @@ export interface DashboardStats {
 }
 
 // Import/Export types
-export interface ImportResult {
-  imported: number;
-  skipped: number;
-  errors: string[];
-}
-
 export interface DatabaseBackupInfo {
   exported_at: string;
   alembic_revision: string;
@@ -1523,16 +1491,6 @@ export interface Opdracht {
   updated_at?: string | null;
 }
 
-export interface FccSyncLog {
-  id: string;
-  opdracht_id?: string | null;
-  direction: string;
-  action: string;
-  details?: Record<string, unknown> | null;
-  error_message?: string | null;
-  created_at: string;
-}
-
 export interface FccSyncTriggerResponse {
   pulled: number;
   pushed: number;
@@ -1675,7 +1633,7 @@ export const LEAD_STAGE_LABELS: Record<string, string> = {
  * `leadColumnTagColor()` rejects anything outside the set, so a column with an
  * unknown color name renders grey.
  */
-export const LEAD_STAGE_COLORS: Record<string, string> = {
+const LEAD_STAGE_COLORS: Record<string, string> = {
   [LeadStage.INBOX]: 'lintblauw',
   [LeadStage.VERKENNEN]: 'hemelblauw',
   [LeadStage.EERSTE_GESPREK]: 'geel',

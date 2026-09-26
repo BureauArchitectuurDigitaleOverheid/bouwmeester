@@ -1,6 +1,6 @@
 import { apiGet, apiPut } from './client';
 
-export interface EenheidModuleConfig {
+interface EenheidModuleConfig {
   module: string;
   enabled: boolean;
   inherited_from: string | null;

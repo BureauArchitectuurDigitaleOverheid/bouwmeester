@@ -78,9 +78,8 @@ h6:not(nldd-rich-text h6) {
   background-color: var(--semantics-surfaces-base-border-color);
 }
 
-
-/* Smooth transitions for interactive elements.
- * Scoped away from nldd-* elements: `transition: all` fights the components'
+/* Smooth transitions, only outside the app shell (login, access denied, the
+ * public page). Inside nldd-app-view, `transition: all` fights the components'
  * own animations, notably the slotted <select> inside nldd-dropdown. */
 button:not(nldd-app-view *),
 a:not(nldd-app-view *),
@@ -90,8 +89,9 @@ textarea:not(nldd-app-view *) {
   transition: all 0.15s ease-in-out;
 }
 
-/* Focus styles for our own markup only. NLDD components draw their own focus
- * ring inside their shadow root; without this exclusion both render at once. */
+/* Focus styles for the pages outside the app shell. NLDD components draw their
+ * own focus ring inside their shadow root; without this exclusion both render
+ * at once. */
 *:focus-visible:not(:is([class*="nldd-"], nldd-app-view, nldd-app-view *)) {
   outline: 2px solid var(--primitives-color-accent-500);
   outline-offset: 2px;

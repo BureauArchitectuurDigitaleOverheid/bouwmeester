@@ -46,12 +46,10 @@ export function NodeCard({ node }: NodeCardProps) {
             <h3>{node.title}</h3>
           </nldd-title>
 
-          {/* nldd-text has no line-clamp prop; that's line-box CSS behavior
-              with no token equivalent, so it stays as a plain class. */}
           {node.description && (
-            <p className="line-clamp-2">
-              <nldd-text size="xs" color="secondary">{richTextToPlain(node.description)}</nldd-text>
-            </p>
+            <nldd-text size="xs" color="secondary" className="line-clamp-2">
+              {richTextToPlain(node.description)}
+            </nldd-text>
           )}
         </nldd-container>
 

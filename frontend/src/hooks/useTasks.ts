@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTasks, getTask, createTask, updateTask, deleteTask, getUnassignedTasks, getEenheidOverview, getTaskSubtasks, getTasksByPerson, reorderSubtasks, getWorkTypes, getTasksByOpdracht } from '@/api/tasks';
+import { getTasks, getTask, createTask, updateTask, deleteTask, getEenheidOverview, getTasksByPerson, reorderSubtasks, getWorkTypes, getTasksByOpdracht } from '@/api/tasks';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import { useToast } from '@/contexts/ToastContext';
@@ -44,26 +44,11 @@ export function useDeleteTask() {
   });
 }
 
-export function useUnassignedTasks(organisatieEenheidId?: string) {
-  return useQuery({
-    queryKey: queryKeys.tasks.unassigned(organisatieEenheidId),
-    queryFn: () => getUnassignedTasks(organisatieEenheidId),
-  });
-}
-
 export function useEenheidOverview(organisatieEenheidId: string | null) {
   return useQuery({
     queryKey: queryKeys.tasks.eenheidOverview(organisatieEenheidId),
     queryFn: () => getEenheidOverview(organisatieEenheidId!),
     enabled: !!organisatieEenheidId,
-  });
-}
-
-export function useTaskSubtasks(taskId: string | null) {
-  return useQuery({
-    queryKey: queryKeys.tasks.subtasks(taskId),
-    queryFn: () => getTaskSubtasks(taskId!),
-    enabled: !!taskId,
   });
 }
 

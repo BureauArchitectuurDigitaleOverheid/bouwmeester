@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { useNodeFinancieel, useNodeOpdrachten } from '@/hooks/useOpdrachten';
 import {
   OPDRACHT_STATUS_LABELS,
@@ -6,22 +5,12 @@ import {
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
-import { useNlddEvent } from '@/components/nldd/events';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { formatCurrencyCompact, calculateUtilization } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { NlddButton } from '@/components/nldd/NlddButton';
-
-/** An `nldd-list-item[button]` row with its click bridged to React. */
-function ClickableListItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return (
-    <nldd-list-item ref={ref} button>
-      {children}
-    </nldd-list-item>
-  );
-}
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 
 interface FinancieelOverzichtPanelProps {
   nodeId: string;
@@ -35,7 +24,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
   const { openOpdrachtCreate } = useOpdrachtCreate();
 
   if (loadingOverzicht || loadingOpdrachten) {
-    return <nldd-activity-indicator size="24" text="Laden..." show-text />;
+    return <LoadingSpinner text="Laden..." />;
   }
 
   if (!overzicht || overzicht.per_jaar.length === 0) {
@@ -125,7 +114,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
         {opdrachten.length > 0 ? (
           <nldd-list variant="box-tinted" dividers="always">
             {opdrachten.map((o) => (
-              <ClickableListItem key={o.id} onClick={() => openOpdrachtDetail(o.id)}>
+              <NlddListItemButton key={o.id} onClick={() => openOpdrachtDetail(o.id)}>
                 <nldd-title-cell
                   text={o.titel}
                   overline={`${o.begrotingsjaar} · ${o.opdrachtnemer?.afkorting || o.opdrachtnemer?.naam || '-'}`}
@@ -136,7 +125,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
                     {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
                   </Badge>
                 </nldd-text-cell>
-              </ClickableListItem>
+              </NlddListItemButton>
             ))}
           </nldd-list>
         ) : (

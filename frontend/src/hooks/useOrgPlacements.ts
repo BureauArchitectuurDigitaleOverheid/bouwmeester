@@ -10,13 +10,6 @@ export function usePendingPlacements() {
   });
 }
 
-export function useMyPlacementRequests() {
-  return useQuery({
-    queryKey: queryKeys.orgPlacements.myRequests(),
-    queryFn: api.getMyPlacementRequests,
-  });
-}
-
 export function useUpdatePlacement() {
   return useMutationWithError({
     mutationFn: ({ id, data }: { id: string; data: api.UpdatePlacementRequest }) =>

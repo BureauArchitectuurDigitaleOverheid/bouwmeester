@@ -1,13 +1,5 @@
 import { apiGet, apiPost, apiDelete } from './client';
-import type { EdgeType, ValidEdgeTypesResponse, EdgeSchemaRule, EdgeSchemaRuleCreate } from '@/types';
-
-export async function getEdgeTypes(): Promise<EdgeType[]> {
-  return apiGet<EdgeType[]>('/api/edge-types');
-}
-
-export async function createEdgeType(data: Omit<EdgeType, 'id'>): Promise<EdgeType> {
-  return apiPost<EdgeType>('/api/edge-types', data);
-}
+import type { ValidEdgeTypesResponse, EdgeSchemaRule, EdgeSchemaRuleCreate } from '@/types';
 
 export async function getValidEdgeTypes(
   fromNodeType?: string,

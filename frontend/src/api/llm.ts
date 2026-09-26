@@ -1,9 +1,8 @@
-import { apiPost, apiGet } from './client';
+import { apiPost } from './client';
 import type {
   TagSuggestionRequest,
   TagSuggestionResponse,
   GapAnalysisResponse,
-  CorpusGapOverviewResponse,
   KompasGuidanceResponse,
 } from '@/types';
 
@@ -13,10 +12,6 @@ export function suggestTags(data: TagSuggestionRequest): Promise<TagSuggestionRe
 
 export function analyzeGaps(dossierId: string): Promise<GapAnalysisResponse> {
   return apiPost<GapAnalysisResponse>('/api/llm/gap-analysis', { dossier_id: dossierId });
-}
-
-export function getCorpusGapOverview(): Promise<CorpusGapOverviewResponse> {
-  return apiGet<CorpusGapOverviewResponse>('/api/llm/corpus-gaps');
 }
 
 export function suggestKompasLinks(

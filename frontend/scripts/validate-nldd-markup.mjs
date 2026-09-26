@@ -211,7 +211,7 @@ for (const file of files) {
 
   // The same names again, but anywhere in the file rather than only on a literal
   // nldd-* tag. Half of this codebase passes icons through React wrappers
-  // (<NlddIconButton icon="check-mark">, <Button startIcon={...}>, <Icon name="...">), and those
+  // (<NlddIconButton icon="check-mark">, <NlddButton startIcon={...}>, <Icon name="...">), and those
   // never match the tag scan above: four wrong names once shipped that way, and
   // a wrong name renders nothing at all with no error. A string in a ternary
   // (`icon={on ? 'a' : 'b'}`) is checked too, since that is how every toggle in

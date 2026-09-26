@@ -17,7 +17,7 @@ import type { CSSProperties } from 'react';
  * so `xs` and `sm` both land on 16: that is the design system's grid, not an
  * approximation to work around.
  */
-export const ICON_SIZES = {
+const ICON_SIZES = {
   xs: '16', // the smallest supported size
   sm: '16',
   md: '16', // by far the most common
@@ -25,7 +25,7 @@ export const ICON_SIZES = {
   xl: '24',
 } as const;
 
-export type IconSize = keyof typeof ICON_SIZES;
+type IconSize = keyof typeof ICON_SIZES;
 
 interface IconProps {
   /** An nldd-icon name. */

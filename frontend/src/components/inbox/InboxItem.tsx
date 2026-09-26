@@ -1,5 +1,4 @@
-import { useRef } from 'react';
-import { useNlddEvent } from '@/components/nldd/events';
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
 import { Icon } from '@/components/nldd/Icon';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -76,7 +75,6 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
   const { openTaskDetail } = useTaskDetail();
   const { openNodeDetail } = useNodeDetail();
   const { openLeadDetail } = useLeadDetail();
-  const ref = useRef<HTMLElement>(null);
 
   const handleClick = () => {
     if (!item.read && onMarkRead) {
@@ -92,7 +90,6 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
       openLeadDetail(item.lead_id);
     }
   };
-  useNlddEvent(ref, 'click', handleClick);
 
   const icon = (item.notification_type && NOTIFICATION_ICONS[item.notification_type]) || 'bell';
   const title = cellText(item.title);
@@ -103,7 +100,7 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
   // titles of both kinds start on the same line; a dot in front of the title
   // pushed unread titles 30px to the right of read ones.
   return (
-    <nldd-list-item ref={ref} button size="sm">
+    <NlddListItemButton onClick={handleClick} size="sm">
       <nldd-icon-cell
         icon={icon}
         size="20"
@@ -135,6 +132,6 @@ export function InboxItemCard({ item, onOpenThread, onMarkRead }: InboxItemProps
           <Icon name="circle-filled-small" size="16" color="accent" label="Ongelezen" />
         </nldd-cell>
       )}
-    </nldd-list-item>
+    </NlddListItemButton>
   );
 }

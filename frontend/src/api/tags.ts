@@ -1,5 +1,5 @@
-import { apiGet, apiPost, apiPut, apiDelete } from './client';
-import type { Tag, TagCreate, NodeTagResponse } from '@/types';
+import { apiGet, apiPost, apiDelete } from './client';
+import type { Tag, NodeTagResponse } from '@/types';
 
 export async function getTags(params?: { tree?: boolean; search?: string }): Promise<Tag[]> {
   if (params?.tree) {
@@ -9,22 +9,6 @@ export async function getTags(params?: { tree?: boolean; search?: string }): Pro
     return apiGet<Tag[]>('/api/tags/search', { q: params.search });
   }
   return apiGet<Tag[]>('/api/tags');
-}
-
-export async function getTag(id: string): Promise<Tag> {
-  return apiGet<Tag>(`/api/tags/${id}`);
-}
-
-export async function createTag(data: TagCreate): Promise<Tag> {
-  return apiPost<Tag>('/api/tags', data);
-}
-
-export async function updateTag(id: string, data: Partial<TagCreate>): Promise<Tag> {
-  return apiPut<Tag>(`/api/tags/${id}`, data);
-}
-
-export async function deleteTag(id: string): Promise<void> {
-  return apiDelete(`/api/tags/${id}`);
 }
 
 export async function getNodeTags(nodeId: string): Promise<NodeTagResponse[]> {

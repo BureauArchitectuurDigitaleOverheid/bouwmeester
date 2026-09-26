@@ -1,6 +1,7 @@
-import { useRef, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Badge } from './Badge';
-import { useNlddEvent } from '@/components/nldd/events';
+import { NlddListItemButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import type { EntityColor } from '@/types';
 
 interface RelatedItem {
@@ -21,13 +22,10 @@ interface RelatedItemsListProps {
 }
 
 function ItemRow({ item }: { item: RelatedItem }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', item.onClick);
-
   // No hover-revealed arrow: the row announces itself by being a button, and a
   // hint that only exists on hover never reaches a keyboard or a touch screen.
   return (
-    <nldd-list-item ref={ref} size="sm" button>
+    <NlddListItemButton onClick={item.onClick} size="sm">
       {item.icon && <nldd-cell width="fit-content">{item.icon}</nldd-cell>}
       {item.badge && (
         <nldd-cell width="fit-content">
@@ -45,7 +43,7 @@ function ItemRow({ item }: { item: RelatedItem }) {
           horizontal-alignment="right"
         />
       )}
-    </nldd-list-item>
+    </NlddListItemButton>
   );
 }
 
@@ -76,8 +74,10 @@ export function RelatedItemsList({
       </nldd-list>
       {hasMore &&
         (onShowAll ? (
-          <NlddTextButton
+          <NlddButton
             text={showAllLabel ?? `Bekijk alle ${items.length} items`}
+            variant="accent-transparent"
+            size="sm"
             onClick={onShowAll}
           />
         ) : (
@@ -87,11 +87,4 @@ export function RelatedItemsList({
         ))}
     </nldd-container>
   );
-}
-
-/** The "show all" link: an action, so a button, styled as a link. */
-function NlddTextButton({ text, onClick }: { text: string; onClick: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onClick);
-  return <nldd-button ref={ref} text={text} variant="accent-transparent" size="sm" />;
 }

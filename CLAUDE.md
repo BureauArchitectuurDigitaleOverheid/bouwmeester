@@ -86,11 +86,24 @@ frontend/
 - **Path alias**: `@/` maps to `src/`
 - **API helpers**: `apiGet`, `apiPost`, `apiPut`, `apiDelete` in `api/client.ts`
 - **Hooks**: React Query `useQuery`/`useMutation` with `queryKey` invalidation
-- **Components**: `CreatableSelect` for all dropdowns (select + create inline)
+- **Dropdowns**: `CreatableSelect` when the user may add an option inline, otherwise `Select` (`nldd-dropdown` around a native `<select>`, with `size` and `width`)
 - **Rich text**: ALL description/beschrijving fields MUST use `RichTextFormField` (edit) and `RichTextDisplay` (view) — never use plain `<textarea>` for descriptions
 - **Layout**: `Header.tsx` renders page title from `pageTitles` map — pages should NOT have their own `<h1>`
 - **Sidebar**: Nav items defined in `components/layout/Sidebar.tsx`
 - **Route definitions**: `App.tsx`
+
+### Design system (`@nldd/design-system`)
+
+- **Elements**: use `nldd-*` elements directly; every one the app renders is imported in `components/nldd/register.ts` (`register.test.ts` fails otherwise). After a package upgrade run `node scripts/generate-nldd-types.mjs` to regenerate `nldd-elements.d.ts`.
+- **Events**: never `onClick`/`onChange` on an `nldd-*` element; bridge with `useNlddEvent` from `components/nldd/events.ts`, or use a wrapper below.
+- **Buttons**: `NlddButton` (label in `text`, not children; `compactBelowSm` shows only the icon on phones) and `NlddIconButton`. A raw `<button>` only for operable text, with `className="plain-button"`.
+- **Clickable list rows**: `NlddListItemButton` (action) or `NlddListItemLink` (route), both in `components/nldd/NlddLink.tsx`.
+- **Icons**: `Icon` takes nldd icon names only; `scripts/validate-nldd-markup.mjs` rejects unknown names.
+- **Colors**: `Badge color=` and the color maps use `EntityColor`, Rijkshuisstijl names (`lintblauw`, `mosgroen`, ...), never hex values or hand-picked palette steps.
+- **Labels**: no uppercase or letter-spaced labels. A section label is `nldd-title size={6}`, a small caption `nldd-text size="xs" weight="medium" color="secondary"`.
+- **Loading**: `LoadingSpinner` for a page or panel; a raw `nldd-activity-indicator` only inline in a button or row.
+- **CSS**: layout goes through `nldd-container` attributes. `utilities.css` holds the few classes nothing in the design system covers; `scripts/validate-css-classes.mjs` checks every class used has a rule.
+- **Checks**: `npx tsc -b && npx eslint src && node scripts/validate-nldd-markup.mjs && node scripts/validate-nldd-tokens.mjs && node scripts/validate-css-classes.mjs && npx vitest run` (in `frontend/`).
 
 ### Adding a new page
 
@@ -105,7 +118,7 @@ frontend/
 - Organisatie types: Ministerie, Directoraat-Generaal, Directie, Afdeling, Team
 - Role labels defined in `ROL_LABELS` (`types/index.ts`) for display
 - Node types: Dossier, Doel, Instrument, Beleidskader, Maatregel, Politieke Input
-- Color maps (`TYPE_BADGE_COLORS`, `NODE_TYPE_COLORS`, `TASK_PRIORITY_COLORS`) in types
+- Color maps (`NODE_TYPE_COLORS`, `ORGANISATIE_TYPE_BADGE_COLORS`, `TASK_PRIORITY_COLORS`, ...) in `types/index.ts`, all `EntityColor`
 
 ## Key data relationships
 

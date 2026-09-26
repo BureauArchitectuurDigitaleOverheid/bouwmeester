@@ -5,6 +5,8 @@ interface LoadingSpinnerProps {
   /** Vertical padding around the centered indicator, as an nldd-container
    *  spacer-scale step (e.g. '32'). */
   padding?: ContainerPadding;
+  /** Visible text beside the indicator, e.g. "Laden...". */
+  text?: string;
 }
 
 /** nldd-activity-indicator sizes in the design system's spacer-aligned steps. */
@@ -14,7 +16,7 @@ const SIZES = {
   lg: '48',
 } as const;
 
-export function LoadingSpinner({ size = 'md', padding }: LoadingSpinnerProps) {
+export function LoadingSpinner({ size = 'md', padding, text }: LoadingSpinnerProps) {
   return (
     <nldd-container
       width="full"
@@ -22,7 +24,7 @@ export function LoadingSpinner({ size = 'md', padding }: LoadingSpinnerProps) {
       vertical-alignment="center"
       {...(padding ? { 'padding-block': padding } : {})}
     >
-      <nldd-activity-indicator size={SIZES[size]} />
+      <nldd-activity-indicator size={SIZES[size]} {...(text ? { text, 'show-text': true } : {})} />
     </nldd-container>
   );
 }

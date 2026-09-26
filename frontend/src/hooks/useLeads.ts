@@ -8,7 +8,6 @@ import {
   deleteLead,
   moveLead,
   reorderLeads,
-  getLeadActivities,
   createLeadActivity,
   deleteLeadActivity,
   addLeadContact,
@@ -168,14 +167,6 @@ export function useReorderLeads() {
         queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(id) });
       }
     },
-  });
-}
-
-export function useLeadActivities(leadId: string | null) {
-  return useQuery({
-    queryKey: queryKeys.leads.activities(leadId),
-    queryFn: () => getLeadActivities(leadId!),
-    enabled: !!leadId,
   });
 }
 

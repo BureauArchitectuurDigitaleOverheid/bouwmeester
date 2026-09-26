@@ -45,17 +45,6 @@ export async function deleteSamenwerkingsverband(id: string): Promise<void> {
   return apiDelete(`/api/samenwerkingsverbanden/${id}`);
 }
 
-// Leden
-export async function listLeden(
-  swvId: string,
-  actief: boolean = true,
-): Promise<SamenwerkingsverbandLid[]> {
-  return apiGet<SamenwerkingsverbandLid[]>(
-    `/api/samenwerkingsverbanden/${swvId}/leden`,
-    { actief: String(actief) },
-  );
-}
-
 export async function addLid(
   swvId: string,
   data: SamenwerkingsverbandLidCreate,

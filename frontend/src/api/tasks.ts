@@ -21,20 +21,10 @@ export async function deleteTask(id: string): Promise<void> {
   return apiDelete(`/api/tasks/${id}`);
 }
 
-export async function getUnassignedTasks(organisatieEenheidId?: string): Promise<Task[]> {
-  const params: Record<string, string> = {};
-  if (organisatieEenheidId) params.organisatie_eenheid_id = organisatieEenheidId;
-  return apiGet<Task[]>('/api/tasks/unassigned', params);
-}
-
 export async function getEenheidOverview(organisatieEenheidId: string): Promise<EenheidOverviewResponse> {
   return apiGet<EenheidOverviewResponse>('/api/tasks/eenheid-overview', {
     organisatie_eenheid_id: organisatieEenheidId,
   });
-}
-
-export async function getTaskSubtasks(taskId: string): Promise<Task[]> {
-  return apiGet<Task[]>(`/api/tasks/${taskId}/subtasks`);
 }
 
 export async function getTasksByPerson(personId: string): Promise<Task[]> {

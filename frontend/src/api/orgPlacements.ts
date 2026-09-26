@@ -13,11 +13,6 @@ export interface OrgPlacementRequest {
   decided_by: string | null;
 }
 
-export interface CreatePlacementRequest {
-  organisatie_eenheid_id: string;
-  dienstverband?: string;
-}
-
 export interface UpdatePlacementRequest {
   organisatie_eenheid_id: string;
 }
@@ -26,16 +21,8 @@ export function updatePlacement(id: string, data: UpdatePlacementRequest) {
   return apiPatch<OrgPlacementRequest>(`/api/org-placements/${id}`, data);
 }
 
-export function requestPlacement(data: CreatePlacementRequest) {
-  return apiPost<OrgPlacementRequest>('/api/org-placements/request', data);
-}
-
 export function getPendingPlacements() {
   return apiGet<OrgPlacementRequest[]>('/api/org-placements/pending');
-}
-
-export function getMyPlacementRequests() {
-  return apiGet<OrgPlacementRequest[]>('/api/org-placements/my-requests');
 }
 
 export function approvePlacement(id: string) {

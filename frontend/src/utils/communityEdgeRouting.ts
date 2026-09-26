@@ -13,7 +13,7 @@ type ParsedNode =
   | { type: 'node'; rawId: string }
   | { type: 'unknown'; rawId: string };
 
-export function parseNodeId(prefixedId: string): ParsedNode {
+function parseNodeId(prefixedId: string): ParsedNode {
   if (prefixedId.startsWith('lead-')) return { type: 'lead', rawId: prefixedId.slice(5) };
   if (prefixedId.startsWith('person-')) return { type: 'person', rawId: prefixedId.slice(7) };
   if (prefixedId.startsWith('org-')) return { type: 'org', rawId: prefixedId.slice(4) };

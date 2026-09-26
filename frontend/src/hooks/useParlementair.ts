@@ -1,13 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   getParlementairItems,
-  getParlementairItem,
   triggerParlementairImport,
   reprocessParlementairItems,
   rejectParlementairItem,
   reopenParlementairItem,
   completeParlementairReview,
-  getReviewQueue,
   updateSuggestedEdge,
   approveSuggestedEdge,
   rejectSuggestedEdge,
@@ -21,21 +19,6 @@ export function useParlementairItems(filters?: ParlementairItemFilters) {
   return useQuery({
     queryKey: queryKeys.parlementair.list(filters),
     queryFn: () => getParlementairItems(filters),
-  });
-}
-
-export function useParlementairItem(id: string) {
-  return useQuery({
-    queryKey: queryKeys.parlementair.detail(id),
-    queryFn: () => getParlementairItem(id),
-    enabled: !!id,
-  });
-}
-
-export function useReviewQueue() {
-  return useQuery({
-    queryKey: queryKeys.parlementair.reviewQueue(),
-    queryFn: () => getReviewQueue(),
   });
 }
 

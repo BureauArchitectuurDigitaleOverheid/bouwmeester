@@ -78,12 +78,9 @@ function InitiatiefCard({ initiatief }: { initiatief: InitiatiefListItem }) {
         </nldd-container>
 
         {description && (
-          // nldd-text has no line-clamp; the utility class carries it, as on
-          // NodeCard. A div rather than NodeCard's <p>: the paragraph's
-          // default margins put 18px above and below the line.
-          <div className="line-clamp-2">
-            <nldd-text size="xs" color="secondary">{description}</nldd-text>
-          </div>
+          <nldd-text size="xs" color="secondary" className="line-clamp-2">
+            {description}
+          </nldd-text>
         )}
 
         {/* One line of figures. As separate icon-and-text rows each took a
