@@ -140,7 +140,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
             // nldd-list-item-segment prop hides while preserving layout.
             className={hasChildren ? undefined : 'invisible'}
           >
-            <Icon name="ChevronRight" size="xs" />
+            <Icon name="chevron-right" size="xs" />
           </nldd-list-item-segment>
 
           {/* `min-width: 0` is what lets this segment give way. Without it a
@@ -220,7 +220,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               // invisible on a phone.
               className="group-hover-reveal-above-sm"
             >
-              <Icon name="Plus" size="xs" />
+              <Icon name="plus" size="xs" />
             </nldd-list-item-segment>
           ) : (
             // Placeholder zodat synth-rijen dezelfde breedte hebben (badges blijven uitgelijnd)

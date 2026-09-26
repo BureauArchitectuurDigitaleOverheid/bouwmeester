@@ -80,13 +80,13 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
           )}
           {person.functie && (
             <nldd-container layout="row" gap="6" vertical-alignment="center">
-              <Icon name="Briefcase" size="xs" />
+              <Icon name="business-suitcase" size="xs" />
               <nldd-text size="xs" color="secondary">{formatFunctie(person.functie)}</nldd-text>
             </nldd-container>
           )}
           {person.expertise && (
             <nldd-container layout="row" gap="6" vertical-alignment="center">
-              <Icon name="Tag" size="xs" />
+              <Icon name="tag" size="xs" />
               <nldd-text size="xs" color="secondary">{person.expertise}</nldd-text>
             </nldd-container>
           )}

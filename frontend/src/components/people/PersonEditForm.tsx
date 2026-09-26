@@ -76,7 +76,7 @@ function EmailRow({ email, isDefault, onSetDefault, onRemove }: EmailRowProps) {
         <nldd-icon name="star" size="16" {...(isDefault ? { color: 'warning' } : {})} aria-hidden="true" />
       </nldd-list-item-segment>
       <nldd-list-item-segment ref={removeRef} button accessible-label="E-mailadres verwijderen">
-        <Icon name="X" size="sm" />
+        <Icon name="close" size="sm" />
       </nldd-list-item-segment>
     </nldd-list-item>
   );
@@ -107,7 +107,7 @@ function PhoneRow({ phoneNumber, label, isDefault, onSetDefault, onRemove }: Pho
         <nldd-icon name="star" size="16" {...(isDefault ? { color: 'warning' } : {})} aria-hidden="true" />
       </nldd-list-item-segment>
       <nldd-list-item-segment ref={removeRef} button accessible-label="Telefoonnummer verwijderen">
-        <Icon name="X" size="sm" />
+        <Icon name="close" size="sm" />
       </nldd-list-item-segment>
     </nldd-list-item>
   );

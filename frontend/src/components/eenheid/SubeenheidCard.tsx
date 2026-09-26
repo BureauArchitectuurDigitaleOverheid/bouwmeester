@@ -14,7 +14,7 @@ export function SubeenheidCard({ sub, onSelect }: SubeenheidCardProps) {
       <nldd-container layout="stack" gap="8">
         <nldd-container layout="row" gap="8" vertical-alignment="top" horizontal-alignment="left">
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <Icon name="Building2" size="md" />
+            <Icon name="apartment-building" size="md" />
             <nldd-container layout="stack" gap="0">
               <nldd-text weight="medium">{sub.eenheid_naam}</nldd-text>
               <nldd-text size="xs" color="secondary">

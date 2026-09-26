@@ -178,7 +178,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
           onClick={() => setExpanded(!expanded)}
         >
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <Icon name={expanded ? 'ChevronDown' : 'ChevronRight'} size="sm" />
+            <Icon name={expanded ? 'chevron-down' : 'chevron-right'} size="sm" />
             <Badge variant={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'gray'}>
               {formatOrganisatieType(group.eenheid.type)}
             </Badge>
@@ -383,7 +383,7 @@ export function OrganisatieDetail({
       {/* People — recursive grouped view */}
       <nldd-container gap="12">
         <nldd-container layout="row" gap="8" vertical-alignment="center">
-          <Icon name="Users" size="sm" />
+          <Icon name="users" size="sm" />
           <nldd-title size={6}>
             <h3>Personen ({personenCount}){agentCount > 0 && ` · Agents (${agentCount})`}</h3>
           </nldd-title>

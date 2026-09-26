@@ -161,7 +161,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           </Badge>
           {task.due_date && (
             <nldd-container layout="row" gap="4" vertical-alignment="center">
-              <Icon name="Clock" size="xs" />
+              <Icon name="clock" size="xs" />
               <nldd-text size="xs" color={isOverdue ? 'critical' : 'secondary'} weight={isOverdue ? 'bold' : 'regular'}>
                 {formatDateShort(task.due_date)}
               </nldd-text>
@@ -250,7 +250,7 @@ export function UnassignedTasksSection({
             color: 'var(--primitives-color-warning-600)',
           }}
         >
-          <Icon name="AlertTriangle" size="lg" />
+          <Icon name="exclamation-triangle" size="lg" />
         </div>
         <nldd-container gap="0">
           <nldd-text size="md" weight="bold">Onverdeeld</nldd-text>
