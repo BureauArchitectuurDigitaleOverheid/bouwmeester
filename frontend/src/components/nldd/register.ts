@@ -65,6 +65,7 @@ import '@nldd/design-system/dropdown';
 import '@nldd/design-system/file-field';
 import '@nldd/design-system/multi-line-text-field';
 import '@nldd/design-system/number-field';
+import '@nldd/design-system/password-field';
 import '@nldd/design-system/radio-button';
 import '@nldd/design-system/radio-button-field';
 import '@nldd/design-system/radio-button-group';

@@ -230,7 +230,9 @@ export function SamenwerkingsverbandDetailPage() {
           <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
         </div>
         {!editing && (
-          <div className="hug margin-left-auto">
+          <>
+          <nldd-spacer direction="horizontal" size="flexible" />
+          <div className="hug">
             <NlddButton variant="neutral-transparent" size="sm" startIcon="pencil" onClick={startEdit} text="Bewerken" />
             <NlddButton
               variant="neutral-transparent"
@@ -240,6 +242,7 @@ export function SamenwerkingsverbandDetailPage() {
               text="Verwijderen"
             />
           </div>
+          </>
         )}
       </nldd-container>
 
@@ -340,7 +343,10 @@ export function SamenwerkingsverbandDetailPage() {
           </nldd-container>
 
           {showAddLid && (
-            <nldd-container gap="12" padding="12" style={{ border: 'var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color)', borderRadius: 'var(--semantics-surfaces-corner-radius)' }}>
+            // `base`: an outline on the card's own surface, as the hand-drawn
+            // border was; the tinted default would fill it in.
+            <nldd-box background="base">
+            <nldd-container gap="12" padding="12">
               <nldd-container layout="grid" column-count={1} sm-column-count={2} gap="12">
                 <CreatableSelect
                   label="Persoon"
@@ -374,6 +380,7 @@ export function SamenwerkingsverbandDetailPage() {
                 />
               </nldd-container>
             </nldd-container>
+            </nldd-box>
           )}
 
         {swv.leden.length === 0 ? (
@@ -480,10 +487,12 @@ export function SamenwerkingsverbandDetailPage() {
         variant="danger"
         loading={deleteMutation.isPending}
       >
-        <p>
-          Weet je zeker dat je <strong>{swv.naam}</strong> wilt verwijderen? Alle
-          lidmaatschappen worden meegenomen.
-        </p>
+        <nldd-rich-text>
+          <p>
+            Weet je zeker dat je <strong>{swv.naam}</strong> wilt verwijderen? Alle
+            lidmaatschappen worden meegenomen.
+          </p>
+        </nldd-rich-text>
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -495,7 +504,7 @@ export function SamenwerkingsverbandDetailPage() {
         variant="danger"
         loading={removeLidMutation.isPending}
       >
-        <p>Weet je zeker dat je dit lid wilt verwijderen?</p>
+        Weet je zeker dat je dit lid wilt verwijderen?
       </ConfirmDialog>
 
       <PersonQuickCreateForm

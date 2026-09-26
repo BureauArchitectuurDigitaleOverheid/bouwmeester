@@ -183,7 +183,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             onClick={() => navigate(corpusUrl)}
           />
         </div>
-        <div className="hug hug-gap-8 margin-left-auto">
+        <nldd-spacer direction="horizontal" size="flexible" />
+        <div className="hug hug-gap-8">
           <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={() => setShowEditForm(true)} text="Bewerken" />
           <NlddButton
             variant="destructive"
@@ -808,7 +809,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         confirmLabel="Verwijderen"
         variant="danger"
       >
-        <p>Weet je zeker dat je de bijlage <strong>{bijlageInfo?.bestandsnaam}</strong> wilt verwijderen?</p>
+        <nldd-rich-text>
+          <p>Weet je zeker dat je de bijlage <strong>{bijlageInfo?.bestandsnaam}</strong> wilt verwijderen?</p>
+        </nldd-rich-text>
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -824,7 +827,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         confirmLabel="Verwijderen"
         variant="danger"
       >
-        <p>Weet je zeker dat je <strong>{removeStakeholderId?.naam}</strong> wilt verwijderen als betrokkene?</p>
+        <nldd-rich-text>
+          <p>Weet je zeker dat je <strong>{removeStakeholderId?.naam}</strong> wilt verwijderen als betrokkene?</p>
+        </nldd-rich-text>
       </ConfirmDialog>
     </nldd-container>
   );

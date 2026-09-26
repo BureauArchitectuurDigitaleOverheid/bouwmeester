@@ -411,7 +411,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
               <nldd-card background="tinted">
                 <nldd-container gap="12" padding="12">
                   <nldd-title size={6}><h3>Funnel-afweging</h3></nldd-title>
-                  <Select label="Engagement type" options={ENGAGEMENT_OPTIONS} value={editEngagementType} onChange={(e) => setEditEngagementType(e.target.value as EngagementType | '')} />
+                  <Select label="Engagement type" width="full" options={ENGAGEMENT_OPTIONS} value={editEngagementType} onChange={(e) => setEditEngagementType(e.target.value as EngagementType | '')} />
                   <nldd-container layout="grid" column-count={3} gap="8">
                     <ScoreSelect label={labelStrategisch} value={editScoreStrategisch} onChange={setEditScoreStrategisch} />
                     <ScoreSelect label={labelPolitiek} value={editScorePolitiek} onChange={setEditScorePolitiek} />
@@ -1024,6 +1024,7 @@ function ScoreSelect({
   return (
     <Select
       label={label}
+      width="full"
       options={SCORE_OPTIONS}
       value={String(value)}
       onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}

@@ -68,10 +68,6 @@
   text-transform: uppercase;
 }
 
-.tracking-wider {
-  letter-spacing: 0.05em;
-}
-
 .tracking-tight {
   letter-spacing: -0.015em;
 }
@@ -116,19 +112,6 @@
     flex-direction: row;
     align-items: flex-start;
     justify-content: space-between;
-  }
-}
-
-/* Org-tree group card: 8px inset below `sm`, 12px from `sm` up. Same reason
- * as .sm-row-header — this is a plain div (see OrganisatieDetail's
- * PersonGroupSection), not an nldd-container, so its responsive padding has
- * nowhere else to live. */
-.org-group-padding {
-  padding: 8px;
-}
-@media (min-width: 640px) {
-  .org-group-padding {
-    padding: 12px;
   }
 }
 
@@ -333,14 +316,10 @@
 
 /* # Surfaces
  *
- * Two treatments our own markup still needs, on design-system tokens rather
- * than a fixed grey. Classes and not inline style, because both describe a
+ * A treatment our own markup still needs, on a design-system token rather
+ * than a fixed grey. A class and not inline style, because it describes a
  * :hover state and a style attribute cannot express one.
  */
-.surface-tinted {
-  background-color: var(--semantics-surfaces-tinted-background-color);
-}
-
 .hover-tinted:hover {
   background-color: var(--semantics-buttons-neutral-base-is-hovered-background-color);
 }
@@ -383,31 +362,6 @@
   .unassigned-task-field {
     width: 224px;
   }
-}
-
-/* # Read-only key field
- *
- * The API key on a person's profile, shown but never edited. Not an
- * nldd-text-field: that is a control you type in, and this one refuses input
- * on purpose. It keeps the field's look so it reads as "a value that lives
- * here", with a monospace face because a key is compared character by
- * character.
- */
-.readonly-key-field {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 12px;
-  border: var(--semantics-surfaces-border-width) solid var(--semantics-surfaces-base-border-color);
-  border-radius: var(--primitives-corner-radius-md);
-  background-color: var(--semantics-surfaces-tinted-background-color);
-  color: var(--semantics-content-secondary-color);
-  font-family: var(--primitives-font-family-monospace);
-  font-size: 0.875rem;
-}
-
-/* The placeholder row, when there is no key to show. */
-.readonly-key-field-empty {
-  opacity: 0.5;
 }
 
 /* # Task board
@@ -608,34 +562,6 @@
   height: 12px;
   width: 12px;
   border-radius: 9999px;
-}
-
-/* Truncation banners above the matrix (dimension cap warning / full-matrix
- * notice). Two color roles, on tokens rather than a fixed amber/blue. */
-.matrix-notice {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: var(--primitives-corner-radius-lg);
-  border: var(--semantics-surfaces-border-width) solid;
-  padding: 8px 12px;
-  font-size: var(--primitives-font-size-80);
-}
-
-.matrix-notice-warning {
-  border-color: var(--primitives-color-oranje-200);
-  background-color: var(--primitives-color-oranje-25);
-  color: var(--primitives-color-oranje-800);
-}
-
-.matrix-notice-info {
-  border-color: var(--primitives-color-hemelblauw-200);
-  background-color: var(--primitives-color-hemelblauw-25);
-  color: var(--primitives-color-hemelblauw-800);
-}
-
-.matrix-notice-action {
-  font-weight: 500;
 }
 
 /* # Community graph node-type filter chips (LeadGraphView)

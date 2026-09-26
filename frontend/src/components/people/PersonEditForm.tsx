@@ -3,6 +3,7 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
+import { Select } from '@/components/common/Select';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { Icon } from '@/components/nldd/Icon';
@@ -44,6 +45,12 @@ const KARAKTER_NAMEN = [
 const DEFAULT_FUNCTIE_OPTIONS: SelectOption[] = Object.entries(FUNCTIE_LABELS).map(
   ([value, label]) => ({ value, label })
 );
+
+const PHONE_LABEL_OPTIONS = Object.entries(PHONE_LABELS).map(([value, label]) => ({ value, label }));
+const DIENSTVERBAND_OPTIONS = Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
 
 interface EmailRowProps {
   email: string;
@@ -254,14 +261,6 @@ export function PersonEditForm({
   for (const p of searchResults) {
     personCacheRef.current.set(p.id, p);
   }
-
-  // nldd-dropdown stops the slotted select's native `change` and re-emits its
-  // own CustomEvent from the host, so a React onChange on the select never
-  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
-  const newPhoneLabelRef = useRef<HTMLElement>(null);
-  const dienstverbandRef = useRef<HTMLElement>(null);
-  useNlddEvent(newPhoneLabelRef, 'change', (e) => setNewPhoneLabel(eventValue(e)));
-  useNlddEvent(dienstverbandRef, 'change', (e) => setDienstverband(eventValue(e)));
 
   // Filter out agents from search results
   const personResults = searchResults.filter(p => !p.is_agent);
@@ -701,13 +700,13 @@ export function PersonEditForm({
                   accessibleLabel="Nieuw telefoonnummer"
                 />
               </nldd-container>
-              <nldd-dropdown ref={newPhoneLabelRef} width="140px">
-                <select aria-label="Type telefoonnummer" value={newPhoneLabel} onChange={() => {}}>
-                  {Object.entries(PHONE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </nldd-dropdown>
+              <Select
+                aria-label="Type telefoonnummer"
+                width="140px"
+                value={newPhoneLabel}
+                onChange={(e) => setNewPhoneLabel(e.target.value)}
+                options={PHONE_LABEL_OPTIONS}
+              />
               <NlddIconButton
                 icon="plus"
                 accessibleLabel="Telefoonnummer toevoegen"
@@ -729,22 +728,16 @@ export function PersonEditForm({
               {displayApiKey ? (
                 <>
                   <nldd-container layout="row" gap="8" vertical-alignment="center">
-                    {/* nldd-text-field has no password type; this is a
-                        read-only display, not a real form field, so a plain
-                        masked input stands in. The monospace/border styling
-                        is intentionally left as CSS: there is no design-system
-                        input variant for a read-only secret display. */}
-                    <input
-                      type={showKey ? 'text' : 'password'}
-                      readOnly
+                    {/* The field carries its own show/hide toggle; `masked`
+                        is only driven from here to reveal the key when the
+                        clipboard is unavailable. */}
+                    <nldd-password-field
+                      readonly
                       value={displayApiKey}
-                      className="readonly-key-field"
-                    />
-                    <NlddIconButton
-                      icon={showKey ? 'eye-slash' : 'eye'}
-                      accessibleLabel={showKey ? 'Verberg API key' : 'Toon API key'}
-                      variant="secondary"
-                      onClick={() => setShowKey(!showKey)}
+                      masked={!showKey}
+                      accessible-label="API key"
+                      show-button-accessible-label="Toon API key"
+                      hide-button-accessible-label="Verberg API key"
                     />
                     <NlddIconButton
                       icon={copied ? 'check-mark' : 'copy'}
@@ -759,12 +752,14 @@ export function PersonEditForm({
                 </>
               ) : editData ? (
                 <nldd-container layout="row" gap="8" vertical-alignment="center">
-                  {/* Same read-only-secret exception as above. */}
-                  <input
-                    type="text"
-                    readOnly
+                  {/* The stored key is never sent back, so there is nothing to
+                      reveal: a disabled read-only text field shows the state,
+                      where a password field would offer a toggle to nothing. */}
+                  <nldd-text-field
+                    readonly
+                    disabled
                     value={editData.has_api_key ? '••••••••••••••••••••••••••' : 'Geen API key'}
-                    className="readonly-key-field readonly-key-field-empty"
+                    accessible-label="API key"
                   />
                   {confirmRotate ? (
                     <nldd-container layout="row" gap="6" vertical-alignment="center">
@@ -851,15 +846,12 @@ export function PersonEditForm({
         )}
         {!editData && orgEenheidId && !isAgent && (
           <nldd-form-field label="Dienstverband">
-            <nldd-dropdown ref={dienstverbandRef}>
-              <select aria-label="Dienstverband" value={dienstverband} onChange={() => {}}>
-                {Object.entries(DIENSTVERBAND_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </nldd-dropdown>
+            <Select
+              aria-label="Dienstverband"
+              value={dienstverband}
+              onChange={(e) => setDienstverband(e.target.value)}
+              options={DIENSTVERBAND_OPTIONS}
+            />
           </nldd-form-field>
         )}
       </nldd-container>

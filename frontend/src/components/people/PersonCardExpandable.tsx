@@ -6,6 +6,7 @@ import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { Icon } from '@/components/nldd/Icon';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useNlddEvent } from '@/components/nldd/events';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { useSamenwerkingsverbandenForPerson } from '@/hooks/useSamenwerkingsverbanden';
@@ -129,7 +130,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               }}
               style={{ overflow: 'hidden', textAlign: 'left', minWidth: 0 }}
             >
-              <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <nldd-text size="sm" weight="medium" className="truncate">
                 {person.naam}
               </nldd-text>
             </button>
@@ -142,7 +143,12 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 </Badge>
               );
             })()}
-            {extraBadge && <nldd-container style={{ marginLeft: 'auto', flexShrink: 0 }}>{extraBadge}</nldd-container>}
+            {extraBadge && (
+              <>
+                <nldd-spacer direction="horizontal" size="flexible" />
+                <div className="hug">{extraBadge}</div>
+              </>
+            )}
           </nldd-container>
           <nldd-container layout="wrap" gap="12" vertical-alignment="center">
             {displayEmail && (
@@ -154,20 +160,19 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)', overflow: 'hidden' }}
               >
                 <Icon name="envelope" size="xs" />
-                <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <nldd-text size="xs" color="secondary" className="truncate">
                   {copied ? 'Gekopieerd!' : displayEmail}
                 </nldd-text>
               </button>
             )}
             {person.default_phone && (
-              <a
+              <nldd-link
                 href={`tel:${person.default_phone}`}
-                onClick={(e) => e.stopPropagation()}
-                style={{ display: 'flex', alignItems: 'center', gap: 'var(--primitives-space-4)' }}
-              >
-                <Icon name="at" size="xs" />
-                <nldd-text size="xs" color="secondary">{person.default_phone}</nldd-text>
-              </a>
+                size="xs"
+                start-icon="at"
+                text={person.default_phone}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              />
             )}
             {person.functie && !person.is_agent && (
               // Hidden below sm by a wrapper, not on the hug itself: the
@@ -176,7 +181,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               <div className="hidden-below-sm-block" style={{ minWidth: 0 }}>
                 <div className="hug hug-truncate" style={{ maxWidth: '100%' }}>
                   <Icon name="business-suitcase" size="xs" />
-                  <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                  <nldd-text size="xs" color="secondary">
                     {formatFunctie(person.functie)}
                   </nldd-text>
                 </div>
@@ -185,15 +190,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             {person.description && person.is_agent && (
               <div className="hug hug-truncate hug-top">
                 <Icon name="business-suitcase" size="xs" style={{ marginTop: '2px' }} />
-                <nldd-text
-                  size="xs"
-                  color="secondary"
-                  style={
-                    expanded
-                      ? { whiteSpace: 'normal' }
-                      : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-                  }
-                >
+                <nldd-text size="xs" color="secondary" className={expanded ? undefined : 'truncate'}>
                   {richTextToPlain(person.description)}
                 </nldd-text>
               </div>
@@ -256,13 +253,15 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               <nldd-container gap="2">
                 {person.emails.map((em) => (
                   <nldd-container key={em.id} layout="row" gap="6" vertical-alignment="center">
-                    <a
-                      href={`mailto:${em.email}`}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    >
-                      <nldd-text size="xs">{em.email}</nldd-text>
-                    </a>
+                    {/* An unsized nldd-link runs inline, so the nldd-text
+                        around it sets the size and can end it in an ellipsis. */}
+                    <nldd-text size="xs" className="truncate">
+                      <nldd-link
+                        href={`mailto:${em.email}`}
+                        text={em.email}
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                      />
+                    </nldd-text>
                     {em.is_default && <nldd-icon name="star" size="16" color="warning" />}
                   </nldd-container>
                 ))}
@@ -279,9 +278,12 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               <nldd-container gap="2">
                 {person.phones.map((ph) => (
                   <nldd-container key={ph.id} layout="row" gap="6" vertical-alignment="center">
-                    <a href={`tel:${ph.phone_number}`} onClick={(e) => e.stopPropagation()}>
-                      <nldd-text size="xs">{ph.phone_number}</nldd-text>
-                    </a>
+                    <nldd-link
+                      href={`tel:${ph.phone_number}`}
+                      size="xs"
+                      text={ph.phone_number}
+                      onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                    />
                     <nldd-text size="xs" color="secondary">
                       {PHONE_LABELS[ph.label] || ph.label}
                     </nldd-text>
@@ -292,10 +294,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
             </nldd-container>
           )}
           {summaryLoading ? (
-            <nldd-container layout="row" gap="8" vertical-alignment="center" padding-block="4">
-              <nldd-activity-indicator size="16" />
-              <nldd-text size="xs" color="secondary">Laden...</nldd-text>
-            </nldd-container>
+            <LoadingSpinner size="sm" padding="4" />
           ) : summary ? (
             <nldd-container gap="12">
               {/* Tasks section */}
@@ -389,7 +388,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                   <nldd-container gap="4">
                     {placements.map((p) => (
                       <nldd-container key={p.id} layout="row" gap="8" vertical-alignment="center">
-                        <nldd-text size="xs" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <nldd-text size="xs" className="truncate">
                           {p.organisatie_eenheid_naam}
                           {p.functietitel && (
                             <nldd-text size="xs" color="secondary"> — {p.functietitel}</nldd-text>
@@ -399,7 +398,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>
                         {showPlacementActions && (
-                          <nldd-container layout="row" gap="4" style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                          <>
+                          <nldd-spacer direction="horizontal" size="flexible" />
+                          {/* A plain hug, not a row nldd-container: a size
+                              container measures 0px wide beside a spacer. */}
+                          <div className="hug">
                             {!p.eind_datum && (
                               <NlddIconButtonInline
                                 icon="check-mark-circle"
@@ -415,7 +418,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                               />
                             )}
                             {confirmDeleteId === p.id ? (
-                              <nldd-container layout="row" gap="4" vertical-alignment="center">
+                              <div className="hug">
                                 <nldd-text size="xs" color="critical">Zeker?</nldd-text>
                                 <NlddTextButtonInline
                                   text="Ja"
@@ -436,7 +439,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                     setConfirmDeleteId(null);
                                   }}
                                 />
-                              </nldd-container>
+                              </div>
                             ) : (
                               <NlddIconButtonInline
                                 icon="close"
@@ -447,7 +450,8 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                                 }}
                               />
                             )}
-                          </nldd-container>
+                          </div>
+                          </>
                         )}
                       </nldd-container>
                     ))}

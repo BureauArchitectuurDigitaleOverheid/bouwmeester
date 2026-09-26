@@ -485,27 +485,21 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           {item.document_tekst && (
             <nldd-container gap="4">
               <nldd-text size="xs" weight="medium">Tekst</nldd-text>
-              {/* whitespace-pre-wrap has no nldd-text equivalent (the component
-                  does not expose white-space control), so this stays a plain
-                  element; the scroll box and tinted background are likewise
-                  presentational chrome around a text dump rather than a
-                  document composition, so nldd-container's background isn't a
-                  fit either. */}
-              <nldd-text
-                size="sm"
-                color="secondary"
-                className="surface-tinted"
-                style={{
-                  borderRadius: 'var(--primitives-corner-radius-md)',
-                  padding: '12px',
-                  maxHeight: '192px',
-                  overflowY: 'auto',
-                }}
-              >
-                {/* pre-wrap on the text, not the nldd-text host: there it
-                    leaks into the shadow template and indents the first line. */}
-                <span style={{ whiteSpace: 'pre-wrap' }}>{item.document_tekst}</span>
-              </nldd-text>
+              {/* nldd-box draws the tinted surface and nldd-container the
+                  inset. Neither has a max-height, so a plain div between them
+                  carries the scroll; on the box itself the surface would
+                  scroll away with the text. */}
+              <nldd-box>
+                <div style={{ maxHeight: '192px', overflowY: 'auto' }}>
+                  <nldd-container padding="12">
+                    <nldd-text size="sm" color="secondary">
+                      {/* pre-wrap on the text, not the nldd-text host: there it
+                          leaks into the shadow template and indents the first line. */}
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{item.document_tekst}</span>
+                    </nldd-text>
+                  </nldd-container>
+                </div>
+              </nldd-box>
             </nldd-container>
           )}
 

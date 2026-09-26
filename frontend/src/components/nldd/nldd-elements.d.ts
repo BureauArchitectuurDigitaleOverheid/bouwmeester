@@ -1557,11 +1557,6 @@ declare module 'react' {
 				/** Translations; unspecified keys fall back to Dutch */
 				'translations'?: NLDDPagination['translations'];
 			};
-			/** NOT REGISTERED. Using this renders its children unstyled with no
-			 *  error. Add `import '@nldd/design-system/password-field';` to
-			 *  components/nldd/register.ts first. Some elements register through a
-			 *  parent's module (nldd-table-row with nldd-table); register.test.ts lists
-			 *  those. */
 			'nldd-password-field': NlddElement & {
 				/** 'md' (default) | 'sm'. Set automatically by nldd-form-field. */
 				'size'?: NLDDPasswordField['size'];
