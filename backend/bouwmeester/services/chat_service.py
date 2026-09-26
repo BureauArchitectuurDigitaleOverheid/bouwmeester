@@ -1639,31 +1639,35 @@ async def _build_chat_initiatief_context(
     return access.init_ctx
 
 
-# Each write tool stands in for a REST route and must pass that route's
-# checks: its permission, plus org scope on every resource the tool touches
-# (``(resource_type, argument name)``; an absent optional argument is
-# skipped).  Lead tools are scoped through the initiatief context inside the
-# tool itself, as the lead routes are.  Granting a stakeholder role goes
-# through the same authority check as the REST routes.
-_WRITE_TOOL_POLICY: dict[str, tuple[str | None, tuple[tuple[str, str], ...]]] = {
-    "create_node": ("node:create", ()),
-    "update_node": ("node:update", (("corpus_node", "node_id"),)),
+# Each write tool stands in for a REST route and asks ``core.authz`` the
+# same question: ``(permission, resource type, argument with the resource
+# id)``, where ``None`` means a new resource without an eenheid.  Several
+# entries are alternatives: an edge needs write access on either end.  Lead
+# tools are scoped through the initiatief context inside the tool itself, as
+# the lead routes are.  Granting a stakeholder role goes through the same
+# authority check as the REST routes.
+_WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
+    "create_node": (("node:create", "corpus_node", None),),
+    "update_node": (("node:update", "corpus_node", "node_id"),),
     "create_edge": (
-        "edge:create",
-        (("corpus_node", "from_node_id"), ("corpus_node", "to_node_id")),
+        ("edge:create", "corpus_node", "from_node_id"),
+        ("edge:create", "corpus_node", "to_node_id"),
     ),
-    "create_task": (
-        "task:create",
-        (("corpus_node", "node_id"), ("task", "parent_task_id")),
-    ),
-    "update_task": ("task:update", (("task", "task_id"),)),
-    "add_tag_to_node": ("tag:create", (("corpus_node", "node_id"),)),
-    "add_stakeholder": (None, ()),
-    "attach_to_bron": ("node:update", (("corpus_node", "node_id"),)),
-    "create_lead": (None, ()),
-    "update_lead": (None, ()),
-    "move_lead": (None, ()),
-    "add_lead_activity": (None, ()),
+    "create_task": (("task:create", "corpus_node", "node_id"),),
+    "update_task": (("task:update", "task", "task_id"),),
+    "add_tag_to_node": (("tag:create", "corpus_node", "node_id"),),
+    "add_stakeholder": (),
+    "attach_to_bron": (("node:update", "corpus_node", "node_id"),),
+    "create_lead": (),
+    "update_lead": (),
+    "move_lead": (),
+    "add_lead_activity": (),
+}
+
+# Resources a tool links to that the user must at least be able to see.
+_MUST_SEE: dict[str, tuple[tuple[str, str], ...]] = {
+    "create_edge": (("corpus_node", "from_node_id"), ("corpus_node", "to_node_id")),
+    "create_task": (("task", "parent_task_id"),),
 }
 
 
@@ -1677,27 +1681,38 @@ async def _authorize_write_tool(
     from fastapi import HTTPException
 
     from bouwmeester.core.authority import require_can_grant_resource_role
+    from bouwmeester.core.authz import can, require
     from bouwmeester.core.org_context import check_resource_org_scope
 
-    policy = _WRITE_TOOL_POLICY.get(tool_name)
-    if policy is None:
+    checks = _WRITE_TOOL_POLICY.get(tool_name)
+    if checks is None:
         return f"Onbekende tool: {tool_name}"
-    perm, targets = policy
 
     access = await _chat_access(db, person_id)
     perm_ctx = access.perm_ctx
     if not perm_ctx.is_authenticated:
         return "Niet ingelogd"
-    if perm is not None and not perm_ctx.has_permission(perm):
-        return "Je hebt geen rechten voor deze actie."
     try:
-        if targets:
-            org_ctx = await _build_chat_org_context(db, person_id)
-            for resource_type, arg in targets:
-                if args.get(arg):
-                    await check_resource_org_scope(
-                        db, resource_type, UUID(args[arg]), org_ctx
-                    )
+        asks = [
+            (perm, resource_type, UUID(args[arg]) if arg else None)
+            for perm, resource_type, arg in checks
+            if arg is None or args.get(arg)
+        ]
+        if checks and not asks:
+            return "Ontbrekende gegevens voor deze actie."
+        # Any alternative suffices; the last one raises the refusal.
+        for perm, resource_type, resource_id in asks[:-1]:
+            if await can(db, perm_ctx, perm, resource_type, resource_id):
+                break
+        else:
+            if asks:
+                await require(db, perm_ctx, *asks[-1])
+        for resource_type, arg in _MUST_SEE.get(tool_name, ()):
+            if args.get(arg):
+                org_ctx = await _build_chat_org_context(db, person_id)
+                await check_resource_org_scope(
+                    db, resource_type, UUID(args[arg]), org_ctx
+                )
         if tool_name == "add_stakeholder":
             await require_can_grant_resource_role(
                 db,

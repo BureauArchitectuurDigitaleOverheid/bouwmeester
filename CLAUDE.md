@@ -215,10 +215,12 @@ Production access is restricted to whitelisted email addresses stored in the `wh
 
 - **List endpoints** filter on `org_ctx`: pass `org_ctx: OrgContext = Depends(get_org_context)` to the route and `apply_org_filter(stmt, Model.organisatie_eenheid_id, org_ctx)` in the repo.
 - **Detail endpoints** check scope: `await check_resource_org_scope(db, "<resource_type>", id, org_ctx)`.
-- **Mutations** also need a permission gate: `_perm=Depends(require_permission("<perm>"))` plus `check_org_scope(eenheid_id, org_ctx)` on any incoming `organisatie_eenheid_id`.
+- **Mutations** go through the single decision point `core/authz.py`: `_authz=Depends(requires("node:update", "corpus_node"))` when the id is the `{id}` path param (`path_param=` otherwise), or `await require(db, perm_ctx, perm, resource_type, resource_id)` in the body; `can(...)` returns a bool. Creating: pass `eenheid_id=` for the eenheid it goes into, or ask the parent with the child's permission (`require(db, ctx, "edge:create", "corpus_node", from_id)`). Chat write tools call the same functions. `require_permission` + `check_org_scope` on a write is deprecated: the first counts a permission held anywhere, the second is visibility.
 - **Tenant-wide-by-design** endpoints (`tags`, `organisatie`-chart, `edge-types`, `roles`) are intentionally readable by every authenticated user. Whitelist them in `backend/tests/test_route_authorization_inventory.py`.
 
-The inventory test fails CI on any new GET `/api/*` route that lacks an authz dependency, so adding a list-endpoint without `apply_org_filter` is impossible without an explicit whitelist or known-debt entry.
+`can()` resolves in this order, first match wins: (1) super_admin or the permission from a system role; (2) a resource role on the resource itself (`RESOURCE_ROLE_PERMISSIONS`); (3) its parent, per the `DELEGATIONS` table (edge -> either node, lead -> initiatief, task without eenheid -> node, sub-records -> their initiatief/lead/scope); (4) the permission held on the resource's eenheid or one above it, or through an *edit* share; (5) a tenant-wide fallback only for `corpus_node`, `lead` and `tag` without an eenheid. Corpus rule: reading the corpus is tenant-wide; a node with an eenheid is written by rights on that eenheid, a node without one by anyone holding the permission through any role. Seeing an eenheid never implies writing there. The module docstring of `core/authz.py` has both tables.
+
+The inventory test fails CI on any new GET `/api/*` route that lacks an authz dependency, and on any new POST/PUT/PATCH/DELETE route that does not ask `core.authz` (or an authority guard, `require_system_permission`, `AdminUser`). Routes not yet migrated sit in `_WRITE_KNOWN_DEBT`; that list only shrinks.
 
 ### Authority over grants (`core/authority.py`)
 

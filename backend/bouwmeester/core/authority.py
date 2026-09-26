@@ -5,8 +5,9 @@ people in an eenheid, naming a manager, moving an eenheid, assigning roles,
 editing someone's identity, and granting roles on a resource.  Routes and
 services call these guards instead of composing their own checks.
 
-Two layers sit below this module: ``core.permissions`` resolves what a
-person holds (roles and permissions per eenheid) and ``core.org_context``
+Three layers sit below this module: ``core.permissions`` resolves what a
+person holds (roles and permissions per eenheid), ``core.authz`` decides
+whether a person may do an action on a resource, and ``core.org_context``
 decides what a person can see.  Seeing an eenheid never implies authority
 over it.
 
@@ -17,13 +18,13 @@ on E or on any ancestor of E.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.authz import require, rights_on_eenheid
 from bouwmeester.core.permissions import (
     RESOURCE_ROLE_PERMISSIONS,
     PermissionContext,
@@ -57,57 +58,17 @@ def _forbidden(detail: str) -> HTTPException:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class EenheidRights:
-    """Roles and permissions a person effectively holds on one eenheid."""
-
-    roles: frozenset[str]
-    permissions: frozenset[str]
-    is_super_admin: bool
-
-    def has(self, perm: str) -> bool:
-        return self.is_super_admin or perm in self.permissions
-
-    def has_role(self, *roles: str) -> bool:
-        return self.is_super_admin or bool(self.roles & set(roles))
-
-
-async def rights_on_eenheid(
-    db: AsyncSession,
-    perm_ctx: PermissionContext,
-    eenheid_id: UUID,
-    *,
-    include_system_roles: bool = True,
-) -> EenheidRights:
-    """Resolve what *perm_ctx* may do on *eenheid_id*, inheriting downward.
-
-    ``include_system_roles=False`` leaves out system roles other than
-    super_admin, for decisions that belong to the organisation rather than
-    to platform operators (who manages whom).
-    """
-    if perm_ctx.is_super_admin:
-        return EenheidRights(frozenset(), frozenset(), is_super_admin=True)
-
-    roles: set[str] = set(perm_ctx.system_roles) if include_system_roles else set()
-    permissions: set[str] = (
-        set(perm_ctx.system_permissions) if include_system_roles else set()
-    )
-    for eid in await get_self_and_ancestor_ids(db, eenheid_id):
-        roles.update(perm_ctx.scoped_roles.get(eid, ()))
-        permissions |= perm_ctx.scoped_permissions.get(eid, set())
-    return EenheidRights(frozenset(roles), frozenset(permissions), False)
-
-
 async def require_permission_on_eenheid(
     db: AsyncSession,
     perm_ctx: PermissionContext,
     perm: str,
     eenheid_id: UUID,
 ) -> None:
-    """403 unless *perm* is effective on *eenheid_id* (not just anywhere)."""
-    rights = await rights_on_eenheid(db, perm_ctx, eenheid_id)
-    if not rights.has(perm):
-        raise _forbidden("Onvoldoende rechten voor deze organisatie-eenheid")
+    """403 unless *perm* is effective on *eenheid_id* (not just anywhere).
+
+    Kept for its callers; the decision itself lives in ``core.authz``.
+    """
+    await require(db, perm_ctx, perm, "organisatie_eenheid", eenheid_id)
 
 
 # ---------------------------------------------------------------------------
