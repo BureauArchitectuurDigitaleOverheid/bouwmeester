@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
 import { useCreateNode } from '@/hooks/useNodes';
 import { INSTRUMENT_TYPE_LABELS, NodeType, type CorpusNode } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface NieuwInstrumentDialogProps {
   open: boolean;
@@ -52,16 +52,13 @@ export function NieuwInstrumentDialog({ open, initialTitle, onClose, onCreated }
       size="sm"
       footer={
         <>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            Annuleren
-          </Button>
-          <Button
+          <NlddButton variant="secondary" type="button" onClick={onClose} text="Annuleren" />
+          <NlddButton
             type="submit"
             form="nieuw-instrument-form"
             loading={createNode.isPending}
-          >
-            Aanmaken
-          </Button>
+            text="Aanmaken"
+          />
         </>
       }
     >

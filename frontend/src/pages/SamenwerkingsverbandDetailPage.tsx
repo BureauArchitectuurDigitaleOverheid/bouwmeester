@@ -10,7 +10,6 @@ import {
 } from '@/hooks/useSamenwerkingsverbanden';
 import { usePeople } from '@/hooks/usePeople';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
@@ -30,6 +29,7 @@ import {
   type SamenwerkingsverbandLidUpdate,
   type SamenwerkingsverbandUpdate,
 } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** True when the click asked for something other than plain navigation. */
 function isModifiedClick(event: MouseEvent): boolean {
@@ -231,17 +231,14 @@ export function SamenwerkingsverbandDetailPage() {
         </div>
         {!editing && (
           <div className="hug margin-left-auto">
-            <Button variant="ghost" size="sm" icon="pencil" onClick={startEdit}>
-              Bewerken
-            </Button>
-            <Button
-              variant="ghost"
+            <NlddButton variant="neutral-transparent" size="sm" startIcon="pencil" onClick={startEdit} text="Bewerken" />
+            <NlddButton
+              variant="neutral-transparent"
               size="sm"
-              icon="trash"
+              startIcon="trash"
               onClick={() => setConfirmDelete(true)}
-            >
-              Verwijderen
-            </Button>
+              text="Verwijderen"
+            />
           </div>
         )}
       </nldd-container>
@@ -289,8 +286,8 @@ export function SamenwerkingsverbandDetailPage() {
                 rows={4}
               />
               <nldd-container layout="row" gap="8" horizontal-alignment="right">
-                <Button variant="secondary" onClick={() => setEditing(false)}>Annuleren</Button>
-                <Button onClick={handleSaveEdit} loading={updateMutation.isPending}>Opslaan</Button>
+                <NlddButton variant="secondary" onClick={() => setEditing(false)} text="Annuleren" />
+                <NlddButton onClick={handleSaveEdit} loading={updateMutation.isPending} text="Opslaan" />
               </nldd-container>
             </nldd-container>
           ) : (
@@ -339,9 +336,7 @@ export function SamenwerkingsverbandDetailPage() {
             <nldd-container width="fit-content" className="row-fill">
               <nldd-title size={4}><h2>Leden</h2></nldd-title>
             </nldd-container>
-            <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddLid(true)}>
-              Toevoegen
-            </Button>
+            <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddLid(true)} text="Toevoegen" />
           </nldd-container>
 
           {showAddLid && (
@@ -364,21 +359,19 @@ export function SamenwerkingsverbandDetailPage() {
                 />
               </nldd-container>
               <nldd-container layout="row" gap="8" horizontal-alignment="right">
-                <Button
+                <NlddButton
                   variant="secondary"
                   size="sm"
                   onClick={() => { setShowAddLid(false); setNewLidPersonId(''); setNewLidRol(''); }}
-                >
-                  Annuleren
-                </Button>
-                <Button
+                  text="Annuleren"
+                />
+                <NlddButton
                   size="sm"
                   onClick={handleAddLid}
                   loading={addLidMutation.isPending}
                   disabled={!newLidPersonId}
-                >
-                  Toevoegen
-                </Button>
+                  text="Toevoegen"
+                />
               </nldd-container>
             </nldd-container>
           )}
@@ -421,16 +414,13 @@ export function SamenwerkingsverbandDetailPage() {
                         />
                       </nldd-container>
                       <nldd-container layout="row" gap="8" horizontal-alignment="right">
-                        <Button variant="secondary" size="sm" onClick={cancelEditLid}>
-                          Annuleren
-                        </Button>
-                        <Button
+                        <NlddButton variant="secondary" size="sm" onClick={cancelEditLid} text="Annuleren" />
+                        <NlddButton
                           size="sm"
                           onClick={handleSaveLid}
                           loading={updateLidMutation.isPending}
-                        >
-                          Opslaan
-                        </Button>
+                          text="Opslaan"
+                        />
                       </nldd-container>
                     </nldd-container>
                   </nldd-list-item>

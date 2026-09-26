@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticateWithPasskey, getStoredPersonId, isWebAuthnCancellation } from '@/api/webauthn';
 import { useNlddEvent } from '@/components/nldd/events';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import logoImg from '/logo.png?url';
 
 export function LoginPage() {

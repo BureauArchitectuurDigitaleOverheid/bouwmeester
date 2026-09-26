@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
@@ -9,6 +8,7 @@ import { usePeople, useCreatePerson } from '@/hooks/usePeople';
 import { useLead, useLinkLeadNode, useAddLeadContact } from '@/hooks/useLeads';
 import { useToast } from '@/contexts/ToastContext';
 import { NodeType, NODE_TYPE_LABELS, LEAD_CONTACT_ROL_LABELS } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
   ([value, label]) => ({ value, label }),
@@ -146,12 +146,8 @@ export function LinkLeadNodeModal({ leadId, onClose }: Props) {
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={resetAndClose}>
-            Annuleren
-          </Button>
-          <Button onClick={handleSubmit} loading={submitting} disabled={!nodeId}>
-            Koppelen
-          </Button>
+          <NlddButton variant="secondary" onClick={resetAndClose} text="Annuleren" />
+          <NlddButton onClick={handleSubmit} loading={submitting} disabled={!nodeId} text="Koppelen" />
         </>
       }
     >

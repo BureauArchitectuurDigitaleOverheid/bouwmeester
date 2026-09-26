@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
-import { Button } from '@/components/common/Button';
 import { InboxList } from '@/components/inbox/InboxList';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -14,6 +13,7 @@ import { useManagedEenheden } from '@/hooks/useOrganisatie';
 import { useEenheidOverview } from '@/hooks/useTasks';
 import { formatCurrencyCompact } from '@/utils/format';
 import type { InboxItem } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const NOTIFICATION_TYPE_MAP: Record<string, string> = {
   task_assigned: 'task',
@@ -63,9 +63,7 @@ function GettingStartedCard() {
       dismissible
     >
       <div slot="actions">
-        <Button variant="primary" size="sm" onClick={() => navigate('/docs?tab=introductie')}>
-          Ontdek Bouwmeester
-        </Button>
+        <NlddButton variant="primary" size="sm" onClick={() => navigate('/docs?tab=introductie')} text="Ontdek Bouwmeester" />
       </div>
     </nldd-banner>
   );
@@ -241,9 +239,7 @@ export function InboxPage() {
               )}
             </nldd-container>
             {hasUnread && currentPerson?.id && (
-              <Button variant="ghost" size="sm" icon="check-list" onClick={() => markAllRead.mutate()}>
-                Alles gelezen
-              </Button>
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="check-list" onClick={() => markAllRead.mutate()} text="Alles gelezen" />
             )}
           </nldd-container>
 
@@ -260,9 +256,7 @@ export function InboxPage() {
                    became a second 480px bar competing with the first for a
                    choice nobody is being asked to make. Taken has its own place
                    in the sidebar. */
-                <Button variant="secondary" onClick={() => navigate('/corpus')}>
-                  Bekijk corpus
-                </Button>
+                <NlddButton variant="secondary" onClick={() => navigate('/corpus')} text="Bekijk corpus" />
               }
             />
           )}

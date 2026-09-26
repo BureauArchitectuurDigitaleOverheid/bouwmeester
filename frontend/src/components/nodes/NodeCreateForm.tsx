@@ -153,8 +153,8 @@ export function NodeCreateForm({ open, onClose, defaultNodeType, linkToDossierId
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!title.trim()) return;
 
     const shown = await checkAndSuggest({

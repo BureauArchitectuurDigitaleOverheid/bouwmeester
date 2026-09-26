@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -14,7 +13,7 @@ import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
 import { Icon } from '@/components/nldd/Icon';
-import { NlddButton, NlddActionText } from '@/components/nldd/NlddLink';
+import { NlddActionText } from '@/components/nldd/NlddLink';
 import { useNlddEvent } from '@/components/nldd/events';
 import { NodeEditForm } from './NodeEditForm';
 import { EdgeList } from './EdgeList';
@@ -35,6 +34,7 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useToast } from '@/contexts/ToastContext';
 import { formatDate } from '@/utils/dates';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** A single removable tag chip: `nldd-token` with its `dismiss` event bridged to React. */
 function NlddTagToken({ text, onDismiss }: { text: string; onDismiss: () => void }) {
@@ -150,9 +150,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
         title="Node niet gevonden"
         description="De gevraagde node bestaat niet of is verwijderd."
         action={
-          <Button variant="secondary" onClick={() => navigate('/corpus')}>
-            Terug naar corpus
-          </Button>
+          <NlddButton variant="secondary" onClick={() => navigate('/corpus')} text="Terug naar corpus" />
         }
       />
     );
@@ -186,17 +184,14 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           />
         </div>
         <div className="hug hug-gap-8 margin-left-auto">
-          <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>
-            Bewerken
-          </Button>
-          <Button
-            variant="danger"
+          <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={() => setShowEditForm(true)} text="Bewerken" />
+          <NlddButton
+            variant="destructive"
             size="sm"
-            icon="trash"
+            startIcon="trash"
             onClick={() => setShowDeleteConfirm(true)}
-          >
-            Verwijder
-          </Button>
+            text="Verwijder"
+          />
         </div>
       </nldd-container>
 
@@ -327,7 +322,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       placeholder="https://..."
                     />
                     <nldd-container layout="row" gap="8">
-                      <Button
+                      <NlddButton
                         size="sm"
                         onClick={async () => {
                           try {
@@ -344,12 +339,9 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                             showError('Fout bij opslaan brongegevens. Probeer het opnieuw.');
                           }
                         }}
-                      >
-                        Opslaan
-                      </Button>
-                      <Button variant="secondary" size="sm" onClick={() => setBronEditing(false)}>
-                        Annuleren
-                      </Button>
+                        text="Opslaan"
+                      />
+                      <NlddButton variant="secondary" size="sm" onClick={() => setBronEditing(false)} text="Annuleren" />
                     </nldd-container>
                   </nldd-container>
                 ) : (
@@ -649,8 +641,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                       />
                     </nldd-container>
                     <div className="hug hug-stack">
-                      <Button
-                        icon="plus"
+                      <NlddButton
+                        startIcon="plus"
                         disabled={!newStakeholderPersonId || addStakeholder.isPending}
                         onClick={() => {
                           addStakeholder.mutate(
@@ -663,9 +655,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                             },
                           );
                         }}
-                      >
-                        Toevoegen
-                      </Button>
+                        text="Toevoegen"
+                      />
                     </div>
                   </nldd-container>
                 </nldd-container>

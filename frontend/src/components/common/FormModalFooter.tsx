@@ -1,8 +1,8 @@
-import { Button } from '@/components/common/Button';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface FormModalFooterProps {
   onCancel: () => void;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: () => void;
   submitLabel: string;
   isLoading: boolean;
   disabled?: boolean;
@@ -19,16 +19,13 @@ export function FormModalFooter({
 }: FormModalFooterProps) {
   return (
     <>
-      <Button variant="secondary" onClick={onCancel}>
-        {cancelLabel}
-      </Button>
-      <Button
+      <NlddButton variant="secondary" onClick={onCancel} text={cancelLabel} />
+      <NlddButton
         onClick={onSubmit}
         loading={isLoading}
         disabled={disabled}
-      >
-        {submitLabel}
-      </Button>
+        text={submitLabel}
+      />
     </>
   );
 }

@@ -10,7 +10,6 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { Input } from '@/components/common/Input';
 import { Select } from '@/components/common/Select';
-import { Button } from '@/components/common/Button';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { buildPersonOptions } from '@/utils/personOptions';
 import { Badge } from '@/components/common/Badge';
@@ -30,6 +29,7 @@ import {
   type OpdrachtNodeResponse,
   type CorpusNode,
 } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface OpdrachtFormProps {
   opdracht?: Opdracht;
@@ -437,14 +437,13 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
                     ]}
                   />
                 </nldd-container>
-                <Button
+                <NlddButton
                   type="button"
-                  icon="plus"
+                  startIcon="plus"
                   disabled={!newKoppelingNodeId || addKoppeling.isPending}
                   onClick={handleAddKoppeling}
-                >
-                  Toevoegen
-                </Button>
+                  text="Toevoegen"
+                />
               </nldd-container>
             </nldd-container>
           </nldd-form-section>
@@ -456,12 +455,8 @@ export function OpdrachtForm({ opdracht, onClose, onSuccess, defaults }: Opdrach
         {/* Submit */}
         <nldd-form-actions>
           <nldd-button-group orientation="horizontal">
-            <Button type="button" variant="secondary" onClick={onClose}>
-              Annuleren
-            </Button>
-            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-              {isEdit ? 'Opslaan' : 'Aanmaken'}
-            </Button>
+            <NlddButton type="button" variant="secondary" onClick={onClose} text="Annuleren" />
+            <NlddButton type="submit" disabled={createMutation.isPending || updateMutation.isPending} text={isEdit ? 'Opslaan' : 'Aanmaken'} />
           </nldd-button-group>
         </nldd-form-actions>
         </nldd-container>

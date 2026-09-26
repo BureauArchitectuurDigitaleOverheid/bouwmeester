@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
@@ -18,6 +17,7 @@ import { LeadInboxView } from '@/components/leads/LeadInboxView';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { LeadStage, LEAD_STAGE_LABELS } from '@/types';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type LeadViewMode = 'inbox' | 'kanban' | 'list' | 'graph' | 'timeline';
 
@@ -211,9 +211,7 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
             )}
 
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Wissen
-              </Button>
+              <NlddButton variant="neutral-transparent" size="sm" onClick={clearFilters} text="Wissen" />
             )}
           </nldd-container>
         </nldd-toolbar-item>
@@ -227,9 +225,7 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
-          <Button icon="plus" onClick={() => setShowIntake(true)}>
-            Nieuwe lead
-          </Button>
+          <NlddButton startIcon="plus" onClick={() => setShowIntake(true)} text="Nieuwe lead" />
           <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>

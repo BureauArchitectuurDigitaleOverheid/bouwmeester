@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useInitiatieven } from '@/hooks/useInitiatieven';
@@ -12,6 +11,7 @@ import { initiatiefPath } from '@/utils/initiatiefRoutes';
 import { richTextToPlain } from '@/utils/richtext';
 import { timeAgo } from '@/utils/dates';
 import type { InitiatiefListItem } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** True when the click asked for something other than plain navigation. */
 function isModifiedClick(event: MouseEvent): boolean {
@@ -119,9 +119,7 @@ export function InitiatievenPage() {
           </nldd-text>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end">
-          <Button icon="plus" onClick={() => setShowCreate(true)}>
-            Nieuw initiatief
-          </Button>
+          <NlddButton startIcon="plus" onClick={() => setShowCreate(true)} text="Nieuw initiatief" />
           <nldd-menu-item slot="overflow" text="Nieuw initiatief" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>

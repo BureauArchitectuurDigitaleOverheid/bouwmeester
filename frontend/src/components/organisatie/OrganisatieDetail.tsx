@@ -1,5 +1,4 @@
 import { useState, useCallback } from 'react';
-import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -10,6 +9,7 @@ import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/
 import { usePermissions } from '@/hooks/usePermissions';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** Org types where the manager role is labeled "Coördinator" instead of "Manager". */
 const COORDINATOR_TYPES = new Set(['cluster', 'team']);
@@ -356,27 +356,17 @@ export function OrganisatieDetail({
           )}
         </nldd-container>
         <nldd-container layout="row" gap="8">
-          <Button variant="secondary" size="sm" icon="pencil" onClick={onEdit}>
-            Bewerken
-          </Button>
-          <Button variant="danger" size="sm" icon="trash" onClick={onDelete}>
-            Verwijderen
-          </Button>
+          <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} text="Bewerken" />
+          <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} text="Verwijderen" />
         </nldd-container>
       </div>
 
       {/* Action buttons */}
       <nldd-container layout="wrap" gap="8">
-        <Button variant="secondary" size="sm" icon="plus" onClick={onAddChild}>
-          Subeenheid toevoegen
-        </Button>
-        <Button variant="secondary" size="sm" icon="person" onClick={onAddPerson}>
-          Persoon toevoegen
-        </Button>
+        <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={onAddChild} text="Subeenheid toevoegen" />
+        <NlddButton variant="secondary" size="sm" startIcon="person" onClick={onAddPerson} text="Persoon toevoegen" />
         {isSuperAdmin && (
-          <Button variant="secondary" size="sm" icon="sparkles" onClick={onAddAgent}>
-            Agent toevoegen
-          </Button>
+          <NlddButton variant="secondary" size="sm" startIcon="sparkles" onClick={onAddAgent} text="Agent toevoegen" />
         )}
       </nldd-container>
 

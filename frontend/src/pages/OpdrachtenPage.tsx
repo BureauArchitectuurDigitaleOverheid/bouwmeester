@@ -9,7 +9,6 @@ import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { Button } from '@/components/common/Button';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
@@ -33,6 +32,7 @@ import {
 import { Badge } from '@/components/common/Badge';
 import { formatCurrency, formatCurrencyCompact } from '@/utils/format';
 import { timeAgo } from '@/utils/dates';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const MY_OPDRACHTEN_SENTINEL = '__me__';
 
@@ -371,39 +371,34 @@ export function OpdrachtenPage() {
         </nldd-toolbar-item>
         {hasPermission('opdracht:update') && (
           <nldd-toolbar-item slot="end" priority={1}>
-            <Button
+            <NlddButton
               variant="secondary"
-              icon="sparkles"
+              startIcon="sparkles"
               loading={bulkMatch.isPending}
               onClick={() => bulkMatch.mutate(true)}
               disabled={bulkMatch.isPending}
-            >
-              {/* `Button` reads this exact className to detect a
-                  responsively-hidden label and turn it into the accessible
-                  name on narrow screens (see common/Button.tsx). */}
-              <span className="hidden-below-sm">{bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}</span>
-            </Button>
+              text={bulkMatch.isPending ? 'Matchen...' : 'Contacten & eenheden matchen'}
+              compactBelowSm
+            />
             <nldd-menu-item slot="overflow" text="Contacten & eenheden matchen" icon="sparkles"></nldd-menu-item>
           </nldd-toolbar-item>
         )}
         {fccEnabled && hasPermission('fcc:sync') && (
           <nldd-toolbar-item slot="end" priority={2}>
-            <Button
+            <NlddButton
               variant="secondary"
-              icon="refresh"
+              startIcon="refresh"
               loading={fccSync.isPending}
               onClick={() => fccSync.mutate()}
               disabled={fccSync.isPending}
-            >
-              <span className="hidden-below-sm">FCC Sync</span>
-            </Button>
+              text="FCC Sync"
+              compactBelowSm
+            />
             <nldd-menu-item slot="overflow" text="FCC Sync" icon="refresh"></nldd-menu-item>
           </nldd-toolbar-item>
         )}
         <nldd-toolbar-item slot="end" priority={4}>
-          <Button icon="plus" onClick={() => openOpdrachtCreate()}>
-            <span className="hidden-below-sm">Nieuwe opdracht</span>
-          </Button>
+          <NlddButton startIcon="plus" onClick={() => openOpdrachtCreate()} text="Nieuwe opdracht" compactBelowSm />
           <nldd-menu-item slot="overflow" text="Nieuwe opdracht" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>

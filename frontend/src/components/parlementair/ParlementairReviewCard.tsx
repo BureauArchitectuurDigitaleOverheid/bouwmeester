@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
 import { Card } from '@/components/common/Card';
-import { Button } from '@/components/common/Button';
 import { Select } from '@/components/common/Select';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import type { SelectOption } from '@/components/common/CreatableSelect';
@@ -43,6 +42,7 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import { formatDateLong } from '@/utils/dates';
 import type { CompleteReviewData, NodeTagResponse, Tag } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface FollowUpTaskRow {
   title: string;
@@ -91,14 +91,12 @@ function ExternalDocLink({
 /**
  * A node title that opens `NodeDetailModal` on click. `nldd-link` is `href`-
  * only (a real navigation target), which this isn't: it opens a modal. So it
- * is `Button` (the `nldd-button` wrapper) at its smallest ghost styling rather
+ * is `NlddButton` at its smallest transparent styling rather
  * than a raw `<button>`.
  */
 function NlddButtonLink({ text, onClick }: { text: string; onClick: () => void }) {
   return (
-    <Button variant="ghost" size="sm" onClick={onClick} singleLine>
-      {text}
-    </Button>
+    <NlddButton variant="neutral-transparent" size="sm" onClick={onClick} singleLine text={text} />
   );
 }
 
@@ -452,14 +450,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           {/* Quick links bar */}
           <nldd-container layout="row" gap="12" vertical-alignment="center">
             {item.corpus_node_id && (
-              <Button
-                variant="ghost"
+              <NlddButton
+                variant="neutral-transparent"
                 size="sm"
-                icon="external-link"
+                startIcon="external-link"
                 onClick={() => navigate(`/nodes/${item.corpus_node_id}`)}
-              >
-                Bekijk node
-              </Button>
+                text="Bekijk node"
+              />
             )}
             {item.document_url && (
               <ExternalDocLink href={item.document_url} label="Bekijk op tweedekamer.nl" />
@@ -682,9 +679,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             {/* Add edge toggle */}
             {!showAddEdge && (
               corpusNodeId ? (
-                <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddEdge(true)}>
-                  Verbinding toevoegen
-                </Button>
+                <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddEdge(true)} text="Verbinding toevoegen" />
               ) : (
                 <nldd-text size="xs" color="secondary">
                   Geen corpus-node gekoppeld — verbindingen kunnen niet worden toegevoegd.
@@ -723,26 +718,24 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       </nldd-text>
                     )}
                     <nldd-container layout="row" gap="8" vertical-alignment="center">
-                      <Button
+                      <NlddButton
                         size="sm"
                         onClick={handleAddEdge}
                         disabled={!newEdgeTargetId || !newEdgeTypeId || createEdge.isPending}
                         loading={createEdge.isPending}
-                      >
-                        Toevoegen
-                      </Button>
-                      <Button
+                        text="Toevoegen"
+                      />
+                      <NlddButton
                         size="sm"
-                        variant="ghost"
+                        variant="neutral-transparent"
                         onClick={() => {
                           setShowAddEdge(false);
                           setNewEdgeTargetId('');
                           setNewEdgeTypeId('');
                           createEdge.reset();
                         }}
-                      >
-                        Annuleren
-                      </Button>
+                        text="Annuleren"
+                      />
                     </nldd-container>
                   </nldd-container>
                 </nldd-list-item>
@@ -791,9 +784,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   ))}
                 </nldd-list>
               )}
-              <Button variant="ghost" size="sm" icon="plus" onClick={addTaskRow}>
-                Taak toevoegen
-              </Button>
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={addTaskRow} text="Taak toevoegen" />
             </nldd-container>
           )}
 
@@ -813,37 +804,34 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           {/* Bottom actions */}
           {item.status === 'imported' && (
             <nldd-container layout="row" gap="12" vertical-alignment="center" padding-top="8">
-              <Button
+              <NlddButton
                 size="sm"
                 onClick={handleCompleteSubmit}
                 disabled={!eigenaarId || completeReview.isPending}
                 loading={completeReview.isPending}
-              >
-                Beoordeling afronden
-              </Button>
-              <Button
+                text="Beoordeling afronden"
+              />
+              <NlddButton
                 size="sm"
-                variant="ghost"
+                variant="neutral-transparent"
                 onClick={() => rejectItem.mutate(item.id)}
-              >
-                Niet relevant
-              </Button>
+                text="Niet relevant"
+              />
             </nldd-container>
           )}
 
           {/* Reopen action for rejected/out_of_scope items */}
           {(item.status === 'out_of_scope' || item.status === 'rejected') && (
             <nldd-container padding-top="8">
-              <Button
+              <NlddButton
                 size="sm"
-                variant="ghost"
-                icon="undo"
+                variant="neutral-transparent"
+                startIcon="undo"
                 onClick={() => reopenItem.mutate(item.id)}
                 disabled={reopenItem.isPending}
                 loading={reopenItem.isPending}
-              >
-                Heropenen voor beoordeling
-              </Button>
+                text="Heropenen voor beoordeling"
+              />
             </nldd-container>
           )}
         </nldd-container>

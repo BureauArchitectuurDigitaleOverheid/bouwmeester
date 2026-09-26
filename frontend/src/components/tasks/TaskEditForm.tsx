@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm';
@@ -15,6 +14,7 @@ import {
   TASK_STATUS_LABELS,
 } from '@/types';
 import type { Task } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface TaskEditFormProps {
   open: boolean;
@@ -65,8 +65,8 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
     setAssigneeId(personId);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!title.trim()) return;
 
     await updateTask.mutateAsync({
@@ -103,47 +103,41 @@ export function TaskEditForm({ open, onClose, task }: TaskEditFormProps) {
               {showDeleteConfirm ? (
                 <nldd-container layout="row" gap="8" vertical-alignment="center">
                   <nldd-text size="sm" color="critical">Weet je het zeker?</nldd-text>
-                  <Button
-                    variant="danger"
+                  <NlddButton
+                    variant="destructive"
                     size="sm"
                     onClick={handleDelete}
                     loading={deleteTaskMutation.isPending}
-                  >
-                    Verwijderen
-                  </Button>
-                  <Button
-                    variant="ghost"
+                    text="Verwijderen"
+                  />
+                  <NlddButton
+                    variant="neutral-transparent"
                     size="sm"
                     onClick={() => setShowDeleteConfirm(false)}
-                  >
-                    Annuleren
-                  </Button>
+                    text="Annuleren"
+                  />
                 </nldd-container>
               ) : (
-                <Button
-                  variant="ghost"
+                <NlddButton
+                  variant="neutral-transparent"
                   size="sm"
                   onClick={() => setShowDeleteConfirm(true)}
-                  icon="trash"
-                >
-                  Verwijderen
-                </Button>
+                  startIcon="trash"
+                  text="Verwijderen"
+                />
               )}
             </div>
             {/* Pushes the cancel/save actions to the far edge, mirroring the
                 delete action on the left. */}
             <nldd-spacer size="flexible" direction="horizontal" />
             <nldd-container layout="row" gap="12">
-              <Button variant="secondary" onClick={onClose}>
-                Annuleren
-              </Button>
-              <Button
+              <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
+              <NlddButton
                 onClick={handleSubmit}
                 loading={updateTask.isPending}
                 disabled={!title.trim()}
-              >
-                Opslaan
-              </Button>
+                text="Opslaan"
+              />
             </nldd-container>
           </nldd-container>
         }

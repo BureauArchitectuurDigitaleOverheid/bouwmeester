@@ -1,12 +1,12 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useCreatePerson } from '@/hooks/usePeople';
 import { checkDuplicates } from '@/api/people';
 import type { DuplicateCheckHit } from '@/api/people';
 import { useDebounce } from '@/hooks/useDebounce';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface DuplicateRowProps {
   hit: DuplicateCheckHit;
@@ -122,26 +122,22 @@ export function PersonQuickCreateForm({
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
-          </Button>
+          <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
           {hasDuplicates ? (
-            <Button
+            <NlddButton
               onClick={() => doCreate(true)}
               loading={createPerson.isPending}
               disabled={!naam.trim()}
               variant="secondary"
-            >
-              Toch aanmaken
-            </Button>
+              text="Toch aanmaken"
+            />
           ) : (
-            <Button
+            <NlddButton
               onClick={() => doCreate(false)}
               loading={createPerson.isPending}
               disabled={!naam.trim()}
-            >
-              Aanmaken
-            </Button>
+              text="Aanmaken"
+            />
           )}
         </>
       }

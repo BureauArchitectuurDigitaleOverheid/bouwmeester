@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';

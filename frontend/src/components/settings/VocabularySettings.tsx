@@ -1,6 +1,6 @@
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { VOCABULARY_LABELS, type VocabularyId } from '@/vocabulary';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { Icon } from '@/components/nldd/Icon';
 
 export function VocabularySettings() {

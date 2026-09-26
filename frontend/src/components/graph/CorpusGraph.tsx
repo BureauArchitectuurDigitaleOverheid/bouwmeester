@@ -18,7 +18,6 @@ import { GraphNode, type GraphNodeData } from './GraphNode';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateEdge } from '@/hooks/useEdges';
 import { NodeType, NODE_TYPE_HEX_COLORS } from '@/types';
@@ -32,6 +31,7 @@ import { generateBridgeEdges, type BridgeEdge } from '@/utils/bridgeEdges';
 // ---- Layout algorithm using dagre ----
 
 import dagre from 'dagre';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /**
  * Conceptual rank for each node type. Lower rank = higher on screen.
@@ -413,16 +413,13 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => setPendingConnection(null)}>
-              Annuleren
-            </Button>
-            <Button
+            <NlddButton variant="secondary" onClick={() => setPendingConnection(null)} text="Annuleren" />
+            <NlddButton
               onClick={handleCreateEdge}
               loading={createEdge.isPending}
               disabled={!newEdgeType}
-            >
-              Toevoegen
-            </Button>
+              text="Toevoegen"
+            />
           </>
         }
       >

@@ -270,34 +270,14 @@
   background-color: var(--semantics-overlays-backdrop-color);
 }
 
-/* # Responsive label inside a Button
+/* # Hidden below `sm`
  *
- * A label that only shows once there is room for it beside an icon: hidden
- * below `sm`, inline from `sm` up. Inside a `Button` the class itself does
- * nothing, because `nldd-button` does not display slotted text: `Button.tsx`
- * reads this exact class name off a `<span>` child and applies the same
- * breakpoint itself, as the label from `sm` up and as the accessible name
- * below it — see `findSpanLabel`.
- */
-.hidden-below-sm {
-  display: none;
-}
-@media (min-width: 640px) {
-  .hidden-below-sm {
-    display: inline;
-  }
-}
-
-/**
- * The same, for an element that brings its own `display`.
- *
- * `hidden-below-sm` forces `display: inline` above the breakpoint, which is
- * right for a `<span>` of label text and wrong for anything that lays out its
- * children: on an `nldd-container` it flattens the row to inline and its
- * contents measure zero.
+ * For a button's label use `NlddButton compactBelowSm` instead: `nldd-button`
+ * does not display slotted text, so a class on a child would do nothing.
  *
  * `revert` hands the display back to whatever the component's own stylesheet
- * sets, instead of this file guessing at it.
+ * sets, instead of this file guessing at it. A fixed `display: inline` would
+ * flatten an `nldd-container` row, and its contents would measure zero.
  */
 .hidden-below-sm-block {
   display: none;

@@ -6,7 +6,6 @@ import {
 } from '@/hooks/useSamenwerkingsverbanden';
 import { Badge } from '@/components/common/Badge';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
@@ -20,6 +19,7 @@ import {
   type Samenwerkingsverband,
   type SamenwerkingsverbandCreate,
 } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const ALL_TYPE_OPTIONS: SelectOption[] = [
   { value: '', label: 'Alle types' },
@@ -162,13 +162,13 @@ export function SamenwerkingsverbandenPage() {
           </nldd-container>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end">
-          <Button
+          <NlddButton
             variant="primary"
-            icon="plus"
+            startIcon="plus"
             onClick={() => { resetForm(); setShowForm(true); }}
-          >
-            <span className="hidden-below-sm">Nieuw samenwerkingsverband</span>
-          </Button>
+            text="Nieuw samenwerkingsverband"
+            compactBelowSm
+          />
           <nldd-menu-item slot="overflow" text="Nieuw samenwerkingsverband" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>
@@ -225,8 +225,8 @@ export function SamenwerkingsverbandenPage() {
                 />
                 {error && <nldd-text size="sm" color="critical">{error}</nldd-text>}
                 <nldd-container layout="row" gap="8" horizontal-alignment="right">
-                  <Button variant="secondary" onClick={resetForm} type="button">Annuleren</Button>
-                  <Button type="submit" loading={createMutation.isPending}>Aanmaken</Button>
+                  <NlddButton variant="secondary" onClick={resetForm} type="button" text="Annuleren" />
+                  <NlddButton type="submit" loading={createMutation.isPending} text="Aanmaken" />
                 </nldd-container>
               </nldd-container>
             </form>

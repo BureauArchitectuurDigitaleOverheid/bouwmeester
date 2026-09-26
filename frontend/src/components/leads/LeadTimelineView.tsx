@@ -3,7 +3,7 @@ import { format, isToday, isYesterday, subDays, subMonths } from 'date-fns';
 import { nl } from 'date-fns/locale';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { Icon } from '@/components/nldd/Icon';
 import { useNlddEvent } from '@/components/nldd/events';
 import { LeadMetricsBar } from './LeadMetricsBar';

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AiActionButton } from '@/components/common/AiActionButton';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { suggestTags } from '@/api/llm';
 import type { TagSuggestionResponse } from '@/types';
 

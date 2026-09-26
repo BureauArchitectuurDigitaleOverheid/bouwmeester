@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Icon } from '@/components/nldd/Icon';
@@ -12,6 +11,7 @@ import { useEdges, useDeleteEdge } from '@/hooks/useEdges';
 import { NODE_TYPE_COLORS } from '@/types';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useVocabulary } from '@/contexts/VocabularyContext';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** An `nldd-list-item-segment[button]` with its click bridged to React. */
 function ClickableSegment({
@@ -53,14 +53,13 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
       <nldd-container layout="row" gap="8" vertical-alignment="center" horizontal-alignment="left">
         <nldd-title size={6}><h3>Verbindingen ({edges.length})</h3></nldd-title>
         <nldd-spacer direction="horizontal" size="flexible" />
-        <Button
+        <NlddButton
           variant="secondary"
           size="sm"
-          icon="plus"
+          startIcon="plus"
           onClick={() => setShowAddForm(true)}
-        >
-          Verbinding toevoegen
-        </Button>
+          text="Verbinding toevoegen"
+        />
       </nldd-container>
 
       {edges.length > 0 ? (
@@ -117,13 +116,12 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
           title="Geen verbindingen"
           description="Deze node heeft nog geen verbindingen met andere nodes."
           action={
-            <Button
+            <NlddButton
               variant="secondary"
               size="sm"
               onClick={() => setShowAddForm(true)}
-            >
-              Eerste verbinding toevoegen
-            </Button>
+              text="Eerste verbinding toevoegen"
+            />
           }
         />
       )}

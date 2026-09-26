@@ -2,7 +2,7 @@ import { useRef, useState, useMemo } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';

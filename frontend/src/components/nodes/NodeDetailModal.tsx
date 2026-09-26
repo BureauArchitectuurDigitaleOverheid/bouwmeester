@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { Icon } from '@/components/nldd/Icon';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { ReferencesList } from '@/components/common/ReferencesList';
@@ -29,6 +28,7 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { formatDateLong } from '@/utils/dates';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /**
  * Icon per node type, for the modal's header. `nldd-icon`'s closed set has no
@@ -134,36 +134,33 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             onClose={onClose}
             actions={
               <>
-                <Button
+                <NlddButton
                   variant="secondary"
                   size="sm"
-                  icon="pencil"
+                  startIcon="pencil"
                   onClick={() => setShowEdit(true)}
                   disabled={!node}
-                >
-                  Bewerken
-                </Button>
-                <Button
+                  text="Bewerken"
+                />
+                <NlddButton
                   variant="secondary"
                   size="sm"
-                  icon="external-link"
+                  startIcon="external-link"
                   onClick={() => {
                     onClose();
                     navigate(`/nodes/${nodeId}`, { state: { fromCorpus: location.pathname + location.search } });
                   }}
                   disabled={!node}
-                >
-                  Openen
-                </Button>
-                <Button
-                  variant="danger"
+                  text="Openen"
+                />
+                <NlddButton
+                  variant="destructive"
                   size="sm"
-                  icon="trash"
+                  startIcon="trash"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={!node}
-                >
-                  Verwijderen
-                </Button>
+                  text="Verwijderen"
+                />
               </>
             }
           />
@@ -297,14 +294,13 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               count={openTasks.length}
               separated
               action={
-                <Button
-                  variant="ghost"
+                <NlddButton
+                  variant="neutral-transparent"
                   size="sm"
-                  icon="plus"
+                  startIcon="plus"
                   onClick={() => setShowTaskCreate(true)}
-                >
-                  Taak
-                </Button>
+                  text="Taak"
+                />
               }
             >
               <RelatedItemsList

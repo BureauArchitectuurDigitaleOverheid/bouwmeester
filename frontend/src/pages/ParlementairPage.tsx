@@ -2,7 +2,6 @@ import { useState, useCallback, useId, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useToast } from '@/contexts/ToastContext';
-import { Button } from '@/components/common/Button';
 import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -22,6 +21,7 @@ import {
   ALL_PARLEMENTAIR_TYPES,
 } from '@/types';
 import type { ReprocessResult } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const REPROCESS_TYPES = ['toezegging', 'motie', 'kamervraag'] as const;
 
@@ -225,16 +225,15 @@ export function ParlementairPage() {
           </nldd-container>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end">
-          <Button
+          <NlddButton
             id={reprocessMenuTriggerId}
             variant="secondary"
-            icon="undo"
+            startIcon="undo"
             loading={reprocess.isPending}
             disabled={eitherPending}
             title="Herverwerk kamerstukken die nog geen koppelingen hebben via LLM-matching"
-          >
-            {reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
-          </Button>
+            text={reprocess.isPending ? 'Herverwerken...' : 'Herverwerk kamerstukken'}
+          />
           <nldd-menu anchor={reprocessMenuTriggerId}>
             <MenuItem text="Alle kamerstukken" onClick={handleReprocessAll} />
             {REPROCESS_TYPES.map((t) => (
@@ -244,15 +243,14 @@ export function ParlementairPage() {
           <nldd-menu-item slot="overflow" text="Herverwerk kamerstukken" icon="undo" />
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
-          <Button
-            icon="refresh"
+          <NlddButton
+            startIcon="refresh"
             loading={triggerImport.isPending}
             onClick={() => triggerImport.mutate()}
             disabled={eitherPending}
             title="Haal nieuwe kamerstukken op uit de Tweede en Eerste Kamer"
-          >
-            {triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
-          </Button>
+            text={triggerImport.isPending ? 'Importeren...' : 'Importeer nieuwe kamerstukken'}
+          />
           <nldd-menu-item slot="overflow" text="Importeer nieuwe kamerstukken" icon="refresh" />
         </nldd-toolbar-item>
       </nldd-toolbar>

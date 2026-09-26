@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState, useMemo, type ReactNode } from 'react';
 import { useAppConfig, useUpdateAppConfig, type AppConfigEntry } from '@/hooks/useAdmin';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 
 interface ConfigGroup {

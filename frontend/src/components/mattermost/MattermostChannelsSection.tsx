@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState } from 'react';
-import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Icon } from '@/components/nldd/Icon';
@@ -19,6 +18,7 @@ import type {
   MattermostChannelLink,
   MattermostChannelSearchResult,
 } from '@/api/mattermostChannels';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type Scope =
   | { type: 'initiatief'; id: string }
@@ -64,9 +64,7 @@ export function MattermostChannelsSection({ scope }: Props) {
             </nldd-text>
           </nldd-container>
         </nldd-container>
-        <Button variant="secondary" size="sm" icon="plus" onClick={() => setPickerOpen(true)}>
-          Kanaal koppelen
-        </Button>
+        <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={() => setPickerOpen(true)} text="Kanaal koppelen" />
       </nldd-container>
 
       {query.isLoading && (
@@ -364,9 +362,7 @@ function ChannelSearchRow({
           }
           width="full"
         />
-        <Button size="sm" variant="primary" icon="link" onClick={onPick} disabled={pending}>
-          Koppelen
-        </Button>
+        <NlddButton size="sm" variant="primary" startIcon="link" onClick={onPick} disabled={pending} text="Koppelen" />
       </nldd-container>
     </nldd-list-item>
   );

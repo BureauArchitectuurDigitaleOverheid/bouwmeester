@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { useToast } from '@/contexts/ToastContext';
 import { FileUpload } from '@/components/common/FileUpload';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   exportDatabase,

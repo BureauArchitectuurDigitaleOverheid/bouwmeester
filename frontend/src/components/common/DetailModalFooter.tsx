@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button } from './Button';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface DetailModalFooterProps {
   actions: ReactNode;
@@ -28,9 +28,7 @@ export function DetailModalFooter({ actions, onClose }: DetailModalFooterProps) 
       >
         {actions}
       </nldd-container>
-      <Button variant="secondary" onClick={onClose}>
-        Sluiten
-      </Button>
+      <NlddButton variant="secondary" onClick={onClose} text="Sluiten" />
     </nldd-container>
   );
 }

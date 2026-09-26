@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { Select } from '@/components/common/Select';
@@ -18,6 +17,7 @@ import { INITIATIEF_ROL_LABELS } from '@/types';
 import type { InitiatiefDetail } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { SectionHeading } from './SectionHeading';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /**
  * The "Mensen" tab: who works on the initiatief (members and eenheden, which
@@ -85,15 +85,11 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
                   <div className="hug">
                     {member.rol === 'eigenaar' ? (
                       eigenaarCount > 1 && (
-                        <Button variant="ghost" size="sm" onClick={() => setRole(member.person_id, 'contributor')}>
-                          Maak bijdrager
-                        </Button>
+                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'contributor')} text="Maak bijdrager" />
                       )
                     ) : (
                       <>
-                        <Button variant="ghost" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')}>
-                          Maak eigenaar
-                        </Button>
+                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
                         <NlddIconButton
                           icon="close"
                           accessibleLabel={`${member.person_naam} verwijderen`}
@@ -130,17 +126,16 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
               emptyMessage="Geen personen gevonden"
             />
           </nldd-container>
-          <Button
+          <NlddButton
             variant="secondary"
             size="sm"
-            icon="person-badge-plus"
+            startIcon="person-badge-plus"
             onClick={() => {
               if (addMemberValue) handleAddMember(addMemberValue);
             }}
             disabled={!addMemberValue}
-          >
-            Toevoegen
-          </Button>
+            text="Toevoegen"
+          />
         </nldd-container>
       )}
     </nldd-container>
@@ -254,17 +249,16 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
               emptyMessage="Geen eenheden gevonden"
             />
           </nldd-container>
-          <Button
+          <NlddButton
             variant="secondary"
             size="sm"
-            icon="apartment-building"
+            startIcon="apartment-building"
             onClick={() => {
               if (addEenheidValue) handleAddEenheid(addEenheidValue);
             }}
             disabled={!addEenheidValue}
-          >
-            Toevoegen
-          </Button>
+            text="Toevoegen"
+          />
         </nldd-container>
       )}
     </nldd-container>

@@ -2,13 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { CascadingOrgSelect } from '@/components/common/CascadingOrgSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { NlddButton } from '@/components/nldd/NlddLink';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   usePeople,
@@ -28,6 +26,7 @@ import type { Person, PersonFormSubmitParams } from '@/types';
 import { errorDetail } from '@/api/client';
 import { matchEmailOrganisatie } from '@/api/people';
 import { usePermissions } from '@/hooks/usePermissions';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 // Character names from Bordewijk's novel "Karakter" — used as agent names
 const KARAKTER_NAMEN = [
@@ -339,8 +338,8 @@ export function PersonEditForm({
       ? !!naam.trim() // edit mode: only naam required (emails managed separately)
       : naam.trim() && (isAgent || email.trim()); // create mode: naam + email (unless agent)
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!isValid) return;
 
     if (editData) {
@@ -528,21 +527,16 @@ export function PersonEditForm({
       closeable={!isShowingKey}
       footer={
         isShowingKey ? (
-          <Button onClick={onClose}>
-            Ik heb de sleutel gekopieerd
-          </Button>
+          <NlddButton onClick={onClose} text="Ik heb de sleutel gekopieerd" />
         ) : (
           <>
-            <Button variant="secondary" onClick={onClose}>
-              Annuleren
-            </Button>
-            <Button
+            <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
+            <NlddButton
               onClick={handleSubmit}
               loading={isLoading}
               disabled={!isValid}
-            >
-              {submitLabel}
-            </Button>
+              text={submitLabel}
+            />
           </>
         )
       }

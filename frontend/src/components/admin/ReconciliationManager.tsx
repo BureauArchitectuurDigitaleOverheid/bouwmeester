@@ -9,14 +9,13 @@ import {
   type OrphanScanResult,
 } from '@/api/reconciliation';
 import { getOrganisatieFlatMetHistorisch } from '@/api/organisatie';
-import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type Status = 'open' | 'merged' | 'ignored';
 
@@ -176,9 +175,7 @@ function ManualMergePanel() {
 
         {canMerge && !confirming && (
           <nldd-container horizontal-alignment="right">
-            <Button variant="primary" onClick={() => setConfirming(true)}>
-              Mergen…
-            </Button>
+            <NlddButton variant="primary" onClick={() => setConfirming(true)} text="Mergen…" />
           </nldd-container>
         )}
 
@@ -286,13 +283,12 @@ export function ReconciliationManager() {
               </nldd-text>
             )}
           </nldd-text>
-          <Button
+          <NlddButton
             onClick={() => orphanScanMutation.mutate()}
             disabled={orphanScanMutation.isPending}
             variant="secondary"
-          >
-            {orphanScanMutation.isPending ? 'Bezig…' : 'Scan starten'}
-          </Button>
+            text={orphanScanMutation.isPending ? 'Bezig…' : 'Scan starten'}
+          />
         </nldd-container>
       </Card>
 

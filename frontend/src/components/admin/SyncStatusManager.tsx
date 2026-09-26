@@ -10,7 +10,7 @@ import {
 } from '@/api/syncStatus';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const ENDPOINTS: SyncEndpoint[] = [
   'tooi',

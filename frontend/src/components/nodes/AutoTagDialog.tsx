@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { useNlddEvent } from '@/components/nldd/events';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface AutoTagDialogProps {
   open: boolean;
@@ -55,16 +55,13 @@ export function AutoTagDialog({
       title="Tag-suggesties"
       footer={
         <nldd-container layout="row" gap="8" horizontal-alignment="right">
-          <Button variant="ghost" onClick={handleSkip}>
-            Overslaan
-          </Button>
-          <Button
+          <NlddButton variant="neutral-transparent" onClick={handleSkip} text="Overslaan" />
+          <NlddButton
             onClick={handleAcceptAll}
             disabled={selected.size === 0}
-            icon="sparkles"
-          >
-            Toevoegen ({selected.size})
-          </Button>
+            startIcon="sparkles"
+            text={`Toevoegen (${selected.size})`}
+          />
         </nldd-container>
       }
     >

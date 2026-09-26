@@ -11,7 +11,7 @@ import {
   setStoredPersonId,
 } from '@/api/webauthn';
 import { useAuth } from '@/contexts/AuthContext';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { Icon } from '@/components/nldd/Icon';
 

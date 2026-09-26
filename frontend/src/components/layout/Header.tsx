@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { useNlddEvent, useNlddValue, eventValue } from '@/components/nldd/events';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';

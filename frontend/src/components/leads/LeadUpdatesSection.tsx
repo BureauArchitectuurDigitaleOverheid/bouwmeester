@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { Button } from '@/components/common/Button';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { DetailSection } from '@/components/common/DetailSection';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
@@ -18,6 +17,7 @@ import {
 } from '@/hooks/useLeadUpdates';
 import { formatDateLong } from '@/utils/dates';
 import type { LeadUpdatePost } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface Draft {
   titel: string;
@@ -185,9 +185,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
           {posts.length === 0 ? 'Nog geen updates' : `${posts.length} totaal`}
         </nldd-text>
         {!composing && (
-          <Button variant="secondary" size="sm" onClick={startCompose}>
-            Nieuwe update
-          </Button>
+          <NlddButton variant="secondary" size="sm" onClick={startCompose} text="Nieuwe update" />
         )}
       </nldd-container>
 
@@ -219,28 +217,26 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                     label="Neem bestaande bijlagen op deze lead mee (screenshots, documenten)"
                   />
                   <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-                    <Button
+                    <NlddButton
                       size="sm"
                       variant="secondary"
-                      icon="sparkles"
+                      startIcon="sparkles"
                       onClick={() => runExtract(false)}
                       disabled={
                         parseMutation.isPending ||
                         (!rawText.trim() && files.length === 0 && !includeAttachments)
                       }
-                    >
-                      AI: extract uit invoer
-                    </Button>
-                    <Button
+                      text="AI: extract uit invoer"
+                    />
+                    <NlddButton
                       size="sm"
                       variant="secondary"
-                      icon="sparkles"
+                      startIcon="sparkles"
                       onClick={() => runExtract(true)}
                       disabled={parseMutation.isPending}
                       title="Genereer een update op basis van notities, contacten, recente activity én bestaande bijlagen op deze lead"
-                    >
-                      AI: uit lead-historie
-                    </Button>
+                      text="AI: uit lead-historie"
+                    />
                     {parseMutation.isPending && (
                       <nldd-text size="xs" color="secondary">Bezig...</nldd-text>
                     )}
@@ -287,24 +283,20 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
             </nldd-container>
 
             <nldd-container layout="row" gap="8" horizontal-alignment="right">
-              <Button variant="secondary" size="sm" onClick={cancel}>
-                Annuleren
-              </Button>
-              <Button
+              <NlddButton variant="secondary" size="sm" onClick={cancel} text="Annuleren" />
+              <NlddButton
                 variant="secondary"
                 size="sm"
                 onClick={() => handleSave(false)}
                 disabled={!draft.titel.trim() || parseMutation.isPending}
-              >
-                Opslaan als concept
-              </Button>
-              <Button
+                text="Opslaan als concept"
+              />
+              <NlddButton
                 size="sm"
                 onClick={() => handleSave(true)}
                 disabled={!draft.titel.trim() || parseMutation.isPending}
-              >
-                {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
-              </Button>
+                text={editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
+              />
             </nldd-container>
           </nldd-container>
         </nldd-card>

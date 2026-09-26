@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import type {
@@ -12,6 +11,7 @@ import type {
 import { ORGANISATIE_TYPE_OPTIONS, formatFunctie } from '@/types';
 import { useOrganisatieFlat, useOrganisatiePersonen } from '@/hooks/useOrganisatie';
 import { usePermissions } from '@/hooks/usePermissions';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface OrganisatieFormProps {
   open: boolean;
@@ -95,8 +95,8 @@ export function OrganisatieForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, editData, defaultParentId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!naam.trim() || !type) return;
 
     // Detect empty TipTap document — treat as null
@@ -144,16 +144,13 @@ export function OrganisatieForm({
       title={title}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
-          </Button>
-          <Button
+          <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
+          <NlddButton
             onClick={handleSubmit}
             loading={isLoading}
             disabled={!naam.trim() || !type}
-          >
-            {editData ? 'Opslaan' : 'Toevoegen'}
-          </Button>
+            text={editData ? 'Opslaan' : 'Toevoegen'}
+          />
         </>
       }
     >

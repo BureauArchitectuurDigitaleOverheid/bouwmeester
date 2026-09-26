@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { usePeople } from '@/hooks/usePeople';
 import { useAddLeadContact } from '@/hooks/useLeads';
@@ -12,6 +11,7 @@ import {
   type ContactPersonFieldsState,
 } from '@/components/leads/contactPersonFields';
 import { LEAD_CONTACT_ROL_LABELS } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const DEFAULT_CONTACT_ROLLEN: SelectOption[] = Object.entries(
   LEAD_CONTACT_ROL_LABELS,
@@ -137,29 +137,23 @@ export function AddLeadContactModal({ leadId, onClose }: Props) {
       footer={
         mode === 'create' ? (
           <>
-            <Button variant="secondary" onClick={() => setMode('select')}>
-              Terug
-            </Button>
-            <Button
+            <NlddButton variant="secondary" onClick={() => setMode('select')} text="Terug" />
+            <NlddButton
               onClick={handleSubmitCreate}
               loading={isPending}
               disabled={!fields.naam.trim()}
-            >
-              Aanmaken & koppelen
-            </Button>
+              text="Aanmaken & koppelen"
+            />
           </>
         ) : (
           <>
-            <Button variant="secondary" onClick={resetAndClose}>
-              Annuleren
-            </Button>
-            <Button
+            <NlddButton variant="secondary" onClick={resetAndClose} text="Annuleren" />
+            <NlddButton
               onClick={handleSubmitSelect}
               loading={addContact.isPending}
               disabled={!personId}
-            >
-              Toevoegen
-            </Button>
+              text="Toevoegen"
+            />
           </>
         )
       }

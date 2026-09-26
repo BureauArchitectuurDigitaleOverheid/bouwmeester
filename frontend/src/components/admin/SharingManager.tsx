@@ -3,7 +3,7 @@ import { useSharing, useCreateSharing, useDeleteSharing } from '@/hooks/useShari
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { usePermissions } from '@/hooks/usePermissions';
 import type { SharingGrantCreate } from '@/hooks/useSharing';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';

@@ -13,7 +13,7 @@ import { GlobalDropOverlay } from '@/components/common/GlobalDropOverlay';
 import { FileActionChooser } from '@/components/common/FileActionChooser';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 import { orUndef } from '@/components/nldd/events';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** The subset of nldd-navigation-split-view's imperative API we drive. */
 type SplitViewElement = HTMLElement & {

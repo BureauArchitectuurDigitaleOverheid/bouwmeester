@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PersonList } from '@/components/people/PersonList';
 import { PersonEditForm } from '@/components/people/PersonEditForm';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { usePeople } from '@/hooks/usePeople';
 import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import type { Person } from '@/types';

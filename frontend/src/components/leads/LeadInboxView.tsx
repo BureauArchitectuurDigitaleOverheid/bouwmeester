@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef, useCallback } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { orUndef, useNlddEvent, useNlddOverlay } from '@/components/nldd/events';
 import { useLeads, useUpdateLead, useMoveLead } from '@/hooks/useLeads';
