@@ -92,9 +92,17 @@ const components: Components = {
     if (bm) {
       // A button, not a link: it navigates inside the app and has no URL to
       // open in a new tab. Click handling sits on the container, so this only
-      // has to carry the target.
+      // has to carry the target. `plain-button` drops the browser chrome; the
+      // color and underline repeat what nldd-rich-text gives a raw <a>, so it
+      // still reads as a link in running text.
       return (
-        <button type="button" data-bm-type={bm.type} data-bm-id={bm.id}>
+        <button
+          type="button"
+          className="plain-button"
+          style={{ color: 'var(--semantics-links-color)', textDecoration: 'underline' }}
+          data-bm-type={bm.type}
+          data-bm-id={bm.id}
+        >
           {children}
         </button>
       );
@@ -130,6 +138,8 @@ const components: Components = {
     ) {
       return <>{children}</>;
     }
+    // A plain <pre>, not nldd-code-viewer: that element is CodeMirror, which
+    // register.ts keeps out of the main chunk, and nldd-rich-text styles <pre>.
     return <pre>{children}</pre>;
   },
 };

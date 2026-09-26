@@ -22,7 +22,7 @@ export function MattermostStep({ onComplete }: { onComplete: () => void }) {
 
   if (linked) {
     return (
-      <nldd-container gap="12" horizontal-alignment="center" padding-block="32" style={{ textAlign: 'center' }}>
+      <nldd-container gap="12" horizontal-alignment="center" padding-block="32">
         <nldd-inline-dialog variant="success" text="Mattermost gekoppeld" supporting-text="Je ontvangt nu notificaties in Mattermost." />
         <NlddButton text="Doorgaan" onClick={onComplete} />
       </nldd-container>

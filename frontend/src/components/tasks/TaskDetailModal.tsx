@@ -9,6 +9,7 @@ import { ReferencesList } from '@/components/common/ReferencesList';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { TaskEditForm } from './TaskEditForm';
 import { TaskCreateForm } from './TaskCreateForm';
 import { useTask, useReorderSubtasks } from '@/hooks/useTasks';
@@ -214,9 +215,7 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
         }
       >
         {isLoading ? (
-          <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding-block="32">
-            <nldd-text size="sm" color="secondary">Laden...</nldd-text>
-          </nldd-container>
+          <LoadingSpinner padding="32" />
         ) : !task ? (
           <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding-block="32">
             <nldd-text size="sm" color="secondary">Taak niet gevonden.</nldd-text>

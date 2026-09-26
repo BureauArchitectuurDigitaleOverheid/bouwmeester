@@ -141,7 +141,7 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
             text="Geen toegang"
             {...(email ? { 'supporting-text': `Ingelogd als ${email}` } : {})}
           >
-            <nldd-container gap="16" horizontal-alignment="center" style={{ marginTop: '16px' }}>
+            <nldd-container gap="16" horizontal-alignment="center" padding-top="16">
               {state.step === 'idle' && (
                 <>
                   <nldd-text color="secondary">
@@ -240,7 +240,11 @@ function AccessRequestForm({ onSubmit }: { onSubmit: (naam: string) => void }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ width: '100%', textAlign: 'left' }}>
+    // nldd-form sets container-type: inline-size, so in the centered parent it
+    // would shrink to nothing; the full-width container gives it a width.
+    <nldd-container>
+      <nldd-form>
+      <form onSubmit={handleSubmit}>
       <nldd-container gap="12">
         <nldd-form-field label="Je volledige naam">
           <nldd-text-field
@@ -254,6 +258,8 @@ function AccessRequestForm({ onSubmit }: { onSubmit: (naam: string) => void }) {
         </nldd-form-field>
         <NlddButton type="submit" text="Verzoek versturen" width="full" disabled={!naam.trim()} />
       </nldd-container>
-    </form>
+      </form>
+      </nldd-form>
+    </nldd-container>
   );
 }
