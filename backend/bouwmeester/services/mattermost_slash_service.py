@@ -9,6 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.authz import can
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
@@ -31,6 +32,10 @@ from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escap
 
 logger = logging.getLogger(__name__)
 
+# Seeing an initiatief or lead is not writing to it: slash commands and
+# buttons that change something ask ``core.authz`` like the REST routes.
+_NO_WRITE = "Je hebt geen rechten om dit initiatief of deze lead te wijzigen."
+
 
 @dataclass
 class _ChannelCtx:
@@ -48,6 +53,19 @@ class MattermostSlashService:
         """Resolve a Mattermost user ID to a Bouwmeester person ID."""
         mapping = await self.repo.get_by_mattermost_user_id(mattermost_user_id)
         return mapping.person_id if mapping else None
+
+    async def _may(
+        self, person_id: UUID, permission: str, resource_type: str, resource_id: UUID
+    ) -> bool:
+        """Ask the decision point what the REST route for this action asks."""
+        from bouwmeester.core.permissions import build_permission_context
+        from bouwmeester.models.person import Person
+
+        person = await self.session.get(Person, person_id)
+        if person is None:
+            return False
+        perm_ctx = await build_permission_context(self.session, person)
+        return await can(self.session, perm_ctx, permission, resource_type, resource_id)
 
     async def handle_command(
         self,
@@ -287,6 +305,10 @@ class MattermostSlashService:
                     f"Geen initiatief gevonden voor '{_escape_md(query)}' "
                     "(of geen toegang)."
                 )
+            if not await self._may(
+                person_id, "mattermost_channel_link:create", "initiatief", target.id
+            ):
+                return _ephemeral(_NO_WRITE)
             await link_repo.create(
                 channel_id=ch.channel_id,
                 channel_name=ch.channel_name,
@@ -308,6 +330,10 @@ class MattermostSlashService:
             return _ephemeral(
                 f"Geen lead gevonden voor '{_escape_md(query)}' (of geen toegang)."
             )
+        if not await self._may(
+            person_id, "mattermost_channel_link:create", "lead", target_lead.id
+        ):
+            return _ephemeral(_NO_WRITE)
         await link_repo.create(
             channel_id=ch.channel_id,
             channel_name=ch.channel_name,
@@ -337,6 +363,13 @@ class MattermostSlashService:
         link = await link_repo.get_by_channel_id(ch.channel_id)
         if link is None:
             return _ephemeral("Dit kanaal is niet gekoppeld.")
+        if not await self._may(
+            person_id,
+            "mattermost_channel_link:delete",
+            "mattermost_channel_link",
+            link.id,
+        ):
+            return _ephemeral(_NO_WRITE)
         await link_repo.delete(link)
         return _ephemeral(":wastebasket: Koppeling verwijderd.")
 
@@ -467,6 +500,10 @@ class MattermostSlashService:
             return _ephemeral(
                 "Een zoekterm van minder dan drie tekens levert te veel ruis op."
             )
+        if not await self._may(
+            person_id, "parlementair_abonnement:create", link.scope_type, link.scope_id
+        ):
+            return _ephemeral(_NO_WRITE)
 
         repo = ParlementairAbonnementRepository(self.session)
         bestaand = await repo.get_by_term(link.scope_type, link.scope_id, term)
@@ -517,6 +554,13 @@ class MattermostSlashService:
                 f"**{_escape_md(term)}** wordt niet gevolgd. "
                 "`/bouwmeester volgt` toont wat er wel staat."
             )
+        if not await self._may(
+            person_id,
+            "parlementair_abonnement:delete",
+            "parlementair_abonnement",
+            abonnement.id,
+        ):
+            return _ephemeral(_NO_WRITE)
         bewaard = abonnement.term
         await repo.delete(abonnement)
         await self.session.commit()
@@ -685,8 +729,10 @@ class MattermostSlashService:
             return suggested
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
-        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _action_msg("Je hebt geen toegang tot dit initiatief.")
+        if not await self._may(
+            person_id, "lead:create", "initiatief", suggested.initiatief_id
+        ):
+            return _action_msg(_NO_WRITE)
 
         from bouwmeester.models.lead import Lead
 
@@ -744,8 +790,6 @@ class MattermostSlashService:
             return suggested
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
-        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _action_msg("Je hebt geen toegang tot dit initiatief.")
         if suggested.match_existing_lead_id is None:
             return _action_msg(
                 "Geen kandidaat-lead bekend. Maak een nieuwe lead aan of negeer."
@@ -761,6 +805,8 @@ class MattermostSlashService:
         # cross-initiatief-leak via een geknoeide context of LLM-suggestie.
         if lead.initiatief_id != suggested.initiatief_id:
             return _action_msg("Lead hoort niet bij dit initiatief.")
+        if not await self._may(person_id, "lead_activity:create", "lead", lead.id):
+            return _action_msg(_NO_WRITE)
 
         self.session.add(
             LeadActivity(
@@ -798,8 +844,10 @@ class MattermostSlashService:
             return suggested
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
-        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _action_msg("Je hebt geen toegang tot dit initiatief.")
+        if not await self._may(
+            person_id, "initiatief:update", "initiatief", suggested.initiatief_id
+        ):
+            return _action_msg(_NO_WRITE)
 
         self._mark_reviewed(suggested, person_id, status="rejected")
         await self.session.flush()
@@ -840,18 +888,6 @@ class MattermostSlashService:
         if suggested is None:
             return _action_msg("Suggestie niet gevonden.")
         return suggested
-
-    async def _has_initiatief_access(
-        self, person_id: UUID, initiatief_id: UUID
-    ) -> bool:
-        from bouwmeester.core.initiatief_context import build_initiatief_context
-        from bouwmeester.models.person import Person
-
-        person = await self.session.get(Person, person_id)
-        if person is None:
-            return False
-        ctx = await build_initiatief_context(self.session, person)
-        return ctx.is_admin or initiatief_id in ctx.visible_initiatief_ids
 
     async def _update_thread_post(self, suggested, *, text: str, color: str) -> None:
         if not suggested.mm_thread_post_id:

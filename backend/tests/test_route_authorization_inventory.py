@@ -242,8 +242,8 @@ _WRITE_ALLOWLIST: dict[str, str] = {
     "POST /api/chat": "own conversation; write tools ask authz in chat_service",
     "POST /api/chat/confirm": "own conversation; tools ask authz in chat_service",
     "POST /api/chat/upload": "own chat attachment",
-    "POST /api/llm/gap-analysis": "no mutation: advice on text in the request",
-    "POST /api/llm/kompas-guidance": "no mutation: advice on text in the request",
+    "POST /api/llm/gap-analysis": "no mutation: reads a dossier the caller can see",
+    "POST /api/llm/kompas-guidance": "no mutation: reads a dossier the caller can see",
     "POST /api/llm/suggest-tags": "no mutation: advice on text in the request",
     "POST /api/leads/parse-intake": (
         "no mutation: LLM parse of text in the request; creating the lead is "
@@ -272,25 +272,7 @@ _WRITE_ALLOWLIST: dict[str, str] = {
 # Write routes not yet on core.authz, grouped by file with the check they use
 # today.  Migrating a route means removing it here (the second test below
 # insists).  Never add to this list.
-_WRITE_KNOWN_DEBT: set[str] = {
-    # fcc.py: require_permission (fcc:sync)
-    "POST /api/fcc/conflicts/{opdracht_id}/resolve",
-    "POST /api/fcc/opdrachten/{opdracht_id}/push",
-    "POST /api/fcc/sync/trigger",
-    # import_export.py: require_permission (import_export:import)
-    "POST /api/import/edges",
-    "POST /api/import/nodes",
-    "POST /api/import/politieke-inputs",
-    # parlementair.py: require_permission (parlementair:review / :import)
-    "PATCH /api/parlementair/edges/{edge_id}",
-    "PUT /api/parlementair/edges/{edge_id}/approve",
-    "PUT /api/parlementair/edges/{edge_id}/reject",
-    "PUT /api/parlementair/edges/{edge_id}/reset",
-    "POST /api/parlementair/imports/reprocess",
-    "POST /api/parlementair/imports/trigger",
-    "PUT /api/parlementair/imports/{import_id}/reject",
-    "PUT /api/parlementair/imports/{import_id}/reopen",
-}
+_WRITE_KNOWN_DEBT: set[str] = set()
 
 
 def _called_names(fn) -> set[str]:

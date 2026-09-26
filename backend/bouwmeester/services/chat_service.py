@@ -1573,6 +1573,8 @@ async def _resolve_person_org_eenheid(
             PersonOrganisatieEenheid.person_id == person_id,
             PersonOrganisatieEenheid.eind_datum.is_(None),
         )
+        # Deterministic: authorizing and creating must pick the same eenheid.
+        .order_by(PersonOrganisatieEenheid.start_datum, OrganisatieEenheid.id)
         .limit(1)
     )
     result = await db.execute(stmt)
@@ -1642,10 +1644,10 @@ async def _build_chat_initiatief_context(
 # Each write tool stands in for a REST route and asks ``core.authz`` the
 # same question: ``(permission, resource type, argument with the resource
 # id)``, where ``None`` means a new resource without an eenheid.  Several
-# entries are alternatives: an edge needs write access on either end.  Lead
-# tools are scoped through the initiatief context inside the tool itself, as
-# the lead routes are.  Granting a stakeholder role goes through the same
-# authority check as the REST routes.
+# entries are alternatives: an edge needs write access on either end.  A new
+# lead goes into the user's own eenheid (see ``create_lead``), so that is
+# where ``lead:create`` must hold.  Granting a stakeholder role goes through
+# the same authority check as the REST routes.
 _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "create_node": (("node:create", "corpus_node", None),),
     "update_node": (("node:update", "corpus_node", "node_id"),),
@@ -1659,10 +1661,15 @@ _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "add_stakeholder": (),
     "attach_to_bron": (("node:update", "corpus_node", "node_id"),),
     "create_lead": (),
-    "update_lead": (),
-    "move_lead": (),
-    "add_lead_activity": (),
+    "update_lead": (("lead:update", "lead", "lead_id"),),
+    "move_lead": (("lead:update", "lead", "lead_id"),),
+    "add_lead_activity": (("lead_activity:create", "lead", "lead_id"),),
 }
+
+_NO_EENHEID_FOR_LEAD = (
+    "Kan geen lead aanmaken: geen organisatie-eenheid gevonden"
+    " voor de ingelogde gebruiker."
+)
 
 # Resources a tool links to that the user must at least be able to see.
 _MUST_SEE: dict[str, tuple[tuple[str, str], ...]] = {
@@ -1713,6 +1720,11 @@ async def _authorize_write_tool(
                 await check_resource_org_scope(
                     db, resource_type, UUID(args[arg]), org_ctx
                 )
+        if tool_name == "create_lead":
+            eenheid_id = await _resolve_person_org_eenheid(db, person_id)
+            if eenheid_id is None:
+                return _NO_EENHEID_FOR_LEAD
+            await require(db, perm_ctx, "lead:create", "lead", eenheid_id=eenheid_id)
         if tool_name == "add_stakeholder":
             await require_can_grant_resource_role(
                 db,
@@ -2093,14 +2105,7 @@ async def _execute_write_tool(
             # Resolve user's org unit for the lead
             org_eenheid_id = await _resolve_person_org_eenheid(db, person_id)
             if not org_eenheid_id:
-                return {
-                    "success": False,
-                    "summary": (
-                        "Kan geen lead aanmaken:"
-                        " geen organisatie-eenheid gevonden"
-                        " voor de ingelogde gebruiker."
-                    ),
-                }
+                return {"success": False, "summary": _NO_EENHEID_FOR_LEAD}
 
             lead_data: dict = {
                 "title": args["title"],
@@ -2148,7 +2153,7 @@ async def _execute_write_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadUpdate
 
-            # Verify access via org context
+            # Visibility, as in the lead routes (the write was authorized above)
             init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
             existing = await repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
@@ -2204,7 +2209,7 @@ async def _execute_write_tool(
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadStage
 
-            # Verify access via org context
+            # Visibility, as in the lead routes (the write was authorized above)
             init_ctx = await _build_chat_initiatief_context(db, person_id)
             repo = LeadRepository(db)
             existing = await repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
@@ -2240,7 +2245,7 @@ async def _execute_write_tool(
             )
             from bouwmeester.schema.lead import LeadActivityCreate
 
-            # Verify lead exists and user has access
+            # Visibility, as in the lead routes (the write was authorized above)
             init_ctx = await _build_chat_initiatief_context(db, person_id)
             lead_repo = LeadRepository(db)
             lead = await lead_repo.get(UUID(args["lead_id"]), init_ctx=init_ctx)
