@@ -84,11 +84,11 @@ export function useCan(action: string, resource: AuthzResource | null | undefine
  * the other decisions, so a mutation with `CHANGES_RIGHTS` refreshes it and
  * a failure shows in `useAuthzFailures`.
  */
-export function useEenhedenWith(action: string) {
+export function useEenhedenWith(action: string, eenheidType?: string) {
   const query = useQuery({
     // Under AUTHZ_KEY; `'eenheden'` never collides with an action name.
-    queryKey: [...AUTHZ_KEY, 'eenheden', action],
-    queryFn: () => getEenhedenWith(action),
+    queryKey: [...AUTHZ_KEY, 'eenheden', action, eenheidType ?? null],
+    queryFn: () => getEenhedenWith(action, eenheidType),
     staleTime: DECISION_STALE_TIME,
   });
   const data: EenhedenWith | undefined = query.data;

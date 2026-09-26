@@ -28,7 +28,10 @@ from bouwmeester.core.authz import (
 )
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.models.organisatie_eenheid import (
+    INTERNAL_EENHEID_TYPES,
+    OrganisatieEenheid,
+)
 from bouwmeester.models.person import Person
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.org_tree import get_subtree_ids
@@ -379,6 +382,7 @@ _EENHEDEN_WHERE: dict[str, EenhedenWhere] = {
 @router.get("/eenheden", response_model=AuthzEenhedenResponse)
 async def eenheden_allowed(
     action: EenheidAction = Query(...),
+    eenheid_type: str | None = Query(None, max_length=64),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> AuthzEenhedenResponse:
@@ -388,8 +392,8 @@ async def eenheden_allowed(
 
     - ``org:update``, ``org:manage``: on the eenheid itself (synced eenheden
       are read-only, so they are left out);
-    - ``org:create``: creating an internal eenheid below it (external ones
-      are free, ask ``org:create`` with an ``eenheid_type``);
+    - ``org:create``: creating an internal eenheid below it; with an
+      external ``eenheid_type`` every parent or none (``can`` decides);
     - ``people:assign_role``: some role may be assigned there;
     - ``person:place``: another person's account may be placed there.
 
@@ -399,5 +403,20 @@ async def eenheden_allowed(
     """
     if not perm_ctx.is_authenticated:
         return AuthzEenhedenResponse(all=False, ids=[])
+    if (
+        action == "org:create"
+        and eenheid_type is not None
+        and eenheid_type not in INTERNAL_EENHEID_TYPES
+    ):
+        # An external eenheid does not depend on its parent: whoever may
+        # create one may put it anywhere.
+        allowed = await can(
+            db,
+            perm_ctx,
+            "org:create",
+            "organisatie_eenheid",
+            place={"type": eenheid_type},
+        )
+        return AuthzEenhedenResponse(all=allowed, ids=[])
     ids = await _EENHEDEN_WHERE[action](db, perm_ctx)
     return AuthzEenhedenResponse(all=ids is None, ids=sorted(ids or (), key=str))

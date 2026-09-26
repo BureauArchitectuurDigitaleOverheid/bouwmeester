@@ -38,6 +38,8 @@ export interface AuthzResource {
   type: AuthzResourceType;
   id?: string;
   eenheidId?: string;
+  /** `org:create`: the type of the new eenheid (external ones may go anywhere). */
+  eenheidType?: string;
   /**
    * Without `id`: is there any eenheid where the caller may create this?
    * With `role:assign` and no `roleId`: may the caller assign any role.
@@ -61,6 +63,7 @@ export interface AuthzResource {
 export function authzProperties(resource: AuthzResource): Record<string, string | boolean> {
   const props: Record<string, string | boolean | undefined> = {
     eenheid_id: resource.eenheidId,
+    eenheid_type: resource.eenheidType,
     anywhere: resource.anywhere || undefined,
     ending: resource.ending || undefined,
     contact: resource.contact || undefined,
@@ -177,6 +180,9 @@ export interface EenhedenWith {
  * The eenheden where the caller holds `action` (such as `org:manage`), in
  * one request instead of one evaluation per eenheid.
  */
-export function getEenhedenWith(action: string): Promise<EenhedenWith> {
-  return apiGet<EenhedenWith>('/api/authz/eenheden', { action });
+export function getEenhedenWith(action: string, eenheidType?: string): Promise<EenhedenWith> {
+  return apiGet<EenhedenWith>('/api/authz/eenheden', {
+    action,
+    ...(eenheidType ? { eenheid_type: eenheidType } : {}),
+  });
 }

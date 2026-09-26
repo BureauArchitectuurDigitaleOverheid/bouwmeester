@@ -213,7 +213,6 @@ async def test_reviewer_without_node_update_cannot_own_the_item(world):
     assert resp.status_code == 403, resp.text
 
 
-@pytest.mark.xfail(strict=True, reason="needs authority first-owner self rule")
 async def test_reviewer_with_node_update_may_become_first_owner(world):
     resp = await _complete(world, "team_editor", "node_team", "team_editor", [])
     assert resp.status_code == 200, resp.text

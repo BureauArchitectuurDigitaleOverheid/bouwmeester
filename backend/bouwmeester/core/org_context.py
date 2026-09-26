@@ -44,7 +44,6 @@ class OrgContext:
     own_eenheid_ids: list[UUID] = field(default_factory=list)
     managed_eenheid_ids: list[UUID] = field(default_factory=list)
     # The managed eenheden plus everything below them.
-    managed_subtree_ids: list[UUID] = field(default_factory=list)
     visible_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_node_ids: list[UUID] = field(default_factory=list)
@@ -76,7 +75,7 @@ async def build_org_context(
     redundant ``build_permission_context`` call when the caller already
     has one.
     """
-    from bouwmeester.core.authority import managed_eenheid_ids, managed_subtree_ids
+    from bouwmeester.core.authority import managed_eenheid_ids
     from bouwmeester.core.authz import readable_modules, role_read_ids
     from bouwmeester.core.permissions import (
         anonymous_permission_context,
@@ -101,9 +100,8 @@ async def build_org_context(
     own_ids = await get_membership_ids(db, person.id)
     parent_ids = await get_ancestor_ids(db, own_ids)
     managed_ids = managed_eenheid_ids(perm_ctx)
-    managed_subtree = await managed_subtree_ids(db, perm_ctx) or set()
     # Rights inherit downward (core.authz), so what you can write you see.
-    # Managers write in what they manage, so this covers managed_subtree.
+    # Managers write in what they manage, so this also covers their subtree.
     writable_subtree = await get_subtree_ids(db, write_eenheid_ids(perm_ctx))
 
     all_visible = set(own_ids) | parent_ids | writable_subtree
@@ -119,7 +117,6 @@ async def build_org_context(
         person_id=person.id,
         own_eenheid_ids=own_ids,
         managed_eenheid_ids=managed_ids,
-        managed_subtree_ids=list(managed_subtree),
         visible_eenheid_ids=list(all_visible),
         shared_eenheid_ids=shared_eenheid_ids,
         shared_node_ids=shared_node_ids,

@@ -499,6 +499,37 @@ async def test_eenheden_endpoint_equals_the_evaluations(iw, action):
         assert got == decisions, (who, action, got, decisions)
 
 
+@pytest.mark.parametrize("eenheid_type", ["team", "gemeente"])
+async def test_eenheden_for_a_new_eenheid_follow_its_type(iw, eenheid_type):
+    """An internal type needs rights on the parent, an external one does not."""
+    eenheden = [o.id for o in iw.org.values()]
+    for who, person in iw.person.items():
+        async with client_as(iw.db, person) as c:
+            listed = await c.get(
+                "/api/authz/eenheden",
+                params={"action": "org:create", "eenheid_type": eenheid_type},
+            )
+            asked = await c.post(
+                "/api/authz/evaluations",
+                json={
+                    "evaluations": [
+                        ask(
+                            "org:create",
+                            "organisatie_eenheid",
+                            eenheid_id=e,
+                            eenheid_type=eenheid_type,
+                        )
+                        for e in eenheden
+                    ]
+                },
+            )
+        assert listed.status_code == 200, listed.text
+        body = listed.json()
+        decisions = [d["decision"] for d in asked.json()["evaluations"]]
+        got = [body["all"] or str(e) in set(body["ids"]) for e in eenheden]
+        assert got == decisions, (who, eenheid_type, got, decisions)
+
+
 async def test_eenheden_endpoint_rejects_other_actions(cw):
     async with client_as(cw.db, cw.person["viewer"]) as c:
         resp = await c.get("/api/authz/eenheden", params={"action": "node:update"})

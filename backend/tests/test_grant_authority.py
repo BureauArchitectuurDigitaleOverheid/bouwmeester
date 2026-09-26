@@ -40,7 +40,6 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole
 from tests.factories import (
-    YESTERDAY,
     client_as,
     grant_role,
     make_org,
@@ -1102,14 +1101,13 @@ async def test_pending_requests_follow_the_managed_subtree(tree: Tree):
     assert str(above.id) not in ids
 
 
-async def test_managed_subtree_in_org_context(tree: Tree):
+async def test_manager_sees_managed_subtree(tree: Tree):
     from bouwmeester.core.org_context import build_org_context
 
     ctx = await build_org_context(tree.db, tree.directie_manager)
     assert {tree.directie.id, tree.team.id, tree.sibling.id} <= set(
-        ctx.managed_subtree_ids
+        ctx.visible_eenheid_ids
     )
-    assert tree.dg.id not in ctx.managed_subtree_ids
 
 
 async def _first_login(tree: Tree, person: Person) -> Person:
@@ -1201,7 +1199,11 @@ async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
         (ended, tree.team),
     ):
         await place(tree.db, person, org)
-    (await _placement_of(tree.db, ended, tree.team)).eind_datum = YESTERDAY
+    # A week back, not yesterday: the migration compares with the database's
+    # CURRENT_DATE (UTC), which trails local midnight by a day for two hours.
+    (await _placement_of(tree.db, ended, tree.team)).eind_datum = (
+        date.today() - timedelta(days=7)
+    )
     await tree.db.flush()
 
     migration = _migration("7c1e5a9d3b20_confirm_existing_placements")

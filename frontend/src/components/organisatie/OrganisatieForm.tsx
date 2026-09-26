@@ -51,13 +51,14 @@ export function OrganisatieForm({
   const { data: flatList = [] } = useOrganisatieFlat();
   const { data: personen = [] } = useOrganisatiePersonen(editData?.id ?? null);
 
-  // A new eenheid goes where the caller may create one (org:create in the
-  // parent, or without parent at the top). Editing keeps every option: the
-  // current parent must stay selectable and the route decides a move.
-  const { includes: mayCreateIn } = useEenhedenWith('org:create');
+  // A new eenheid goes where the caller may create one of this type: the
+  // backend knows which types are internal (org:create in the parent) and
+  // which are external (anywhere). Editing keeps every option: the current
+  // parent must stay selectable and the route decides a move.
+  const { includes: mayCreateIn } = useEenhedenWith('org:create', type || undefined);
   const { allowed: mayCreateTop } = useCan(
     'org:create',
-    editData ? null : { type: 'organisatie_eenheid' },
+    editData ? null : { type: 'organisatie_eenheid', eenheidType: type || undefined },
   );
   const parentOptions: SelectOption[] = [
     ...(editData || mayCreateTop ? [{ value: '', label: 'Geen (top-niveau)' }] : []),
