@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from bouwmeester.core.initiatief_context import InitiatiefContext
     from bouwmeester.core.org_context import OrgContext
     from bouwmeester.core.permissions import PermissionContext
+    from bouwmeester.schema.task import TaskCreate
 
 logger = logging.getLogger(__name__)
 
@@ -1660,8 +1661,30 @@ _MUST_SEE: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("node:read", "corpus_node", "from_node_id"),
         ("node:read", "corpus_node", "to_node_id"),
     ),
-    "create_task": (("task:read", "task", "parent_task_id"),),
 }
+
+
+def _task_create_from_args(args: dict) -> "TaskCreate":
+    """The ``POST /tasks`` body the ``create_task`` tool stands for.
+
+    Authorizing and creating use the same body, so they cannot disagree
+    about where the task goes or what it links to.
+    """
+    from bouwmeester.schema.task import TaskCreate
+
+    optional = {
+        "assignee_id": "assignee_id",
+        "parent_id": "parent_task_id",
+        "organisatie_eenheid_id": "organisatie_eenheid_id",
+    }
+    return TaskCreate(
+        title=args["title"],
+        node_id=UUID(args["node_id"]),
+        description=args.get("description"),
+        priority=args.get("priority", "normaal"),
+        status="open",
+        **{field: UUID(args[arg]) for field, arg in optional.items() if args.get(arg)},
+    )
 
 
 async def _authorize_write_tool(
@@ -1675,6 +1698,7 @@ async def _authorize_write_tool(
 
     from bouwmeester.core.authority import require_can_grant_resource_role
     from bouwmeester.core.authz import can, require
+    from bouwmeester.services.task_rules import require_task_create
 
     checks = _WRITE_TOOL_POLICY.get(tool_name)
     if checks is None:
@@ -1703,18 +1727,7 @@ async def _authorize_write_tool(
             if args.get(arg):
                 await require(db, perm_ctx, perm, resource_type, UUID(args[arg]))
         if tool_name == "create_task":
-            if args.get("organisatie_eenheid_id"):
-                await require(
-                    db,
-                    perm_ctx,
-                    "task:create",
-                    "task",
-                    eenheid_id=UUID(args["organisatie_eenheid_id"]),
-                )
-            else:
-                await require(
-                    db, perm_ctx, "task:create", "corpus_node", UUID(args["node_id"])
-                )
+            await require_task_create(db, perm_ctx, _task_create_from_args(args))
         if tool_name == "create_lead" and await _lead_eenheid(db, caller) is None:
             return _NO_EENHEID_FOR_LEAD
         if tool_name == "add_stakeholder":
@@ -1828,7 +1841,6 @@ async def _execute_write_tool(
             from bouwmeester.repositories.corpus_node import CorpusNodeRepository
             from bouwmeester.repositories.person import PersonRepository
             from bouwmeester.repositories.task import TaskRepository
-            from bouwmeester.schema.task import TaskCreate
 
             # Validate node exists
             node_repo = CorpusNodeRepository(db)
@@ -1869,23 +1881,7 @@ async def _execute_write_tool(
                     }
 
             repo = TaskRepository(db)
-            task_data: dict = {
-                "title": args["title"],
-                "node_id": UUID(args["node_id"]),
-                "description": args.get("description"),
-                "priority": args.get("priority", "normaal"),
-                "status": "open",
-            }
-            if args.get("assignee_id"):
-                task_data["assignee_id"] = UUID(args["assignee_id"])
-            if args.get("parent_task_id"):
-                task_data["parent_id"] = UUID(args["parent_task_id"])
-            if args.get("organisatie_eenheid_id"):
-                task_data["organisatie_eenheid_id"] = UUID(
-                    args["organisatie_eenheid_id"]
-                )
-            data = TaskCreate(**task_data)
-            task = await repo.create(data)
+            task = await repo.create(_task_create_from_args(args))
             await db.commit()
             is_subtask = bool(args.get("parent_task_id"))
             label = "Subtaak" if is_subtask else "Taak"
