@@ -4,12 +4,6 @@ import { useNlddEvent, orUndef } from '@/components/nldd/events';
 export interface MultiSelectOption {
   value: string;
   label: string;
-  /**
-   * Accepted but not drawn: nldd-menu-item has no slots, and its `icon` takes a
-   * name from the icon set rather than a hex. The label already names the
-   * option, so a colored dot would only repeat it.
-   */
-  color?: string;
 }
 
 interface MultiSelectProps {

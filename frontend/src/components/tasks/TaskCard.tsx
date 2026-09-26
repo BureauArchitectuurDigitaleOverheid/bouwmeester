@@ -134,7 +134,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
 
           <nldd-container layout="wrap" gap="8" vertical-alignment="center">
             <Badge
-              variant={TASK_PRIORITY_COLORS[task.priority]}
+              color={TASK_PRIORITY_COLORS[task.priority]}
               dot
             >
               {priorityIcons[task.priority]}
@@ -142,7 +142,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             </Badge>
 
             {!compact && (
-              <Badge variant={isDone ? 'green' : 'gray'}>
+              <Badge color={isDone ? 'groen' : 'coolgray'}>
                 {TASK_STATUS_LABELS[task.status]}
               </Badge>
             )}
@@ -175,7 +175,7 @@ export function TaskCard({ task, onEdit, compact = false }: TaskCardProps) {
             )}
 
             {task.work_type && (
-              <Badge variant="slate">{task.work_type}</Badge>
+              <Badge color="donkerblauw">{task.work_type}</Badge>
             )}
 
             {subtasks.length > 0 && (

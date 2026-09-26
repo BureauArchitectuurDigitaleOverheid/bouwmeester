@@ -202,7 +202,7 @@ function TreeNode({ node, selectedId, onSelect, onAdd, onDropPerson, depth = 0, 
               FCC keeps its color: it marks the few rows that an import created
               rather than a person, and that is an exception worth seeing. */}
           {node.bron === 'fcc_import' && (
-            <Badge variant="amber" title="Auto-aangemaakt door FCC-import" className="row-badge-first-line">
+            <Badge color="geel" title="Auto-aangemaakt door FCC-import" className="row-badge-first-line">
               FCC
             </Badge>
           )}

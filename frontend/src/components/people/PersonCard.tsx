@@ -68,7 +68,7 @@ export function PersonCard({ person, onClick, draggable, onDragStart }: PersonCa
           </div>
           {person.is_agent && (
             <span slot="text">
-              {person.naam} <Badge variant="purple">Agent</Badge>
+              {person.naam} <Badge color="paars">Agent</Badge>
             </span>
           )}
         </nldd-identity>

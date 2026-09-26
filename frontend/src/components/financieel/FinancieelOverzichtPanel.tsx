@@ -132,7 +132,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
                 />
                 <nldd-text-cell width="fit-content" text={formatCurrencyCompact(o.budget)} />
                 <nldd-text-cell width="fit-content">
-                  <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
+                  <Badge color={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'coolgray'}>
                     {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
                   </Badge>
                 </nldd-text-cell>

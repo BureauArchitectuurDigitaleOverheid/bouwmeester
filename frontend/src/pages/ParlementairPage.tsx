@@ -17,7 +17,6 @@ import {
 import type { ParlementairItemStatus } from '@/types';
 import {
   PARLEMENTAIR_TYPE_LABELS,
-  PARLEMENTAIR_TYPE_HEX_COLORS,
   ALL_PARLEMENTAIR_TYPES,
 } from '@/types';
 import type { ReprocessResult } from '@/types';
@@ -34,7 +33,6 @@ const REPROCESS_TYPE_PLURALS: Record<string, string> = {
 const parlementairTypeOptions: MultiSelectOption[] = ALL_PARLEMENTAIR_TYPES.map((t) => ({
   value: t,
   label: PARLEMENTAIR_TYPE_LABELS[t] ?? t,
-  color: PARLEMENTAIR_TYPE_HEX_COLORS[t],
 }));
 
 /** `nldd-menu-item` with a React-shaped onClick, listening to its `select` event. */

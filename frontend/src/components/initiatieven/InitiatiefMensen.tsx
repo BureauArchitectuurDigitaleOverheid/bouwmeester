@@ -77,7 +77,7 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
               <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
                 <nldd-container layout="row" gap="8" vertical-alignment="center">
                   <nldd-text-cell text={member.person_naam} width="fit-content" />
-                  <Badge variant={member.rol === 'eigenaar' ? 'purple' : 'gray'}>
+                  <Badge color={member.rol === 'eigenaar' ? 'paars' : 'coolgray'}>
                     {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
                   </Badge>
                 </nldd-container>

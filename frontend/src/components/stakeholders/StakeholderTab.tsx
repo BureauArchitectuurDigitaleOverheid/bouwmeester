@@ -17,7 +17,7 @@ import type {
   StakeholderAssessment,
   StakeholderHouding,
   StakeholderScopeType,
-  BadgeVariant,
+  EntityColor,
 } from '@/types';
 
 interface StakeholderTabProps {
@@ -36,20 +36,13 @@ const HOUDING_OPTIONS: StakeholderHouding[] = [
 
 const SCORE_OPTIONS = [1, 2, 3, 4, 5];
 
-/**
- * Houding -> Badge variant.
- *
- * Badge takes a semantic or Rijkshuisstijl `variant` and nothing else; a color
- * class handed to it as `className` has nothing to attach to. Do not reach for
- * STAKEHOLDER_HOUDING_COLORS in `@/types`, which holds class names that paint
- * nothing.
- */
-const HOUDING_BADGE_VARIANT: Record<StakeholderHouding, BadgeVariant> = {
-  tegen: 'red',
-  kritisch: 'orange',
-  neutraal: 'slate',
-  welwillend: 'emerald',
-  voorstander: 'green',
+/** Houding -> Badge color. */
+const HOUDING_BADGE_COLOR: Record<StakeholderHouding, EntityColor> = {
+  tegen: 'rood',
+  kritisch: 'oranje',
+  neutraal: 'donkerblauw',
+  welwillend: 'mosgroen',
+  voorstander: 'groen',
 };
 
 export function StakeholderTab({
@@ -250,7 +243,7 @@ function HoudingSelect({
       <nldd-container gap="2">
         <nldd-text size="xs" color="secondary">Houding</nldd-text>
         {value ? (
-          <Badge variant={HOUDING_BADGE_VARIANT[value]}>
+          <Badge color={HOUDING_BADGE_COLOR[value]}>
             {STAKEHOLDER_HOUDING_LABELS[value]}
           </Badge>
         ) : (

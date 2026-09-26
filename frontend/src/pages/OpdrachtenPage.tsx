@@ -132,7 +132,7 @@ function OpdrachtRow({ opdracht: o, onOpen }: { opdracht: Opdracht; onOpen: () =
     <nldd-table-row>
       <nldd-title-cell ref={ref} text={o.titel} style={{ cursor: 'pointer' }} />
       <nldd-text-cell>
-        <Badge variant={OPDRACHT_TYPE_COLORS[o.type as OpdrachtType] || 'gray'}>
+        <Badge color={OPDRACHT_TYPE_COLORS[o.type as OpdrachtType] || 'coolgray'}>
           {OPDRACHT_TYPE_LABELS[o.type as OpdrachtType] || o.type}
         </Badge>
       </nldd-text-cell>
@@ -143,7 +143,7 @@ function OpdrachtRow({ opdracht: o, onOpen }: { opdracht: Opdracht; onOpen: () =
       <nldd-text-cell text={formatCurrency(o.gerealiseerd)} horizontal-alignment="right" />
       <nldd-text-cell>
         <nldd-container layout="row" gap="6" vertical-alignment="center">
-          <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
+          <Badge color={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'coolgray'}>
             {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
           </Badge>
           <FccTrafficLights opdracht={o} />
@@ -164,12 +164,12 @@ function OpdrachtCard({ opdracht: o, onOpen }: { opdracht: Opdracht; onOpen: () 
         <nldd-container layout="row" gap="8" vertical-alignment="top">
           <nldd-text size="sm" weight="medium">{o.titel}</nldd-text>
           <nldd-spacer direction="horizontal" size="flexible" />
-          <Badge variant={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'gray'}>
+          <Badge color={OPDRACHT_STATUS_COLORS[o.status as OpdrachtStatus] || 'coolgray'}>
             {OPDRACHT_STATUS_LABELS[o.status as OpdrachtStatus] || o.status}
           </Badge>
         </nldd-container>
         <nldd-container layout="wrap" gap="6" vertical-alignment="center">
-          <Badge variant={OPDRACHT_TYPE_COLORS[o.type as OpdrachtType] || 'gray'}>
+          <Badge color={OPDRACHT_TYPE_COLORS[o.type as OpdrachtType] || 'coolgray'}>
             {OPDRACHT_TYPE_LABELS[o.type as OpdrachtType] || o.type}
           </Badge>
           <nldd-text size="xs" color="secondary">{o.begrotingsjaar}</nldd-text>

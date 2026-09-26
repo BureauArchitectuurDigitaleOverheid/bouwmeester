@@ -80,12 +80,12 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
                     text={connectedNode?.title ?? ''}
                   >
                     <nldd-container slot="overline" layout="row" gap="8" vertical-alignment="center">
-                      <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
+                      <Badge color="donkerblauw">{edgeLabel(edge.edge_type_id)}</Badge>
                       <Icon name={direction === 'incoming' ? 'arrow-left' : 'arrow-right'} size="xs" />
                     </nldd-container>
                     {connectedNode && (
                       <nldd-container layout="row" gap="8" vertical-alignment="center">
-                        <Badge variant={NODE_TYPE_COLORS[connectedNode.node_type]} title={nodeAltLabel(connectedNode.node_type)}>
+                        <Badge color={NODE_TYPE_COLORS[connectedNode.node_type]} title={nodeAltLabel(connectedNode.node_type)}>
                           {nodeLabel(connectedNode.node_type)}
                         </Badge>
                         {connectedNode.title}

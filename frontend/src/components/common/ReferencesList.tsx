@@ -12,12 +12,12 @@ interface ReferencesListProps {
 function ReferenceRow({
   label,
   title,
-  variant,
+  color,
   onOpen,
 }: {
   label: string;
   title: string;
-  variant: 'amber' | 'blue';
+  color: 'geel' | 'lintblauw';
   onOpen: () => void;
 }) {
   const ref = useRef<HTMLElement>(null);
@@ -25,7 +25,7 @@ function ReferenceRow({
   return (
     <nldd-list-item ref={ref} size="sm" button>
       <nldd-cell width="fit-content">
-        <Badge variant={variant}>{label}</Badge>
+        <Badge color={color}>{label}</Badge>
       </nldd-cell>
       <nldd-text-cell text={title} />
     </nldd-list-item>
@@ -55,7 +55,7 @@ export function ReferencesList({ targetId }: ReferencesListProps) {
               ref.source_type === 'node' ? 'Node' : ref.source_type === 'task' ? 'Taak' : ref.source_type
             }
             title={ref.source_title}
-            variant={ref.source_type === 'task' ? 'amber' : 'blue'}
+            color={ref.source_type === 'task' ? 'geel' : 'lintblauw'}
             onOpen={() => {
               if (ref.source_type === 'node') openNodeDetail(ref.source_id);
               else if (ref.source_type === 'task') openTaskDetail(ref.source_id);

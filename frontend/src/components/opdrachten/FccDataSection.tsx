@@ -94,7 +94,7 @@ export function FccDataSection({
         {labelList.length > 0 && (
           <nldd-container layout="wrap" gap="6">
             {labelList.map((label) => (
-              <Badge key={label} variant="slate">
+              <Badge key={label} color="donkerblauw">
                 {label}
               </Badge>
             ))}

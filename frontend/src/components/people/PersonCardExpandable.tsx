@@ -133,11 +133,11 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                 {person.naam}
               </nldd-text>
             </button>
-            {person.is_agent && <Badge variant="purple">Agent</Badge>}
+            {person.is_agent && <Badge color="paars">Agent</Badge>}
             {isManager && (() => {
               const label = managerLabel ?? 'Manager';
               return (
-                <Badge variant={label === 'Bewindspersoon' ? 'purple' : 'blue'}>
+                <Badge color={label === 'Bewindspersoon' ? 'paars' : 'lintblauw'}>
                   {label}
                 </Badge>
               );
@@ -363,7 +363,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                       <nldd-text-cell size="sm" text={node.node_title} />
                       <nldd-cell width="fit-content">
                         <Badge
-                          variant={NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'gray'}
+                          color={NODE_TYPE_COLORS[node.node_type as keyof typeof NODE_TYPE_COLORS] || 'coolgray'}
                         >
                           {nodeLabel(node.node_type)}
                         </Badge>
@@ -395,7 +395,7 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                             <nldd-text size="xs" color="secondary"> — {p.functietitel}</nldd-text>
                           )}
                         </nldd-text>
-                        <Badge variant="gray">
+                        <Badge color="coolgray">
                           {DIENSTVERBAND_LABELS[p.dienstverband] || p.dienstverband}
                         </Badge>
                         {showPlacementActions && (
@@ -470,10 +470,10 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
                           text={lid.samenwerkingsverband_naam}
                         />
                         <Badge
-                          variant={
+                          color={
                             SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS[
                               lid.samenwerkingsverband_type
-                            ] ?? 'gray'
+                            ] ?? 'coolgray'
                           }
                         >
                           {SAMENWERKINGSVERBAND_TYPE_LABELS[

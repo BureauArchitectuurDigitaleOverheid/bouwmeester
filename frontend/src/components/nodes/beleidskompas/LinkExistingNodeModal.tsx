@@ -112,7 +112,7 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
               {filteredNodes.map((node) => (
                 <ClickableListItem key={node.id} disabled={isLinking} onClick={() => handleLink(node.id)}>
                   <nldd-text-cell width="fit-content">
-                    <Badge variant={NODE_TYPE_COLORS[nodeType]} dot>
+                    <Badge color={NODE_TYPE_COLORS[nodeType]} dot>
                       {NODE_TYPE_LABELS[nodeType]}
                     </Badge>
                   </nldd-text-cell>

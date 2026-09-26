@@ -266,10 +266,10 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
 
             {/* Type + status + sync badges */}
             <nldd-container layout="wrap" gap="8" vertical-alignment="center">
-              <Badge variant={OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] || 'gray'}>
+              <Badge color={OPDRACHT_TYPE_COLORS[opdracht.type as OpdrachtType] || 'coolgray'}>
                 {OPDRACHT_TYPE_LABELS[opdracht.type as OpdrachtType] || opdracht.type}
               </Badge>
-              <Badge variant={OPDRACHT_STATUS_COLORS[opdracht.status as OpdrachtStatus] || 'gray'}>
+              <Badge color={OPDRACHT_STATUS_COLORS[opdracht.status as OpdrachtStatus] || 'coolgray'}>
                 {OPDRACHT_STATUS_LABELS[opdracht.status as OpdrachtStatus] || opdracht.status}
               </Badge>
               {opdracht.sync_status && (
@@ -429,7 +429,7 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
                     label: koppeling.node_title || koppeling.node_id,
                     badge: koppeling.node_type ? {
                       text: koppeling.node_type,
-                      variant: NODE_TYPE_COLORS[koppeling.node_type as NodeType] ?? 'gray',
+                      color: NODE_TYPE_COLORS[koppeling.node_type as NodeType] ?? 'coolgray',
                       dot: true,
                     } : undefined,
                     secondaryText: koppeling.relatie_type ?? undefined,

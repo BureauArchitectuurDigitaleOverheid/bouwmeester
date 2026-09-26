@@ -51,13 +51,6 @@ interface FollowUpTaskRow {
 }
 
 /**
- * `PARLEMENTAIR_TYPE_COLORS` and `SEARCH_RESULT_TYPE_COLORS`-style maps in
- * `@/types` speak the twelve-color `BadgeVariant` palette that `Badge` (the
- * `nldd-tag` wrapper) already understands, so no local remap was needed here —
- * `Badge` takes the existing `BadgeVariant` values directly.
- */
-
-/**
  * An `nldd-link` that stops its click from bubbling into a clickable ancestor
  * row (the card header toggles `expanded` on click). Click has to go through
  * `useNlddEvent` rather than a React `onClick` prop for consistency with the
@@ -372,7 +365,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   ).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   const typeLabel = PARLEMENTAIR_TYPE_LABELS[item.type] ?? item.type;
-  const typeColor = PARLEMENTAIR_TYPE_COLORS[item.type] ?? 'gray';
+  const typeColor = PARLEMENTAIR_TYPE_COLORS[item.type] ?? 'coolgray';
 
   return (
     <div ref={cardRef}>
@@ -389,11 +382,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
       >
         <nldd-container gap="4" width="full">
           <nldd-container layout="wrap" gap="6" vertical-alignment="center">
-            <Badge variant={typeColor}>
+            <Badge color={typeColor}>
               {typeLabel}
             </Badge>
             <Badge
-              variant={PARLEMENTAIR_ITEM_STATUS_COLORS[item.status]}
+              color={PARLEMENTAIR_ITEM_STATUS_COLORS[item.status]}
             >
               {PARLEMENTAIR_ITEM_STATUS_LABELS[item.status]}
             </Badge>
@@ -472,7 +465,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               </nldd-container>
               <nldd-container layout="wrap" gap="4">
                 {item.indieners.map((indiener) => (
-                  <Badge key={indiener} variant="purple">{indiener}</Badge>
+                  <Badge key={indiener} color="paars">{indiener}</Badge>
                 ))}
               </nldd-container>
             </nldd-container>
@@ -522,7 +515,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               <nldd-text size="xs" weight="medium">Gematchte tags</nldd-text>
               <nldd-container layout="wrap" gap="4">
                 {item.matched_tags.map((tag) => (
-                  <Badge key={tag} variant="slate">{tag}</Badge>
+                  <Badge key={tag} color="donkerblauw">{tag}</Badge>
                 ))}
               </nldd-container>
             </nldd-container>
@@ -574,12 +567,12 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                               }))}
                             />
                           ) : (
-                            <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
+                            <Badge color="donkerblauw">{edgeLabel(edge.edge_type_id)}</Badge>
                           )}
                         </nldd-container>
                         {edge.target_node && (
                           <nldd-container layout="row" gap="6" vertical-alignment="center">
-                            <Badge variant={NODE_TYPE_COLORS[edge.target_node.node_type]} dot>
+                            <Badge color={NODE_TYPE_COLORS[edge.target_node.node_type]} dot>
                               {nodeLabel(edge.target_node.node_type)}
                             </Badge>
                             <NlddButtonLink
@@ -648,11 +641,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="top">
                         <nldd-container gap="2" width="full">
                           <nldd-container layout="row" gap="6" vertical-alignment="center">
-                            <Badge variant="slate">{edgeLabel(edge.edge_type_id)}</Badge>
+                            <Badge color="donkerblauw">{edgeLabel(edge.edge_type_id)}</Badge>
                           </nldd-container>
                           {otherNode && (
                             <nldd-container layout="row" gap="6" vertical-alignment="center">
-                              <Badge variant={NODE_TYPE_COLORS[otherNode.node_type]} dot>
+                              <Badge color={NODE_TYPE_COLORS[otherNode.node_type]} dot>
                                 {nodeLabel(otherNode.node_type)}
                               </Badge>
                               <NlddButtonLink

@@ -5,7 +5,7 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
-import { NODE_TYPE_HEX_COLORS } from '@/types';
+import { entityColorVar, nodeTypeColor } from '@/types';
 import type { NodeType, CorpusNode, GraphViewResponse } from '@/types';
 import { useNlddEvent } from '@/components/nldd/events';
 import { buildMatrixAdjacency, countUniqueEdges, type CellEdge } from '@/utils/matrixAdjacency';
@@ -157,8 +157,8 @@ export function CorpusMatrix({
     return <EmptyState title="Geen kolom-nodes gevonden voor het geselecteerde type." />;
   }
 
-  const rowColor = NODE_TYPE_HEX_COLORS[rowNodeType];
-  const colColor = NODE_TYPE_HEX_COLORS[colNodeType];
+  const rowColor = nodeTypeColor(rowNodeType);
+  const colColor = nodeTypeColor(colNodeType);
   const connectionCount = countUniqueEdges(adjacency);
   const totalCells = allRowNodes.length * allColNodes.length;
 
@@ -297,8 +297,8 @@ export function CorpusMatrix({
                               style={{
                                 backgroundColor:
                                   cellEdges.length === 1
-                                    ? NODE_TYPE_HEX_COLORS[rowNodeType]
-                                    : '#6366F1',
+                                    ? nodeTypeColor(rowNodeType)
+                                    : entityColorVar('violet'),
                                 opacity: 0.8,
                               }}
                             />

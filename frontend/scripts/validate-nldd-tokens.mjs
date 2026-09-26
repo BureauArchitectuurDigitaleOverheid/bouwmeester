@@ -53,14 +53,6 @@ const files = [];
   }
 })(root);
 
-/**
- * Files allowed to name colors literally.
- *
- * The graph canvases hand their colors to reactflow and to raw SVG, which paint
- * outside the cascade and cannot read a custom property off an ancestor.
- */
-const LITERAL_COLOR_OK = /(graph|reactflow|mermaid)/i;
-
 const problems = [];
 for (const file of files) {
   const source = readFileSync(file, 'utf8');
@@ -68,17 +60,17 @@ for (const file of files) {
 
   // A hard-coded color in an inline style. The token check above cannot see
   // these: there is no var() to be wrong about, so a color simply sits there
-  // and never follows the theme.
-  if (!LITERAL_COLOR_OK.test(rel)) {
-    for (const m of source.matchAll(
-      // The quote is optional: a JS style object writes `color: '#333'`, a
-      // stylesheet writes `color: #333`. Only the first form was checked, so
-      // a hard-coded scrim in utilities.css went straight past.
-      /\b(background|background-color|backgroundColor|color|border-color|borderColor|outline-color|outlineColor|fill|stroke)\s*:\s*'?(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/g,
-    )) {
-      const line = source.slice(0, m.index).split('\n').length;
-      problems.push(`${rel}:${line} ${m[1]} is a literal color; use a design-system token`);
-    }
+  // and never follows the theme. The graph canvases are no exception:
+  // where reactflow writes an SVG attribute, resolve the token first
+  // (utils/resolveColor.ts).
+  for (const m of source.matchAll(
+    // The quote is optional: a JS style object writes `color: '#333'`, a
+    // stylesheet writes `color: #333`. Only the first form was checked, so
+    // a hard-coded scrim in utilities.css went straight past.
+    /\b(background|background-color|backgroundColor|color|border-color|borderColor|outline-color|outlineColor|fill|stroke)\s*:\s*'?(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()/g,
+  )) {
+    const line = source.slice(0, m.index).split('\n').length;
+    problems.push(`${rel}:${line} ${m[1]} is a literal color; use a design-system token`);
   }
   for (const m of source.matchAll(/var\(\s*(--(?:primitives|semantics|components)-[a-z0-9-]*)/g)) {
     const name = m[1];
