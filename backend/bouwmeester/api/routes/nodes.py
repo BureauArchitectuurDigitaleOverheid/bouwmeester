@@ -30,6 +30,7 @@ from bouwmeester.core.permissions import (
 )
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
+from bouwmeester.repositories.graph import GraphRepository
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.task import TaskRepository
@@ -308,10 +309,9 @@ async def get_neighbors(
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> GraphNeighborsResponse:
-    """Get direct neighbors of a node (one hop) with their connecting edges."""
+    """Get the visible direct neighbors of a node with their connecting edges."""
     await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    result = await service.get_neighbors(id)
+    result = await GraphRepository(db).get_neighbors(id, org_ctx=org_ctx)
     require_found(result["node"], "Node")
     return GraphNeighborsResponse(
         node=CorpusNodeResponse.model_validate(result["node"]),
@@ -333,10 +333,9 @@ async def get_graph(
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> GraphViewResponse:
-    """Get a multi-hop subgraph around a node (configurable depth 1-5)."""
+    """Get the visible subgraph around a node (configurable depth 1-5)."""
     await check_resource_org_scope(db, "corpus_node", id, org_ctx)
-    service = NodeService(db)
-    result = await service.get_graph(id, depth=depth)
+    result = await GraphRepository(db).get_subgraph(id, org_ctx=org_ctx, depth=depth)
     return GraphViewResponse(
         nodes=validate_list(CorpusNodeResponse, result["nodes"]),
         edges=validate_list(EdgeResponse, result["edges"]),

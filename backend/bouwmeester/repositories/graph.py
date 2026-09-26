@@ -1,12 +1,19 @@
-"""Repository for graph-wide queries (path-finding, full graph, community)."""
+"""Repository for graph-wide queries (path-finding, full graph, community).
+
+Every corpus query here takes the caller's ``OrgContext``: a node the caller
+does not see is left out, and so is every edge with an invisible end.
+Walks (neighbours, subgraphs, paths) only step through visible nodes, so an
+invisible node never shows up as a bridge between two visible ones.
+"""
 
 from __future__ import annotations
 
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
@@ -33,149 +40,173 @@ from bouwmeester.schema.community_graph import (
 )
 
 
+def _other_end(edge: Edge, node_id: UUID) -> UUID:
+    return edge.to_node_id if edge.from_node_id == node_id else edge.from_node_id
+
+
 class GraphRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     # ------------------------------------------------------------------
-    # Path finding -- shortest path via recursive CTE (BFS)
+    # Visibility building blocks
+    # ------------------------------------------------------------------
+
+    async def _visible_nodes(
+        self, node_ids: set[UUID], org_ctx: OrgContext
+    ) -> dict[UUID, CorpusNode]:
+        """The nodes among *node_ids* the caller sees, by id."""
+        if not node_ids:
+            return {}
+        stmt = apply_org_filter(
+            select(CorpusNode).where(CorpusNode.id.in_(node_ids)),
+            CorpusNode.organisatie_eenheid_id,
+            org_ctx,
+        )
+        return {n.id: n for n in (await self.session.scalars(stmt)).all()}
+
+    async def _visible_edges_touching(
+        self, node_ids: set[UUID], org_ctx: OrgContext
+    ) -> list[Edge]:
+        """Edges with an end in *node_ids* whose both ends the caller sees."""
+        if not node_ids:
+            return []
+        src = aliased(CorpusNode)
+        dst = aliased(CorpusNode)
+        stmt = (
+            select(Edge)
+            .join(src, Edge.from_node_id == src.id)
+            .join(dst, Edge.to_node_id == dst.id)
+            .where(or_(Edge.from_node_id.in_(node_ids), Edge.to_node_id.in_(node_ids)))
+            .order_by(Edge.created_at, Edge.id)
+        )
+        stmt = apply_org_filter(stmt, src.organisatie_eenheid_id, org_ctx)
+        stmt = apply_org_filter(stmt, dst.organisatie_eenheid_id, org_ctx)
+        return list((await self.session.scalars(stmt)).all())
+
+    # ------------------------------------------------------------------
+    # Neighbours and subgraph around one node
+    # ------------------------------------------------------------------
+
+    async def get_neighbors(self, node_id: UUID, *, org_ctx: OrgContext) -> dict:
+        """The node and its visible direct neighbours with the connecting edges.
+
+        ``{"node": None, ...}`` when the node does not exist or is invisible.
+        """
+        node = (await self._visible_nodes({node_id}, org_ctx)).get(node_id)
+        if node is None:
+            return {"node": None, "neighbors": []}
+        edges = await self._visible_edges_touching({node_id}, org_ctx)
+        others = await self._visible_nodes(
+            {_other_end(e, node_id) for e in edges}, org_ctx
+        )
+        neighbors = [{"node": others[_other_end(e, node_id)], "edge": e} for e in edges]
+        return {"node": node, "neighbors": neighbors}
+
+    async def get_subgraph(
+        self, node_id: UUID, *, org_ctx: OrgContext, depth: int = 2
+    ) -> dict:
+        """Visible nodes within *depth* hops (through visible nodes only)."""
+        if not await self._visible_nodes({node_id}, org_ctx):
+            return {"nodes": [], "edges": []}
+        seen = {node_id}
+        frontier = {node_id}
+        for _ in range(depth):
+            reached: set[UUID] = set()
+            for e in await self._visible_edges_touching(frontier, org_ctx):
+                reached |= {e.from_node_id, e.to_node_id}
+            frontier = reached - seen
+            if not frontier:
+                break
+            seen |= frontier
+        nodes = await self._visible_nodes(seen, org_ctx)
+        edges = [
+            e
+            for e in await self._visible_edges_touching(seen, org_ctx)
+            if e.from_node_id in seen and e.to_node_id in seen
+        ]
+        return {"nodes": list(nodes.values()), "edges": edges}
+
+    # ------------------------------------------------------------------
+    # Path finding -- breadth-first over visible nodes
     # ------------------------------------------------------------------
 
     async def find_path(
         self,
         from_id: UUID,
         to_id: UUID,
+        *,
+        org_ctx: OrgContext,
         max_depth: int = 10,
     ) -> list[dict]:
-        """Find the shortest path between two nodes using a recursive CTE.
+        """The shortest path between two visible nodes through visible nodes.
 
-        The CTE performs a breadth-first search over the ``edge`` table,
-        treating edges as *undirected* (traversable in both directions).
-        It returns one row per step with the full path encoded as arrays
-        so we can reconstruct the route.
-
-        Returns a list of dicts -- one per step -- each containing:
-          - ``node_id``, ``node_title``, ``node_type``
-          - ``edge_id``, ``edge_type_id`` (``None`` for the starting node)
+        Edges are undirected here.  Returns one dict per step (``node_id``,
+        ``node_title``, ``node_type``, ``edge_id``, ``edge_type_id``; the
+        edge fields are ``None`` for the start), or ``[]`` when there is no
+        such path or either end is invisible.
         """
-        query = text(
-            """
-            WITH RECURSIVE path_walk AS (
-                -- Base: start from the source node.
-                SELECT
-                    cn.id        AS node_id,
-                    cn.title     AS node_title,
-                    cn.node_type AS node_type,
-                    NULL::uuid   AS edge_id,
-                    NULL::text   AS edge_type_id,
-                    ARRAY[cn.id] AS visited,
-                    0            AS depth
-                FROM corpus_node cn
-                WHERE cn.id = :from_id
-
-                UNION ALL
-
-                -- Recursive: follow edges in both directions.
-                SELECT
-                    next_node.id,
-                    next_node.title,
-                    next_node.node_type,
-                    e.id,
-                    e.edge_type_id,
-                    pw.visited || next_node.id,
-                    pw.depth + 1
-                FROM path_walk pw
-                JOIN edge e
-                    ON (e.from_node_id = pw.node_id OR e.to_node_id = pw.node_id)
-                JOIN corpus_node next_node
-                    ON next_node.id = CASE
-                        WHEN e.from_node_id = pw.node_id THEN e.to_node_id
-                        ELSE e.from_node_id
-                    END
-                WHERE pw.depth < :max_depth
-                  AND NOT (next_node.id = ANY(pw.visited))
-            )
-            SELECT
-                node_id,
-                node_title,
-                node_type,
-                edge_id,
-                edge_type_id,
-                visited,
-                depth
-            FROM path_walk
-            WHERE node_id = :to_id
-            ORDER BY depth
-            LIMIT 1
-            """
-        )
-
-        result = await self.session.execute(
-            query,
-            {
-                "from_id": str(from_id),
-                "to_id": str(to_id),
-                "max_depth": max_depth,
-            },
-        )
-        row = result.first()
-
-        if row is None:
+        ends = {from_id, to_id}
+        if len(await self._visible_nodes(ends, org_ctx)) < len(ends):
+            return []
+        # node -> (previous node, edge that reached it)
+        came_from: dict[UUID, tuple[UUID, Edge] | None] = {from_id: None}
+        frontier = {from_id}
+        for _ in range(max_depth):
+            if to_id in came_from or not frontier:
+                break
+            reached: set[UUID] = set()
+            for e in await self._visible_edges_touching(frontier, org_ctx):
+                for here, there in (
+                    (e.from_node_id, e.to_node_id),
+                    (e.to_node_id, e.from_node_id),
+                ):
+                    if here in frontier and there not in came_from:
+                        came_from[there] = (here, e)
+                        reached.add(there)
+            frontier = reached
+        if to_id not in came_from:
             return []
 
-        # ``visited`` contains the ordered list of node IDs from source to
-        # target.  We now reconstruct the full path with node + edge info.
-        visited_ids: list[UUID] = list(row.visited)
+        steps: list[tuple[UUID, Edge | None]] = []
+        step: UUID | None = to_id
+        while step is not None:
+            prev = came_from[step]
+            steps.append((step, prev[1] if prev else None))
+            step = prev[0] if prev else None
+        steps.reverse()
 
-        # Fetch all nodes on the path.
-        nodes_stmt = select(CorpusNode).where(CorpusNode.id.in_(visited_ids))
-        nodes_result = await self.session.execute(nodes_stmt)
-        node_map = {n.id: n for n in nodes_result.scalars().all()}
-
-        # Fetch all edges between consecutive nodes on the path.
-        path_steps: list[dict] = []
-        for i, nid in enumerate(visited_ids):
-            node = node_map.get(nid)
-            step: dict = {
+        nodes = await self._visible_nodes({nid for nid, _ in steps}, org_ctx)
+        return [
+            {
                 "node_id": nid,
-                "node_title": node.title if node else None,
-                "node_type": node.node_type if node else None,
-                "edge_id": None,
-                "edge_type_id": None,
+                "node_title": nodes[nid].title,
+                "node_type": nodes[nid].node_type,
+                "edge_id": edge.id if edge else None,
+                "edge_type_id": edge.edge_type_id if edge else None,
             }
-            if i > 0:
-                prev_id = visited_ids[i - 1]
-                edge_stmt = select(Edge).where(
-                    ((Edge.from_node_id == prev_id) & (Edge.to_node_id == nid))
-                    | ((Edge.from_node_id == nid) & (Edge.to_node_id == prev_id))
-                )
-                edge_result = await self.session.execute(edge_stmt)
-                edge = edge_result.scalar_one_or_none()
-                if edge:
-                    step["edge_id"] = edge.id
-                    step["edge_type_id"] = edge.edge_type_id
-            path_steps.append(step)
-
-        return path_steps
+            for nid, edge in steps
+        ]
 
     # ------------------------------------------------------------------
-    # Full graph -- all nodes and edges, optionally filtered
+    # Full graph -- all visible nodes and edges, optionally filtered
     # ------------------------------------------------------------------
 
     async def get_full_graph(
         self,
+        *,
+        org_ctx: OrgContext,
         node_types: list[str] | None = None,
         edge_types: list[str] | None = None,
-        org_ctx: OrgContext | None = None,
     ) -> dict:
-        """Return all nodes and edges, optionally filtered by type.
+        """Return all visible nodes and edges, optionally filtered by type.
 
         By default, politieke_input nodes are only included when they have
         at least one edge (i.e. they are connected to the policy graph).
+        Edges are only returned when both ends are in the returned nodes.
 
         Returns ``{"nodes": [...], "edges": [...]}``.
         """
-        # -- Nodes --
         nodes_stmt = select(CorpusNode)
         if node_types:
             nodes_stmt = nodes_stmt.where(CorpusNode.node_type.in_(node_types))
@@ -188,25 +219,16 @@ class GraphRepository:
             nodes_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
         )
         nodes_stmt = nodes_stmt.order_by(CorpusNode.created_at.desc())
-        nodes_result = await self.session.execute(nodes_stmt)
-        nodes = list(nodes_result.scalars().all())
-
+        nodes = list((await self.session.scalars(nodes_stmt)).all())
         node_ids = {n.id for n in nodes}
 
-        # -- Edges --
-        edges_stmt = select(Edge)
+        edges_stmt = select(Edge).where(
+            Edge.from_node_id.in_(node_ids),
+            Edge.to_node_id.in_(node_ids),
+        )
         if edge_types:
             edges_stmt = edges_stmt.where(Edge.edge_type_id.in_(edge_types))
-        # Only include edges whose *both* endpoints are in the visible node set.
-        # When org filtering is active, node_ids already reflects visibility,
-        # so edges between invisible nodes are automatically excluded.
-        if node_types or org_ctx is not None:
-            edges_stmt = edges_stmt.where(
-                Edge.from_node_id.in_(node_ids),
-                Edge.to_node_id.in_(node_ids),
-            )
-        edges_result = await self.session.execute(edges_stmt)
-        edges = list(edges_result.scalars().all())
+        edges = list((await self.session.scalars(edges_stmt)).all())
 
         return {"nodes": nodes, "edges": edges}
 

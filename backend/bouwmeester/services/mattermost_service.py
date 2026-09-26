@@ -615,11 +615,17 @@ class MattermostService:
             raise MattermostUnavailableError(
                 "Bot-user-id niet beschikbaar — Mattermost niet bereikbaar"
             )
+        return await self.is_member_of_channel(channel_id, bot_user_id)
+
+    async def is_member_of_channel(self, channel_id: str, user_id: str) -> bool:
+        """Whether a Mattermost user is a member of a channel.
+
+        200 is a member, 404 is not; anything else raises
+        ``MattermostUnavailableError`` (see ``is_bot_member_of_channel``).
+        """
         client = await self._get_client()
         try:
-            resp = await client.get(
-                f"/api/v4/channels/{channel_id}/members/{bot_user_id}"
-            )
+            resp = await client.get(f"/api/v4/channels/{channel_id}/members/{user_id}")
         except httpx.HTTPError as exc:
             logger.warning(
                 "Mattermost membership-check faalde voor kanaal %s: %s",
@@ -627,7 +633,7 @@ class MattermostService:
                 exc,
             )
             raise MattermostUnavailableError(
-                f"Kon bot-membership voor kanaal {channel_id} niet checken"
+                f"Kon membership voor kanaal {channel_id} niet checken"
             ) from exc
         if resp.status_code == 404:
             return False
@@ -641,6 +647,28 @@ class MattermostService:
         raise MattermostUnavailableError(
             f"Onverwachte status {resp.status_code} bij membership-check"
         )
+
+    async def is_open_channel(self, channel_id: str) -> bool:
+        """Whether a channel is public ("O"): anyone in the team can join it.
+
+        False for private channels and (group) DMs, and for a channel the
+        bot cannot see (404, 403).  Other failures raise
+        ``MattermostUnavailableError``.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get(f"/api/v4/channels/{channel_id}")
+        except httpx.HTTPError as exc:
+            raise MattermostUnavailableError(
+                f"Kon kanaal {channel_id} niet ophalen"
+            ) from exc
+        if resp.status_code in (403, 404):
+            return False
+        if resp.status_code != 200:
+            raise MattermostUnavailableError(
+                f"Onverwachte status {resp.status_code} bij ophalen kanaal"
+            )
+        return resp.json().get("type") == "O"
 
     async def team_namen(self) -> dict[str, str]:
         """Team-id naar leesbare naam, voor de teams waar de bot in zit.
