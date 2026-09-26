@@ -29,7 +29,7 @@ export function GapAnalysisPanel({ dossierId }: GapAnalysisPanelProps) {
   return (
     <nldd-container gap="12">
       <nldd-container layout="row" gap="8" vertical-alignment="center">
-        <nldd-text size="sm" weight="medium"><h3>Voltooiheidsanalyse</h3></nldd-text>
+        <nldd-title size={6}><h3>Voltooiheidsanalyse</h3></nldd-title>
         <nldd-spacer size="flexible" />
         <AiActionButton
           label="Analyse voltooiheid"

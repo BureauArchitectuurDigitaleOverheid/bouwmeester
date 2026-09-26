@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/common/Badge';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
+import { Select } from '@/components/common/Select';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
@@ -35,6 +36,18 @@ const HOUDING_OPTIONS: StakeholderHouding[] = [
 ];
 
 const SCORE_OPTIONS = [1, 2, 3, 4, 5];
+
+// '' is a real, selectable "no value" option here, so it is part of the list
+// rather than Select's disabled placeholder.
+const EMPTY_OPTION = { value: '', label: '—' };
+const SCORE_SELECT_OPTIONS = [
+  EMPTY_OPTION,
+  ...SCORE_OPTIONS.map((n) => ({ value: String(n), label: String(n) })),
+];
+const HOUDING_SELECT_OPTIONS = [
+  EMPTY_OPTION,
+  ...HOUDING_OPTIONS.map((h) => ({ value: h, label: STAKEHOLDER_HOUDING_LABELS[h] })),
+];
 
 /** Houding -> Badge color. */
 const HOUDING_BADGE_COLOR: Record<StakeholderHouding, EntityColor> = {
@@ -193,29 +206,15 @@ function ScoreSelect({
   onChange: (v: number | null) => void;
   disabled?: boolean;
 }) {
-  // nldd-dropdown stops the slotted select's native `change` and re-emits its
-  // own CustomEvent from the host, so a React onChange on the select never
-  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
-  // This component is instantiated once per row in a `.map()`, so its own
-  // useRef is already scoped per row — no extra extraction needed.
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'change', (e) => {
-    const next = eventValue(e);
-    onChange(next === '' ? null : Number(next));
-  });
-
   return (
     <nldd-form-field label={label}>
-      <nldd-dropdown ref={ref} size="sm" {...(disabled ? { disabled: true } : {})}>
-        <select aria-label={label} value={value ?? ''} onChange={() => {}} disabled={disabled}>
-          <option value="">—</option>
-          {SCORE_OPTIONS.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </nldd-dropdown>
+      <Select
+        aria-label={label}
+        value={value == null ? '' : String(value)}
+        onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+        disabled={disabled}
+        options={SCORE_SELECT_OPTIONS}
+      />
     </nldd-form-field>
   );
 }
@@ -229,15 +228,6 @@ function HoudingSelect({
   onChange: (v: StakeholderHouding | null) => void;
   disabled?: boolean;
 }) {
-  // Same nldd-dropdown wiring as ScoreSelect above. Declared before the
-  // `disabled` early return below so the hook always runs (Rules of Hooks);
-  // it's simply unused in the disabled branch.
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'change', (e) => {
-    const next = eventValue(e);
-    onChange(next === '' ? null : (next as StakeholderHouding));
-  });
-
   if (disabled) {
     return (
       <nldd-container gap="2">
@@ -255,16 +245,14 @@ function HoudingSelect({
 
   return (
     <nldd-form-field label="Houding">
-      <nldd-dropdown ref={ref} size="sm">
-        <select aria-label="Houding" value={value ?? ''} onChange={() => {}}>
-          <option value="">—</option>
-          {HOUDING_OPTIONS.map((h) => (
-            <option key={h} value={h}>
-              {STAKEHOLDER_HOUDING_LABELS[h]}
-            </option>
-          ))}
-        </select>
-      </nldd-dropdown>
+      <Select
+        aria-label="Houding"
+        value={value ?? ''}
+        onChange={(e) =>
+          onChange(e.target.value === '' ? null : (e.target.value as StakeholderHouding))
+        }
+        options={HOUDING_SELECT_OPTIONS}
+      />
     </nldd-form-field>
   );
 }

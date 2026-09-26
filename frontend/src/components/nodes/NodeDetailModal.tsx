@@ -10,6 +10,7 @@ import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
 import { DetailModalFooter } from '@/components/common/DetailModalFooter';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { NodeEditForm } from './NodeEditForm';
 import { TaskCreateForm } from '@/components/tasks/TaskCreateForm';
 import { useNode, useNodeStakeholders, useNodeNeighbors, useNodeParlementairItem, useDeleteNode } from '@/hooks/useNodes';
@@ -167,9 +168,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
         }
       >
         {isLoading ? (
-          <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding="16">
-            <nldd-text size="sm" color="secondary">Laden...</nldd-text>
-          </nldd-container>
+          <LoadingSpinner padding="16" />
         ) : !node ? (
           <nldd-container layout="row" horizontal-alignment="center" vertical-alignment="center" padding="16">
             <nldd-text size="sm" color="secondary">Node niet gevonden.</nldd-text>
@@ -207,7 +206,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                   <nldd-container width="fit-content" className="row-fill" gap="8">
                     <nldd-container layout="row" gap="4" vertical-alignment="center">
                       <nldd-icon name="users" size="16" aria-hidden="true" />
-                      <nldd-text size="xs" weight="bold" color="secondary"><h4>Eigenaar</h4></nldd-text>
+                      <nldd-title size={6}><h2>Eigenaar</h2></nldd-title>
                     </nldd-container>
                     <nldd-container layout="wrap" gap="6">
                       {eigenaren.map((s) => (
@@ -218,7 +217,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                 )}
                 {otherStakeholders.length > 0 && (
                   <nldd-container width="fit-content" className="row-fill" gap="8">
-                    <nldd-text size="xs" weight="bold" color="secondary"><h4>Betrokkenen</h4></nldd-text>
+                    <nldd-title size={6}><h2>Betrokkenen</h2></nldd-title>
                     <nldd-container layout="wrap" gap="6">
                       {otherStakeholders.slice(0, 6).map((s) => (
                         <nldd-tag
@@ -241,7 +240,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               <nldd-container gap="6">
                 <nldd-container layout="row" gap="4" vertical-alignment="center">
                   <nldd-icon name="tag" size="16" aria-hidden="true" />
-                  <nldd-text size="xs" weight="bold" color="secondary"><h4>Tags</h4></nldd-text>
+                  <nldd-title size={6}><h2>Tags</h2></nldd-title>
                 </nldd-container>
                 <nldd-container layout="wrap" gap="6">
                   {nodeTags.map((nt) => (

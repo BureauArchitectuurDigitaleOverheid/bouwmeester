@@ -80,7 +80,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
 
       {/* Per year breakdown */}
       <nldd-container gap="8">
-        <nldd-text size="sm" weight="bold"><h4>Per begrotingsjaar</h4></nldd-text>
+        <nldd-title size={6}><h4>Per begrotingsjaar</h4></nldd-title>
         <nldd-table
           columns="minmax(80px,1fr) minmax(100px,1fr) minmax(100px,1fr) minmax(100px,1fr) minmax(100px,1fr)"
           accessible-label="Financieel overzicht per begrotingsjaar"
@@ -110,7 +110,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
       {/* Opdrachten list */}
       <nldd-container gap="8">
         <nldd-container layout="row" gap="8" vertical-alignment="center">
-          <nldd-text size="sm" weight="bold"><h4>Opdrachten</h4></nldd-text>
+          <nldd-title size={6}><h4>Opdrachten</h4></nldd-title>
           <nldd-spacer direction="horizontal" size="flexible" />
           {nodeType === 'instrument' && (
             <NlddButton

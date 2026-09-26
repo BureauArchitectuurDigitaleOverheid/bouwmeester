@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Card } from '@/components/common/Card';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { EmptyState } from '@/components/common/EmptyState';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { entityColorVar, nodeTypeColor } from '@/types';
@@ -173,52 +174,58 @@ export function CorpusMatrix({
         {sameType && ' (symmetrische matrix — zelfde type rij en kolom)'}
       </nldd-text>
 
+      {/* The actions are nldd-buttons, not inline action text: the banner
+          wraps its `actions` slot in an nldd-button-group. */}
       {isTruncated && (
-        <div className="matrix-notice matrix-notice-warning">
-          {pendingExpand ? (
-            <span>
-              Volledige matrix ({allRowNodes.length}&times;{allColNodes.length} = {totalCells.toLocaleString('nl-NL')} cellen) kan de browser vertragen.{' '}
-              <button
-                onClick={() => setShowFullMatrix(true)}
-                className="plain-button link-hover-underline matrix-notice-action"
-              >
-                Toch tonen
-              </button>
-              {' '}of{' '}
-              <button
-                onClick={() => setPendingExpand(false)}
-                className="plain-button link-hover-underline matrix-notice-action"
-              >
-                annuleren
-              </button>.
-            </span>
-          ) : (
-            <span>
-              Matrix is beperkt tot {MAX_MATRIX_DIMENSION}&times;{MAX_MATRIX_DIMENSION} voor prestatie.
-              Gebruik de zoekbalk om te filteren, of{' '}
-              <button
-                onClick={() => totalCells > 10000 ? setPendingExpand(true) : setShowFullMatrix(true)}
-                className="plain-button link-hover-underline matrix-notice-action"
-              >
-                toon alles ({allRowNodes.length}&times;{allColNodes.length})
-              </button>.
-            </span>
-          )}
-        </div>
+        pendingExpand ? (
+          <nldd-banner
+            variant="warning"
+            size="sm"
+            text={`Volledige matrix (${allRowNodes.length}×${allColNodes.length} = ${totalCells.toLocaleString('nl-NL')} cellen) kan de browser vertragen.`}
+          >
+            <NlddButton
+              slot="actions"
+              variant="secondary"
+              size="sm"
+              text="Toch tonen"
+              onClick={() => setShowFullMatrix(true)}
+            />
+            <NlddButton
+              slot="actions"
+              variant="neutral-transparent"
+              size="sm"
+              text="Annuleren"
+              onClick={() => setPendingExpand(false)}
+            />
+          </nldd-banner>
+        ) : (
+          <nldd-banner
+            variant="warning"
+            size="sm"
+            text={`Matrix is beperkt tot ${MAX_MATRIX_DIMENSION}×${MAX_MATRIX_DIMENSION} voor prestatie.`}
+            supporting-text="Gebruik de zoekbalk om te filteren, of toon alles."
+          >
+            <NlddButton
+              slot="actions"
+              variant="secondary"
+              size="sm"
+              text={`Toon alles (${allRowNodes.length}×${allColNodes.length})`}
+              onClick={() => (totalCells > 10000 ? setPendingExpand(true) : setShowFullMatrix(true))}
+            />
+          </nldd-banner>
+        )
       )}
 
       {showFullMatrix && !isTruncated && allRowNodes.length > MAX_MATRIX_DIMENSION && (
-        <div className="matrix-notice matrix-notice-info">
-          <span>
-            Volledige matrix wordt getoond.{' '}
-            <button
-              onClick={() => setShowFullMatrix(false)}
-              className="plain-button link-hover-underline matrix-notice-action"
-            >
-              Beperk tot {MAX_MATRIX_DIMENSION}&times;{MAX_MATRIX_DIMENSION}
-            </button>
-          </span>
-        </div>
+        <nldd-banner variant="accent" size="sm" text="Volledige matrix wordt getoond.">
+          <NlddButton
+            slot="actions"
+            variant="secondary"
+            size="sm"
+            text={`Beperk tot ${MAX_MATRIX_DIMENSION}×${MAX_MATRIX_DIMENSION}`}
+            onClick={() => setShowFullMatrix(false)}
+          />
+        </nldd-banner>
       )}
 
       <Card padding={false}>

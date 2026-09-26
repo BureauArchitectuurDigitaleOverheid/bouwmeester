@@ -39,12 +39,15 @@ export function NodeCard({ node }: NodeCardProps) {
             )}
           </nldd-container>
 
-          {/* nldd-text has no truncate/line-clamp prop; that's line-box CSS
-              behavior with no token equivalent, so it stays as plain classes. */}
-          <h3 className="truncate">
-            <nldd-text size="sm" weight="bold">{node.title}</nldd-text>
-          </h3>
+          {/* The title wraps rather than truncating: nldd-title resets its
+              slotted heading with `all: revert !important`, so a truncate
+              class on the h3 would never apply. */}
+          <nldd-title size={6}>
+            <h3>{node.title}</h3>
+          </nldd-title>
 
+          {/* nldd-text has no line-clamp prop; that's line-box CSS behavior
+              with no token equivalent, so it stays as a plain class. */}
           {node.description && (
             <p className="line-clamp-2">
               <nldd-text size="xs" color="secondary">{richTextToPlain(node.description)}</nldd-text>

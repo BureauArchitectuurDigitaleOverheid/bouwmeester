@@ -140,11 +140,9 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
     // A plain div, not nldd-box: the drag-over ring highlight and the
     // per-org-type tint (orgTypeBg) are dynamic border/ring colors with no
     // nldd-box equivalent (only background="tinted"/"base"/"critical").
-    // The sm-and-up padding bump has no nldd-container equivalent for a plain
-    // div, so it stays a small responsive utility class; everything else is
-    // inline since it depends on drag state.
+    // The padding lives on the nldd-container inside; the rest is inline
+    // since it depends on drag state.
     <div
-      className="org-group-padding"
       style={{
         borderRadius: '8px',
         transition: 'all 150ms',
@@ -158,7 +156,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <nldd-container gap="8">
+      <nldd-container gap="8" padding="12" sm-padding="8">
         {/* Group header. A plain button rather than NlddButton: the label is a
             composite of an icon, a badge, a name and a count, none of which
             nldd-button's text/icon slots can carry together (its children only
@@ -178,7 +176,7 @@ function PersonGroupSection({ group, isRoot, onEditPerson, onDragStartPerson, on
             <Badge color={ORGANISATIE_TYPE_BADGE_COLORS[group.eenheid.type] || 'coolgray'}>
               {formatOrganisatieType(group.eenheid.type)}
             </Badge>
-            <nldd-text size="sm" weight="medium" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <nldd-text size="sm" weight="medium" className="truncate">
               {group.eenheid.naam}
             </nldd-text>
             <nldd-text size="xs" color="secondary">({totalCount})</nldd-text>
@@ -329,8 +327,10 @@ export function OrganisatieDetail({
               {eenheid.website && (
                 <>
                   <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>Website</dt>
-                  <dd>
-                    <nldd-link href={eenheid.website} target="_blank" text={eenheid.website} size="xs" style={{ maxWidth: '400px', display: 'block' }} />
+                  {/* Unsized nldd-link runs inline and inherits the list's
+                      font; overflow-wrap lets a long URL break in the column. */}
+                  <dd style={{ overflowWrap: 'anywhere' }}>
+                    <nldd-link href={eenheid.website} target="_blank" text={eenheid.website} />
                   </dd>
                 </>
               )}
@@ -343,8 +343,10 @@ export function OrganisatieDetail({
               {eenheid.tooi_uri && (
                 <>
                   <dt style={{ color: 'var(--primitives-color-neutral-700)' }}>TOOI</dt>
-                  <dd>
-                    <nldd-link href={eenheid.tooi_uri} target="_blank" text={eenheid.tooi_uri} size="xs" className="font-mono" style={{ maxWidth: '400px', display: 'block' }} />
+                  {/* font-mono sits on the dd: a sized nldd-link sets its own
+                      font in the shadow root, an unsized one inherits it. */}
+                  <dd className="font-mono" style={{ overflowWrap: 'anywhere' }}>
+                    <nldd-link href={eenheid.tooi_uri} target="_blank" text={eenheid.tooi_uri} />
                   </dd>
                 </>
               )}
