@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import (
+from bouwmeester.core.authority import (
     can_manage_members,
     managed_subtree_ids,
     require_can_decide_placement_request,
@@ -123,7 +123,6 @@ async def my_requests(
 
 @router.get("/pending", response_model=list[OrgPlacementRequestResponse])
 async def list_pending(
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrgPlacementRequestResponse]:
@@ -149,7 +148,6 @@ async def list_pending(
 async def update_placement_request(
     id: UUID,
     data: OrgPlacementRequestUpdate,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrgPlacementRequestResponse:

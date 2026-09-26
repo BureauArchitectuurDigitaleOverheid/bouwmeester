@@ -364,6 +364,7 @@ async def auth_status(
             # Build org context once — derives managed eenheden and
             # visible eenheid IDs without duplicate queries.
             visible_eenheid_ids_list: list[str] = []
+            managed_subtree_ids_list: list[str] = []
             org_ctx = None
             if person_id:
                 person_for_org = await db.get(Person, UUID(person_id))
@@ -374,7 +375,11 @@ async def auth_status(
 
                     if org_ctx.is_admin:
                         visible_eenheid_ids_list = ["*"]
+                        managed_subtree_ids_list = ["*"]
                     else:
+                        managed_subtree_ids_list = [
+                            str(eid) for eid in org_ctx.managed_subtree_ids
+                        ]
                         visible_eenheid_ids_list = [
                             str(eid)
                             for eid in set(
@@ -461,6 +466,8 @@ async def auth_status(
                 "roles": roles_list,
                 "permissions": permissions_list,
                 "visible_eenheid_ids": visible_eenheid_ids_list,
+                # Eenheden whose members this person manages ("*" = all).
+                "managed_subtree_ids": managed_subtree_ids_list,
                 "scoped_permissions": scoped_permissions_dict,
                 "system_permissions": system_permissions_list,
             }

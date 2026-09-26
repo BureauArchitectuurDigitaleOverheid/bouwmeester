@@ -33,6 +33,8 @@ interface AuthPerson {
   scoped_permissions?: Record<string, string[]>;
   system_permissions?: string[];
   visible_eenheid_ids?: string[];
+  /** Eenheden whose members this person manages; "*" means all. */
+  managed_subtree_ids?: string[];
 }
 
 interface AuthState {
@@ -118,6 +120,7 @@ async function fetchAuthStatus(): Promise<AuthState> {
           scoped_permissions: data.person.scoped_permissions ?? {},
           system_permissions: data.person.system_permissions ?? [],
           visible_eenheid_ids: data.person.visible_eenheid_ids ?? [],
+          managed_subtree_ids: data.person.managed_subtree_ids ?? [],
         }
       : null,
     error: null,

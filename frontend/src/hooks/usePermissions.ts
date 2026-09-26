@@ -7,7 +7,6 @@ import { useCallback, useMemo } from 'react';
 interface MyPermissionsResponse {
   roles: unknown[];
   permissions: string[];
-  scoped_permissions?: Record<string, string[]>;
   system_permissions?: string[];
 }
 
@@ -32,18 +31,6 @@ export function usePermissions() {
     return new Set(person?.permissions ?? []);
   }, [person?.permissions, oidcConfigured, devPerms?.permissions]);
 
-  // Build per-eenheid permission lookup
-  const scopedPermissions = useMemo(() => {
-    const raw = !oidcConfigured
-      ? devPerms?.scoped_permissions ?? {}
-      : person?.scoped_permissions ?? {};
-    const map = new Map<string, Set<string>>();
-    for (const [eenheidId, perms] of Object.entries(raw)) {
-      map.set(eenheidId, new Set(perms));
-    }
-    return map;
-  }, [person?.scoped_permissions, oidcConfigured, devPerms?.scoped_permissions]);
-
   // System-level permissions from the backend (apply to all eenheden)
   const systemPermissions = useMemo(() => {
     const raw = !oidcConfigured
@@ -59,16 +46,19 @@ export function usePermissions() {
     [permissions],
   );
 
-  const isAdmin = person?.is_admin ?? false;
+  // Dev mode (no OIDC) has no user and the backend allows everything.
+  const isAdmin = !oidcConfigured || (person?.is_admin ?? false);
 
-  const hasPermissionForEenheid = useCallback(
-    (perm: string, eenheidId: string): boolean => {
-      if (isAdmin) return true;
-      if (systemPermissions.has(perm)) return true;
-      const eenheidPerms = scopedPermissions.get(eenheidId);
-      return eenheidPerms?.has(perm) ?? false;
-    },
-    [isAdmin, systemPermissions, scopedPermissions],
+  // Eenheden whose members this person manages, with the same inheritance
+  // the backend applies (the eenheid itself or anything above it).
+  const managedSubtree = useMemo(
+    () => new Set(person?.managed_subtree_ids ?? []),
+    [person?.managed_subtree_ids],
+  );
+  const managesEenheid = useCallback(
+    (eenheidId: string): boolean =>
+      isAdmin || managedSubtree.has('*') || managedSubtree.has(eenheidId),
+    [isAdmin, managedSubtree],
   );
 
   // Tenant-wide actions (syncs, merges, restoring a backup) need the
@@ -81,10 +71,9 @@ export function usePermissions() {
   return {
     hasPermission,
     hasAnyPermission,
-    hasPermissionForEenheid,
     hasSystemPermission,
+    managesEenheid,
     isSuperAdmin: isAdmin,
     permissions,
-    scopedPermissions,
   };
 }

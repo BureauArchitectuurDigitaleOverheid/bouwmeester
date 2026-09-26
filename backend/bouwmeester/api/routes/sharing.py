@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import require_permission_on_eenheid
+from bouwmeester.core.authority import require_permission_on_eenheid
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import PermissionContext, require_permission

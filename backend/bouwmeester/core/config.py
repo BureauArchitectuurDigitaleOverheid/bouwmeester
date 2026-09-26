@@ -297,3 +297,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def is_dev_mode() -> bool:
+    """True when running without an identity provider (local development).
+
+    Settings refuses to start that way unless ``DEV_NO_AUTH`` is set and no
+    public host is configured, so this is never true in production.  Without
+    a user, dev mode means "everything allowed"; with OIDC it means nothing.
+    """
+    return not get_settings().OIDC_ISSUER

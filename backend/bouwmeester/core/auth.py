@@ -247,7 +247,7 @@ async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) ->
     existing = await db.execute(
         select(PersonEmail).where(func.lower(PersonEmail.email) == email)
     )
-    existing_row = existing.scalar_one_or_none()
+    existing_row = existing.scalars().first()
     if existing_row is not None:
         if existing_row.person_id != person_id:
             logger.warning(
@@ -280,13 +280,18 @@ async def get_or_create_person(
     Only links an existing Person by email if ``email_verified`` is True,
     to prevent account takeover via unverified email claims.
     """
+    # The ZAD realm marks SSO Rijk addresses verified (trustEmail on the
+    # broker) and only admins create local accounts, so a real login always
+    # arrives with email_verified=true.
+    email = normalize_email(email)
+
     stmt = select(Person).where(Person.oidc_subject == sub)
     result = await db.execute(stmt)
     person = result.scalar_one_or_none()
 
     if person is not None:
-        if person.oidc_email != normalize_email(email):
-            person.oidc_email = normalize_email(email)
+        if person.oidc_email != email:
+            person.oidc_email = email
             await db.flush()
         # Auto-accumulate verified emails across logins.
         if email_verified:
@@ -300,7 +305,7 @@ async def get_or_create_person(
     if email_owner is not None and email_verified:
         if email_owner.oidc_subject is None:
             email_owner.oidc_subject = sub
-            email_owner.oidc_email = normalize_email(email)
+            email_owner.oidc_email = email
             if name and not email_owner.naam:
                 email_owner.naam = name
             await db.flush()
@@ -323,29 +328,30 @@ async def get_or_create_person(
 
     # Create a brand-new Person.  It only claims the email address when
     # nobody holds it yet; a duplicate can be merged by an admin later.
+    # Savepoints keep a lost race from rolling back the whole request.
     try:
-        person = Person(
-            naam=name or email,
-            email=email,
-            oidc_subject=sub,
-            oidc_email=normalize_email(email),
-        )
-        db.add(person)
-        await db.flush()
-        if email_owner is None:
-            db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
+        async with db.begin_nested():
+            person = Person(
+                naam=name or email,
+                email=email,
+                oidc_subject=sub,
+                oidc_email=email,
+            )
+            db.add(person)
             await db.flush()
-        await db.refresh(person)
-        return person
     except IntegrityError:
-        # Concurrent login with the same subject: use the row that won.
-        await db.rollback()
-        stmt = select(Person).where(Person.oidc_subject == sub)
-        result = await db.execute(stmt)
-        person = result.scalar_one_or_none()
-        if person is None:
-            raise
-        return person
+        # A concurrent login with the same subject won; use its row.
+        result = await db.execute(select(Person).where(Person.oidc_subject == sub))
+        return result.scalar_one()
+    if email_owner is None:
+        try:
+            async with db.begin_nested():
+                db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
+                await db.flush()
+        except IntegrityError:
+            pass  # claimed concurrently by someone else; keep the person
+    await db.refresh(person)
+    return person
 
 
 # ---------------------------------------------------------------------------
@@ -863,62 +869,6 @@ async def get_optional_user(
     return person
 
 
-async def get_admin_user(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> Person | None:
-    """Dependency that requires the current user to be an admin.
-
-    Checks API key first, then WebAuthn session, then OIDC.  In development
-    mode (no OIDC and no API key) returns ``None`` (all access open).  With
-    OIDC configured an unresolved user is a 401, never ``None``.
-    Raises 403 if the user is authenticated but not an admin.
-
-    Uses the RBAC system (``super_admin`` or ``platform_admin`` person_role).
-    """
-    person = await _resolve_user(request, db, settings)
-    if person is None:
-        if settings.OIDC_ISSUER:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required",
-            )
-        return None
-    from bouwmeester.core.permissions import build_permission_context
-
-    perm_ctx = await build_permission_context(db, person)
-    if perm_ctx.is_super_admin or "platform_admin" in perm_ctx.system_roles:
-        return person
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Admin access required",
-    )
-
-
-async def get_super_admin_user(
-    admin: Person | None = Depends(get_admin_user),
-    db: AsyncSession = Depends(get_db),
-) -> Person | None:
-    """Like :func:`get_admin_user`, but refuses ``platform_admin``.
-
-    For actions that can mint or take over rights (granting super_admin,
-    restoring a database, merging persons, rotating an agent's key).
-    platform_admin is an infra role and must not be able to promote itself.
-    """
-    if admin is None:
-        return None  # dev mode; get_admin_user already failed closed in prod
-    from bouwmeester.core.permissions import build_permission_context
-
-    perm_ctx = await build_permission_context(db, admin)
-    if perm_ctx.is_super_admin:
-        return admin
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Super-admin access required",
-    )
-
-
 # Type aliases for convenient use in route signatures.
 #
 # NOTE ON AUTHORIZATION:
@@ -931,19 +881,22 @@ async def get_super_admin_user(
 #   so the app keeps working in dev without an OIDC provider.  When deployed
 #   behind the Keycloak gateway, every request carries a valid token and
 #   OptionalUser returns the authenticated Person.
-# - AdminUser: requires admin role.  Returns None in dev mode (no OIDC).
+# - AdminUser: super_admin or platform_admin.  Returns None in dev mode.
+# - SuperAdminUser: super_admin only.  Returns None in dev mode.
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
-AdminUser = Annotated[Person | None, Depends(get_admin_user)]
-SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
 
-# New RBAC dependency — returns the resolved PermissionContext.
-# Import here to avoid circular imports at module level.
+# The admin dependencies build on the PermissionContext; import them here to
+# avoid a circular import at module level (permissions imports this module).
 from bouwmeester.core.permissions import (  # noqa: E402
     PermissionContext,
+    get_admin_user,
     get_permission_context,
+    get_super_admin_user,
 )
 
+AdminUser = Annotated[Person | None, Depends(get_admin_user)]
+SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
 PermUser = Annotated[PermissionContext, Depends(get_permission_context)]
 
 

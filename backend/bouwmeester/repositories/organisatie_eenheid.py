@@ -179,8 +179,11 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             PersonRole.start_datum <= today,
             PersonRole.eind_datum.is_(None),
         )
+        # Two active managers can exist (a role assigned next to one set via
+        # the eenheid); report the most recent instead of failing.
+        stmt = stmt.order_by(PersonRole.start_datum.desc()).limit(1)
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     # ------------------------------------------------------------------
     # Queries

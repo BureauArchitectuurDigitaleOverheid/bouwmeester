@@ -40,7 +40,14 @@ _api_key_failures: dict[str, list[float]] = defaultdict(list)
 
 # Prefixes that are always accessible without authentication.
 _PUBLIC_PREFIXES = (
-    "/api/auth/",
+    # The login flow itself.  Everything else under /api/auth/ (me,
+    # onboarding) goes through the middleware so the whitelist applies.
+    "/api/auth/login",
+    "/api/auth/callback",
+    "/api/auth/logout",
+    "/api/auth/status",
+    "/api/auth/request-access",
+    "/api/auth/access-request-status",
     "/api/health/",
     "/api/public/",
     "/api/webauthn/authenticate/",

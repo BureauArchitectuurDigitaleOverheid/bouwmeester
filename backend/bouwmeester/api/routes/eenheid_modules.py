@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import require_permission_on_eenheid
+from bouwmeester.core.authority import require_permission_on_eenheid
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, require_permission
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid

@@ -11,6 +11,7 @@ import type {
 } from '@/types';
 import { ORGANISATIE_TYPE_OPTIONS, formatFunctie } from '@/types';
 import { useOrganisatieFlat, useOrganisatiePersonen } from '@/hooks/useOrganisatie';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface OrganisatieFormProps {
   open: boolean;
@@ -35,6 +36,9 @@ export function OrganisatieForm({
   const [type, setType] = useState('');
   const [parentId, setParentId] = useState<string>('');
   const [managerId, setManagerId] = useState<string>('');
+  // Naming a manager is a role assignment; hide it from who can't make one.
+  const { hasPermission, isSuperAdmin } = usePermissions();
+  const canSetManager = isSuperAdmin || hasPermission('people:assign_role');
   const [beschrijving, setBeschrijving] = useState('');
   const [typeOptions, setTypeOptions] = useState<SelectOption[]>(
     ORGANISATIE_TYPE_OPTIONS.map((o) => ({ ...o })),
@@ -189,7 +193,7 @@ export function OrganisatieForm({
           placeholder="Selecteer bovenliggende eenheid..."
         />
 
-        {editData && (
+        {editData && canSetManager && (
           <CreatableSelect
             label={type === 'cluster' || type === 'team' ? 'Coördinator' : 'Manager'}
             value={managerId}
