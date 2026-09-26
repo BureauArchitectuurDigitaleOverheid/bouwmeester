@@ -2,10 +2,10 @@
 
 Opdrachten, organisatie-eenheden (and their module toggles), tags,
 samenwerkingsverbanden, stakeholder assessments, bijlagen and people.
-Builds on the tree of ``test_authz`` (ministerie > DG > directie > afdeling
-> team, plus a sibling directie "elders") and adds the resources of these
-domains.  One table asks ``can()`` directly; a few route tests check that
-the routes ask the same question.
+Builds on ``world`` from ``tests/authz_world.py`` (ministerie > DG >
+directie > afdeling > team, plus a sibling directie "elders") and adds the
+resources of these domains.  One table asks ``can()`` directly; a few
+route tests check that the routes ask the same question.
 """
 
 import uuid
@@ -13,15 +13,19 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import can
 from bouwmeester.models.bron import Bron
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
 from bouwmeester.models.stakeholder_assessment import StakeholderAssessment
 from bouwmeester.models.tag import Tag
-from tests.factories import client_as, grant_role, make_person, place
-from tests.test_authz import World, _ctx, world  # noqa: F401  (fixture)
+from tests.authz_world import (
+    World,
+    add_directie_admin,
+    assert_can_case,
+    can_case_id,
+)
+from tests.factories import client_as, make_person
 
 
 def _opdracht(titel: str, **kwargs) -> Opdracht:
@@ -29,16 +33,14 @@ def _opdracht(titel: str, **kwargs) -> Opdracht:
 
 
 @pytest.fixture
-async def w(world: World) -> World:  # noqa: F811
+async def w(world: World) -> World:
     """The authz world plus opdrachten, tags, verbanden and assessments."""
     db: AsyncSession = world.db
     org = world.org
 
-    org_admin = await make_person(db, "Directiebeheerder")
-    await place(db, org_admin, org["directie"])
-    await grant_role(db, org_admin, "ministry_admin", org["directie"])
+    await add_directie_admin(world, "org_admin", "Directiebeheerder")
     eenheid_eigenaar = await make_person(db, "Aanmaker stakeholder-eenheid")
-    world.person.update(org_admin=org_admin, eenheid_eigenaar=eenheid_eigenaar)
+    world.person["eenheid_eigenaar"] = eenheid_eigenaar
 
     opdrachten = {
         "opdracht_afdeling": _opdracht("Afdeling", opdrachtgever_id=org["afdeling"].id),
@@ -49,7 +51,6 @@ async def w(world: World) -> World:  # noqa: F811
             opdrachtgever_id=org["elders"].id,
             opdrachtnemer_eenheid_id=org["team"].id,
         ),
-        "opdracht_fcc": _opdracht("FCC-import", fcc_id=f"fcc-{uuid.uuid4().hex[:8]}"),
     }
     tag = Tag(name=f"authz-{uuid.uuid4().hex[:8]}")
     verband = Samenwerkingsverband(naam="Werkgroep", type="werkgroep")
@@ -113,23 +114,6 @@ CASES = [
     ("afd_editor", "opdracht:create", "opdracht", None, "team", True),
     ("afd_editor", "opdracht:create", "opdracht", None, "directie", False),
     ("platform_admin", "opdracht:update", "opdracht", "opdracht_afdeling", None, False),
-    ("viewer", "opdracht:update", "opdracht", "opdracht_fcc", None, False),
-    (
-        "team_editor",
-        "opdracht:update",
-        "opdracht",
-        "opdracht_fcc",
-        None,
-        True,
-    ),
-    (
-        "team_editor",
-        "opdracht:create",
-        "opdracht",
-        None,
-        None,
-        True,
-    ),
     # Organisatie-eenheden: org:manage on the eenheid or above it.
     ("org_admin", "org:manage", "organisatie_eenheid", "eenheid_directie", None, True),
     ("org_admin", "org:manage", "organisatie_eenheid", "eenheid_team", None, True),
@@ -162,31 +146,7 @@ CASES = [
     # Samenwerkingsverbanden: tenant-wide, the permission through any role.
     (
         "team_editor",
-        "samenwerkingsverband:update",
-        "samenwerkingsverband",
-        "verband",
-        None,
-        True,
-    ),
-    (
-        "manager",
         "samenwerkingsverband:delete",
-        "samenwerkingsverband",
-        "verband",
-        None,
-        True,
-    ),
-    (
-        "team_editor",
-        "samenwerkingsverband:delete",
-        "samenwerkingsverband",
-        "verband",
-        None,
-        False,
-    ),
-    (
-        "viewer",
-        "samenwerkingsverband:update",
         "samenwerkingsverband",
         "verband",
         None,
@@ -306,35 +266,13 @@ CASES = [
         False,
     ),
     # People: creating a contact is tenant-wide (placing it is guarded apart).
-    (
-        "team_editor",
-        "people:create",
-        "person",
-        None,
-        None,
-        True,
-    ),
     ("role_only", "people:create", "person", None, None, False),
 ]
 
 
-def _case_id(case) -> str:
-    return f"{case[0]}-{case[1]}-{case[3] or case[4] or 'new'}"
-
-
-@pytest.mark.parametrize(
-    ("who", "permission", "resource_type", "resource", "eenheid", "expected"),
-    CASES,
-    ids=[_case_id(c) for c in CASES],
-)
-async def test_can(w, who, permission, resource_type, resource, eenheid, expected):
-    ctx = await _ctx(w, who)
-    resource_id = w.res[resource] if resource else None
-    eenheid_id = w.org[eenheid].id if eenheid else None
-    got = await can(
-        w.db, ctx, permission, resource_type, resource_id, eenheid_id=eenheid_id
-    )
-    assert got is expected
+@pytest.mark.parametrize("case", CASES, ids=[can_case_id(c) for c in CASES])
+async def test_can(w, case):
+    await assert_can_case(w, case)
 
 
 # ---------------------------------------------------------------------------

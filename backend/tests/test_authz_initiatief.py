@@ -1,6 +1,6 @@
 """Initiatief routes on the single decision point (``core/authz.py``).
 
-Builds on the tree from ``test_authz``: the initiatief there is owned by the
+Uses ``iw`` from ``tests/authz_world.py``: the initiatief is owned by the
 afdeling (eenheid-level eigenaar) and ``role_only`` is a direct contributor.
 The team below the afdeling has its own editor, who must not be able to
 write the afdeling's initiatief: a role on an eenheid counts for that eenheid
@@ -9,85 +9,24 @@ and everything below it, never above.
 
 import uuid
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 
-from bouwmeester.core.authz import can
-from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.shared_access import SharedAccess
-from tests.factories import client_as, grant_role, make_org, make_person, place
-from tests.test_authz import World, _ctx, world  # noqa: F401  (shared fixture)
-
-
-@pytest.fixture
-async def iw(world: World) -> World:  # noqa: F811
-    """The shared tree plus the roles only initiatieven care about."""
-    db = world.db
-    initiatief_id = world.res["initiatief"]
-
-    # A viewer through a resource role, and a whole eenheid as contributor.
-    rp_viewer = await make_person(db, "Kijker")
-    partner = await make_org(db, "Partnerteam", "team", world.org["elders"])
-    partner_member = await make_person(db, "Partnerlid")
-    await place(db, partner_member, partner)
-    db.add_all(
-        [
-            ResourcePermission(
-                person_id=rp_viewer.id,
-                resource_type="initiatief",
-                resource_id=initiatief_id,
-                rol="viewer",
-            ),
-            ResourcePermission(
-                organisatie_eenheid_id=partner.id,
-                resource_type="initiatief",
-                resource_id=initiatief_id,
-                rol="contributor",
-            ),
-        ]
-    )
-
-    # Shares need org:manage; ministry_admin carries it, scoped to the directie.
-    org_admin = await make_person(db, "Directiebeheerder")
-    await place(db, org_admin, world.org["directie"])
-    await grant_role(db, org_admin, "ministry_admin", world.org["directie"])
-
-    link = MattermostChannelLink(
-        channel_id="a" * 26,
-        channel_name="init-kanaal",
-        channel_display_name="Init kanaal",
-        scope_type="initiatief",
-        scope_id=initiatief_id,
-    )
-    db.add(link)
-    await db.flush()
-
-    world.person.update(
-        rp_viewer=rp_viewer, partner_member=partner_member, org_admin=org_admin
-    )
-    world.org["partner"] = partner
-    world.res["channel_link"] = link.id
-    return world
-
+from tests.authz_world import (
+    assert_route_case,
+    perm_ctx,
+    rights_level,
+    route_case_id,
+)
+from tests.factories import client_as
 
 # ---------------------------------------------------------------------------
 # Rights on the initiatief: each right counts only where it holds
 # ---------------------------------------------------------------------------
-
-
-async def rights_level(db, ctx, initiatief_id) -> str | None:
-    """The strongest of delete/update/read the caller holds, as a rol name."""
-    for level, permission in (
-        ("eigenaar", "initiatief:delete"),
-        ("contributor", "initiatief:update"),
-        ("viewer", "initiatief:read"),
-    ):
-        if await can(db, ctx, permission, "initiatief", initiatief_id):
-            return level
-    return None
 
 
 LEVELS = [
@@ -108,7 +47,7 @@ LEVELS = [
 
 @pytest.mark.parametrize(("who", "expected"), LEVELS, ids=[w for w, _ in LEVELS])
 async def test_rights_count_only_where_they_hold(iw, who, expected):
-    ctx = await _ctx(iw, who)
+    ctx = await perm_ctx(iw, who)
     got = await rights_level(iw.db, ctx, iw.res["initiatief"])
     assert got == expected
 
@@ -130,7 +69,18 @@ async def test_detail_shows_to_readers_and_hides_from_the_rest(iw):
 
 _I = "/api/initiatieven/{initiatief}"
 _COLUMN = {"name": "Nieuwe kolom", "color": "accent"}
-_CHANNEL = {"channel_name": "k", "channel_display_name": "K"}
+
+
+def _channel(_w) -> dict:
+    # Every link needs its own channel id.
+    return {
+        "channel_id": uuid.uuid4().hex[:26],
+        "channel_name": "k",
+        "channel_display_name": "K",
+    }
+
+
+_CHANNEL = _channel
 
 WRITES = [
     # the initiatief itself
@@ -168,29 +118,18 @@ WRITES = [
 ]
 
 
-def _fill(iw: World, path: str, body):
-    path = path.format(**iw.res)
-    if body is _CHANNEL:
-        # Every link needs its own channel id.
-        body = {**_CHANNEL, "channel_id": uuid.uuid4().hex[:26]}
-    return path, body
-
-
-@pytest.mark.parametrize(
-    ("who", "method", "path", "body", "expected"),
-    WRITES,
-    ids=[f"{w[0]}-{w[1]}-{w[2].rsplit('}', 1)[-1] or '/'}" for w in WRITES],
-)
-async def test_write_routes_follow_authz(iw, who, method, path, body, expected):
-    path, body = _fill(iw, path, body)
-    linkable = patch(
+@pytest.fixture
+def linkable(monkeypatch):
+    """Every Mattermost channel counts as one the caller may link."""
+    monkeypatch.setattr(
         "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
         AsyncMock(return_value=None),
     )
-    async with client_as(iw.db, iw.person[who]) as c:
-        with linkable:
-            resp = await c.request(method, path, json=body)
-    assert resp.status_code == expected, resp.text
+
+
+@pytest.mark.parametrize("case", WRITES, ids=[route_case_id(c) for c in WRITES])
+async def test_write_routes_follow_authz(iw, linkable, case):
+    await assert_route_case(iw, *case)
 
 
 async def test_update_posts_are_decided_by_their_initiatief(iw):

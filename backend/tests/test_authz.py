@@ -1,216 +1,30 @@
-"""The single decision point (``core/authz.py``).
+"""The single decision point (``core/authz.py``): resolution and routes.
 
-A realistic tree (ministerie > DG > directie > afdeling > team) with mixed
-roles and real permission resolution.  One table covers each resolution
-step; a few route and chat tests check that the reference migration
-(nodes, edges, tasks) asks the same question.
+Uses the shared tree of ``tests/authz_world.py``.  One table covers each
+resolution step of ``can()``; a route table checks that the reference
+routes (nodes, edges, tasks) and the chat write tools ask the same
+question.  Visibility lives in ``test_authz_visibility.py``, the evaluation
+endpoint in ``test_authz_evaluations.py``.
 """
 
 import uuid
-from dataclasses import dataclass
 from datetime import date
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import can, require
 from bouwmeester.core.org_context import build_org_context
-from bouwmeester.core.permissions import PermissionContext, build_permission_context
-from bouwmeester.models.corpus_node import CorpusNode
-from bouwmeester.models.edge import Edge
-from bouwmeester.models.edge_type import EdgeType
-from bouwmeester.models.initiatief import Initiatief
-from bouwmeester.models.lead import Lead
-from bouwmeester.models.lead_column import LeadColumn
-from bouwmeester.models.opdracht import Opdracht
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
-from bouwmeester.models.resource_permission import ResourcePermission
-from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
+from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.shared_access import SharedAccess
-from bouwmeester.models.task import Task
-from bouwmeester.repositories.lead_column import LeadColumnRepository
-from tests.factories import client_as, grant_role, make_org, make_person, place
-
-
-@dataclass
-class World:
-    db: AsyncSession
-    org: dict[str, OrganisatieEenheid]
-    person: dict[str, Person]
-    res: dict[str, uuid.UUID]
-
-
-async def _node(db: AsyncSession, title: str, eenheid=None) -> CorpusNode:
-    node = CorpusNode(
-        id=uuid.uuid4(),
-        title=title,
-        node_type="dossier",
-        status="actief",
-        organisatie_eenheid_id=eenheid.id if eenheid else None,
-    )
-    db.add(node)
-    await db.flush()
-    return node
-
-
-@pytest.fixture
-async def world(db_session: AsyncSession) -> World:
-    db = db_session
-    ministerie = await make_org(db, "Ministerie", "ministerie")
-    dg = await make_org(db, "DG", "directoraat_generaal", ministerie)
-    directie = await make_org(db, "Directie", "directie", dg)
-    afdeling = await make_org(db, "Afdeling", "afdeling", directie)
-    team = await make_org(db, "Team", "team", afdeling)
-    elders = await make_org(db, "Elders", "directie", dg)
-    sibling_team = await make_org(db, "Ander team", "team", afdeling)
-
-    # Only super_admin and platform_admin exist as system roles.
-    platform_admin = await make_person(db, "Platformbeheerder")
-    await grant_role(db, platform_admin, "platform_admin")
-
-    afd_editor = await make_person(db, "Afdelingsredacteur")
-    await place(db, afd_editor, afdeling)
-    await grant_role(db, afd_editor, "editor", afdeling)
-
-    team_editor = await make_person(db, "Teamredacteur")
-    await place(db, team_editor, team)
-    await grant_role(db, team_editor, "editor", team)
-
-    viewer = await make_person(db, "Teamlid")  # implicit viewer
-    await place(db, viewer, team)
-
-    role_only = await make_person(db, "Alleen resource-rol")
-    manager = await make_person(db, "Directeur")
-    await place(db, manager, directie)
-    await grant_role(db, manager, "unit_manager", directie)
-
-    super_admin = await make_person(db, "Systeembeheerder")
-    await grant_role(db, super_admin, "super_admin")
-
-    node_directie = await _node(db, "Directiedossier", directie)
-    node_afdeling = await _node(db, "Afdelingsdossier", afdeling)
-    node_team = await _node(db, "Teamdossier", team)
-    node_elders = await _node(db, "Dossier elders", elders)
-    node_free = await _node(db, "Dossier zonder eenheid")
-    node_sibling = await _node(db, "Dossier ander team", sibling_team)
-    opdracht_free = Opdracht(type="opdracht", titel="FCC-import", begrotingsjaar=2026)
-    opdracht_directie = Opdracht(
-        type="opdracht",
-        titel="Directie-opdracht",
-        begrotingsjaar=2026,
-        opdrachtgever_id=directie.id,
-    )
-    samenwerkingsverband = Samenwerkingsverband(naam="Werkgroep", type="werkgroep")
-    db.add_all([opdracht_free, opdracht_directie, samenwerkingsverband])
-    db.add(
-        ResourcePermission(
-            person_id=role_only.id,
-            resource_type="corpus_node",
-            resource_id=node_directie.id,
-            rol="betrokken",
-        )
-    )
-
-    et = EdgeType(id=f"authz_{uuid.uuid4().hex[:8]}", label_nl="T", label_en="T")
-    db.add(et)
-    await db.flush()
-    edge_team_directie = Edge(
-        from_node_id=node_team.id, to_node_id=node_directie.id, edge_type_id=et.id
-    )
-    edge_directie_elders = Edge(
-        from_node_id=node_directie.id, to_node_id=node_elders.id, edge_type_id=et.id
-    )
-    db.add_all([edge_team_directie, edge_directie_elders])
-
-    task_team = Task(
-        title="Teamtaak",
-        node_id=node_directie.id,
-        organisatie_eenheid_id=team.id,
-        status="open",
-    )
-    task_on_team_node = Task(
-        title="Taak zonder eenheid", node_id=node_team.id, status="open"
-    )
-    db.add_all([task_team, task_on_team_node])
-
-    initiatief = Initiatief(id=uuid.uuid4(), naam=f"Init {uuid.uuid4().hex[:6]}")
-    db.add(initiatief)
-    await db.flush()
-    db.add_all(
-        [
-            ResourcePermission(
-                organisatie_eenheid_id=afdeling.id,
-                resource_type="initiatief",
-                resource_id=initiatief.id,
-                rol="eigenaar",
-            ),
-            ResourcePermission(
-                person_id=role_only.id,
-                resource_type="initiatief",
-                resource_id=initiatief.id,
-                rol="contributor",
-            ),
-        ]
-    )
-    lead = Lead(title="Lead", stage="verkennen", initiatief_id=initiatief.id)
-    lead_free = Lead(title="Losse lead", stage="verkennen")
-    db.add_all([lead, lead_free])
-    await db.flush()
-    await LeadColumnRepository(db).seed_defaults(initiatief.id)
-    column = await db.scalar(
-        select(LeadColumn.id).where(LeadColumn.initiatief_id == initiatief.id).limit(1)
-    )
-
-    return World(
-        db=db,
-        org={
-            "ministerie": ministerie,
-            "dg": dg,
-            "directie": directie,
-            "afdeling": afdeling,
-            "team": team,
-            "elders": elders,
-            "sibling_team": sibling_team,
-        },
-        person={
-            "platform_admin": platform_admin,
-            "afd_editor": afd_editor,
-            "team_editor": team_editor,
-            "viewer": viewer,
-            "role_only": role_only,
-            "manager": manager,
-            "super_admin": super_admin,
-        },
-        res={
-            "eenheid_elders": elders.id,
-            "eenheid_team": team.id,
-            "node_directie": node_directie.id,
-            "node_afdeling": node_afdeling.id,
-            "node_team": node_team.id,
-            "node_elders": node_elders.id,
-            "node_free": node_free.id,
-            "node_sibling": node_sibling.id,
-            "opdracht_free": opdracht_free.id,
-            "samenwerkingsverband": samenwerkingsverband.id,
-            "opdracht_directie": opdracht_directie.id,
-            "edge_team_directie": edge_team_directie.id,
-            "edge_directie_elders": edge_directie_elders.id,
-            "task_team": task_team.id,
-            "task_on_team_node": task_on_team_node.id,
-            "initiatief": initiatief.id,
-            "lead": lead.id,
-            "lead_free": lead_free.id,
-            "lead_column": column,
-        },
-    )
-
-
-async def _ctx(w: World, who: str) -> PermissionContext:
-    return await build_permission_context(w.db, w.person[who])
-
+from tests.authz_world import (
+    assert_can_case,
+    assert_route_case,
+    can_case_id,
+    perm_ctx,
+    route_case_id,
+)
+from tests.factories import client_as
 
 # (who, permission, resource type, resource key or None, eenheid key, expected)
 CASES = [
@@ -313,6 +127,11 @@ CASES = [
 ]
 
 
+@pytest.mark.parametrize("case", CASES, ids=[can_case_id(c) for c in CASES])
+async def test_can(world, case):
+    await assert_can_case(world, case)
+
+
 @pytest.mark.parametrize(
     ("who", "eenheid", "expected"),
     [
@@ -329,24 +148,9 @@ async def test_route_update_eenheid_needs_org_update(world, who, eenheid, expect
     assert resp.status_code == expected, resp.text
 
 
-@pytest.mark.parametrize(
-    ("who", "permission", "resource_type", "resource", "eenheid", "expected"),
-    CASES,
-    ids=[f"{c[0]}-{c[1]}-{c[3] or c[4] or 'new'}" for c in CASES],
-)
-async def test_can(world, who, permission, resource_type, resource, eenheid, expected):
-    ctx = await _ctx(world, who)
-    resource_id = world.res[resource] if resource else None
-    eenheid_id = world.org[eenheid].id if eenheid else None
-    got = await can(
-        world.db, ctx, permission, resource_type, resource_id, eenheid_id=eenheid_id
-    )
-    assert got is expected
-
-
 async def test_visible_is_not_writable(world):
     """A team editor sees the directie above the team, but cannot write there."""
-    ctx = await _ctx(world, "team_editor")
+    ctx = await perm_ctx(world, "team_editor")
     org_ctx = await build_org_context(
         world.db, world.person["team_editor"], perm_ctx=ctx
     )
@@ -357,7 +161,7 @@ async def test_visible_is_not_writable(world):
 
 
 async def test_require_raises_404_403_401(world):
-    ctx = await _ctx(world, "team_editor")
+    ctx = await perm_ctx(world, "team_editor")
     with pytest.raises(HTTPException) as missing:
         await require(world.db, ctx, "node:update", "corpus_node", uuid.uuid4())
     assert missing.value.status_code == 404
@@ -380,7 +184,7 @@ async def test_require_raises_404_403_401(world):
 
 
 async def test_missing_resource_is_false_even_for_super_admin(world):
-    ctx = await _ctx(world, "super_admin")
+    ctx = await perm_ctx(world, "super_admin")
     assert not await can(world.db, ctx, "edge:update", "edge", uuid.uuid4())
 
 
@@ -396,82 +200,75 @@ async def test_edit_share_grants_write_with_own_rights(world, level, expected):
         )
     )
     await world.db.flush()
-    editor = await _ctx(world, "team_editor")
-    viewer = await _ctx(world, "viewer")
+    editor = await perm_ctx(world, "team_editor")
+    viewer = await perm_ctx(world, "viewer")
     node = world.res["node_directie"]
     assert await can(world.db, editor, "node:update", "corpus_node", node) is expected
     assert not await can(world.db, viewer, "node:update", "corpus_node", node)
 
 
 # ---------------------------------------------------------------------------
-# Reference migration: routes and chat ask the same question
+# Reference routes: nodes, edges and tasks ask the same question
 # ---------------------------------------------------------------------------
 
 
-async def test_route_update_node_follows_authz(world):
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        denied = await c.put(
-            f"/api/nodes/{world.res['node_directie']}", json={"title": "Nee"}
-        )
-        allowed = await c.put(
-            f"/api/nodes/{world.res['node_team']}", json={"title": "Ja"}
-        )
-        missing = await c.put(f"/api/nodes/{uuid.uuid4()}", json={"title": "?"})
-    assert denied.status_code == 403
-    assert allowed.status_code == 200
-    assert missing.status_code == 404
+def _edge(from_key: str, to_key: str):
+    return lambda w: {
+        "from_node_id": str(w.res[from_key]),
+        "to_node_id": str(w.res[to_key]),
+        "edge_type_id": w.res["edge_type"],
+    }
 
 
-async def test_route_create_edge_needs_one_writable_end(world):
-    edge_type = await world.db.scalar(
-        select(Edge.edge_type_id).where(Edge.id == world.res["edge_team_directie"])
-    )
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        into_team = await c.post(
-            "/api/edges",
-            json={
-                "from_node_id": str(world.res["node_directie"]),
-                "to_node_id": str(world.res["node_team"]),
-                "edge_type_id": edge_type,
-            },
-        )
-        between_others = await c.post(
-            "/api/edges",
-            json={
-                "from_node_id": str(world.res["node_afdeling"]),
-                "to_node_id": str(world.res["node_directie"]),
-                "edge_type_id": edge_type,
-            },
-        )
-    assert into_team.status_code == 201, into_team.text
-    assert between_others.status_code == 403
+def _task(node_key: str, eenheid_key: str):
+    return lambda w: {
+        "title": "Taak",
+        "node_id": str(w.res[node_key]),
+        "organisatie_eenheid_id": str(w.org[eenheid_key].id),
+    }
 
 
-async def test_route_create_task_checks_target_eenheid(world):
-    async with client_as(world.db, world.person["afd_editor"]) as c:
-        in_team = await c.post(
-            "/api/tasks",
-            json={
-                "title": "Mag",
-                "node_id": str(world.res["node_directie"]),
-                "organisatie_eenheid_id": str(world.org["team"].id),
-            },
-        )
-        in_directie = await c.post(
-            "/api/tasks",
-            json={
-                "title": "Mag niet",
-                "node_id": str(world.res["node_team"]),
-                "organisatie_eenheid_id": str(world.org["directie"].id),
-            },
-        )
-        moved_up = await c.put(
-            f"/api/tasks/{world.res['task_team']}",
-            json={"organisatie_eenheid_id": str(world.org["directie"].id)},
-        )
-    assert in_team.status_code == 201, in_team.text
-    assert in_directie.status_code == 403
-    assert moved_up.status_code == 403
+_MISSING = uuid.UUID("00000000-0000-4000-8000-000000000000")  # stable test ids
+_NODE = {"title": "Nieuw", "node_type": "dossier", "status": "actief"}
+
+ROUTES = [
+    # nodes: rights on the node's eenheid; a missing node is 404
+    ("viewer", "POST", "/api/nodes", _NODE, 403),
+    ("viewer", "PUT", "/api/nodes/{node_team}", {"title": "Nee"}, 403),
+    ("viewer", "DELETE", "/api/nodes/{node_team}", None, 403),
+    ("team_editor", "PUT", "/api/nodes/{node_team}", {"title": "Ja"}, 200),
+    ("team_editor", "PUT", "/api/nodes/{node_directie}", {"title": "Nee"}, 403),
+    ("team_editor", "DELETE", "/api/nodes/{node_elders}", None, 403),
+    ("team_editor", "PUT", f"/api/nodes/{_MISSING}", {"title": "?"}, 404),
+    # edges: one writable end, the other end must be visible
+    ("viewer", "POST", "/api/edges", _edge("node_team", "node_free"), 403),
+    ("team_editor", "POST", "/api/edges", _edge("node_directie", "node_team"), 201),
+    ("team_editor", "POST", "/api/edges", _edge("node_free", "node_team"), 201),
+    ("team_editor", "POST", "/api/edges", _edge("node_afdeling", "node_directie"), 403),
+    ("team_editor", "POST", "/api/edges", _edge("node_team", "node_elders"), 404),
+    ("team_editor", "POST", "/api/edges", _edge("node_elders", "node_team"), 404),
+    # tasks: the eenheid they go into, or are in
+    ("viewer", "POST", "/api/tasks", _task("node_team", "team"), 403),
+    ("afd_editor", "POST", "/api/tasks", _task("node_directie", "team"), 201),
+    ("afd_editor", "POST", "/api/tasks", _task("node_team", "directie"), 403),
+    ("team_editor", "POST", "/api/tasks", _task("node_team", "elders"), 403),
+    (
+        "afd_editor",
+        "PUT",
+        "/api/tasks/{task_team}",
+        lambda w: {"organisatie_eenheid_id": str(w.org["directie"].id)},
+        403,
+    ),
+    ("team_editor", "PUT", "/api/tasks/{task_team}", {"title": "Ja"}, 200),
+    ("team_editor", "PUT", "/api/tasks/{task_elders}", {"title": "Nee"}, 403),
+    ("team_editor", "DELETE", "/api/tasks/{task_elders}", None, 403),
+    ("team_editor", "DELETE", f"/api/tasks/{_MISSING}", None, 404),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("case", ROUTES, ids=[route_case_id(c) for c in ROUTES])
+async def test_routes(world, case):
+    await assert_route_case(world, *case)
 
 
 async def test_chat_write_tools_ask_authz(world):
@@ -510,149 +307,3 @@ async def test_chat_write_tools_ask_authz(world):
     assert allowed is None
     assert edge_into_team is None
     assert task_on_directie is not None
-
-
-# ---------------------------------------------------------------------------
-# Visibility follows write rights downward
-# ---------------------------------------------------------------------------
-
-
-async def test_afdeling_editor_sees_team_resources_below(world):
-    """Rights inherit downward, so the afdeling editor also sees team items."""
-    ctx = await _ctx(world, "afd_editor")
-    org_ctx = await build_org_context(
-        world.db, world.person["afd_editor"], perm_ctx=ctx
-    )
-    assert world.org["team"].id in org_ctx.visible_eenheid_ids
-    async with client_as(world.db, world.person["afd_editor"]) as c:
-        detail = await c.get(f"/api/nodes/{world.res['node_team']}")
-        listing = await c.get("/api/nodes", params={"search": "Teamdossier"})
-    assert detail.status_code == 200
-    assert str(world.res["node_team"]) in {n["id"] for n in listing.json()}
-
-
-async def test_team_member_does_not_see_sibling_team(world):
-    ctx = await _ctx(world, "viewer")
-    org_ctx = await build_org_context(world.db, world.person["viewer"], perm_ctx=ctx)
-    assert world.org["sibling_team"].id not in org_ctx.visible_eenheid_ids
-    async with client_as(world.db, world.person["viewer"]) as c:
-        detail = await c.get(f"/api/nodes/{world.res['node_sibling']}")
-    assert detail.status_code == 404
-
-
-async def test_team_editor_does_not_see_sibling_team(world):
-    """Writing in a team does not open up the teams next to it."""
-    ctx = await _ctx(world, "team_editor")
-    org_ctx = await build_org_context(
-        world.db, world.person["team_editor"], perm_ctx=ctx
-    )
-    assert world.org["sibling_team"].id not in org_ctx.visible_eenheid_ids
-
-
-# ---------------------------------------------------------------------------
-# POST /api/authz/evaluations
-# ---------------------------------------------------------------------------
-
-
-def _ask(action: str, resource_type: str, resource_id=None, **properties) -> dict:
-    resource: dict = {"type": resource_type}
-    if resource_id is not None:
-        resource["id"] = str(resource_id)
-    if properties:
-        resource["properties"] = {
-            k: v if isinstance(v, bool) else str(v) for k, v in properties.items()
-        }
-    return {"action": action, "resource": resource}
-
-
-async def test_evaluations_answer_in_order(world):
-    asks = [
-        _ask("node:update", "corpus_node", world.res["node_team"]),
-        _ask("node:update", "corpus_node", world.res["node_directie"]),
-        _ask("edge:update", "edge", world.res["edge_team_directie"]),
-        _ask("task:create", "task", eenheid_id=world.org["team"].id),
-        _ask("node:create", "corpus_node"),
-    ]
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
-    assert resp.status_code == 200, resp.text
-    assert resp.json() == {
-        "evaluations": [
-            {"decision": True},
-            {"decision": False},
-            {"decision": True},
-            {"decision": True},
-            {"decision": True},
-        ]
-    }
-
-
-async def test_evaluations_missing_resource_is_false_not_404(world):
-    asks = [
-        _ask("node:update", "corpus_node", uuid.uuid4()),
-        _ask("edge:delete", "edge", uuid.uuid4()),
-    ]
-    async with client_as(world.db, world.person["super_admin"]) as c:
-        resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
-    assert resp.status_code == 200
-    assert resp.json() == {"evaluations": [{"decision": False}, {"decision": False}]}
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        {"evaluations": []},
-        {"evaluations": [_ask("node:read", "corpus_node")] * 51},
-        {"evaluations": [_ask("node:read", "onbekend_type")]},
-        {"evaluations": [{"action": "node:read", "resource": {"type": "x"}}]},
-        {"evaluations": [_ask("node read", "corpus_node")]},
-        {
-            "subject": {"type": "user", "id": str(uuid.uuid4())},
-            "evaluations": [_ask("node:read", "corpus_node")],
-        },
-        {
-            "evaluations": [
-                {
-                    **_ask("node:read", "corpus_node"),
-                    "subject": {"type": "user", "id": str(uuid.uuid4())},
-                }
-            ]
-        },
-    ],
-    ids=[
-        "empty",
-        "too-many",
-        "unknown-type",
-        "bad-type",
-        "bad-action",
-        "subject-top",
-        "subject-item",
-    ],
-)
-async def test_evaluations_reject_bad_input(world, body):
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        resp = await c.post("/api/authz/evaluations", json=body)
-    assert resp.status_code == 422
-
-
-def test_evaluations_endpoint_is_not_public():
-    from bouwmeester.middleware.auth_required import is_public_path
-
-    assert not is_public_path("/api/authz/evaluations")
-
-
-async def test_existing_person_is_not_decided_here(world):
-    ctx = await _ctx(world, "team_editor")
-    with pytest.raises(ValueError):
-        await can(world.db, ctx, "people:update", "person", world.person["viewer"].id)
-    async with client_as(world.db, world.person["team_editor"]) as c:
-        resp = await c.post(
-            "/api/authz/evaluations",
-            json={
-                "evaluations": [
-                    _ask("people:update", "person", world.person["viewer"].id),
-                    _ask("people:create", "person"),
-                ]
-            },
-        )
-    assert resp.json() == {"evaluations": [{"decision": False}, {"decision": True}]}

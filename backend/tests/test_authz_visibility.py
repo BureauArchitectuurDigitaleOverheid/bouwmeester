@@ -1,27 +1,166 @@
 """Reads: one visibility rule per resource type, the same for lists and details.
 
-Builds on the tree of ``test_authz.world`` (plus the extra roles of
-``test_authz_initiatief.iw``) and adds initiatieven owned higher and
-elsewhere in the tree, a personal initiatief, and leads whose only link to
-a reader is a lead role.  For every person the list and the detail must
-agree, and whoever may write something must also see it.
+Uses ``world`` and ``iw`` from ``tests/authz_world.py``.
+
+- The org chart: a member reads up the line, a role reads down from where it
+  holds, siblings stay hidden.  ``ow`` adds budgeted opdrachten so lists,
+  details and aggregates can be checked from one reader's seat.
+- Initiatieven and leads: ``rw`` adds initiatieven owned higher and
+  elsewhere in the tree, a personal initiatief, and leads whose only link to
+  a reader is a lead role.  For every person the list and the detail must
+  agree, and whoever may write something must also see it.
+- ``can(<type>:read)`` answers with the same visibility.
 """
 
 import uuid
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
 
 from bouwmeester.core.authz import can
+from bouwmeester.core.org_context import build_org_context
 from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.services.llm.base import EdgeRelevanceResult
+from tests.authz_world import World, add_directie_admin, perm_ctx
 from tests.factories import client_as, make_person, place
-from tests.test_authz import World, world  # noqa: F401  (shared fixture)
-from tests.test_authz_initiatief import iw  # noqa: F401  (shared fixture)
+
+# ---------------------------------------------------------------------------
+# The org chart: up the line, down from a role, never sideways
+# ---------------------------------------------------------------------------
+
+
+async def test_afdeling_editor_sees_team_resources_below(world):
+    """Rights inherit downward, so the afdeling editor also sees team items."""
+    ctx = await perm_ctx(world, "afd_editor")
+    org_ctx = await build_org_context(
+        world.db, world.person["afd_editor"], perm_ctx=ctx
+    )
+    assert world.org["team"].id in org_ctx.visible_eenheid_ids
+    async with client_as(world.db, world.person["afd_editor"]) as c:
+        detail = await c.get(f"/api/nodes/{world.res['node_team']}")
+        listing = await c.get("/api/nodes", params={"search": "Teamdossier"})
+    assert detail.status_code == 200
+    assert str(world.res["node_team"]) in {n["id"] for n in listing.json()}
+
+
+@pytest.mark.parametrize("who", ["viewer", "team_editor"])
+async def test_the_team_next_door_stays_hidden(world, who):
+    """Neither membership nor writing in a team opens up its sibling."""
+    ctx = await perm_ctx(world, who)
+    org_ctx = await build_org_context(world.db, world.person[who], perm_ctx=ctx)
+    assert world.org["sibling_team"].id not in org_ctx.visible_eenheid_ids
+    async with client_as(world.db, world.person[who]) as c:
+        detail = await c.get(f"/api/nodes/{world.res['node_sibling']}")
+    assert detail.status_code == 404
+
+
+def _opdracht(w: World, titel: str, eenheid: str, budget: int, gerealiseerd: int):
+    return Opdracht(
+        type="opdracht",
+        titel=titel,
+        status="actief",
+        begrotingsjaar=2025,
+        instrument_id=w.res["node_team"],
+        opdrachtgever_id=w.org[eenheid].id,
+        budget=Decimal(budget),
+        gerealiseerd=Decimal(gerealiseerd),
+    )
+
+
+@pytest.fixture
+async def ow(world: World) -> World:
+    """Budgeted opdrachten on the team's node: one in the team, one elders."""
+    team = _opdracht(world, "Zichtbare opdracht", "team", 100_000, 25_000)
+    elders = _opdracht(world, "Onzichtbare opdracht", "elders", 200_000, 50_000)
+    world.db.add_all([team, elders])
+    await world.db.flush()
+    world.res.update(opdracht_team=team.id, opdracht_elders=elders.id)
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    return world
+
+
+# (list route, resource key, listed for the team viewer?)
+VIEWER_LISTS = [
+    ("/api/nodes?limit=500", "node_team", True),
+    ("/api/nodes?limit=500", "node_free", True),  # no eenheid: everyone
+    ("/api/nodes?limit=500", "node_elders", False),
+    ("/api/tasks?limit=500", "task_team", True),
+    ("/api/tasks?limit=500", "task_elders", False),
+    ("/api/tasks?node_id={node_elders}", "task_elders", False),
+    ("/api/edges?limit=500", "edge_team_directie", True),
+    ("/api/edges?limit=500", "edge_directie_elders", False),  # one end hidden
+    ("/api/opdrachten", "opdracht_team", True),
+    ("/api/opdrachten", "opdracht_free", True),  # no eenheid: everyone
+    ("/api/opdrachten", "opdracht_elders", False),
+    ("/api/nodes/{node_team}/opdrachten", "opdracht_team", True),
+    ("/api/nodes/{node_team}/opdrachten", "opdracht_elders", False),
+]
+
+
+@pytest.mark.parametrize(
+    ("path", "key", "listed"),
+    VIEWER_LISTS,
+    ids=[f"{p.split('?')[0]}-{k}" for p, k, _ in VIEWER_LISTS],
+)
+async def test_lists_follow_the_org_chart(ow, path, key, listed):
+    async with client_as(ow.db, ow.person["viewer"]) as c:
+        resp = await c.get(path.format(**ow.res))
+    assert resp.status_code == 200, resp.text
+    assert (str(ow.res[key]) in {i["id"] for i in resp.json()}) is listed
+
+
+# (who, detail route, status): a hidden record is a 404, like a missing one
+DETAILS = [
+    ("viewer", "/api/nodes/{node_team}", 200),
+    ("viewer", "/api/nodes/{node_elders}", 404),
+    ("viewer", "/api/tasks/{task_elders}", 404),
+    ("viewer", "/api/tasks/{task_elders}/subtasks", 404),
+    (
+        "viewer",
+        "/api/tasks/eenheid-overview?organisatie_eenheid_id={eenheid_elders}",
+        404,
+    ),
+    ("viewer", "/api/edges/{edge_directie_elders}", 404),
+    ("viewer", "/api/opdrachten/{opdracht_team}", 200),
+    ("viewer", "/api/opdrachten/{opdracht_elders}", 404),
+    ("viewer", "/api/nodes/{node_elders}/opdrachten", 404),
+    ("viewer", "/api/nodes/{node_elders}/financieel", 404),
+    # a ministry_admin reads down into the tree below its directie only
+    ("ministry_admin", "/api/nodes/{node_team}", 200),
+    ("ministry_admin", "/api/nodes/{node_elders}", 404),
+]
+
+
+@pytest.mark.parametrize(
+    ("who", "path", "expected"),
+    DETAILS,
+    ids=[f"{w}-{p.split('?')[0]}" for w, p, _ in DETAILS],
+)
+async def test_details_follow_the_org_chart(ow, who, path, expected):
+    async with client_as(ow.db, ow.person[who]) as c:
+        resp = await c.get(path.format(**ow.res))
+    assert resp.status_code == expected, resp.text
+
+
+async def test_summary_counts_only_visible_opdrachten(ow):
+    async with client_as(ow.db, ow.person["viewer"]) as c:
+        summary = (await c.get("/api/opdrachten/summary")).json()
+    # visible: opdracht_team, plus opdracht_free and opdracht_directie without
+    # budget; not opdracht_elders
+    assert int(summary["count"]) == 3
+    assert Decimal(str(summary["totaal_budget"])) == Decimal(100_000)
+    assert Decimal(str(summary["totaal_gerealiseerd"])) == Decimal(25_000)
+
+
+# ---------------------------------------------------------------------------
+# Initiatieven and leads
+# ---------------------------------------------------------------------------
 
 
 async def _initiatief(db, naam: str, **owner) -> uuid.UUID:
@@ -38,7 +177,7 @@ async def _initiatief(db, naam: str, **owner) -> uuid.UUID:
 
 
 @pytest.fixture
-async def rw(iw: World) -> World:  # noqa: F811
+async def rw(iw: World) -> World:
     db = iw.db
     org = iw.org
 

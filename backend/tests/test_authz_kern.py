@@ -1,7 +1,6 @@
-# ruff: noqa: F811  (tests take the imported ``world`` fixture)
 """The decision point's core rules that routes rely on.
 
-Builds on the tree of ``test_authz`` (``world``).  Covers:
+Uses ``world`` from ``tests/authz_world.py``.  Covers:
 
 - records linked from a request body must be usable by the caller;
 - a task without eenheid is read through its node, in lists and details;
@@ -11,24 +10,31 @@ Builds on the tree of ``test_authz`` (``world``).  Covers:
 - synced eenheden are read-only, creating a (sub-)eenheid is free;
 - reviewing a suggested edge is the reviewer's mandate on the item's node;
 - linking a tag is editing the node;
-- deciding a board or a node page costs a constant number of queries.
+- the evaluation endpoint decides a board or a node page in a constant
+  number of queries.
 """
 
 import uuid
-from datetime import date
 
 import pytest
-from sqlalchemy import event, select
+from sqlalchemy import event
 
 from bouwmeester.core.authz import can
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.opdracht import Opdracht
-from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
+from bouwmeester.models.parlementair_item import SuggestedEdge
 from bouwmeester.models.tag import Tag
 from bouwmeester.models.task import Task
-from tests.factories import client_as, grant_role, make_org, make_person, place
-from tests.test_authz import World, _ctx, _node, world  # noqa: F401
+from tests.authz_world import (
+    World,
+    add_directie_admin,
+    ask,
+    make_item,
+    make_node,
+    perm_ctx,
+)
+from tests.factories import client_as, make_org
 
 
 def _ids(resp) -> set[str]:
@@ -38,24 +44,6 @@ def _ids(resp) -> set[str]:
 # ---------------------------------------------------------------------------
 # Records linked from a task body
 # ---------------------------------------------------------------------------
-
-
-async def _item(w: World, node_key: str | None = None) -> ParlementairItem:
-    item = ParlementairItem(
-        id=uuid.uuid4(),
-        type="motie",
-        zaak_id=f"zaak-{uuid.uuid4().hex[:8]}",
-        zaak_nummer="36200-VII-1",
-        titel="Motie",
-        onderwerp="Authz",
-        bron="tweede_kamer",
-        datum=date(2026, 1, 1),
-        status="imported",
-        corpus_node_id=w.res[node_key] if node_key else None,
-    )
-    w.db.add(item)
-    await w.db.flush()
-    return item
 
 
 @pytest.fixture
@@ -75,7 +63,7 @@ async def links(world: World) -> dict[str, uuid.UUID]:
     )
     db.add_all([opdracht_elders, task_directie])
     await db.flush()
-    item = await _item(world)
+    item = await make_item(world)
     return {
         "opdracht_elders": opdracht_elders.id,
         "task_directie": task_directie.id,
@@ -155,7 +143,7 @@ async def test_task_without_eenheid_reads_through_its_node(world, who, sees):
     task = Task(title="Losse taak", node_id=world.res["node_sibling"], status="open")
     world.db.add(task)
     await world.db.flush()
-    ctx = await _ctx(world, who)
+    ctx = await perm_ctx(world, who)
     async with client_as(world.db, world.person[who]) as c:
         detail = await c.get(f"/api/tasks/{task.id}")
         listing = await c.get("/api/tasks", params={"limit": 500})
@@ -179,7 +167,7 @@ async def test_opdracht_lives_with_its_opdrachtnemer_too(world):
     )
     world.db.add(opdracht)
     await world.db.flush()
-    editor = await _ctx(world, "team_editor")
+    editor = await perm_ctx(world, "team_editor")
     async with client_as(world.db, world.person["viewer"]) as c:
         detail = await c.get(f"/api/opdrachten/{opdracht.id}")
         listing = await c.get("/api/opdrachten", params={"limit": 500})
@@ -245,8 +233,8 @@ async def test_synced_eenheid_is_read_only_in_authz(world):
     tooi = await make_org(world.db, "TOOI-team", "team", world.org["directie"])
     tooi.bron = "tooi"
     await world.db.flush()
-    manager = await _ctx(world, "manager")
-    super_admin = await _ctx(world, "super_admin")
+    manager = await perm_ctx(world, "manager")
+    super_admin = await perm_ctx(world, "super_admin")
     assert not await can(
         world.db, manager, "org:update", "organisatie_eenheid", tooi.id
     )
@@ -256,22 +244,15 @@ async def test_synced_eenheid_is_read_only_in_authz(world):
     assert await can(world.db, manager, "org:read", "organisatie_eenheid", tooi.id)
 
 
-def _ask(action: str, resource_type: str, resource_id=None, **props) -> dict:
-    resource: dict = {"type": resource_type}
-    if resource_id is not None:
-        resource["id"] = str(resource_id)
-    if props:
-        resource["properties"] = {k: str(v) for k, v in props.items()}
-    return {"action": action, "resource": resource}
-
-
 @pytest.mark.parametrize(
     ("who", "expected"), [("team_editor", True), ("viewer", False)]
 )
 async def test_evaluation_answers_create_sub_eenheid(world, who, expected):
-    ask = _ask("org:create", "organisatie_eenheid", eenheid_id=world.org["elders"].id)
+    question = ask(
+        "org:create", "organisatie_eenheid", eenheid_id=world.org["elders"].id
+    )
     async with client_as(world.db, world.person[who]) as c:
-        resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask]})
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [question]})
         created = await c.post(
             "/api/organisatie",
             json={
@@ -304,23 +285,17 @@ async def test_evaluation_answers_create_sub_eenheid(world, who, expected):
 async def test_suggested_edge_review_is_on_the_item_node(
     world, who, item_node, target, expected
 ):
-    admin = await make_person(world.db, "Ministeriebeheerder")
-    await place(world.db, admin, world.org["directie"])
-    await grant_role(world.db, admin, "ministry_admin", world.org["directie"])
-    world.person["ministry_admin"] = admin
-    item = await _item(world, item_node)
-    edge_type = await world.db.scalar(
-        select(Edge.edge_type_id).where(Edge.id == world.res["edge_team_directie"])
-    )
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    item = await make_item(world, item_node)
     suggested = SuggestedEdge(
         parlementair_item_id=item.id,
         target_node_id=world.res[target],
-        edge_type_id=edge_type,
+        edge_type_id=world.res["edge_type"],
         confidence=0.9,
     )
     world.db.add(suggested)
     await world.db.flush()
-    ctx = await _ctx(world, who)
+    ctx = await perm_ctx(world, who)
     for verb in ("update", "delete"):
         got = await can(
             world.db, ctx, f"suggested_edge:{verb}", "suggested_edge", suggested.id
@@ -353,7 +328,9 @@ async def test_linking_a_tag_is_editing_the_node(world):
 # ---------------------------------------------------------------------------
 
 
-async def _evaluation_queries(world: World, who: str, asks: list[dict]) -> int:
+async def _evaluation_queries(
+    world: World, who: str, asks: list[dict], expected: bool = True
+) -> int:
     count = 0
 
     def _count(*_args):
@@ -367,7 +344,8 @@ async def _evaluation_queries(world: World, who: str, asks: list[dict]) -> int:
         finally:
             event.remove(world.db.sync_session, "do_orm_execute", _count)
     assert resp.status_code == 200, resp.text
-    assert all(d["decision"] for d in resp.json()["evaluations"]), resp.json()
+    decisions = {d["decision"] for d in resp.json()["evaluations"]}
+    assert decisions == {expected}, resp.json()
     return count
 
 
@@ -385,21 +363,19 @@ async def _leads(world: World, n: int) -> list[uuid.UUID]:
 
 @pytest.mark.parametrize("who", ["role_only", "afd_editor"])
 async def test_board_evaluation_costs_constant_queries(world, who):
-    few = [_ask("lead:update", "lead", i) for i in await _leads(world, 5)]
-    many = [_ask("lead:update", "lead", i) for i in await _leads(world, 50)]
+    few = [ask("lead:update", "lead", i) for i in await _leads(world, 5)]
+    many = [ask("lead:update", "lead", i) for i in await _leads(world, 50)]
     assert await _evaluation_queries(world, who, many) == await _evaluation_queries(
         world, who, few
     )
 
 
 async def _edges(world: World, n: int) -> list[uuid.UUID]:
-    edge_type = await world.db.scalar(
-        select(Edge.edge_type_id).where(Edge.id == world.res["edge_team_directie"])
-    )
+    edge_type = world.res["edge_type"]
     team = world.org["team"]
     edges = []
     for i in range(n):
-        other = await _node(world.db, f"Buur {i}", team)
+        other = await make_node(world.db, f"Buur {i}", team)
         edges.append(
             Edge(
                 from_node_id=world.res["node_team"],
@@ -413,32 +389,26 @@ async def _edges(world: World, n: int) -> list[uuid.UUID]:
 
 
 async def test_node_page_evaluation_costs_constant_queries(world):
-    few = [_ask("edge:update", "edge", i) for i in await _edges(world, 5)]
-    many = [_ask("edge:update", "edge", i) for i in await _edges(world, 50)]
+    few = [ask("edge:update", "edge", i) for i in await _edges(world, 5)]
+    many = [ask("edge:update", "edge", i) for i in await _edges(world, 50)]
     assert await _evaluation_queries(
         world, "team_editor", many
     ) == await _evaluation_queries(world, "team_editor", few)
 
 
-async def test_edit_shares_are_looked_up_once_per_request(world):
-    """Deciding many nodes asks for the caller's shares and placements once."""
-    ctx = await _ctx(world, "team_editor")
-    nodes = [
-        await _node(world.db, f"Elders {i}", world.org["elders"]) for i in range(5)
+async def _nodes_elders(world: World, n: int) -> list[uuid.UUID]:
+    return [
+        (await make_node(world.db, f"Elders {i}", world.org["elders"])).id
+        for i in range(n)
     ]
-    count = 0
 
-    def _count(*_args):
-        nonlocal count
-        count += 1
 
-    for node in nodes[:1]:
-        await can(world.db, ctx, "node:update", "corpus_node", node.id)
-    event.listen(world.db.sync_session, "do_orm_execute", _count)
-    try:
-        for node in nodes[1:]:
-            await can(world.db, ctx, "node:update", "corpus_node", node.id)
-    finally:
-        event.remove(world.db.sync_session, "do_orm_execute", _count)
-    # one locate per node, nothing else: rights and shares are cached
-    assert count == len(nodes) - 1
+async def test_refused_node_evaluation_costs_constant_queries(world):
+    """A refusal walks every step (edit shares, placements) once per request."""
+    few = [ask("node:update", "corpus_node", i) for i in await _nodes_elders(world, 5)]
+    many = [
+        ask("node:update", "corpus_node", i) for i in await _nodes_elders(world, 50)
+    ]
+    assert await _evaluation_queries(
+        world, "team_editor", many, expected=False
+    ) == await _evaluation_queries(world, "team_editor", few, expected=False)

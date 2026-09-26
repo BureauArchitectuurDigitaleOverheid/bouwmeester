@@ -1,13 +1,10 @@
 """Leads on the single decision point (``core/authz.py``).
 
-Builds on the tree of ``test_authz.world``: the afdeling owns the
+Uses ``world`` from ``tests/authz_world.py``: the afdeling owns the
 initiatief, ``role_only`` is a contributor on it, the manager of the
 directie above holds unit_manager.  Added here: a person who may only read
 the initiatief, a lead opdrachtgever, and sub-records of the lead.
 """
-
-import uuid
-from dataclasses import dataclass
 
 import pytest
 from sqlalchemy import select
@@ -20,22 +17,19 @@ from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.resource_permission import ResourcePermission
+from tests.authz_world import (
+    World,
+    assert_can_case,
+    assert_route_case,
+    can_case_id,
+    perm_ctx,
+    route_case_id,
+)
 from tests.factories import client_as, make_person
-from tests.test_authz import World, _ctx, world  # noqa: F401 (fixture)
-
-
-@dataclass
-class LeadsWorld:
-    w: World
-
-    def id(self, key: str) -> uuid.UUID:
-        if key in self.w.res:
-            return self.w.res[key]
-        return self.w.org[key].id
 
 
 @pytest.fixture
-async def lw(world: World) -> LeadsWorld:  # noqa: F811
+async def lw(world: World) -> World:
     db = world.db
     init_viewer = await make_person(db, "Initiatieflezer")
     opdrachtgever = await make_person(db, "Opdrachtgever")
@@ -94,7 +88,7 @@ async def lw(world: World) -> LeadsWorld:  # noqa: F811
         github_link=link.id,
         opdrachtgever_grant=opdrachtgever_grant.id,
     )
-    return LeadsWorld(world)
+    return world
 
 
 # (who, permission, resource type, resource key or None, eenheid key, expected)
@@ -157,29 +151,16 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize(
-    ("who", "permission", "resource_type", "resource", "eenheid", "expected"),
-    CASES,
-    ids=[f"{c[0]}-{c[1]}-{c[3] or c[4] or 'new'}" for c in CASES],
-)
-async def test_can(lw, who, permission, resource_type, resource, eenheid, expected):
-    ctx = await _ctx(lw.w, who)
-    got = await can(
-        lw.w.db,
-        ctx,
-        permission,
-        resource_type,
-        lw.id(resource) if resource else None,
-        eenheid_id=lw.id(eenheid) if eenheid else None,
-    )
-    assert got is expected
+@pytest.mark.parametrize("case", CASES, ids=[can_case_id(c) for c in CASES])
+async def test_can(lw, case):
+    await assert_can_case(lw, case)
 
 
 async def test_initiatief_viewer_sees_but_does_not_write(lw):
-    person = lw.w.person["init_viewer"]
-    init_ctx = await build_initiatief_context(lw.w.db, person)
+    person = lw.person["init_viewer"]
+    init_ctx = await build_initiatief_context(lw.db, person)
     assert lw.id("initiatief") in init_ctx.visible_initiatief_ids
-    async with client_as(lw.w.db, person) as c:
+    async with client_as(lw.db, person) as c:
         read = await c.get(f"/api/leads/{lw.id('lead')}")
         write = await c.put(f"/api/leads/{lw.id('lead')}", json={"title": "Nee"})
     assert read.status_code == 200, read.text
@@ -409,14 +390,14 @@ ROUTES = [
         "init_viewer",
         "POST",
         "/api/leads/{lead}/contacts",
-        lambda lw: {"person_id": str(lw.w.person["viewer"].id)},
+        lambda lw: {"person_id": str(lw.person["viewer"].id)},
         403,
     ),
     (
         "role_only",
         "POST",
         "/api/leads/{lead}/contacts",
-        lambda lw: {"person_id": str(lw.w.person["viewer"].id)},
+        lambda lw: {"person_id": str(lw.person["viewer"].id)},
         201,
     ),
     (
@@ -429,42 +410,23 @@ ROUTES = [
 ]
 
 
-@pytest.mark.parametrize(
-    ("who", "method", "path", "body", "expected"),
-    ROUTES,
-    ids=[f"{r[0]}-{r[1]}-{r[2]}" for r in ROUTES],
-)
-async def test_routes(lw, who, method, path, body, expected):
-    url = path.format(**{k: lw.w.res[k] for k in lw.w.res})
-    kwargs = {"json": body(lw)} if body else {}
-    async with client_as(lw.w.db, lw.w.person[who]) as c:
-        resp = await c.request(method, url, **kwargs)
-    assert resp.status_code == expected, resp.text
-
-
-async def test_leads_of_one_initiatief_share_one_decision(lw):
-    """Reorder asks per lead; the per-request cache decides the initiatief once."""
-    ctx = await _ctx(lw.w, "role_only")
-    for key in ("lead", "lead_other"):
-        assert await can(lw.w.db, ctx, "lead:update", "lead", lw.id(key))
-    decisions = [
-        k for k in ctx.authz_cache if k[0] == "decision" and k[1] == "initiatief:update"
-    ]
-    assert len(decisions) == 1
+@pytest.mark.parametrize("case", ROUTES, ids=[route_case_id(c) for c in ROUTES])
+async def test_routes(lw, case):
+    await assert_route_case(lw, *case)
 
 
 async def _decision_queries(lw, who: str, n: int) -> int:
     """Queries spent deciding lead:update on *n* leads of one initiatief."""
     from sqlalchemy import event
 
-    db = lw.w.db
+    db = lw.db
     leads = [
         Lead(title=f"Lead {i}", stage="verkennen", initiatief_id=lw.id("initiatief"))
         for i in range(n)
     ]
     db.add_all(leads)
     await db.flush()
-    ctx = await _ctx(lw.w, who)
+    ctx = await perm_ctx(lw, who)
     count = 0
 
     def _count(_state):
@@ -516,8 +478,8 @@ CONTACT_GRANTS = [
     ids=[f"{c[0]}-{c[3]}-for-{c[2]}-on-{c[1]}" for c in CONTACT_GRANTS],
 )
 async def test_contact_is_a_grant(lw, who, lead, contact, rol, expected):
-    body = {"person_id": str(lw.w.person[contact].id), "rol": rol}
-    async with client_as(lw.w.db, lw.w.person[who]) as c:
+    body = {"person_id": str(lw.person[contact].id), "rol": rol}
+    async with client_as(lw.db, lw.person[who]) as c:
         resp = await c.post(f"/api/leads/{lw.id(lead)}/contacts", json=body)
     assert resp.status_code == expected, resp.text
 
@@ -526,16 +488,16 @@ async def test_tagging_with_a_new_name_needs_tag_create(lw):
     """The opdrachtgever edits the lead but holds no tag:create anywhere."""
     from bouwmeester.models.tag import Tag
 
-    lw.w.db.add(Tag(name="Bestaande tag"))
-    await lw.w.db.flush()
+    lw.db.add(Tag(name="Bestaande tag"))
+    await lw.db.flush()
     url = f"/api/leads/{lw.id('lead')}/tags"
-    async with client_as(lw.w.db, lw.w.person["opdrachtgever"]) as c:
+    async with client_as(lw.db, lw.person["opdrachtgever"]) as c:
         new = await c.post(url, json={"tag_name": "Gloednieuw"})
         existing = await c.post(url, json={"tag_name": "Bestaande tag"})
-    async with client_as(lw.w.db, lw.w.person["role_only"]) as c:
+    async with client_as(lw.db, lw.person["role_only"]) as c:
         # a contributor on the initiatief holds no tag:create either
         contributor_new = await c.post(url, json={"tag_name": "Ook nieuw"})
-    async with client_as(lw.w.db, lw.w.person["team_editor"]) as c:
+    async with client_as(lw.db, lw.person["team_editor"]) as c:
         editor_new = await c.post(
             f"/api/leads/{lw.id('lead_free')}/tags", json={"tag_name": "Nieuw"}
         )
@@ -543,7 +505,7 @@ async def test_tagging_with_a_new_name_needs_tag_create(lw):
     assert existing.status_code == 201, existing.text
     assert contributor_new.status_code == 403, contributor_new.text
     assert editor_new.status_code == 201, editor_new.text
-    names = set((await lw.w.db.scalars(select(Tag.name))).all())
+    names = set((await lw.db.scalars(select(Tag.name))).all())
     assert "Gloednieuw" not in names and "Nieuw" in names
 
 
@@ -558,6 +520,6 @@ async def test_tagging_with_a_new_name_needs_tag_create(lw):
 )
 async def test_remove_contact_is_a_grant_change(lw, who, expected):
     url = f"/api/leads/{lw.id('lead')}/contacts/{lw.id('opdrachtgever_grant')}"
-    async with client_as(lw.w.db, lw.w.person[who]) as c:
+    async with client_as(lw.db, lw.person[who]) as c:
         resp = await c.delete(url)
     assert resp.status_code == expected, resp.text

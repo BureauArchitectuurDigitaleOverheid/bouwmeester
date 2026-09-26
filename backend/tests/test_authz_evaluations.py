@@ -1,27 +1,130 @@
-# ruff: noqa: F811  (tests take the imported ``world`` fixture)
-"""Grant actions and "anywhere" on the evaluation endpoint.
+"""``POST /api/authz/evaluations``: the frontend's question to ``core.authz``.
 
-Builds on ``test_authz.world``; adds a ministry_admin scoped to the
-directie, who may assign roles below it but writes no nodes.  Grant actions
-are answered by the ``core.authority`` guards, so each case here mirrors a
-route test in ``test_grant_authority``.
+Uses the shared tree of ``tests/authz_world.py``; ``ew`` adds a
+ministry_admin scoped to the directie, who may assign roles below it but
+writes no nodes.  Grant actions are answered by the ``core.authority``
+guards, so each of those cases mirrors a route test in
+``test_grant_authority``.
 """
+
+import uuid
 
 import pytest
 from sqlalchemy import select
 
+from bouwmeester.core.authz import can
 from bouwmeester.models.role import PersonRole
-from tests.factories import client_as, grant_role, make_person, place
-from tests.test_authz import World, _ask, world  # noqa: F401
+from tests.authz_world import World, add_directie_admin, ask, perm_ctx
+from tests.factories import client_as
 
 
 @pytest.fixture
 async def ew(world: World) -> World:
-    admin = await make_person(world.db, "Ministeriebeheerder")
-    await place(world.db, admin, world.org["directie"])
-    await grant_role(world.db, admin, "ministry_admin", world.org["directie"])
-    world.person["ministry_admin"] = admin
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
     return world
+
+
+# ---------------------------------------------------------------------------
+# can() actions: answered in order, a missing resource is false
+# ---------------------------------------------------------------------------
+
+
+async def test_evaluations_answer_in_order(world):
+    asks = [
+        ask("node:update", "corpus_node", world.res["node_team"]),
+        ask("node:update", "corpus_node", world.res["node_directie"]),
+        ask("edge:update", "edge", world.res["edge_team_directie"]),
+        ask("task:create", "task", eenheid_id=world.org["team"].id),
+        ask("node:create", "corpus_node"),
+    ]
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {
+        "evaluations": [
+            {"decision": True},
+            {"decision": False},
+            {"decision": True},
+            {"decision": True},
+            {"decision": True},
+        ]
+    }
+
+
+async def test_evaluations_missing_resource_is_false_not_404(world):
+    asks = [
+        ask("node:update", "corpus_node", uuid.uuid4()),
+        ask("edge:delete", "edge", uuid.uuid4()),
+    ]
+    async with client_as(world.db, world.person["super_admin"]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
+    assert resp.status_code == 200
+    assert resp.json() == {"evaluations": [{"decision": False}, {"decision": False}]}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"evaluations": []},
+        {"evaluations": [ask("node:read", "corpus_node")] * 51},
+        {"evaluations": [ask("node:read", "onbekend_type")]},
+        {"evaluations": [{"action": "node:read", "resource": {"type": "x"}}]},
+        {"evaluations": [ask("node read", "corpus_node")]},
+        {
+            "subject": {"type": "user", "id": str(uuid.uuid4())},
+            "evaluations": [ask("node:read", "corpus_node")],
+        },
+        {
+            "evaluations": [
+                {
+                    **ask("node:read", "corpus_node"),
+                    "subject": {"type": "user", "id": str(uuid.uuid4())},
+                }
+            ]
+        },
+    ],
+    ids=[
+        "empty",
+        "too-many",
+        "unknown-type",
+        "bad-type",
+        "bad-action",
+        "subject-top",
+        "subject-item",
+    ],
+)
+async def test_evaluations_reject_bad_input(world, body):
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.post("/api/authz/evaluations", json=body)
+    assert resp.status_code == 422
+
+
+def test_evaluations_endpoint_is_not_public():
+    from bouwmeester.middleware.auth_required import is_public_path
+
+    assert not is_public_path("/api/authz/evaluations")
+
+
+async def test_existing_person_is_not_decided_here(world):
+    ctx = await perm_ctx(world, "team_editor")
+    with pytest.raises(ValueError):
+        await can(world.db, ctx, "people:update", "person", world.person["viewer"].id)
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask("people:update", "person", world.person["viewer"].id),
+                    ask("people:create", "person"),
+                ]
+            },
+        )
+    assert resp.json() == {"evaluations": [{"decision": False}, {"decision": True}]}
+
+
+# ---------------------------------------------------------------------------
+# Grant actions: the core.authority guards
+# ---------------------------------------------------------------------------
 
 
 def _org(w: World, key: str):
@@ -38,28 +141,28 @@ GRANT_CASES = [
     # eenheid, rank below your own, never to yourself
     (
         "ministry_admin",
-        lambda w: _ask(
+        lambda w: ask(
             "role:assign", "role", role_id="editor", eenheid_id=_org(w, "team")
         ),
         True,
     ),
     (
         "ministry_admin",
-        lambda w: _ask(
+        lambda w: ask(
             "role:assign", "role", role_id="editor", eenheid_id=_org(w, "elders")
         ),
         False,
     ),
     (
         "ministry_admin",
-        lambda w: _ask(
+        lambda w: ask(
             "role:assign", "role", role_id="ministry_admin", eenheid_id=_org(w, "team")
         ),
         False,
     ),
     (
         "ministry_admin",
-        lambda w: _ask(
+        lambda w: ask(
             "role:assign",
             "role",
             role_id="editor",
@@ -70,46 +173,46 @@ GRANT_CASES = [
     ),
     (
         "manager",
-        lambda w: _ask(
+        lambda w: ask(
             "role:assign", "role", role_id="editor", eenheid_id=_org(w, "team")
         ),
         False,
     ),
     (
         "super_admin",
-        lambda w: _ask("role:assign", "role", role_id="platform_admin"),
+        lambda w: ask("role:assign", "role", role_id="platform_admin"),
         True,
     ),
     (
         "ministry_admin",
-        lambda w: _ask("role:assign", "role", role_id="onbekend"),
+        lambda w: ask("role:assign", "role", role_id="onbekend"),
         False,
     ),
     # naming a manager is assigning unit_manager
     (
         "ministry_admin",
-        lambda w: _ask("eenheid:set_manager", "organisatie_eenheid", _org(w, "team")),
+        lambda w: ask("eenheid:set_manager", "organisatie_eenheid", _org(w, "team")),
         True,
     ),
     (
         "manager",
-        lambda w: _ask("eenheid:set_manager", "organisatie_eenheid", _org(w, "team")),
+        lambda w: ask("eenheid:set_manager", "organisatie_eenheid", _org(w, "team")),
         False,
     ),
     # placing an account is the manager's call; editors file a request
     (
         "manager",
-        lambda w: _ask("person:place", "person", eenheid_id=_org(w, "team")),
+        lambda w: ask("person:place", "person", eenheid_id=_org(w, "team")),
         True,
     ),
     (
         "team_editor",
-        lambda w: _ask("person:place", "person", eenheid_id=_org(w, "team")),
+        lambda w: ask("person:place", "person", eenheid_id=_org(w, "team")),
         False,
     ),
     (
         "team_editor",
-        lambda w: _ask(
+        lambda w: ask(
             "person:place", "person", _person(w, "viewer"), eenheid_id=_org(w, "team")
         ),
         False,
@@ -117,26 +220,26 @@ GRANT_CASES = [
     # dissolving an internal eenheid needs its manager
     (
         "manager",
-        lambda w: _ask("eenheid:dissolve", "organisatie_eenheid", _org(w, "team")),
+        lambda w: ask("eenheid:dissolve", "organisatie_eenheid", _org(w, "team")),
         True,
     ),
     (
         "team_editor",
-        lambda w: _ask("eenheid:dissolve", "organisatie_eenheid", _org(w, "team")),
+        lambda w: ask("eenheid:dissolve", "organisatie_eenheid", _org(w, "team")),
         False,
     ),
     # resource roles: resource_permission:manage on the owning eenheid (or
     # above it), not for yourself, only the type's own rols
     (
         "manager",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:grant", "initiatief", w.res["initiatief"], rol="contributor"
         ),
         True,
     ),
     (
         "manager",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:grant",
             "initiatief",
             w.res["initiatief"],
@@ -147,14 +250,14 @@ GRANT_CASES = [
     ),
     (
         "viewer",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:grant", "initiatief", w.res["initiatief"], rol="viewer"
         ),
         False,
     ),
     (
         "afd_editor",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:grant", "initiatief", w.res["initiatief"], rol="x"
         ),
         False,
@@ -162,14 +265,14 @@ GRANT_CASES = [
     # lead contacts: an editor of the lead, opdrachtgever never to yourself
     (
         "role_only",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:grant", "lead", w.res["lead"], rol="opdrachtgever"
         ),
         True,
     ),
     (
         "role_only",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:grant",
             "lead",
             w.res["lead"],
@@ -182,13 +285,13 @@ GRANT_CASES = [
 
 
 @pytest.mark.parametrize(
-    ("who", "ask", "expected"),
+    ("who", "build", "expected"),
     GRANT_CASES,
     ids=[f"{c[0]}-{i}" for i, c in enumerate(GRANT_CASES)],
 )
-async def test_grant_actions_ask_the_authority_guards(ew, who, ask, expected):
+async def test_grant_actions_ask_the_authority_guards(ew, who, build, expected):
     async with client_as(ew.db, ew.person[who]) as c:
-        resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask(ew)]})
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [build(ew)]})
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"evaluations": [{"decision": expected}]}
 
@@ -209,9 +312,9 @@ async def test_role_revoke_asks_the_revoke_guard(ew, who, holder, role_id, expec
             PersonRole.role_id == role_id,
         )
     )
-    ask = _ask("role:revoke", "role", assignment_id)
+    question = ask("role:revoke", "role", assignment_id)
     async with client_as(ew.db, ew.person[who]) as c:
-        resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask]})
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [question]})
     assert resp.json() == {"evaluations": [{"decision": expected}]}
 
 
@@ -238,9 +341,9 @@ ANYWHERE_CASES = [
 )
 async def test_anywhere_asks_every_eenheid(ew, who, action, resource_type, expected):
     asks = [
-        _ask(action, resource_type, anywhere=True),
+        ask(action, resource_type, anywhere=True),
         # without anywhere a task needs an eenheid: no eenheid is no
-        _ask(action, resource_type),
+        ask(action, resource_type),
     ]
     async with client_as(ew.db, ew.person[who]) as c:
         resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
@@ -260,14 +363,14 @@ MORE_GRANT_CASES = [
     # a contact without account: contact administration, people:update
     (
         "team_editor",
-        lambda w: _ask(
+        lambda w: ask(
             "person:place", "person", eenheid_id=_org(w, "team"), contact=True
         ),
         True,
     ),
     (
         "platform_admin",  # holds no people:update
-        lambda w: _ask(
+        lambda w: ask(
             "person:place", "person", eenheid_id=_org(w, "team"), contact=True
         ),
         False,
@@ -275,7 +378,7 @@ MORE_GRANT_CASES = [
     # ending your own placement only gives access up
     (
         "team_editor",
-        lambda w: _ask(
+        lambda w: ask(
             "person:place",
             "person",
             _person(w, "team_editor"),
@@ -285,20 +388,20 @@ MORE_GRANT_CASES = [
         True,
     ),
     # any role to someone else, anywhere or in one eenheid
-    ("ministry_admin", lambda w: _ask("role:assign", "role", anywhere=True), True),
+    ("ministry_admin", lambda w: ask("role:assign", "role", anywhere=True), True),
     (
         "ministry_admin",
-        lambda w: _ask(
+        lambda w: ask(
             "role:assign", "role", anywhere=True, eenheid_id=_org(w, "elders")
         ),
         False,
     ),
-    ("team_editor", lambda w: _ask("role:assign", "role", anywhere=True), False),
-    ("super_admin", lambda w: _ask("role:assign", "role", anywhere=True), True),
+    ("team_editor", lambda w: ask("role:assign", "role", anywhere=True), False),
+    ("super_admin", lambda w: ask("role:assign", "role", anywhere=True), True),
     # removing a rol: yourself yes, someone else's only with authority
     (
         "role_only",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:revoke",
             "corpus_node",
             w.res["node_directie"],
@@ -309,7 +412,7 @@ MORE_GRANT_CASES = [
     ),
     (
         "team_editor",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:revoke",
             "corpus_node",
             w.res["node_directie"],
@@ -319,7 +422,7 @@ MORE_GRANT_CASES = [
     ),
     (
         "super_admin",
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:revoke",
             "corpus_node",
             w.res["node_directie"],
@@ -329,7 +432,7 @@ MORE_GRANT_CASES = [
     ),
     (
         "super_admin",  # no such grant
-        lambda w: _ask(
+        lambda w: ask(
             "resource_role:revoke",
             "corpus_node",
             w.res["node_team"],
@@ -364,7 +467,7 @@ async def test_the_last_eigenaar_cannot_leave(ew):
         )
     )
     await ew.db.flush()
-    ask = _ask(
+    question = ask(
         "resource_role:revoke",
         "corpus_node",
         ew.res["node_free"],
@@ -372,5 +475,5 @@ async def test_the_last_eigenaar_cannot_leave(ew):
         rol="eigenaar",
     )
     async with client_as(ew.db, ew.person["viewer"]) as c:
-        resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask]})
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [question]})
     assert resp.json() == {"evaluations": [{"decision": False}]}

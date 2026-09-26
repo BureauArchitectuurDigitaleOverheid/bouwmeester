@@ -1045,6 +1045,19 @@ async def test_ministry_admin_revokes_within_subtree_only(tree: Tree):
     assert refused.status_code == 403
 
 
+async def test_super_admin_cannot_revoke_own_super_admin(tree: Tree):
+    assignment = await tree.db.scalar(
+        select(PersonRole).where(
+            PersonRole.person_id == tree.super_admin.id,
+            PersonRole.role_id == "super_admin",
+        )
+    )
+    async with client_as(tree.db, tree.super_admin) as c:
+        resp = await c.delete(f"/api/roles/assignments/{assignment.id}")
+    assert resp.status_code == 400, resp.text
+    assert "eigen" in resp.json()["detail"].lower()
+
+
 async def test_editor_cannot_dissolve_team(tree: Tree):
     async with client_as(tree.db, tree.editor) as c:
         resp = await c.put(

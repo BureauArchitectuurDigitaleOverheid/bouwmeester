@@ -1,6 +1,6 @@
 """Tests for eenheid-scoped resource permissions on initiatieven.
 
-Rights come from ``core.authz`` (see ``test_authz_initiatief.rights_level``).
+Rights come from ``core.authz`` (see ``authz_world.rights_level``).
 """
 
 from datetime import date, timedelta
@@ -13,8 +13,8 @@ from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import InitiatiefCreate
+from tests.authz_world import rights_level
 from tests.factories import make_org, make_person
-from tests.test_authz_initiatief import rights_level
 
 
 @pytest.fixture

@@ -1,7 +1,6 @@
-# ruff: noqa: F811  (tests take the imported ``world`` fixture)
 """Tenant-wide operations and chat write tools on the decision point.
 
-Builds on the tree of ``test_authz`` (``world``).  The questions:
+Uses ``world`` from ``tests/authz_world.py``.  The questions:
 
 - A tenant-wide operation (syncs, imports, schema management) needs a system
   role.  A role on an eenheid does not do, not even on the top one and not
@@ -14,22 +13,19 @@ Builds on the tree of ``test_authz`` (``world``).  The questions:
 """
 
 import uuid
-from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
-from sqlalchemy import select
 
 from bouwmeester.core.authz import can
 from bouwmeester.core.permissions import build_permission_context
-from bouwmeester.models.edge import Edge
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.mattermost_user import MattermostUser
 from bouwmeester.models.opdracht import Opdracht
-from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
+from bouwmeester.models.parlementair_item import SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import Role, RolePermission
@@ -43,8 +39,8 @@ from bouwmeester.services.mattermost_slash_service import (
     _NO_WRITE,
     MattermostSlashService,
 )
+from tests.authz_world import World, add_directie_admin, make_item, perm_ctx
 from tests.factories import client_as, grant_role, make_person, place
-from tests.test_authz import World, _ctx, world  # noqa: F401
 
 # Every permission that guards a tenant-wide operation.
 _TENANT_WIDE_PERMS = (
@@ -135,10 +131,10 @@ async def test_tenant_wide_needs_system_role(
         world.db, await _scoped_ops(world, "ministerie")
     )
     assert not await _passes(guard, top), "a role on the top eenheid is not system"
-    assert not await _passes(guard, await _ctx(world, "manager"))
-    assert await _passes(guard, await _ctx(world, "super_admin"))
+    assert not await _passes(guard, await perm_ctx(world, "manager"))
+    assert await _passes(guard, await perm_ctx(world, "super_admin"))
     assert (
-        await _passes(guard, await _ctx(world, "platform_admin"))
+        await _passes(guard, await perm_ctx(world, "platform_admin"))
     ) is platform_admin_may
 
 
@@ -163,24 +159,6 @@ async def test_scoped_holder_cannot_trigger_over_http(world):
 # ---------------------------------------------------------------------------
 
 
-async def _item(w: World, node_key: str | None, status: str = "imported"):
-    item = ParlementairItem(
-        id=uuid.uuid4(),
-        type="motie",
-        zaak_id=f"zaak-{uuid.uuid4().hex[:8]}",
-        zaak_nummer="36200-VII-1",
-        titel="Motie",
-        onderwerp="Authz",
-        bron="tweede_kamer",
-        datum=date(2026, 1, 1),
-        status=status,
-        corpus_node_id=w.res[node_key] if node_key else None,
-    )
-    w.db.add(item)
-    await w.db.flush()
-    return item
-
-
 # (who, node of the item, expected status of PUT .../reject)
 REVIEW_CASES = [
     ("team_editor", "node_team", 200),
@@ -199,21 +177,18 @@ REVIEW_CASES = [
     ids=[f"{c[0]}-{c[1]}" for c in REVIEW_CASES],
 )
 async def test_parlementair_review_is_decided_on_its_node(world, who, node, expected):
-    item = await _item(world, node)
+    item = await make_item(world, node)
     async with client_as(world.db, world.person[who]) as c:
         resp = await c.put(f"/api/parlementair/imports/{item.id}/reject")
     assert resp.status_code == expected, resp.text
 
 
 async def test_suggested_edge_is_reviewed_as_part_of_its_item(world):
-    item = await _item(world, "node_directie")
-    edge_type = await world.db.scalar(
-        select(Edge.edge_type_id).where(Edge.id == world.res["edge_team_directie"])
-    )
+    item = await make_item(world, "node_directie")
     suggested = SuggestedEdge(
         parlementair_item_id=item.id,
         target_node_id=world.res["node_team"],
-        edge_type_id=edge_type,
+        edge_type_id=world.res["edge_type"],
         confidence=0.9,
     )
     world.db.add(suggested)
@@ -247,18 +222,12 @@ APPROVE_CASES = [
 async def test_approving_a_suggested_edge_needs_edge_create(
     world, who, node, target, expected
 ):
-    ministry_admin = await make_person(world.db, "Ministeriebeheerder")
-    await place(world.db, ministry_admin, world.org["directie"])
-    await grant_role(world.db, ministry_admin, "ministry_admin", world.org["directie"])
-    world.person["ministry_admin"] = ministry_admin
-    item = await _item(world, node)
-    edge_type = await world.db.scalar(
-        select(Edge.edge_type_id).where(Edge.id == world.res["edge_team_directie"])
-    )
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    item = await make_item(world, node)
     suggested = SuggestedEdge(
         parlementair_item_id=item.id,
         target_node_id=world.res[target],
-        edge_type_id=edge_type,
+        edge_type_id=world.res["edge_type"],
         confidence=0.9,
     )
     world.db.add(suggested)
@@ -334,9 +303,10 @@ PARITY = [
 ]  # fmt: skip
 
 
-def _fill(value, values: dict[str, str]):
+def _fill_placeholders(value, values: dict[str, str]):
+    """Fill ``{key}`` in a string, or in every value of a dict."""
     if isinstance(value, dict):
-        return {k: _fill(v, values) for k, v in value.items()}
+        return {k: _fill_placeholders(v, values) for k, v in value.items()}
     return value.format(**values)
 
 
@@ -352,10 +322,14 @@ async def test_chat_tool_refuses_what_rest_refuses(
     values = {k: str(v) for k, v in world.res.items()} | {"tag": await _tag(world)}
     person = world.person[who]
     refusal = await _authorize_write_tool(
-        tool, _fill(args, values), world.db, person.id
+        tool, _fill_placeholders(args, values), world.db, person.id
     )
     async with client_as(world.db, person) as c:
-        resp = await c.request(method, _fill(path, values), json=_fill(body, values))
+        resp = await c.request(
+            method,
+            _fill_placeholders(path, values),
+            json=_fill_placeholders(body, values),
+        )
     assert resp.status_code in (200, 201, 403), resp.text
     assert (refusal is None) is (resp.status_code != 403), (refusal, resp.text)
 
@@ -388,7 +362,7 @@ LEAD_CASES = [
 async def test_chat_lead_tools_ask_authz(world, who, tool, args, allowed):
     values = {k: str(v) for k, v in world.res.items()}
     refusal = await _authorize_write_tool(
-        tool, _fill(args, values), world.db, world.person[who].id
+        tool, _fill_placeholders(args, values), world.db, world.person[who].id
     )
     assert (refusal is None) is allowed, refusal
 
@@ -396,7 +370,7 @@ async def test_chat_lead_tools_ask_authz(world, who, tool, args, allowed):
 async def test_chat_lead_tools_match_the_decision_point(world):
     """update_lead refuses exactly when authz refuses lead:update."""
     for who in world.person:
-        ctx = await _ctx(world, who)
+        ctx = await perm_ctx(world, who)
         for lead in ("lead", "lead_free"):
             refusal = await _authorize_write_tool(
                 "update_lead",
@@ -566,7 +540,7 @@ async def test_suggested_lead_review_is_initiatief_update(
     )
     world.db.add(suggested)
     await world.db.flush()
-    ctx = await _ctx(world, who)
+    ctx = await perm_ctx(world, who)
     decision = await can(
         world.db, ctx, "suggested_lead:update", "suggested_lead", suggested.id
     )

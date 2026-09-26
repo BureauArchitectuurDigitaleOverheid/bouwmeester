@@ -26,8 +26,8 @@ from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.resource_permission import ResourcePermission
+from tests.authz_world import World
 from tests.factories import client_as
-from tests.test_authz import World, world  # noqa: F401 (the shared tree fixture)
 
 
 @pytest.fixture
@@ -161,13 +161,8 @@ async def test_reject_import_requires_parlementair_review(
 
 
 # ---------------------------------------------------------------------------
-# Real permission resolution (the ``world`` tree from test_authz)
+# Real permission resolution (``world`` from tests/authz_world.py)
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def pw(world: World) -> World:  # noqa: F811
-    return world
 
 
 async def _review_item(w: World, *targets: str) -> ParlementairItem:
@@ -219,75 +214,75 @@ def _complete(w: World, who: str) -> dict:
     return {"eigenaar_id": str(w.person[who].id), "tasks": []}
 
 
-async def test_editor_reviewer_names_first_eigenaar(pw: World):
+async def test_editor_reviewer_names_first_eigenaar(world: World):
     """Naming the first eigenaar is the review itself, not a grant."""
-    item = await _review_item(pw)
-    async with client_as(pw.db, pw.person["team_editor"]) as c:
+    item = await _review_item(world)
+    async with client_as(world.db, world.person["team_editor"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(pw, "viewer"),
+            json=_complete(world, "viewer"),
         )
     assert resp.status_code == 200, resp.text
-    assert await _owners(pw, item.corpus_node_id) == {pw.person["viewer"].id}
+    assert await _owners(world, item.corpus_node_id) == {world.person["viewer"].id}
 
 
-async def test_reviewer_cannot_name_self_eigenaar(pw: World):
-    item = await _review_item(pw)
-    async with client_as(pw.db, pw.person["team_editor"]) as c:
+async def test_reviewer_cannot_name_self_eigenaar(world: World):
+    item = await _review_item(world)
+    async with client_as(world.db, world.person["team_editor"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(pw, "team_editor"),
+            json=_complete(world, "team_editor"),
         )
     assert resp.status_code == 403
-    assert await _owners(pw, item.corpus_node_id) == set()
+    assert await _owners(world, item.corpus_node_id) == set()
 
 
-async def test_reviewer_cannot_replace_eigenaar_without_grant_authority(pw: World):
+async def test_reviewer_cannot_replace_eigenaar_without_grant_authority(world: World):
     """Replacing an eigenaar needs node:delete, which an editor lacks."""
-    item = await _review_item(pw)
-    pw.db.add(
+    item = await _review_item(world)
+    world.db.add(
         ResourcePermission(
-            person_id=pw.person["afd_editor"].id,
+            person_id=world.person["afd_editor"].id,
             resource_type="corpus_node",
             resource_id=item.corpus_node_id,
             rol="eigenaar",
         )
     )
-    await pw.db.flush()
-    async with client_as(pw.db, pw.person["team_editor"]) as c:
+    await world.db.flush()
+    async with client_as(world.db, world.person["team_editor"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(pw, "viewer"),
+            json=_complete(world, "viewer"),
         )
     assert resp.status_code == 403
-    assert await _owners(pw, item.corpus_node_id) == {pw.person["afd_editor"].id}
+    assert await _owners(world, item.corpus_node_id) == {world.person["afd_editor"].id}
 
 
-async def test_review_replaces_several_eigenaars(pw: World):
+async def test_review_replaces_several_eigenaars(world: World):
     """Two eigenaars used to crash the review with a 500."""
-    item = await _review_item(pw)
+    item = await _review_item(world)
     for who in ("team_editor", "afd_editor"):
-        pw.db.add(
+        world.db.add(
             ResourcePermission(
-                person_id=pw.person[who].id,
+                person_id=world.person[who].id,
                 resource_type="corpus_node",
                 resource_id=item.corpus_node_id,
                 rol="eigenaar",
             )
         )
-    await pw.db.flush()
-    async with client_as(pw.db, pw.person["manager"]) as c:
+    await world.db.flush()
+    async with client_as(world.db, world.person["manager"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(pw, "viewer"),
+            json=_complete(world, "viewer"),
         )
     assert resp.status_code == 200, resp.text
-    assert await _owners(pw, item.corpus_node_id) == {pw.person["viewer"].id}
+    assert await _owners(world, item.corpus_node_id) == {world.person["viewer"].id}
 
 
-async def test_suggestions_hide_target_nodes_the_reader_cannot_see(pw: World):
-    item = await _review_item(pw, "node_team", "node_elders")
-    async with client_as(pw.db, pw.person["viewer"]) as c:
+async def test_suggestions_hide_target_nodes_the_reader_cannot_see(world: World):
+    item = await _review_item(world, "node_team", "node_elders")
+    async with client_as(world.db, world.person["viewer"]) as c:
         detail = await c.get(f"/api/parlementair/imports/{item.id}")
         listed = await c.get("/api/parlementair/imports")
         queue = await c.get("/api/parlementair/review-queue")
@@ -298,29 +293,29 @@ async def test_suggestions_hide_target_nodes_the_reader_cannot_see(pw: World):
         next(x for x in queue.json() if x["id"] == str(item.id)),
     ):
         targets = {e["target_node_id"] for e in body["suggested_edges"]}
-        assert targets == {str(pw.res["node_team"])}
+        assert targets == {str(world.res["node_team"])}
 
 
-async def test_suggestions_show_every_target_to_super_admin(pw: World):
-    item = await _review_item(pw, "node_team", "node_elders")
-    async with client_as(pw.db, pw.person["super_admin"]) as c:
+async def test_suggestions_show_every_target_to_super_admin(world: World):
+    item = await _review_item(world, "node_team", "node_elders")
+    async with client_as(world.db, world.person["super_admin"]) as c:
         resp = await c.get(f"/api/parlementair/imports/{item.id}")
     assert len(resp.json()["suggested_edges"]) == 2
 
 
-async def test_reset_without_review_right_keeps_the_edge(pw: World):
-    item = await _review_item(pw, "node_team")
-    suggestion = await pw.db.scalar(
+async def test_reset_without_review_right_keeps_the_edge(world: World):
+    item = await _review_item(world, "node_team")
+    suggestion = await world.db.scalar(
         select(SuggestedEdge).where(SuggestedEdge.parlementair_item_id == item.id)
     )
-    async with client_as(pw.db, pw.person["manager"]) as c:
+    async with client_as(world.db, world.person["manager"]) as c:
         approved = await c.put(f"/api/parlementair/edges/{suggestion.id}/approve")
     assert approved.status_code == 200, approved.text
     edge_id = approved.json()["edge_id"]
-    async with client_as(pw.db, pw.person["viewer"]) as c:
+    async with client_as(world.db, world.person["viewer"]) as c:
         resp = await c.put(f"/api/parlementair/edges/{suggestion.id}/reset")
     assert resp.status_code == 403
-    assert await pw.db.get(Edge, uuid.UUID(edge_id)) is not None
+    assert await world.db.get(Edge, uuid.UUID(edge_id)) is not None
 
 
 @pytest.mark.parametrize(
@@ -333,23 +328,23 @@ async def test_reset_without_review_right_keeps_the_edge(pw: World):
     ],
 )
 async def test_suggested_edge_review_is_decided_on_the_suggestion(
-    pw: World, method: str, path: str, json: dict | None
+    world: World, method: str, path: str, json: dict | None
 ):
     """Every review route asks authz on the suggestion: 403 without, 404 unknown."""
-    item = await _review_item(pw, "node_team")
-    suggestion = await pw.db.scalar(
+    item = await _review_item(world, "node_team")
+    suggestion = await world.db.scalar(
         select(SuggestedEdge).where(SuggestedEdge.parlementair_item_id == item.id)
     )
     kwargs = {"json": json} if json is not None else {}
-    async with client_as(pw.db, pw.person["viewer"]) as c:
+    async with client_as(world.db, world.person["viewer"]) as c:
         refused = await c.request(
             method, f"/api/parlementair/edges/{suggestion.id}{path}", **kwargs
         )
-    async with client_as(pw.db, pw.person["manager"]) as c:
+    async with client_as(world.db, world.person["manager"]) as c:
         missing = await c.request(
             method, f"/api/parlementair/edges/{uuid.uuid4()}{path}", **kwargs
         )
     assert refused.status_code == 403, refused.text
     assert missing.status_code == 404, missing.text
-    await pw.db.refresh(suggestion)
+    await world.db.refresh(suggestion)
     assert suggestion.status == "pending"

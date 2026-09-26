@@ -1,7 +1,6 @@
-# ruff: noqa: F811  (tests take the imported ``world`` fixture)
 """Read leaks outside the core: graph endpoints, chat tools, slash commands.
 
-Builds on the tree of ``test_authz`` (``world``).  ``viewer`` sits in the
+Uses ``world`` from ``tests/authz_world.py``.  ``viewer`` sits in the
 team and sees up its line (team, afdeling, directie, DG, ministerie) plus
 nodes without an eenheid, but not ``Elders`` or the sibling team.  The
 corpus has the edges team -> directie -> elders; ``bridge`` adds
@@ -16,8 +15,8 @@ import pytest
 
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.edge_type import EdgeType
+from tests.authz_world import World
 from tests.factories import client_as, grant_role, make_person, place
-from tests.test_authz import World, world  # noqa: F401
 
 INVISIBLE = "Dossier elders"
 
@@ -152,6 +151,33 @@ async def test_chat_get_node_refuses_an_invisible_node(bridge):
     )
     assert "error" in hidden and INVISIBLE not in json.dumps(hidden)
     assert seen["title"] == "Teamdossier"
+
+
+async def test_chat_get_opdracht_reads_like_opdracht_read(world):
+    """Visible through either eenheid, like ``opdracht:read``; hidden is missing."""
+    from bouwmeester.models.opdracht import Opdracht
+
+    def _opdracht(titel: str, opdrachtnemer: str) -> Opdracht:
+        return Opdracht(
+            type="opdracht",
+            titel=titel,
+            begrotingsjaar=2026,
+            opdrachtgever_id=world.org["elders"].id,
+            opdrachtnemer_eenheid_id=world.org[opdrachtnemer].id,
+        )
+
+    for_team = _opdracht("Uitvoering door het team", "team")
+    hidden = _opdracht("Geheime opdracht", "elders")
+    world.db.add_all([for_team, hidden])
+    await world.db.flush()
+    seen = json.loads(
+        await _read(world, "viewer", "get_opdracht", opdracht_id=for_team.id)
+    )
+    refused = await _read(world, "viewer", "get_opdracht", opdracht_id=hidden.id)
+    missing = await _read(world, "viewer", "get_opdracht", opdracht_id=uuid.uuid4())
+    assert seen["titel"] == "Uitvoering door het team"
+    assert refused == missing
+    assert "Geheime opdracht" not in refused
 
 
 async def test_chat_neighbors_hide_invisible_neighbours(bridge):
