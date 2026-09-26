@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople, useMergePersons } from '@/hooks/usePeople';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
-import { CHANGES_RIGHTS, useCan, useCanEach } from '@/hooks/useCan';
+import { CHANGES_RIGHTS, useCan, useCanEach, useEenhedenWith } from '@/hooks/useCan';
 import type { AuthzResourceType } from '@/api/authz';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { formatFunctie } from '@/types';
@@ -105,6 +105,9 @@ function PersonRolesPanel({
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
   const { data: orgUnits } = useOrganisatieFlat();
+  // Only eenheden where the caller may assign roles; which role fits there
+  // is still the per-role question below.
+  const { includes: mayAssignIn } = useEenhedenWith('people:assign_role');
   const assignRole = useAssignRole();
   const revokeRole = useRevokeRole();
 
@@ -146,7 +149,8 @@ function PersonRolesPanel({
   );
 
   // The form shows when some role may go to this person somewhere; the
-  // eenheid list is everything visible, the role list says what fits there.
+  // eenheid list is where the caller assigns roles, the role list says what
+  // fits there.
   const { allowed: canAssignAny } = useCan('role:assign', {
     type: 'role',
     anywhere: true,
@@ -252,7 +256,9 @@ function PersonRolesPanel({
                   setSelectedRoleId('');
                 }}
                 placeholder="Kies een eenheid..."
-                options={(orgUnits ?? []).map((unit) => ({ value: unit.id, label: unit.naam }))}
+                options={(orgUnits ?? [])
+                  .filter((unit) => mayAssignIn(unit.id))
+                  .map((unit) => ({ value: unit.id, label: unit.naam }))}
                 required={!!selectedRoleId}
               />
             )}

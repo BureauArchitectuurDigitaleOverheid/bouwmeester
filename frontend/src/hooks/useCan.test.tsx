@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useMutation } from '@tanstack/react-q
 import type { ReactNode } from 'react';
 import { createAuthzBatcher, evaluate, MAX_EVALUATIONS } from '@/api/authz';
 import { apiPost } from '@/api/client';
-import { CHANGES_RIGHTS, syncAuthzDecisions, touches, useCan } from './useCan';
+import { CHANGES_RIGHTS, syncAuthzDecisions, touches, useCan, useEenhedenWith } from './useCan';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -323,5 +323,56 @@ describe('useCan', () => {
 
       await waitFor(() => expect(result.current.l1.allowed && result.current.l2.allowed).toBe(true));
     });
+  });
+});
+
+describe('useEenhedenWith', () => {
+  let answer: { all: boolean; ids: string[] };
+  let client: QueryClient;
+
+  beforeEach(() => {
+    answer = { all: false, ids: ['e1'] };
+    mockFetch.mockImplementation(
+      async () => new Response(JSON.stringify(answer), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  });
+
+  const requestedUrls = () => mockFetch.mock.calls.map(([url]) => String(url));
+
+  it('asks the whole list in one GET and answers per eenheid', async () => {
+    const { result } = renderHook(() => useEenhedenWith('org:manage'), { wrapper: wrapperFor(client) });
+
+    expect(result.current.includes('e1')).toBe(false);
+    await waitFor(() => expect(result.current.includes('e1')).toBe(true));
+    expect(result.current.includes('e2')).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(requestedUrls()[0]).toContain('/api/authz/eenheden?action=org%3Amanage');
+  });
+
+  it('treats `all` as every eenheid', async () => {
+    answer = { all: true, ids: [] };
+    const { result } = renderHook(() => useEenhedenWith('org:manage'), { wrapper: wrapperFor(client) });
+
+    await waitFor(() => expect(result.current.includes('anything')).toBe(true));
+  });
+
+  it('asks again after a change to who has access', async () => {
+    const stop = syncAuthzDecisions(client);
+    const { result } = renderHook(
+      () => ({
+        eenheden: useEenhedenWith('org:manage'),
+        write: useMutation({ mutationFn: async () => 'ok', meta: CHANGES_RIGHTS }),
+      }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.eenheden.includes('e1')).toBe(true));
+
+    answer = { all: false, ids: ['e2'] };
+    await act(() => result.current.write.mutateAsync());
+
+    await waitFor(() => expect(result.current.eenheden.includes('e2')).toBe(true));
+    expect(result.current.eenheden.includes('e1')).toBe(false);
+    stop();
   });
 });

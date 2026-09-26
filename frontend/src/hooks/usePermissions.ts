@@ -8,7 +8,6 @@ interface MyPermissionsResponse {
   roles: { role_id: string }[];
   permissions: string[];
   system_permissions?: string[];
-  managed_subtree_ids?: string[];
 }
 
 export function usePermissions() {
@@ -53,19 +52,6 @@ export function usePermissions() {
     ? (person?.is_admin ?? false)
     : !devPersonId || (devPerms?.roles ?? []).some((r) => r.role_id === 'super_admin');
 
-  // Eenheden whose members this person manages, with the same inheritance
-  // the backend applies (the eenheid itself or anything above it).
-  const managedSubtree = useMemo(() => {
-    if (oidcConfigured) return new Set(person?.managed_subtree_ids ?? []);
-    if (!devPersonId) return new Set(['*']);
-    return new Set(devPerms?.managed_subtree_ids ?? []);
-  }, [oidcConfigured, person?.managed_subtree_ids, devPersonId, devPerms?.managed_subtree_ids]);
-  const managesEenheid = useCallback(
-    (eenheidId: string): boolean =>
-      isSuperAdmin || managedSubtree.has('*') || managedSubtree.has(eenheidId),
-    [isSuperAdmin, managedSubtree],
-  );
-
   // Tenant-wide actions (syncs, merges, restoring a backup) need the
   // permission from a system role, not from a role scoped to one eenheid.
   const hasSystemPermission = useCallback(
@@ -77,7 +63,6 @@ export function usePermissions() {
     hasPermission,
     hasAnyPermission,
     hasSystemPermission,
-    managesEenheid,
     isSuperAdmin,
   };
 }

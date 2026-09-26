@@ -40,6 +40,8 @@ function routeQuestion(
         action: 'resource_role:grant',
         resources: [{ type: 'lead', id: route.leadId, rol: contactRol, targetPersonId: route.personId }],
       };
+    // The graph shows one initiatief's leads: their eenheid is an attribute
+    // there, not a move to another place, so plain lead:update.
     case 'lead_node':
     case 'lead_org':
       return { action: 'lead:update', resources: [{ type: 'lead', id: route.leadId }] };

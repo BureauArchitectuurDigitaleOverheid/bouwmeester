@@ -14,7 +14,7 @@ import {
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
-import { CHANGES_RIGHTS, useCanEach } from '@/hooks/useCan';
+import { CHANGES_RIGHTS, useEenhedenWith } from '@/hooks/useCan';
 
 export function useOrganisatieTree(includeHistorisch = false) {
   return useQuery({
@@ -92,19 +92,11 @@ export function useManagedEenheden(personId: string | undefined) {
 
 /**
  * The eenheden (flat list order) on which the backend allows `action`, such
- * as `org:manage` for module toggles and sharing. One batched question per
- * eenheid: a role on an eenheid applies below it, so the frontend knows no
- * smaller candidate set.
+ * as `org:manage` for module toggles and sharing.
  */
 export function useEenhedenAllowed(action: string) {
   const { data: eenheden, isLoading } = useOrganisatieFlat();
-  const questions = useMemo(
-    () => (eenheden ?? []).map((e) => ({ type: 'organisatie_eenheid' as const, id: e.id })),
-    [eenheden],
-  );
-  const decisions = useCanEach(action, questions);
-  return {
-    eenheden: (eenheden ?? []).filter((_, i) => decisions.allowed[i]),
-    isLoading: isLoading || decisions.isLoading,
-  };
+  const { includes, isLoading: deciding } = useEenhedenWith(action);
+  const filtered = useMemo(() => (eenheden ?? []).filter((e) => includes(e.id)), [eenheden, includes]);
+  return { eenheden: filtered, isLoading: isLoading || deciding };
 }

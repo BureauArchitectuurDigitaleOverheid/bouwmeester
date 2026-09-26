@@ -259,10 +259,10 @@ export function OrganisatieDetail({
   const { isSuperAdmin } = usePermissions();
   // Each button asks the decision its route makes. TOOI and scraped
   // eenheden are refused there too, so no frontend rule on `bron`.
-  const { allowed: canManage, showAction: showManage } = useCan('org:update', {
-    type: 'organisatie_eenheid',
-    id: selectedId,
-  });
+  const eenheidResource = { type: 'organisatie_eenheid', id: selectedId } as const;
+  const { allowed: canManage, showAction: showManage } = useCan('org:update', eenheidResource);
+  // DELETE follows the dissolve rules (authority over everyone placed below).
+  const { allowed: canDissolve, showAction: showDissolve } = useCan('eenheid:dissolve', eenheidResource);
   const { allowed: canAddChild } = useCan('org:create', { type: 'organisatie_eenheid', eenheidId: selectedId });
   // "Persoon toevoegen" places a new or existing contact here; placing an
   // account is refused on submit unless the caller manages the eenheid.
@@ -368,10 +368,14 @@ export function OrganisatieDetail({
             </dl>
           )}
         </nldd-container>
-        {showManage && (
+        {(showManage || showDissolve) && (
           <nldd-container layout="row" gap="8">
-            <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} disabled={!canManage} text="Bewerken" />
-            <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} disabled={!canManage} text="Verwijderen" />
+            {showManage && (
+              <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={onEdit} disabled={!canManage} text="Bewerken" />
+            )}
+            {showDissolve && (
+              <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={onDelete} disabled={!canDissolve} text="Verwijderen" />
+            )}
           </nldd-container>
         )}
       </div>

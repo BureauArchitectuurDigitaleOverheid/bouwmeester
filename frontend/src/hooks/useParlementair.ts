@@ -13,6 +13,7 @@ import {
 } from '@/api/parlementair';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 import type { ParlementairItemFilters, CompleteReviewData, ReprocessResult } from '@/types';
 
 export function useParlementairItems(filters?: ParlementairItemFilters) {
@@ -58,6 +59,8 @@ export function useReopenParlementairItem() {
 
 export function useCompleteParlementairReview() {
   return useMutationWithError({
+    // Names the node's eigenaar: a grant.
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ id, data }: { id: string; data: CompleteReviewData }) =>
       completeParlementairReview(id, data),
     errorMessage: 'Fout bij afronden review',

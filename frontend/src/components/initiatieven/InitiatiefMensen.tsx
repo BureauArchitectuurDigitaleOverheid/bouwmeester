@@ -19,6 +19,9 @@ import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { useCan } from '@/hooks/useCan';
+import { useEenheidGrants } from '@/hooks/useEenheidGrants';
+
+const INITIATIEF_ROLS = Object.keys(INITIATIEF_ROL_LABELS);
 
 /**
  * The "Mensen" tab: who works on the initiatief (members and eenheden, which
@@ -196,6 +199,7 @@ function Eenheden({ initiatief, canManage }: { initiatief: InitiatiefDetail; can
   const updateEenheidRolMutation = useUpdateInitiatiefEenheidRol();
   const { data: allEenheden = [] } = useOrganisatieFlat();
   const [addEenheidValue, setAddEenheidValue] = useState('');
+  const grants = useEenheidGrants('initiatief', initiatief.id, initiatief.eenheden, INITIATIEF_ROLS);
 
   const availableEenheidOptions = useMemo(() => {
     const linked = new Set(initiatief.eenheden.map((e) => e.eenheid_id));
@@ -222,64 +226,68 @@ function Eenheden({ initiatief, canManage }: { initiatief: InitiatiefDetail; can
 
       {initiatief.eenheden.length > 0 && (
         <nldd-list type="list" variant="box-tinted">
-          {initiatief.eenheden.map((eenheid) => (
-            <nldd-list-item key={eenheid.eenheid_id}>
-              <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
-                {/* The name takes what the role column leaves. With
-                    `fit-content` and no floor it shrank to within a word:
-                    "RegelRecht" broke as "RegelRec/ht". */}
-                <nldd-text-cell text={eenheid.eenheid_naam} width="full" />
-                {/* A fixed width for the role column. `fit-content` gave it
-                    nothing of its own to measure, so it collapsed to zero and
-                    drew the select's chevrons and the delete cross on top of
-                    each other at the row's edge. */}
-                <nldd-container
-                  layout="row"
-                  width={canManage ? '200px' : '120px'}
-                  className="shrink-0"
-                  gap="6"
-                  vertical-alignment="center"
-                  horizontal-alignment="right"
-                >
-                  {canManage ? (
-                    <nldd-container width="160px">
-                      <Select
-                        value={eenheid.rol}
-                        aria-label="Rol van deze eenheid"
-                        onChange={(e) =>
-                          updateEenheidRolMutation.mutateAsync({
+          {initiatief.eenheden.map((eenheid, i) => {
+            const { canRemove, rols } = grants[i];
+            const canChangeRol = rols.length > 1;
+            return (
+              <nldd-list-item key={eenheid.eenheid_id}>
+                <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+                  {/* The name takes what the role column leaves. With
+                      `fit-content` and no floor it shrank to within a word:
+                      "RegelRecht" broke as "RegelRec/ht". */}
+                  <nldd-text-cell text={eenheid.eenheid_naam} width="full" />
+                  {/* A fixed width for the role column. `fit-content` gave it
+                      nothing of its own to measure, so it collapsed to zero and
+                      drew the select's chevrons and the delete cross on top of
+                      each other at the row's edge. */}
+                  <nldd-container
+                    layout="row"
+                    width={canChangeRol || canRemove ? '200px' : '120px'}
+                    className="shrink-0"
+                    gap="6"
+                    vertical-alignment="center"
+                    horizontal-alignment="right"
+                  >
+                    {canChangeRol ? (
+                      <nldd-container width="160px">
+                        <Select
+                          value={eenheid.rol}
+                          aria-label="Rol van deze eenheid"
+                          onChange={(e) =>
+                            updateEenheidRolMutation.mutateAsync({
+                              initiatiefId: initiatief.id,
+                              eenheidId: eenheid.eenheid_id,
+                              rol: e.target.value,
+                            })
+                          }
+                          options={rols.map((value) => ({
+                            value,
+                            label: INITIATIEF_ROL_LABELS[value] ?? value,
+                          }))}
+                        />
+                      </nldd-container>
+                    ) : (
+                      <nldd-tag color="neutral" size="sm" text={INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol} />
+                    )}
+                    {canRemove && (
+                      <NlddIconButton
+                        icon="close"
+                        accessibleLabel={`${eenheid.eenheid_naam} verwijderen`}
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() =>
+                          removeEenheidMutation.mutateAsync({
                             initiatiefId: initiatief.id,
                             eenheidId: eenheid.eenheid_id,
-                            rol: e.target.value,
                           })
                         }
-                        options={Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => ({
-                          value,
-                          label,
-                        }))}
                       />
-                    </nldd-container>
-                  ) : (
-                    <nldd-tag color="neutral" size="sm" text={INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol} />
-                  )}
-                  {canManage && (
-                    <NlddIconButton
-                      icon="close"
-                      accessibleLabel={`${eenheid.eenheid_naam} verwijderen`}
-                      variant="neutral-transparent"
-                      size="sm"
-                      onClick={() =>
-                        removeEenheidMutation.mutateAsync({
-                          initiatiefId: initiatief.id,
-                          eenheidId: eenheid.eenheid_id,
-                        })
-                      }
-                    />
-                  )}
+                    )}
+                  </nldd-container>
                 </nldd-container>
-              </nldd-container>
-            </nldd-list-item>
-          ))}
+              </nldd-list-item>
+            );
+          })}
         </nldd-list>
       )}
 

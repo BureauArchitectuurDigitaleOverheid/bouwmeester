@@ -162,11 +162,6 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
   const navigate = useNavigate();
   const reorderSubtasks = useReorderSubtasks();
   const { allowed: canUpdate, showAction: showUpdate } = useCan('task:update', taskId ? { type: 'task', id: taskId } : null);
-  // A new subtask gets the parent's node and no eenheid, so it is created on that node.
-  const { allowed: canAddSubtask } = useCan(
-    'task:create',
-    task?.node_id ? { type: 'corpus_node', id: task.node_id } : null,
-  );
 
   const handleMoveSubtask = (index: number, direction: 'up' | 'down') => {
     if (!task) return;
@@ -350,7 +345,8 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
               icon={<Icon name="tree-structure" size="sm" />}
               count={subtasks.length}
               action={
-                canAddSubtask && (
+                // Adding a subtask is an edit of the parent task (task:update).
+                canUpdate && (
                   <NlddButton
                     variant="neutral-transparent"
                     size="sm"

@@ -122,8 +122,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const nodeResource = { type: 'corpus_node', id: nodeId } as const;
   const { allowed: canUpdate, showAction: showUpdate } = useCan('node:update', nodeResource);
   const { allowed: canDelete, showAction: showDelete } = useCan('node:delete', nodeResource);
-  const { allowed: canAddTag } = useCan('tag:create', nodeResource);
-  const { allowed: canRemoveTag } = useCan('tag:delete', nodeResource);
+  // Linking or unlinking a tag edits the node; only a new tag is tenant-wide.
+  const { allowed: canCreateTag } = useCan('tag:create', { type: 'tag' });
   // Betrokkenen are resource roles: a grant, decided by core.authority. The
   // default rol of the add form stands for the section; the backend decides
   // each change on submit.
@@ -460,7 +460,7 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                   <NlddTagToken
                     key={nt.id}
                     text={nt.tag.name}
-                    onDismiss={canRemoveTag ? () => removeTag.mutate({ nodeId, tagId: nt.tag.id }) : undefined}
+                    onDismiss={canUpdate ? () => removeTag.mutate({ nodeId, tagId: nt.tag.id }) : undefined}
                   />
                 ))}
                 {(!nodeTags || nodeTags.length === 0) && (
@@ -468,18 +468,22 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
                 )}
               </nldd-container>
               {/* Add tag: search existing or create a new one */}
-              {canAddTag && (
+              {canUpdate && (
                 <CreatableSelect
                   value=""
                   onChange={handleSelectTag}
                   options={(allTags ?? [])
                     .filter((t) => !existingTagIds.has(t.id))
                     .map((t) => ({ value: t.id, label: t.name }))}
-                  placeholder="Tag zoeken of toevoegen..."
-                  onCreate={async (text) => {
-                    addTag.mutate({ nodeId, data: { tag_name: text } });
-                    return null;
-                  }}
+                  placeholder={canCreateTag ? 'Tag zoeken of toevoegen...' : 'Tag zoeken...'}
+                  onCreate={
+                    canCreateTag
+                      ? async (text) => {
+                          addTag.mutate({ nodeId, data: { tag_name: text } });
+                          return null;
+                        }
+                      : undefined
+                  }
                 />
               )}
             </Card>

@@ -30,8 +30,6 @@ interface AuthPerson {
   roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
   permissions?: string[];
   system_permissions?: string[];
-  /** Eenheden whose members this person manages; "*" means all. */
-  managed_subtree_ids?: string[];
 }
 
 interface AuthState {
@@ -111,7 +109,6 @@ async function fetchAuthStatus(): Promise<AuthState> {
           roles: data.person.roles ?? [],
           permissions: data.person.permissions ?? [],
           system_permissions: data.person.system_permissions ?? [],
-          managed_subtree_ids: data.person.managed_subtree_ids ?? [],
         }
       : null,
     error: null,
