@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Icon } from '@/components/nldd/Icon';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
-import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
 import { useNotification, useReplies, useReplyToNotification, useMarkNotificationRead, useReactToMessage } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
@@ -10,6 +9,7 @@ import { timeAgo } from '@/utils/dates';
 import { EmojiPicker } from './EmojiPicker';
 import { ReactionBar } from './ReactionBar';
 import type { Notification, ReactionSummary } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface MessageThreadProps {
   notificationId: string;
@@ -197,15 +197,14 @@ export function MessageThread({ notificationId, onClose }: MessageThreadProps) {
               autoFocus
             />
           </nldd-container>
-          <Button
+          <NlddButton
             size="sm"
             onClick={handleSendReply}
             disabled={!replyText.trim() || replyMutation.isPending || !currentPerson}
             loading={replyMutation.isPending}
-            icon="paper-plane"
-          >
-            Verstuur
-          </Button>
+            startIcon="paper-plane"
+            text="Verstuur"
+          />
         </nldd-container>
       }
     >

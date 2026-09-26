@@ -6,7 +6,7 @@ import {
 } from '@/hooks/useOnboarding';
 import { ProfileStep } from '@/components/onboarding/ProfileStep';
 import { MattermostStep } from '@/components/onboarding/MattermostStep';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 interface StepComponentProps {

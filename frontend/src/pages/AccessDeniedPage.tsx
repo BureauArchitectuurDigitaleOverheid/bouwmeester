@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { BASE_URL, getCsrfToken } from '@/api/client';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import logoImg from '/logo.png?url';
 
 interface AccessDeniedPageProps {

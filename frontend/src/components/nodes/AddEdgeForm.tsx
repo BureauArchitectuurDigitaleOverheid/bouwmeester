@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { Input } from '@/components/common/Input';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { useCreateEdge } from '@/hooks/useEdges';
 import { useNodes, useCreateNode } from '@/hooks/useNodes';
@@ -10,6 +9,7 @@ import { NodeType } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface AddEdgeFormProps {
   open: boolean;
@@ -79,8 +79,8 @@ export function AddEdgeForm({ open, onClose, sourceNodeId, sourceNodeType }: Add
     [validTypes],
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!targetId || !edgeType) return;
 
     await createEdge.mutateAsync({
@@ -103,16 +103,13 @@ export function AddEdgeForm({ open, onClose, sourceNodeId, sourceNodeType }: Add
       title="Verbinding toevoegen"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>
-            Annuleren
-          </Button>
-          <Button
+          <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
+          <NlddButton
             onClick={handleSubmit}
             loading={createEdge.isPending}
             disabled={!targetId || !edgeType}
-          >
-            Toevoegen
-          </Button>
+            text="Toevoegen"
+          />
         </>
       }
     >

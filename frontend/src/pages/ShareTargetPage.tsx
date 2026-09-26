@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { useParseLeadIntake } from '@/hooks/useLeads';
 import { usePermissions } from '@/hooks/usePermissions';

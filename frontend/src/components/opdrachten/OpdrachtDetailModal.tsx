@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { DetailSection } from '@/components/common/DetailSection';
 import { DetailMetadataGrid } from '@/components/common/DetailMetadataGrid';
 import { RelatedItemsList } from '@/components/common/RelatedItemsList';
@@ -68,6 +67,7 @@ import {
   type SyncStatus,
 } from '@/types';
 import { formatCurrency, calculateUtilization } from '@/utils/format';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface OpdrachtDetailModalProps {
   opdrachtId: string | null;
@@ -232,24 +232,22 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
             onClose={onClose}
             actions={
               <>
-                <Button
+                <NlddButton
                   variant="secondary"
                   size="sm"
-                  icon="pencil"
+                  startIcon="pencil"
                   onClick={() => setShowEdit(true)}
                   disabled={!opdracht}
-                >
-                  Bewerken
-                </Button>
-                <Button
-                  variant="danger"
+                  text="Bewerken"
+                />
+                <NlddButton
+                  variant="destructive"
                   size="sm"
-                  icon="trash"
+                  startIcon="trash"
                   onClick={() => setShowDeleteConfirm(true)}
                   disabled={!opdracht}
-                >
-                  Verwijderen
-                </Button>
+                  text="Verwijderen"
+                />
               </>
             }
           />
@@ -450,15 +448,14 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
               count={members.length}
               separated
               action={
-                <Button
-                  variant="ghost"
+                <NlddButton
+                  variant="neutral-transparent"
                   size="sm"
-                  icon="sparkles"
+                  startIcon="sparkles"
                   onClick={handleMatchContacts}
                   disabled={matchContactsMutation.isPending}
-                >
-                  {matchContactsMutation.isPending ? 'Matchen...' : 'Matchen'}
-                </Button>
+                  text={matchContactsMutation.isPending ? 'Matchen...' : 'Matchen'}
+                />
               }
             >
               <nldd-container gap="12">
@@ -587,14 +584,13 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
               count={tasks.length}
               separated
               action={
-                <Button
-                  variant="ghost"
+                <NlddButton
+                  variant="neutral-transparent"
                   size="sm"
-                  icon="plus"
+                  startIcon="plus"
                   onClick={() => setShowTaskCreate(true)}
-                >
-                  Taak
-                </Button>
+                  text="Taak"
+                />
               }
             >
               <RelatedItemsList

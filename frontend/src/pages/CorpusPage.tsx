@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { MultiSelect } from '@/components/common/MultiSelect';
@@ -17,6 +16,7 @@ import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type ViewMode = 'list' | 'graph' | 'matrix';
 
@@ -243,13 +243,7 @@ export function CorpusPage() {
           <nldd-menu-item slot="overflow" text="Exporteren" icon="download"></nldd-menu-item>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
-          {/* `Button` reads this className to detect a responsively-hidden
-              label and turn it into the accessible name on narrow screens. It
-              is the wrapper's own API contract, not decoration (see
-              common/Button.tsx). */}
-          <Button icon="plus" onClick={() => setShowCreateForm(true)}>
-            <span className="hidden-below-sm">Nieuwe node</span>
-          </Button>
+          <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} text="Nieuwe node" compactBelowSm />
           <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>

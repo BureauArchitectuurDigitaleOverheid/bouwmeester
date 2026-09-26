@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { MattermostLinkSection } from '@/components/settings/MattermostLinkSection';
 import { useMattermostLinkStatus } from '@/hooks/useMattermost';
 import { useAuth } from '@/contexts/AuthContext';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 export function MattermostStep({ onComplete }: { onComplete: () => void }) {
   const { person: authPerson } = useAuth();

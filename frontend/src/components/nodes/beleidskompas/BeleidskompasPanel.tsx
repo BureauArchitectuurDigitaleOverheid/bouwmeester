@@ -1,7 +1,6 @@
 import { useRef, useState, useMemo } from 'react';
 import { Card } from '@/components/common/Card';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { NlddActionText } from '@/components/nldd/NlddLink';
 import { useNodeGraph } from '@/hooks/useNodes';
@@ -14,6 +13,7 @@ import { LinkExistingNodeModal } from './LinkExistingNodeModal';
 import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** An `nldd-list-item[button]` row with its click bridged to React. */
 function ClickableListItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
@@ -61,22 +61,20 @@ interface StepActionButtonsProps {
 function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepActionButtonsProps) {
   return (
     <nldd-container layout="row" gap="2" vertical-alignment="center">
-      <Button
-        variant="ghost"
+      <NlddButton
+        variant="neutral-transparent"
         size="sm"
-        icon="plus"
+        startIcon="plus"
         onClick={() => onCreateNew(nodeType)}
-      >
-        Nieuw
-      </Button>
-      <Button
-        variant="ghost"
+        text="Nieuw"
+      />
+      <NlddButton
+        variant="neutral-transparent"
         size="sm"
-        icon="link"
+        startIcon="link"
         onClick={() => onLinkExisting(nodeType)}
-      >
-        Koppelen
-      </Button>
+        text="Koppelen"
+      />
     </nldd-container>
   );
 }

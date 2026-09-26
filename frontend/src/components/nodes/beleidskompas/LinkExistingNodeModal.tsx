@@ -2,7 +2,6 @@ import { useRef, useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useNodes } from '@/hooks/useNodes';
 import { createEdge } from '@/api/edges';
@@ -10,6 +9,7 @@ import { queryKeys } from '@/hooks/queryKeys';
 import { NODE_TYPE_LABELS, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { useToast } from '@/contexts/ToastContext';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** An `nldd-list-item[button]` row with its click bridged to React. */
 function ClickableListItem({
@@ -84,9 +84,7 @@ export function LinkExistingNodeModal({ open, onClose, dossierId, nodeType, excl
       onClose={onClose}
       title={`${NODE_TYPE_LABELS[nodeType]} koppelen aan dossier`}
       footer={
-        <Button variant="secondary" onClick={onClose}>
-          Annuleren
-        </Button>
+        <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
       }
     >
       <nldd-container gap="16">

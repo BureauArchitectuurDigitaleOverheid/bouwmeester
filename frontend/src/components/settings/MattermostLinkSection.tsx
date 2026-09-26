@@ -10,7 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/queryKeys';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { Icon } from '@/components/nldd/Icon';
 
 export function MattermostLinkSection({ compact = false }: { compact?: boolean }) {

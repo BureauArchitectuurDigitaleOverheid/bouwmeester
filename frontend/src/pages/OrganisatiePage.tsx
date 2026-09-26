@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/common/Button';
 import { Card } from '@/components/common/Card';
 import { Select } from '@/components/common/Select';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -22,6 +21,7 @@ import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** Reads `checked` off an nldd-checkbox-field's `change` detail. */
 function checkedValue(event: Event): boolean {
@@ -258,9 +258,7 @@ export function OrganisatiePage() {
           </nldd-text>
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end">
-          <Button icon="plus" onClick={() => handleAdd(null)}>
-            Eenheid toevoegen
-          </Button>
+          <NlddButton startIcon="plus" onClick={() => handleAdd(null)} text="Eenheid toevoegen" />
           <nldd-menu-item slot="overflow" text="Eenheid toevoegen" icon="plus" />
         </nldd-toolbar-item>
       </nldd-toolbar>
@@ -271,9 +269,7 @@ export function OrganisatiePage() {
           title="Nog geen organisatie-eenheden"
           description="Begin met het opzetten van de organisatiestructuur door een top-niveau eenheid toe te voegen."
           action={
-            <Button variant="primary" onClick={() => handleAdd(null)}>
-              Eerste eenheid aanmaken
-            </Button>
+            <NlddButton variant="primary" onClick={() => handleAdd(null)} text="Eerste eenheid aanmaken" />
           }
         />
       ) : (

@@ -6,11 +6,11 @@ import {
   OpdrachtStatus,
 } from '@/types';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { useNlddEvent } from '@/components/nldd/events';
 import { formatCurrencyCompact, calculateUtilization } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** An `nldd-list-item[button]` row with its click bridged to React. */
 function ClickableListItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
@@ -113,14 +113,13 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
           <nldd-text size="sm" weight="bold"><h4>Opdrachten</h4></nldd-text>
           <nldd-spacer direction="horizontal" size="flexible" />
           {nodeType === 'instrument' && (
-            <Button
+            <NlddButton
               variant="secondary"
               size="sm"
-              icon="plus"
+              startIcon="plus"
               onClick={() => openOpdrachtCreate({ instrument_id: nodeId })}
-            >
-              Nieuwe opdracht
-            </Button>
+              text="Nieuwe opdracht"
+            />
           )}
         </nldd-container>
         {opdrachten.length > 0 ? (

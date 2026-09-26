@@ -1,8 +1,8 @@
 import { useRef } from 'react';
 import { Modal } from './Modal';
-import { Button } from './Button';
 import { useNlddEvent } from '@/components/nldd/events';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** One of the things you can do with the dropped file. */
 function ActionRow({
@@ -70,9 +70,7 @@ export function FileActionChooser() {
         </nldd-list>
 
         <nldd-container horizontal-alignment="right">
-          <Button variant="ghost" onClick={handleClose}>
-            Annuleren
-          </Button>
+          <NlddButton variant="neutral-transparent" onClick={handleClose} text="Annuleren" />
         </nldd-container>
       </nldd-container>
     </Modal>

@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { FileUpload } from '@/components/common/FileUpload';
 import { Select } from '@/components/common/Select';
 import { importNodes, importEdges, importPolitiekeInputs } from '@/api/import-export';
 import type { ImportResult } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type ImportType = 'nodes' | 'edges' | 'politieke-inputs';
 
@@ -76,18 +76,15 @@ export function ImportDialog({ open, onClose, onSuccess }: ImportDialogProps) {
       size="lg"
       footer={
         <>
-          <Button variant="secondary" onClick={handleClose}>
-            {result ? 'Sluiten' : 'Annuleren'}
-          </Button>
+          <NlddButton variant="secondary" onClick={handleClose} text={result ? 'Sluiten' : 'Annuleren'} />
           {!result && (
-            <Button
+            <NlddButton
               onClick={handleImport}
               loading={loading}
               disabled={!selectedFile}
-              icon="upload"
-            >
-              Importeren
-            </Button>
+              startIcon="upload"
+              text="Importeren"
+            />
           )}
         </>
       }

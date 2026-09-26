@@ -1,7 +1,6 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { Icon } from '@/components/nldd/Icon';
@@ -52,6 +51,7 @@ import {
 import type { LeadUpdate, LeadActivityCreate, EngagementType, LeadAttachment } from '@/types';
 import { stageTagColor, engagementTagColor } from './stageColors';
 import { initiatiefTagColor } from '@/components/initiatieven/initiatiefColors';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** Stages where a lead can publicly appear; mirrors the backend filter in
  *  public_initiatief.py — keep in sync. */
@@ -319,20 +319,16 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
       footer={
         editing ? (
           <nldd-container layout="row" gap="8" horizontal-alignment="right">
-            <Button variant="ghost" onClick={() => setEditing(false)}>Annuleren</Button>
-            <Button onClick={saveEdit} loading={updateLead.isPending}>Opslaan</Button>
+            <NlddButton variant="neutral-transparent" onClick={() => setEditing(false)} text="Annuleren" />
+            <NlddButton onClick={saveEdit} loading={updateLead.isPending} text="Opslaan" />
           </nldd-container>
         ) : (
           <DetailModalFooter
             onClose={onClose}
             actions={
               <nldd-container layout="row" gap="8">
-                <Button variant="secondary" size="sm" icon="pencil" onClick={startEditing} disabled={!lead}>
-                  Bewerken
-                </Button>
-                <Button variant="danger" size="sm" icon="trash" onClick={handleDelete} disabled={!lead}>
-                  Verwijderen
-                </Button>
+                <NlddButton variant="secondary" size="sm" startIcon="pencil" onClick={startEditing} disabled={!lead} text="Bewerken" />
+                <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={handleDelete} disabled={!lead} text="Verwijderen" />
               </nldd-container>
             }
           />
@@ -711,9 +707,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                 />
-                <Button variant="ghost" size="sm" icon="upload" onClick={() => fileInputRef.current?.click()}>
-                  Uploaden
-                </Button>
+                <NlddButton variant="neutral-transparent" size="sm" startIcon="upload" onClick={() => fileInputRef.current?.click()} text="Uploaden" />
               </label>
             }
           >
@@ -743,9 +737,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             count={lead.contacts.length}
             separated
             action={
-              <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowAddContact(true)}>
-                Toevoegen
-              </Button>
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowAddContact(true)} text="Toevoegen" />
             }
           >
             {lead.contacts.length > 0 ? (
@@ -777,9 +769,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             count={lead.linked_nodes.length}
             separated
             action={
-              <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowLinkNode(true)}>
-                Koppelen
-              </Button>
+              <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowLinkNode(true)} text="Koppelen" />
             }
           >
             {lead.linked_nodes.length > 0 ? (
@@ -841,14 +831,13 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                     searchable={false}
                   />
                 </nldd-container>
-                <Button
+                <NlddButton
                   size="sm"
                   onClick={handleAddActivity}
                   disabled={isActivityEmpty}
                   loading={createActivity.isPending}
-                >
-                  Toevoegen
-                </Button>
+                  text="Toevoegen"
+                />
               </nldd-container>
             </nldd-container>
 

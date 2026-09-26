@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { LeadCard } from './LeadCard';
 import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';

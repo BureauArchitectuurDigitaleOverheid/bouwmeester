@@ -39,7 +39,7 @@ import { LoginPage } from '@/pages/LoginPage';
 import { AccessDeniedPage } from '@/pages/AccessDeniedPage';
 import { PublicInitiatiefPage } from '@/pages/PublicInitiatiefPage';
 import { ReloadPrompt } from '@/components/common/ReloadPrompt';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const queryClient = new QueryClient({
   defaultOptions: {

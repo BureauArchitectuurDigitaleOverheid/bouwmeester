@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { useSendMessage } from '@/hooks/useNotifications';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import type { Person } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface SendMessageModalProps {
   open: boolean;
@@ -65,17 +65,14 @@ export function SendMessageModal({ open, onClose, recipient }: SendMessageModalP
             </nldd-text>
           </nldd-container>
           <nldd-container layout="row" gap="12">
-            <Button variant="secondary" onClick={onClose}>
-              Annuleren
-            </Button>
-            <Button
+            <NlddButton variant="secondary" onClick={onClose} text="Annuleren" />
+            <NlddButton
               variant="primary"
               onClick={handleSend}
               loading={sendMessage.isPending}
               disabled={!text.trim() || !currentPerson}
-            >
-              Versturen
-            </Button>
+              text="Versturen"
+            />
           </nldd-container>
         </nldd-container>
       }

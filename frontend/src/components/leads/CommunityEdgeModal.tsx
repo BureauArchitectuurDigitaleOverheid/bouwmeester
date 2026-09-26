@@ -3,7 +3,6 @@ import type { Connection } from 'reactflow';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { CreatableSelect, type SelectOption } from '@/components/common/CreatableSelect';
 import { useAddLeadContact, useLinkLeadNode, useUpdateLead } from '@/hooks/useLeads';
 import { useCreateEdge } from '@/hooks/useEdges';
@@ -13,6 +12,7 @@ import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import { STAKEHOLDER_ROL_LABELS, LEAD_CONTACT_ROL_LABELS } from '@/types';
 import { queryKeys } from '@/hooks/queryKeys';
 import { routeConnection, type ConnectionRoute } from '@/utils/communityEdgeRouting';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const CONTACT_ROLLEN: SelectOption[] = Object.entries(LEAD_CONTACT_ROL_LABELS).map(
   ([value, label]) => ({ value, label }),
@@ -159,17 +159,11 @@ export function CommunityEdgeModal({ pendingConnection, onClose }: Props) {
       size="sm"
       footer={
         route.kind === 'invalid' ? (
-          <Button variant="secondary" onClick={resetAndClose}>
-            Sluiten
-          </Button>
+          <NlddButton variant="secondary" onClick={resetAndClose} text="Sluiten" />
         ) : (
           <>
-            <Button variant="secondary" onClick={resetAndClose}>
-              Annuleren
-            </Button>
-            <Button onClick={handleSubmit} loading={isPending} disabled={!canSubmit}>
-              Toevoegen
-            </Button>
+            <NlddButton variant="secondary" onClick={resetAndClose} text="Annuleren" />
+            <NlddButton onClick={handleSubmit} loading={isPending} disabled={!canSubmit} text="Toevoegen" />
           </>
         )
       }

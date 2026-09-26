@@ -1,5 +1,4 @@
 import { useCallback, useRef, useState } from 'react';
-import { Button } from '@/components/common/Button';
 import { Badge } from '@/components/common/Badge';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
@@ -16,6 +15,7 @@ import {
 } from '@/hooks/useInitiatieven';
 import type { InitiatiefDetail, InitiatiefUpdatePost } from '@/types';
 import { SectionHeading } from './SectionHeading';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /** Controlled `nldd-text-field` for an update post's title. */
 function UpdateTitleField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -113,9 +113,7 @@ export function InitiatiefUpdates({ initiatief }: { initiatief: InitiatiefDetail
           <SectionHeading icon="megaphone" text={`Updates (${posts.length})`} />
         </nldd-container>
         {canEdit && !composing && (
-          <Button variant="secondary" size="sm" onClick={startCompose}>
-            Nieuwe update
-          </Button>
+          <NlddButton variant="secondary" size="sm" onClick={startCompose} text="Nieuwe update" />
         )}
       </nldd-container>
 
@@ -135,31 +133,28 @@ export function InitiatiefUpdates({ initiatief }: { initiatief: InitiatiefDetail
               rows={4}
             />
             <nldd-container layout="row" gap="8" horizontal-alignment="right">
-              <Button
+              <NlddButton
                 variant="secondary"
                 size="sm"
                 onClick={() => {
                   setComposing(false);
                   setEditingId(null);
                 }}
-              >
-                Annuleren
-              </Button>
-              <Button
+                text="Annuleren"
+              />
+              <NlddButton
                 variant="secondary"
                 size="sm"
                 onClick={() => handleSave(false)}
                 disabled={!draft.titel.trim()}
-              >
-                Opslaan als concept
-              </Button>
-              <Button
+                text="Opslaan als concept"
+              />
+              <NlddButton
                 size="sm"
                 onClick={() => handleSave(true)}
                 disabled={!draft.titel.trim()}
-              >
-                {editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
-              </Button>
+                text={editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
+              />
             </nldd-container>
           </nldd-container>
         </nldd-card>

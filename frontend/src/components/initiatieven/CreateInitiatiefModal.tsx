@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
@@ -7,6 +6,7 @@ import { useCreateInitiatief } from '@/hooks/useInitiatieven';
 import { INITIATIEF_COLORS } from '@/types';
 import type { InitiatiefCreate, InitiatiefListItem } from '@/types';
 import { InitiatiefKleurPicker } from './InitiatiefKleurPicker';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /**
  * Controlled `nldd-text-field` for the new-initiatief naam field, wired
@@ -57,16 +57,13 @@ export function CreateInitiatiefModal({
       size="sm"
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={createInitiatief.isPending}>
-            Annuleren
-          </Button>
-          <Button
+          <NlddButton variant="secondary" onClick={onClose} disabled={createInitiatief.isPending} text="Annuleren" />
+          <NlddButton
             onClick={handleCreate}
             loading={createInitiatief.isPending}
             disabled={!form.naam.trim()}
-          >
-            Aanmaken
-          </Button>
+            text="Aanmaken"
+          />
         </>
       }
     >

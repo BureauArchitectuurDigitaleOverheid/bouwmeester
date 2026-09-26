@@ -1,6 +1,6 @@
 import { useId } from 'react';
-import { Button } from '@/components/common/Button';
 import { exportNodesUrl, exportEdgesUrl, exportCorpusUrl, exportArchimateUrl } from '@/api/import-export';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface ExportButtonProps {
   nodeType?: string;
@@ -12,13 +12,13 @@ export function ExportButton({ nodeType, hideLabel }: ExportButtonProps) {
 
   return (
     <>
-      <Button id={triggerId} variant="secondary" icon="download">
-        {/* `Button` reads this exact className to detect a responsively-hidden
-            label and turn it into the button's accessible name on narrow
-            screens (see findSpanLabel in common/Button.tsx).
-            It is the wrapper's own API contract, not decoration. */}
-        <span className={hideLabel ? 'hidden-below-sm' : undefined}>Exporteren</span>
-      </Button>
+      <NlddButton
+        id={triggerId}
+        variant="secondary"
+        startIcon="download"
+        text="Exporteren"
+        compactBelowSm={hideLabel}
+      />
 
       <nldd-menu anchor={triggerId}>
         <nldd-menu-item text="Nodes als CSV" icon="download" href={exportNodesUrl(nodeType)} />

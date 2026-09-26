@@ -3,7 +3,7 @@ import { usePendingPlacements, useApprovePlacement, useDenyPlacement } from '@/h
 import { DIENSTVERBAND_LABELS } from '@/types';
 import { PlacementEditModal } from './PlacementEditModal';
 import type { OrgPlacementRequest } from '@/api/orgPlacements';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { EmptyState } from '@/components/common/EmptyState';
 

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/common/Button';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { RichTextFormField } from '@/components/common/RichTextFormField';
 import { Icon } from '@/components/nldd/Icon';
@@ -15,6 +14,7 @@ import { ColumnsManager } from '@/components/leads/ColumnsManager';
 import { INITIATIEVEN_PATH } from '@/utils/initiatiefRoutes';
 import { InitiatiefKleurPicker } from './InitiatiefKleurPicker';
 import { SectionHeading } from './SectionHeading';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 /**
  * The "Instellingen" tab: things set once. Name, description and color are
@@ -96,17 +96,14 @@ function GeneralSettings({ initiatief }: { initiatief: InitiatiefDetail }) {
         <InitiatiefKleurPicker value={form.kleur} onChange={(kleur) => setForm((f) => ({ ...f, kleur }))} />
       </nldd-form-field>
       <nldd-container layout="row" gap="8" horizontal-alignment="right">
-        <Button variant="secondary" size="sm" disabled={!dirty} onClick={() => setForm(saved)}>
-          Herstellen
-        </Button>
-        <Button
+        <NlddButton variant="secondary" size="sm" disabled={!dirty} onClick={() => setForm(saved)} text="Herstellen" />
+        <NlddButton
           size="sm"
           loading={updateMutation.isPending}
           disabled={!dirty || !form.naam?.trim()}
           onClick={() => updateMutation.mutateAsync({ id: initiatief.id, data: form })}
-        >
-          Opslaan
-        </Button>
+          text="Opslaan"
+        />
       </nldd-container>
     </nldd-container>
   );
@@ -133,9 +130,7 @@ function DeleteInitiatief({ initiatief }: { initiatief: InitiatiefDetail }) {
             gemaakt worden.
           </nldd-text>
         </nldd-container>
-        <Button variant="danger" size="sm" icon="trash" onClick={() => setConfirming(true)}>
-          Initiatief verwijderen
-        </Button>
+        <NlddButton variant="destructive" size="sm" startIcon="trash" onClick={() => setConfirming(true)} text="Initiatief verwijderen" />
       </nldd-container>
       <ConfirmDialog
         open={confirming}
@@ -252,7 +247,7 @@ function FeatureSettings({ initiatief }: { initiatief: InitiatiefDetail }) {
                           }}
                         />
                       </nldd-container>
-                      <Button
+                      <NlddButton
                         size="sm"
                         onClick={async () => {
                           const trimmed = slugDraft.trim();
@@ -266,9 +261,8 @@ function FeatureSettings({ initiatief }: { initiatief: InitiatiefDetail }) {
                           }
                         }}
                         disabled={!slugDraft.trim() || settingsMutation.isPending}
-                      >
-                        Instellen
-                      </Button>
+                        text="Instellen"
+                      />
                     </nldd-container>
                     {slugError && <nldd-text size="xs" color="critical">{slugError}</nldd-text>}
                   </nldd-container>

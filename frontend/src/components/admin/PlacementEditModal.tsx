@@ -21,8 +21,8 @@ export function PlacementEditModal({ open, onClose, request }: PlacementEditModa
     }
   }, [request]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!request || !selectedEenheidId) return;
     updatePlacement.mutate(
       { id: request.id, data: { organisatie_eenheid_id: selectedEenheidId } },

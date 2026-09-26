@@ -21,7 +21,7 @@ import type { PersonResourcePermission } from '@/hooks/useResourcePermissions';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { apiGet, apiPost } from '@/api/client';
 import { queryKeys } from '@/hooks/queryKeys';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';

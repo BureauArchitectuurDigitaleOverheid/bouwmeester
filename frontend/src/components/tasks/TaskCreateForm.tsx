@@ -79,8 +79,8 @@ export function TaskCreateForm({
     setAssigneeId(personId);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!title.trim() || (!selectedNodeId && !parentId)) return;
 
     await createTask.mutateAsync({

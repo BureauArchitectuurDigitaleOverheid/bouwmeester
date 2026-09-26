@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useChat } from '@/contexts/ChatContext';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import type { PendingAction } from '@/api/chat';
 
 interface ChatPendingActionCardProps {

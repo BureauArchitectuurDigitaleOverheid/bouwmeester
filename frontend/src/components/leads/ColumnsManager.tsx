@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Button } from '@/components/common/Button';
 import { Select } from '@/components/common/Select';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -14,6 +13,7 @@ import {
 } from '@/hooks/useLeadColumns';
 import type { LeadColumn } from '@/types';
 import { leadColumnTagColor } from './stageColors';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type NlddTagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
 
@@ -203,32 +203,28 @@ export function ColumnsManager({ initiatiefId }: ColumnsManagerProps) {
             <nldd-container layout="row" gap="8" vertical-alignment="center">
               <ColorSwatches selected={draftColor} onSelect={setDraftColor} />
               <nldd-container layout="row" gap="4" horizontal-alignment="right">
-                <Button
+                <NlddButton
                   variant="secondary"
                   size="sm"
                   onClick={() => {
                     setAdding(false);
                     setDraftName('');
                   }}
-                >
-                  Annuleren
-                </Button>
-                <Button
+                  text="Annuleren"
+                />
+                <NlddButton
                   size="sm"
                   onClick={handleAdd}
                   loading={createMutation.isPending}
                   disabled={!draftName.trim()}
-                >
-                  Toevoegen
-                </Button>
+                  text="Toevoegen"
+                />
               </nldd-container>
             </nldd-container>
           </nldd-container>
         </nldd-card>
       ) : (
-        <Button variant="secondary" size="sm" icon="plus" onClick={() => setAdding(true)}>
-          Kolom toevoegen
-        </Button>
+        <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={() => setAdding(true)} text="Kolom toevoegen" />
       )}
 
       <ConfirmDialog

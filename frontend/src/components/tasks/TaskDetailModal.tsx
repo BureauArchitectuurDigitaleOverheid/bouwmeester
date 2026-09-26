@@ -1,11 +1,9 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '@/components/nldd/Icon';
-import { NlddButton } from '@/components/nldd/NlddLink';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { Modal } from '@/components/common/Modal';
 import { Badge } from '@/components/common/Badge';
-import { Button } from '@/components/common/Button';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { ReferencesList } from '@/components/common/ReferencesList';
 import { DetailSection } from '@/components/common/DetailSection';
@@ -26,6 +24,7 @@ import {
   TASK_PRIORITY_COLORS,
 } from '@/types';
 import type { TaskSubtask } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface TaskDetailModalProps {
   taskId: string | null;
@@ -202,15 +201,14 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
           <DetailModalFooter
             onClose={onClose}
             actions={
-              <Button
+              <NlddButton
                 variant="secondary"
                 size="sm"
-                icon="pencil"
+                startIcon="pencil"
                 onClick={() => setShowEdit(true)}
                 disabled={!task}
-              >
-                Bewerken
-              </Button>
+                text="Bewerken"
+              />
             }
           />
         }
@@ -337,14 +335,13 @@ export function TaskDetailModal({ taskId, open, onClose }: TaskDetailModalProps)
               icon={<Icon name="tree-structure" size="sm" />}
               count={subtasks.length}
               action={
-                <Button
-                  variant="ghost"
+                <NlddButton
+                  variant="neutral-transparent"
                   size="sm"
-                  icon="plus"
+                  startIcon="plus"
                   onClick={() => setShowSubtaskCreate(true)}
-                >
-                  Subtaak toevoegen
-                </Button>
+                  text="Subtaak toevoegen"
+                />
               }
             >
               {subtasks.length > 0 ? (

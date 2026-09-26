@@ -1,8 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Modal } from '@/components/common/Modal';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
-import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
@@ -29,6 +27,7 @@ import { useLeadColumns } from '@/hooks/useLeadColumns';
 import type { LeadParseResult } from '@/types';
 import { buildPersonOptions } from '@/utils/personOptions';
 import { leadColumnTagColor } from './stageColors';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface LeadIntakeDialogProps {
   open: boolean;
@@ -649,14 +648,13 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           />
 
           <nldd-container layout="row" gap="8" vertical-alignment="center">
-            <Button
-              variant="ghost"
+            <NlddButton
+              variant="neutral-transparent"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              icon="upload"
-            >
-              Bestand toevoegen
-            </Button>
+              startIcon="upload"
+              text="Bestand toevoegen"
+            />
             {/* fit-content + row-fill, not the container default of full: that
                 default takes a hard 100% of the row and squeezes the button
                 beside it below its own label, which then wraps into a two-line
@@ -668,20 +666,18 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
               gap="12"
               horizontal-alignment="right"
             >
-              <Button
-                variant="ghost"
+              <NlddButton
+                variant="neutral-transparent"
                 onClick={handleSkipParse}
                 disabled={!initiatiefId}
-              >
-                Handmatig invullen
-              </Button>
-              <Button
+                text="Handmatig invullen"
+              />
+              <NlddButton
                 onClick={handleParse}
                 disabled={!canParse || !initiatiefId}
-                icon="sparkles"
-              >
-                Analyseren met VLAM
-              </Button>
+                startIcon="sparkles"
+                text="Analyseren met VLAM"
+              />
             </nldd-container>
           </nldd-container>
         </nldd-container>
@@ -935,16 +931,13 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
           )}
 
           <nldd-container layout="row" gap="8" horizontal-alignment="right" padding-top="16">
-            <Button variant="ghost" onClick={() => setStep('input')}>
-              Terug
-            </Button>
-            <Button
+            <NlddButton variant="neutral-transparent" onClick={() => setStep('input')} text="Terug" />
+            <NlddButton
               onClick={handleSubmit}
               disabled={!canSubmit}
               loading={createLead.isPending}
-            >
-              Lead aanmaken
-            </Button>
+              text="Lead aanmaken"
+            />
           </nldd-container>
         </nldd-container>
       )}

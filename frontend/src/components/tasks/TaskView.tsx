@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Button } from '@/components/common/Button';
 import { ViewToggle } from '@/components/common/ViewToggle';
 import type { ViewToggleOption } from '@/components/common/ViewToggle';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
@@ -21,6 +20,7 @@ import {
 } from '@/types';
 import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 type ViewMode = 'list' | 'board' | 'personal';
 
@@ -191,13 +191,7 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
         </nldd-toolbar-item>
         <nldd-toolbar-item slot="end" priority={2}>
-          <Button icon="plus" onClick={() => setShowCreateForm(true)}>
-            {/* This className is not styling: Button's own responsive-label logic
-                (see components/common/Button.tsx) reads "hidden-below-sm" to find
-                the text it should fall back to as the accessible name when the
-                label itself is hidden below sm. It is a marker Button parses. */}
-            <span className="hidden-below-sm">Nieuwe taak</span>
-          </Button>
+          <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} text="Nieuwe taak" compactBelowSm />
           <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
         </nldd-toolbar-item>
       </nldd-toolbar>

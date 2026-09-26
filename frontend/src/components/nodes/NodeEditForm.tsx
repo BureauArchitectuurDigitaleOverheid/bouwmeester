@@ -72,8 +72,8 @@ export function NodeEditForm({ open, onClose, node }: NodeEditFormProps) {
     onClose();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (!title.trim()) return;
 
     const existingTagNames = nodeTags?.map((nt) => nt.tag.name) ?? [];

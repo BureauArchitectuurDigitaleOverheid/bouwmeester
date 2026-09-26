@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from 'react';
 import { useNlddOverlay } from '@/components/nldd/events';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface ConfirmDialogProps {
   open: boolean;

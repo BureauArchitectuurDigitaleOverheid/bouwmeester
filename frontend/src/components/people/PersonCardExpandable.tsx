@@ -5,7 +5,7 @@ import { Badge } from '@/components/common/Badge';
 import { SendMessageModal } from '@/components/common/SendMessageModal';
 import { PersonAvatar } from '@/components/people/PersonAvatar';
 import { Icon } from '@/components/nldd/Icon';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { useNlddEvent } from '@/components/nldd/events';
 import { usePersonSummary, usePersonOrganisaties, useUpdatePersonOrganisatie, useRemovePersonOrganisatie } from '@/hooks/usePeople';
 import { useSamenwerkingsverbandenForPerson } from '@/hooks/useSamenwerkingsverbanden';

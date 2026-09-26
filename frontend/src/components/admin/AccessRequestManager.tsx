@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useAccessRequests, useReviewAccessRequest } from '@/hooks/useAdmin';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';

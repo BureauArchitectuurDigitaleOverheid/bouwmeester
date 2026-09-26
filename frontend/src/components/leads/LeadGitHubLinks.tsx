@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { DetailSection } from '@/components/common/DetailSection';
 import { ApiError } from '@/api/client';
@@ -11,6 +10,7 @@ import {
   useDeleteLeadGitHubLink,
 } from '@/hooks/useLeads';
 import type { LeadGitHubLink, GitHubLinkType } from '@/types';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface Props {
   leadId: string;
@@ -112,9 +112,7 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
       count={links.length}
       separated
       action={
-        <Button variant="ghost" size="sm" icon="plus" onClick={() => setShowForm((v) => !v)}>
-          Link toevoegen
-        </Button>
+        <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowForm((v) => !v)} text="Link toevoegen" />
       }
     >
       {showForm && (
@@ -139,8 +137,8 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
               </nldd-validation-list>
             )}
             <nldd-container layout="row" gap="8" horizontal-alignment="right">
-              <Button
-                variant="ghost"
+              <NlddButton
+                variant="neutral-transparent"
                 size="sm"
                 onClick={() => {
                   setShowForm(false);
@@ -148,12 +146,9 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
                   setTitle('');
                   setError(null);
                 }}
-              >
-                Annuleren
-              </Button>
-              <Button variant="primary" size="sm" onClick={submit} disabled={addLink.isPending}>
-                Toevoegen
-              </Button>
+                text="Annuleren"
+              />
+              <NlddButton variant="primary" size="sm" onClick={submit} disabled={addLink.isPending} text="Toevoegen" />
             </nldd-container>
           </nldd-container>
         </nldd-card>

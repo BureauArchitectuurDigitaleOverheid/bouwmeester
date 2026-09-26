@@ -7,7 +7,7 @@ import { CreatableSelect, type SelectOption } from '@/components/common/Creatabl
 import { addPersonEmail, addPersonPhone } from '@/api/people';
 import { FUNCTIE_LABELS, PHONE_LABELS } from '@/types';
 import type { Person } from '@/types';
-import { NlddButton } from '@/components/nldd/NlddLink';
+import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { Select } from '@/components/common/Select';
