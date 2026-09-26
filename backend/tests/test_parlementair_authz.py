@@ -219,21 +219,10 @@ def _complete(w: World, who: str) -> dict:
     return {"eigenaar_id": str(w.person[who].id), "tasks": []}
 
 
-async def test_reviewer_cannot_name_eigenaar_beyond_own_rights(pw: World):
-    """An editor may review, but eigenaar gives node:delete, which they lack."""
+async def test_editor_reviewer_names_first_eigenaar(pw: World):
+    """Naming the first eigenaar is the review itself, not a grant."""
     item = await _review_item(pw)
     async with client_as(pw.db, pw.person["team_editor"]) as c:
-        resp = await c.post(
-            f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(pw, "viewer"),
-        )
-    assert resp.status_code == 403
-    assert await _owners(pw, item.corpus_node_id) == set()
-
-
-async def test_manager_names_eigenaar_on_review(pw: World):
-    item = await _review_item(pw)
-    async with client_as(pw.db, pw.person["manager"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
             json=_complete(pw, "viewer"),
@@ -244,12 +233,34 @@ async def test_manager_names_eigenaar_on_review(pw: World):
 
 async def test_reviewer_cannot_name_self_eigenaar(pw: World):
     item = await _review_item(pw)
-    async with client_as(pw.db, pw.person["manager"]) as c:
+    async with client_as(pw.db, pw.person["team_editor"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
-            json=_complete(pw, "manager"),
+            json=_complete(pw, "team_editor"),
         )
     assert resp.status_code == 403
+    assert await _owners(pw, item.corpus_node_id) == set()
+
+
+async def test_reviewer_cannot_replace_eigenaar_without_grant_authority(pw: World):
+    """Replacing an eigenaar needs node:delete, which an editor lacks."""
+    item = await _review_item(pw)
+    pw.db.add(
+        ResourcePermission(
+            person_id=pw.person["afd_editor"].id,
+            resource_type="corpus_node",
+            resource_id=item.corpus_node_id,
+            rol="eigenaar",
+        )
+    )
+    await pw.db.flush()
+    async with client_as(pw.db, pw.person["team_editor"]) as c:
+        resp = await c.post(
+            f"/api/parlementair/imports/{item.id}/complete",
+            json=_complete(pw, "viewer"),
+        )
+    assert resp.status_code == 403
+    assert await _owners(pw, item.corpus_node_id) == {pw.person["afd_editor"].id}
 
 
 async def test_review_replaces_several_eigenaars(pw: World):

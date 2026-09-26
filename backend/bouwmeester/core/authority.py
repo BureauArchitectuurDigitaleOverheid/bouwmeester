@@ -747,6 +747,39 @@ async def _require_keeps_an_owner(
         )
 
 
+async def require_can_name_first_owner(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    node_id: UUID,
+    target_person_id: UUID,
+) -> None:
+    """Guard naming the first eigenaar of a node that has none (a review).
+
+    Naming who owns a freshly imported parliamentary item is the point of
+    reviewing it, so whoever may review it (``parlementair:review`` on the
+    node) may do so, but never name themselves.  Once the node has an
+    eigenaar, changing that is a grant like any other.
+    """
+    has_owner = await db.scalar(
+        select(ResourcePermission.id)
+        .where(
+            ResourcePermission.resource_type == "corpus_node",
+            ResourcePermission.resource_id == node_id,
+            ResourcePermission.rol == "eigenaar",
+        )
+        .limit(1)
+    )
+    if has_owner is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Dit item heeft al een eigenaar",
+        )
+    await require(db, perm_ctx, "parlementair:review", "corpus_node", node_id)
+    if not perm_ctx.is_super_admin and target_person_id == perm_ctx.person_id:
+        raise _forbidden("Je kunt jezelf geen eigenaar maken")
+
+
 async def require_can_grant_resource_role(
     db: AsyncSession,
     perm_ctx: PermissionContext,

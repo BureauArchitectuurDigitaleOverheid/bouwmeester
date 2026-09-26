@@ -15,6 +15,7 @@ from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_change_resource_role,
     require_can_grant_resource_role,
+    require_can_name_first_owner,
 )
 from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
@@ -311,31 +312,37 @@ async def _make_sole_person_owner(
 ) -> None:
     """Make *person_id* the eigenaar of the node, replacing other people.
 
-    Naming an eigenaar is a grant like any other (``core.authority``): the
-    reviewer must hold what eigenaar gives and cannot name themselves.
-    Replacing current eigenaars also needs the authority to remove them.
-    Eigenaar grants to an eenheid stay.
+    A node without eigenaar gets its first one from the reviewer
+    (``require_can_name_first_owner``, never themselves).  Otherwise naming
+    an eigenaar is a grant like any other: the reviewer must hold what
+    eigenaar gives, and replacing current eigenaars needs the authority to
+    remove them.  Eigenaar grants to an eenheid stay.
     """
-    owners = (
+    grants = (
         await db.scalars(
             select(ResourcePermission).where(
                 ResourcePermission.resource_type == "corpus_node",
                 ResourcePermission.resource_id == node_id,
                 ResourcePermission.rol == "eigenaar",
-                ResourcePermission.person_id.is_not(None),
             )
         )
     ).all()
+    owners = [grant for grant in grants if grant.person_id is not None]
     if any(owner.person_id == person_id for owner in owners):
         return
-    await require_can_grant_resource_role(
-        db,
-        perm_ctx,
-        resource_type="corpus_node",
-        resource_id=node_id,
-        rol="eigenaar",
-        target_person_id=person_id,
-    )
+    if not grants:
+        await require_can_name_first_owner(
+            db, perm_ctx, node_id=node_id, target_person_id=person_id
+        )
+    else:
+        await require_can_grant_resource_role(
+            db,
+            perm_ctx,
+            resource_type="corpus_node",
+            resource_id=node_id,
+            rol="eigenaar",
+            target_person_id=person_id,
+        )
     db.add(
         ResourcePermission(
             person_id=person_id,
