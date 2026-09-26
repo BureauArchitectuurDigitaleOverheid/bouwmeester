@@ -16,7 +16,7 @@ from bouwmeester.core.authority import (
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import require, requires
+from bouwmeester.core.authz import can, prefetch, require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
@@ -182,13 +182,26 @@ async def get_node(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_READ_NODE),
+    perm_ctx: PermissionContext = Depends(_READ_NODE),
 ) -> CorpusNodeWithEdges:
-    """Get a single node by ID, including its incoming and outgoing edges."""
+    """Get a single node by ID, with its edges to nodes the caller sees.
+
+    An edge to a node the caller cannot see is left out (``edge:read``
+    needs both ends), so the page does not reveal that node's id.
+    """
     service = NodeService(db)
     node = require_found(await service.get(id), "Node")
-    edges_from = [EdgeResponse.model_validate(e) for e in node.edges_from]
-    edges_to = [EdgeResponse.model_validate(e) for e in node.edges_to]
+    edges = [*node.edges_from, *node.edges_to]
+    await prefetch(db, perm_ctx, "edge", [e.id for e in edges])
+    readable = {
+        e.id for e in edges if await can(db, perm_ctx, "edge:read", "edge", e.id)
+    }
+    edges_from = [
+        EdgeResponse.model_validate(e) for e in node.edges_from if e.id in readable
+    ]
+    edges_to = [
+        EdgeResponse.model_validate(e) for e in node.edges_to if e.id in readable
+    ]
     return CorpusNodeWithEdges(
         id=node.id,
         title=node.title,

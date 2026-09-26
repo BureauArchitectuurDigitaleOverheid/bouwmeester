@@ -133,6 +133,18 @@ async def test_linking_a_node_to_a_lead_needs_seeing_it(world):
     assert visible.status_code == 201, visible.text
 
 
+async def test_node_detail_leaves_out_edges_to_hidden_nodes(world):
+    """The viewer sees the directie above the team, not the eenheid elders."""
+    async with client_as(world.db, world.person["viewer"]) as c:
+        resp = await c.get(f"/api/nodes/{world.res['node_directie']}")
+    async with client_as(world.db, world.person["super_admin"]) as c:
+        admin = await c.get(f"/api/nodes/{world.res['node_directie']}")
+    edges = {e["id"] for e in resp.json()["edges_from"] + resp.json()["edges_to"]}
+    assert edges == {str(world.res["edge_team_directie"])}
+    assert resp.json()["edge_count"] == 1
+    assert admin.json()["edge_count"] == 2
+
+
 # ---------------------------------------------------------------------------
 # A task without eenheid is read through its node
 # ---------------------------------------------------------------------------
