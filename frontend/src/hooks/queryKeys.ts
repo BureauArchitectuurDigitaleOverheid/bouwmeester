@@ -31,8 +31,6 @@ export const queryKeys = {
     lists: () => ['tasks', 'list'] as const,
     list: (filters?: TaskFilters) => ['tasks', 'list', filters] as const,
     detail: (id: string | null) => ['tasks', 'detail', id] as const,
-    subtasks: (taskId: string | null) => ['tasks', 'detail', taskId, 'subtasks'] as const,
-    unassigned: (orgId?: string) => ['tasks', 'list', 'unassigned', orgId] as const,
     eenheidOverview: (orgId: string | null) => ['tasks', 'list', 'eenheid-overview', orgId] as const,
     byPerson: (personId: string | null) => ['tasks', 'list', 'by-person', personId] as const,
     byOpdracht: (opdrachtId: string | null) => ['tasks', 'list', 'by-opdracht', opdrachtId] as const,
@@ -98,7 +96,6 @@ export const queryKeys = {
   parlementair: {
     all: ['parlementair-items'] as const,
     list: (filters?: ParlementairItemFilters) => ['parlementair-items', filters] as const,
-    detail: (id: string) => ['parlementair-items', id] as const,
     reviewQueue: () => ['parlementair-review-queue'] as const,
   },
 
@@ -124,8 +121,6 @@ export const queryKeys = {
       ['admin', 'role-assignments', personId] as const,
     personResourcePermissions: (personId: string | null) =>
       ['admin', 'resource-permissions', personId] as const,
-    eenheidRoleAssignments: (eenheidId: string | null) =>
-      ['admin', 'eenheid-role-assignments', eenheidId] as const,
     version: () => ['admin', 'version'] as const,
     workers: () => ['admin', 'workers'] as const,
     mattermostChannels: () => ['admin', 'mattermost-channels'] as const,
@@ -135,7 +130,6 @@ export const queryKeys = {
   orgPlacements: {
     all: ['org-placements'] as const,
     pending: () => ['org-placements', 'pending'] as const,
-    myRequests: () => ['org-placements', 'my-requests'] as const,
   },
 
   // --- Activity ---
@@ -200,7 +194,6 @@ export const queryKeys = {
     lists: () => ['leads', 'list'] as const,
     list: (filters?: LeadFilters) => ['leads', 'list', filters] as const,
     detail: (id: string | null) => ['leads', 'detail', id] as const,
-    activities: (leadId: string | null) => ['leads', 'detail', leadId, 'activities'] as const,
     githubLinks: (leadId: string | null) => ['leads', 'detail', leadId, 'github-links'] as const,
     metrics: () => ['leads', 'metrics'] as const,
   },
@@ -225,8 +218,6 @@ export const queryKeys = {
     list: (filters?: { search?: string; type?: string; actief?: boolean }) =>
       ['samenwerkingsverbanden', 'list', filters ?? {}] as const,
     detail: (id: string | null) => ['samenwerkingsverbanden', 'detail', id] as const,
-    leden: (id: string | null, actief: boolean) =>
-      ['samenwerkingsverbanden', 'leden', id, { actief }] as const,
     forPerson: (personId: string | null, actief: boolean) =>
       ['samenwerkingsverbanden', 'for-person', personId, { actief }] as const,
   },

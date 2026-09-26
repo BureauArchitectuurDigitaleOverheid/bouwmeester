@@ -44,7 +44,7 @@ export function looksLikeListPaste(text: string): boolean {
  *   indent of four spaces means a code block instead.
  * - Windows line endings are collapsed.
  */
-export function normaliseListPaste(text: string): string {
+function normaliseListPaste(text: string): string {
   return text
     .replace(/\r\n?/g, '\n')
     .split('\n')

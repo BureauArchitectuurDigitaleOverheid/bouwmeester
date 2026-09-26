@@ -44,7 +44,7 @@ const SUBTITLE_LABEL_MAPS: Partial<
   lead: LEAD_STAGE_LABELS as Record<string, string>,
 };
 
-export function formatSubtitle(result: SearchResult): string | undefined {
+function formatSubtitle(result: SearchResult): string | undefined {
   if (!result.subtitle) return undefined;
   if (result.result_type === 'person') {
     return formatFunctie(result.subtitle);
@@ -56,7 +56,7 @@ export function formatSubtitle(result: SearchResult): string | undefined {
   return map?.[result.subtitle] ?? result.subtitle;
 }
 
-export function groupResults(results: SearchResult[]) {
+function groupResults(results: SearchResult[]) {
   return results.reduce(
     (groups, result) => {
       const key = result.result_type;
@@ -150,7 +150,7 @@ export function FilterChips({
  * (the button `onClick` below) without DOM focus ever leaving the input — see
  * `nldd-list type="listbox"` in list.js.
  */
-export function ResultItem({ result, onClick }: { result: SearchResult; onClick: () => void }) {
+function ResultItem({ result, onClick }: { result: SearchResult; onClick: () => void }) {
   return (
     <NlddListItemButton onClick={onClick}>
       <ResultItemContent result={result} compact />

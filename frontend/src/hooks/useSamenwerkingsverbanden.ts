@@ -5,7 +5,6 @@ import {
   createSamenwerkingsverband,
   updateSamenwerkingsverband,
   deleteSamenwerkingsverband,
-  listLeden,
   addLid,
   updateLid,
   removeLid,
@@ -61,14 +60,6 @@ export function useDeleteSamenwerkingsverband() {
     mutationFn: (id: string) => deleteSamenwerkingsverband(id),
     errorMessage: 'Fout bij verwijderen samenwerkingsverband',
     invalidateKeys: [queryKeys.samenwerkingsverbanden.all],
-  });
-}
-
-export function useLeden(id: string | null, actief: boolean = true) {
-  return useQuery({
-    queryKey: queryKeys.samenwerkingsverbanden.leden(id, actief),
-    queryFn: () => listLeden(id!, actief),
-    enabled: !!id,
   });
 }
 

@@ -1,8 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getTags, createTag, getNodeTags, addTagToNode, removeTagFromNode } from '@/api/tags';
+import { getTags, getNodeTags, addTagToNode, removeTagFromNode } from '@/api/tags';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
-import type { TagCreate } from '@/types';
 
 export function useTags(params?: { tree?: boolean; search?: string }) {
   return useQuery({
@@ -16,14 +15,6 @@ export function useNodeTags(nodeId: string | undefined) {
     queryKey: queryKeys.tags.forNode(nodeId ?? ''),
     queryFn: () => getNodeTags(nodeId!),
     enabled: !!nodeId,
-  });
-}
-
-export function useCreateTag() {
-  return useMutationWithError({
-    mutationFn: (data: TagCreate) => createTag(data),
-    errorMessage: 'Fout bij aanmaken tag',
-    invalidateKeys: [queryKeys.tags.all],
   });
 }
 

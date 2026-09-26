@@ -71,10 +71,6 @@ export async function reorderLeads(leadIds: string[], stage: string): Promise<vo
   return apiPost(`/api/leads/reorder`, { lead_ids: leadIds, stage });
 }
 
-export async function getLeadActivities(leadId: string): Promise<LeadActivity[]> {
-  return apiGet<LeadActivity[]>(`/api/leads/${leadId}/activities`);
-}
-
 export async function createLeadActivity(
   leadId: string,
   data: LeadActivityCreate,
@@ -195,10 +191,6 @@ export async function parseLeadIntake(rawText?: string, files?: File[]): Promise
     throw new Error(`Parse failed: ${response.status} ${text}`);
   }
   return response.json();
-}
-
-export async function listLeadGitHubLinks(leadId: string): Promise<LeadGitHubLink[]> {
-  return apiGet<LeadGitHubLink[]>(`/api/leads/${leadId}/github-links`);
 }
 
 export async function addLeadGitHubLink(

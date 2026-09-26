@@ -29,7 +29,7 @@ export const MENTION_SCHEMES = {
 export type MentionKind = keyof typeof MENTION_SCHEMES;
 
 /** Scheme -> kind, for reading. */
-export const SCHEME_TO_KIND: Record<string, MentionKind> = Object.fromEntries(
+const SCHEME_TO_KIND: Record<string, MentionKind> = Object.fromEntries(
   Object.entries(MENTION_SCHEMES).map(([kind, scheme]) => [scheme, kind as MentionKind]),
 ) as Record<string, MentionKind>;
 

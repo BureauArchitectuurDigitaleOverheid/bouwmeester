@@ -5,10 +5,6 @@ export async function getParlementairItems(filters?: ParlementairItemFilters): P
   return apiGet<ParlementairItem[]>('/api/parlementair/imports', filters as Record<string, string>);
 }
 
-export async function getParlementairItem(id: string): Promise<ParlementairItem> {
-  return apiGet<ParlementairItem>(`/api/parlementair/imports/${id}`);
-}
-
 export async function triggerParlementairImport(): Promise<{ message: string; imported: number }> {
   return apiPost('/api/parlementair/imports/trigger');
 }
@@ -27,10 +23,6 @@ export async function reopenParlementairItem(id: string): Promise<ParlementairIt
 
 export async function completeParlementairReview(id: string, data: CompleteReviewData): Promise<ParlementairItem> {
   return apiPost<ParlementairItem>(`/api/parlementair/imports/${id}/complete`, data);
-}
-
-export async function getReviewQueue(): Promise<ParlementairItem[]> {
-  return apiGet<ParlementairItem[]>('/api/parlementair/review-queue');
 }
 
 export async function updateSuggestedEdge(id: string, data: { edge_type_id: string }): Promise<SuggestedEdge> {
