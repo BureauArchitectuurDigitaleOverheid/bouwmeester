@@ -11,9 +11,9 @@ is ``false``.  See :func:`evaluate` for the list.
 """
 
 from collections.abc import Awaitable, Callable
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core import authority
@@ -24,6 +24,7 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
+from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.authz import (
     AuthzDecision,
     AuthzEvaluation,
@@ -57,6 +58,9 @@ async def _assign_role(
     db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
 ) -> None:
     props = ev.resource.properties or _NO_PROPERTIES
+    if props.anywhere and props.role_id is None:
+        await _assign_any_role(db, perm_ctx, props)
+        return
     role = await db.get(Role, props.role_id) if props.role_id else None
     if role is None:
         raise HTTPException(422)
@@ -67,6 +71,35 @@ async def _assign_role(
         eenheid_id=props.eenheid_id,
         target_person_id=props.target_person_id,
     )
+
+
+async def _assign_any_role(
+    db: AsyncSession, perm_ctx: PermissionContext, props: AuthzResourceProperties
+) -> None:
+    """Refuse unless some role may go to someone else (in ``eenheid_id``).
+
+    Without an eenheid: anywhere.  A role on an eenheid applies below it, so
+    the eenheden where the caller holds a role are where it holds first.
+    """
+    places = (
+        [props.eenheid_id]
+        if props.eenheid_id is not None
+        else [None, *perm_ctx.scoped_roles]
+    )
+    for role in (await db.scalars(select(Role))).all():
+        for eenheid_id in places:
+            try:
+                await authority.require_can_assign_role(
+                    db,
+                    perm_ctx,
+                    role=role,
+                    eenheid_id=eenheid_id,
+                    target_person_id=props.target_person_id,
+                )
+            except HTTPException:
+                continue
+            return
+    raise HTTPException(403)
 
 
 async def _revoke_role(
@@ -116,21 +149,42 @@ async def _place(
     )
     if eenheid is None:
         raise HTTPException(404)
+    person = None
     if ev.resource.id is not None:
         person = await db.get(Person, ev.resource.id)
         if person is None:
             raise HTTPException(404)
-    else:
-        # No one in particular: ask about another person's account, the
-        # strictest case (placing an account grants access).
-        person = Person(id=uuid4(), naam="", oidc_subject="evaluation")
-    await authority.require_can_place(db, perm_ctx, person, eenheid)
+    # No one in particular (person None): another account, the strictest
+    # case, or a contact with ``contact``.  The routes call the same guard.
+    await authority.require_can_place(
+        db, perm_ctx, person, eenheid, ending=props.ending, contact=props.contact
+    )
+
+
+async def _revoke_resource_role(
+    db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
+) -> None:
+    """Removing a person's rol on a resource, as the grant routes decide it."""
+    props = ev.resource.properties or _NO_PROPERTIES
+    if ev.resource.id is None or props.target_person_id is None:
+        raise HTTPException(422)
+    grants = await ResourcePermissionRepository(db).find_grants(
+        ev.resource.type, ev.resource.id, person_id=props.target_person_id
+    )
+    grants = [g for g in grants if props.rol is None or g.rol == props.rol]
+    if not grants:
+        raise HTTPException(404)
+    for grant in grants:
+        await authority.require_can_change_resource_role(
+            db, perm_ctx, grant, new_rol=None
+        )
 
 
 Guard = Callable[[AsyncSession, PermissionContext, AuthzEvaluation], Awaitable[None]]
 
 GRANT_ACTIONS: dict[str, Guard] = {
     "resource_role:grant": _grant_resource_role,
+    "resource_role:revoke": _revoke_resource_role,
     "role:assign": _assign_role,
     "role:revoke": _revoke_role,
     "eenheid:set_manager": _set_manager,
@@ -216,9 +270,15 @@ async def evaluate(
       optional ``properties.target_person_id``: hand out a rol on a resource
       (add a member, contact, betrokkene).  Without a target: to someone
       other than the caller.
+    - ``resource_role:revoke``, resource ``{type, id}``,
+      ``properties.target_person_id``, optional ``properties.rol`` (none:
+      every rol of that person): remove it.  Leaving yourself is allowed,
+      removing the last eigenaar is not.
     - ``role:assign``, resource ``{type: "role"}``, ``properties.role_id``,
       optional ``properties.eenheid_id`` (none: a system role) and
-      ``properties.target_person_id``.
+      ``properties.target_person_id``.  With ``properties.anywhere: true``
+      and no ``role_id``: is there any role the caller may assign to
+      someone else (in ``eenheid_id`` when given, else anywhere).
     - ``role:revoke``, resource ``{type: "role", id}`` with the id of the
       role assignment.
     - ``eenheid:set_manager``, resource ``{type: "organisatie_eenheid", id}``,
@@ -226,8 +286,9 @@ async def evaluate(
       else).
     - ``eenheid:dissolve``, resource ``{type: "organisatie_eenheid", id}``.
     - ``person:place``, resource ``{type: "person", id?}``,
-      ``properties.eenheid_id``.  Without an id: place another person's
-      account there.
+      ``properties.eenheid_id``, optional ``properties.ending`` (end the
+      placement) and ``properties.contact`` (no id: a contact without
+      account).  Without an id: place another person's account there.
     """
     await _prefetch(db, perm_ctx, data.evaluations)
     decisions = [

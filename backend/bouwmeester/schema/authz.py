@@ -17,8 +17,12 @@ class AuthzResourceProperties(BaseModel):
 
     # For a resource that does not exist yet: the eenheid it would go into.
     eenheid_id: UUID | None = None
-    # "Is there any eenheid where I may create this?" (generic create buttons).
+    # "Is there any eenheid where I may create this?" (generic create buttons);
+    # with ``role:assign``: is there any role I may assign anywhere.
     anywhere: bool = False
+    # ``person:place``: ending a placement, or placing a non-account contact.
+    ending: bool = False
+    contact: bool = False
     # Grant actions: the rol or role handed out, and to whom (omitted: to
     # someone other than the caller).
     rol: str | None = Field(default=None, max_length=50)

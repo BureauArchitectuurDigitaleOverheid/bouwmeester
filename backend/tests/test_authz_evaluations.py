@@ -249,3 +249,128 @@ async def test_anywhere_asks_every_eenheid(ew, who, action, resource_type, expec
     assert anywhere is expected
     if resource_type == "task" and who != "super_admin":
         assert nowhere is False
+
+
+# ---------------------------------------------------------------------------
+# person:place variants, resource_role:revoke, role:assign anywhere
+# ---------------------------------------------------------------------------
+
+# (who, evaluation builder, expected decision)
+MORE_GRANT_CASES = [
+    # a contact without account: contact administration, people:update
+    (
+        "team_editor",
+        lambda w: _ask(
+            "person:place", "person", eenheid_id=_org(w, "team"), contact=True
+        ),
+        True,
+    ),
+    (
+        "platform_admin",  # holds no people:update
+        lambda w: _ask(
+            "person:place", "person", eenheid_id=_org(w, "team"), contact=True
+        ),
+        False,
+    ),
+    # ending your own placement only gives access up
+    (
+        "team_editor",
+        lambda w: _ask(
+            "person:place",
+            "person",
+            _person(w, "team_editor"),
+            eenheid_id=_org(w, "team"),
+            ending=True,
+        ),
+        True,
+    ),
+    # any role to someone else, anywhere or in one eenheid
+    ("ministry_admin", lambda w: _ask("role:assign", "role", anywhere=True), True),
+    (
+        "ministry_admin",
+        lambda w: _ask(
+            "role:assign", "role", anywhere=True, eenheid_id=_org(w, "elders")
+        ),
+        False,
+    ),
+    ("team_editor", lambda w: _ask("role:assign", "role", anywhere=True), False),
+    ("super_admin", lambda w: _ask("role:assign", "role", anywhere=True), True),
+    # removing a rol: yourself yes, someone else's only with authority
+    (
+        "role_only",
+        lambda w: _ask(
+            "resource_role:revoke",
+            "corpus_node",
+            w.res["node_directie"],
+            target_person_id=_person(w, "role_only"),
+            rol="betrokken",
+        ),
+        True,
+    ),
+    (
+        "team_editor",
+        lambda w: _ask(
+            "resource_role:revoke",
+            "corpus_node",
+            w.res["node_directie"],
+            target_person_id=_person(w, "role_only"),
+        ),
+        False,
+    ),
+    (
+        "super_admin",
+        lambda w: _ask(
+            "resource_role:revoke",
+            "corpus_node",
+            w.res["node_directie"],
+            target_person_id=_person(w, "role_only"),
+        ),
+        True,
+    ),
+    (
+        "super_admin",  # no such grant
+        lambda w: _ask(
+            "resource_role:revoke",
+            "corpus_node",
+            w.res["node_team"],
+            target_person_id=_person(w, "role_only"),
+        ),
+        False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("who", "build", "expected"),
+    MORE_GRANT_CASES,
+    ids=[f"{c[0]}-{i}" for i, c in enumerate(MORE_GRANT_CASES)],
+)
+async def test_more_grant_actions(ew, who, build, expected):
+    async with client_as(ew.db, ew.person[who]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [build(ew)]})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"evaluations": [{"decision": expected}]}
+
+
+async def test_the_last_eigenaar_cannot_leave(ew):
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    ew.db.add(
+        ResourcePermission(
+            person_id=_person(ew, "viewer"),
+            resource_type="corpus_node",
+            resource_id=ew.res["node_free"],
+            rol="eigenaar",
+        )
+    )
+    await ew.db.flush()
+    ask = _ask(
+        "resource_role:revoke",
+        "corpus_node",
+        ew.res["node_free"],
+        target_person_id=_person(ew, "viewer"),
+        rol="eigenaar",
+    )
+    async with client_as(ew.db, ew.person["viewer"]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": [ask]})
+    assert resp.json() == {"evaluations": [{"decision": False}]}
