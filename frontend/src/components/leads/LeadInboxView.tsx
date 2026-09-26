@@ -309,14 +309,10 @@ function LeadInboxRow({
         <nldd-text-cell text={lead.title}>
           <span slot="supporting-text">
             <nldd-container gap="4">
-              {/* A plain div, not nldd-text. The clamp needs
-                  `display: -webkit-box` on the element that holds the lines,
-                  and nldd-text sets its own display in its shadow root: the
-                  same style on the host is simply overruled, which is why
-                  this description ran to four lines in a row meant to be
-                  scanned. The design system has no clamp of its own, so this
-                  is `line-clamp-2` from utilities.css, as in the three other
-                  places that need it. */}
+              {/* A div around RichTextDisplay, because that renders its own
+                  nldd-text or nldd-rich-text, so there is no single element
+                  of ours to put `line-clamp-2` on. Where the text is ours,
+                  the class goes on nldd-text itself (LeadCard, NodeCard). */}
               {lead.description && (
                 <div
                   className="line-clamp-2"
