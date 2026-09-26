@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.org_context import OrgContext, apply_opdracht_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
@@ -76,7 +76,7 @@ class FinancieelService:
             .group_by(Opdracht.begrotingsjaar)
             .order_by(Opdracht.begrotingsjaar)
         )
-        stmt = apply_org_filter(stmt, Opdracht.opdrachtgever_id, org_ctx)
+        stmt = apply_opdracht_filter(stmt, org_ctx)
 
         result = await self.session.execute(stmt)
         per_jaar = [
