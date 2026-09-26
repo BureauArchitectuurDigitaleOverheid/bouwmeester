@@ -26,7 +26,7 @@ from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.resource_permission import ResourcePermission
-from tests.authz_world import World
+from tests.authz_world import World, add_directie_admin
 from tests.factories import client_as
 
 
@@ -226,15 +226,34 @@ async def test_editor_reviewer_names_first_eigenaar(world: World):
     assert await _owners(world, item.corpus_node_id) == {world.person["viewer"].id}
 
 
-async def test_reviewer_cannot_name_self_eigenaar(world: World):
+async def test_reviewer_who_edits_the_node_names_self_eigenaar(world: World):
+    """Claiming a node you already edit hands you nothing you lacked."""
     item = await _review_item(world)
     async with client_as(world.db, world.person["team_editor"]) as c:
         resp = await c.post(
             f"/api/parlementair/imports/{item.id}/complete",
             json=_complete(world, "team_editor"),
         )
-    assert resp.status_code == 403
-    assert await _owners(world, item.corpus_node_id) == set()
+    assert resp.status_code == 200, resp.text
+    assert await _owners(world, item.corpus_node_id) == {world.person["team_editor"].id}
+
+
+async def test_reviewer_without_node_update_cannot_name_self_eigenaar(world: World):
+    """A ministry_admin reviews but does not edit nodes: no self-grant."""
+    await add_directie_admin(world, "org_admin", "Directiebeheerder")
+    own, other = await _review_item(world), await _review_item(world)
+    async with client_as(world.db, world.person["org_admin"]) as c:
+        named_self = await c.post(
+            f"/api/parlementair/imports/{own.id}/complete",
+            json=_complete(world, "org_admin"),
+        )
+        named_other = await c.post(
+            f"/api/parlementair/imports/{other.id}/complete",
+            json=_complete(world, "viewer"),
+        )
+    assert named_self.status_code == 403, named_self.text
+    assert await _owners(world, own.corpus_node_id) == set()
+    assert named_other.status_code == 200, named_other.text
 
 
 async def test_reviewer_cannot_replace_eigenaar_without_grant_authority(world: World):
