@@ -17,10 +17,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.routing import APIRoute
 
 from bouwmeester.core.authz import can
-from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.mattermost_user import MattermostUser
@@ -73,85 +71,70 @@ async def _scoped_ops(w: World, eenheid: str) -> Person:
 # Tenant-wide operations: a system role, nothing else
 # ---------------------------------------------------------------------------
 
-# (method, path, may platform_admin?)  platform_admin only holds
-# import_export:* and config:manage; super_admin holds everything.
+# (method, path, request that stops harmlessly once the guard lets it through,
+# status then, may platform_admin?).  platform_admin only holds import_export:*
+# and config:manage; super_admin holds everything.  A refusal is a 403 before
+# the request is even validated.
+_BAD_UUID = {"params": {"actor_id": "geen-uuid"}}
 TENANT_WIDE_ROUTES = [
-    ("POST", "/api/fcc/sync/trigger", False),
-    ("GET", "/api/fcc/conflicts", False),
-    ("POST", "/api/import/nodes", True),
-    ("POST", "/api/import/edges", True),
-    ("POST", "/api/import/politieke-inputs", True),
-    ("GET", "/api/export/corpus", True),
-    ("POST", "/api/parlementair/imports/trigger", False),
-    ("POST", "/api/parlementair/imports/reprocess", False),
-    ("POST", "/api/admin/sync/all", False),
-    ("POST", "/api/admin/reconciliation/manual-merge", False),
-    ("POST", "/api/edge-types", True),
-    ("DELETE", "/api/edge-types/{id}", True),
-    ("POST", "/api/edge-schema-rules", True),
-    ("DELETE", "/api/edge-schema-rules/{id}", True),
+    ("POST", "/api/fcc/sync/trigger", {}, 200, False),  # FCC not configured
+    ("GET", "/api/fcc/conflicts", {}, 200, False),
+    ("POST", "/api/import/nodes", {}, 422, True),  # no file
+    ("POST", "/api/import/edges", {}, 422, True),
+    ("POST", "/api/import/politieke-inputs", {}, 422, True),
+    ("GET", "/api/export/corpus", {}, 200, True),
+    ("POST", "/api/parlementair/imports/trigger", _BAD_UUID, 422, False),
+    (
+        "POST",
+        "/api/parlementair/imports/reprocess",
+        {"params": {"item_type": "onbekend"}},
+        422,
+        False,
+    ),
+    ("POST", "/api/admin/sync/all", {}, 418, False),  # sync_tooi stubbed
+    ("POST", "/api/admin/reconciliation/manual-merge", {"json": {}}, 422, False),
+    ("POST", "/api/edge-types", {"json": {}}, 422, True),
+    ("DELETE", "/api/edge-types/bestaat-niet", {}, 404, True),
+    ("POST", "/api/edge-schema-rules", {"json": {}}, 422, True),
+    ("DELETE", "/api/edge-schema-rules/geen-uuid", {}, 422, True),
 ]
 
 
-def _system_guard(app, method: str, path: str):
-    """The ``require_system_permission`` dependency of one route."""
-    for route in app.routes:
-        if (
-            isinstance(route, APIRoute)
-            and route.path == path
-            and method in route.methods
-        ):
-            for dep in route.dependant.dependencies:
-                qualname = getattr(dep.call, "__qualname__", "")
-                if qualname == "require_system_permission.<locals>._check":
-                    return dep.call
-            raise AssertionError(f"{method} {path} has no system guard")
-    raise AssertionError(f"{method} {path} does not exist")
+@pytest.fixture
+def stub_sync(monkeypatch):
+    """The full org sync stops at its first step instead of calling out."""
 
+    async def _stop(_db):
+        raise HTTPException(status_code=418, detail="sync reached")
 
-async def _passes(guard, ctx) -> bool:
-    try:
-        await guard(perm_ctx=ctx)
-    except HTTPException as exc:
-        assert exc.status_code == 403
-        return False
-    return True
+    monkeypatch.setattr("bouwmeester.api.routes.admin_sync.sync_tooi", _stop)
 
 
 @pytest.mark.parametrize(
-    ("method", "path", "platform_admin_may"),
+    ("method", "path", "probe", "allowed", "platform_admin_may"),
     TENANT_WIDE_ROUTES,
-    ids=[f"{m} {p}" for m, p, _ in TENANT_WIDE_ROUTES],
+    ids=[f"{r[0]} {r[1]}" for r in TENANT_WIDE_ROUTES],
 )
 async def test_tenant_wide_needs_system_role(
-    world, _test_app, method, path, platform_admin_may
+    world, stub_sync, method, path, probe, allowed, platform_admin_may
 ):
-    guard = _system_guard(_test_app, method, path)
-    top = await build_permission_context(
-        world.db, await _scoped_ops(world, "ministerie")
-    )
-    assert not await _passes(guard, top), "a role on the top eenheid is not system"
-    assert not await _passes(guard, await perm_ctx(world, "manager"))
-    assert await _passes(guard, await perm_ctx(world, "super_admin"))
-    assert (
-        await _passes(guard, await perm_ctx(world, "platform_admin"))
-    ) is platform_admin_may
-
-
-async def test_scoped_holder_cannot_trigger_over_http(world):
-    ops = await _scoped_ops(world, "ministerie")
-    async with client_as(world.db, ops) as c:
-        parlementair = await c.post("/api/parlementair/imports/trigger")
-        fcc = await c.post("/api/fcc/sync/trigger")
-        merge = await c.post(
-            "/api/admin/reconciliation/manual-merge",
-            json={"source_id": str(uuid.uuid4()), "target_id": str(uuid.uuid4())},
-        )
-    assert (parlementair.status_code, fcc.status_code, merge.status_code) == (
-        403,
-        403,
-        403,
-    )
+    callers = {
+        # every tenant-wide permission, but on the top eenheid only
+        "top_eenheid": await _scoped_ops(world, "ministerie"),
+        "manager": world.person["manager"],
+        "super_admin": world.person["super_admin"],
+        "platform_admin": world.person["platform_admin"],
+    }
+    got = {}
+    for who, person in callers.items():
+        async with client_as(world.db, person) as c:
+            got[who] = (await c.request(method, path, **probe)).status_code
+    assert got == {
+        "top_eenheid": 403,
+        "manager": 403,
+        "super_admin": allowed,
+        "platform_admin": allowed if platform_admin_may else 403,
+    }
 
 
 # ---------------------------------------------------------------------------
