@@ -24,6 +24,7 @@ from bouwmeester.core.permissions import (
     get_permission_context,
     require_permission,
 )
+from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.resource_permission import (
     ResourcePermissionRepository,
@@ -41,12 +42,9 @@ router = APIRouter(
     tags=["resource-permissions"],
 )
 
-VALID_RESOURCE_TYPES = {
-    "corpus_node",
-    "initiatief",
-    "lead",
-    "opdracht",
-}
+# Every type with resource roles, except eenheden: their eigenaars are
+# managed on the eenheid itself (organisatie routes).
+VALID_RESOURCE_TYPES = frozenset(RESOURCE_ROLE_PERMISSIONS) - {"organisatie_eenheid"}
 
 
 def _validate_resource_type(resource_type: str) -> None:

@@ -1020,7 +1020,7 @@ async def test_editor_cannot_make_own_team_opdracht_owner(tree: Tree):
 
 
 def test_ai_matches_grant_nothing():
-    from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS
+    from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
     from bouwmeester.services.opdracht_matching_service import AI_GRANTED_ROL
 
     assert RESOURCE_ROLE_PERMISSIONS["opdracht"][AI_GRANTED_ROL] == set()

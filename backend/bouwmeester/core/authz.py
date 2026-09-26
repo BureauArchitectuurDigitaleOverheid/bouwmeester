@@ -150,11 +150,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import (
-    RESOURCE_ROLE_PERMISSIONS,
-    PermissionContext,
-    get_permission_context,
-)
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
+from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.github_link import GitHubLink

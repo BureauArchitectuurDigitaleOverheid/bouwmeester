@@ -23,53 +23,6 @@ from bouwmeester.repositories.role import PersonRoleRepository, RoleRepository
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Resource role -> permission mappings (fixed business rules)
-# ---------------------------------------------------------------------------
-
-RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
-    "corpus_node": {
-        "eigenaar": {
-            "node:read",
-            "node:update",
-            "node:delete",
-            "resource_permission:manage",
-        },
-        "betrokken": {"node:read", "node:update"},
-        "adviseur": {"node:read"},
-        "indiener": {"node:read"},
-    },
-    "initiatief": {
-        "eigenaar": {
-            "initiatief:read",
-            "initiatief:update",
-            "initiatief:delete",
-            "resource_permission:manage",
-        },
-        "contributor": {"initiatief:read", "initiatief:update"},
-        "viewer": {"initiatief:read"},
-    },
-    "lead": {
-        "opdrachtgever": {"lead:read", "lead:update"},
-        "contactpersoon": {"lead:read"},
-        "betrokken": {"lead:read"},
-    },
-    "opdracht": {
-        "eigenaar": {
-            "opdracht:read",
-            "opdracht:update",
-            "opdracht:delete",
-            "resource_permission:manage",
-        },
-        "betrokken": {"opdracht:read"},
-        # Informational: the person is the client's contact, no access.
-        "contactpersoon": set(),
-    },
-    "organisatie_eenheid": {
-        "eigenaar": {"org:manage", "org:update", "resource_permission:manage"},
-    },
-}
-
 
 @dataclass
 class PermissionContext:

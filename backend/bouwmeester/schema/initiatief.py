@@ -6,8 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# Canonical eenheid-rol type — used in schemas, routes, and repository
-InitiatiefEenheidRol = Literal["eigenaar", "contributor", "viewer"]
+from bouwmeester.core.resource_roles import rols_of
+
+# The rols an eenheid can hold on an initiatief.
+InitiatiefEenheidRol = Literal[rols_of("initiatief")]  # type: ignore[valid-type]
 
 # The closed set of nldd-tag color names an Initiatief.kleur may hold, the same
 # set LeadColumn.color uses (schema.lead_column.LEAD_COLUMN_COLORS): five

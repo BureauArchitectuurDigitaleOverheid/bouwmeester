@@ -26,7 +26,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import can, get_eenheid_ids, require, rights_on_eenheid
-from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS, PermissionContext
+from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
