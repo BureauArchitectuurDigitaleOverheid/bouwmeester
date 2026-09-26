@@ -1586,22 +1586,12 @@ async def _caller(db: AsyncSession, person_id: UUID | None) -> _ChatCaller:
     Dev mode without a person sees everything, anonymous sees nothing, like
     the REST dependencies.
     """
-    from bouwmeester.core.authz import visibility
-    from bouwmeester.core.permissions import (
-        anonymous_permission_context,
-        build_permission_context,
-    )
-    from bouwmeester.models.person import Person
+    from bouwmeester.core.authz import perm_ctx_for, visibility
 
     key = ("chat_caller", person_id)
     caller = db.info.get(key)
     if caller is None:
-        person = await db.get(Person, person_id) if person_id else None
-        perm_ctx = (
-            await build_permission_context(db, person)
-            if person is not None
-            else anonymous_permission_context()
-        )
+        perm_ctx = await perm_ctx_for(db, person_id)
         org_ctx, init_ctx = await visibility(db, perm_ctx)
         caller = db.info[key] = _ChatCaller(person_id, perm_ctx, org_ctx, init_ctx)
     return caller
