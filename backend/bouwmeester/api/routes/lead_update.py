@@ -13,14 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_found
-from bouwmeester.api.routes.leads import _check_lead_access, _robust_parse_json
+from bouwmeester.api.routes.leads import (
+    _robust_parse_json,
+    get_lead_or_404,
+    get_visible_lead,
+)
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import requires
 from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
 from bouwmeester.core.database import get_db
-from bouwmeester.core.initiatief_context import (
-    InitiatiefContext,
-    get_initiatief_context,
-)
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
@@ -251,15 +252,14 @@ async def parse_lead_update(
     include_attachments: bool = Form(False),
     files: list[UploadFile] | None = None,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(requires("lead_update:create", "lead", path_param="lead_id")),
 ) -> LeadUpdateExtractResult:
     """Parse raw text/uploaded docs (or just the lead history) into an update draft."""
     from bouwmeester.services.llm.factory import get_llm_service
     from bouwmeester.services.llm.prompts import build_lead_update_prompt
 
     repo = LeadRepository(db)
-    lead = require_found(await repo.get_detail(lead_id, init_ctx=init_ctx), "Lead")
-    _check_lead_access(lead, init_ctx)
+    lead = require_found(await repo.get_detail(lead_id), "Lead")
 
     text_parts: list[str] = []
     image_parts: list[dict] = []
@@ -373,13 +373,8 @@ async def list_updates(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _visible: Lead = Depends(get_visible_lead),
 ) -> list[LeadUpdatePostResponse]:
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
-
     stmt = (
         select(LeadUpdatePost)
         .where(LeadUpdatePost.lead_id == lead_id)
@@ -400,12 +395,9 @@ async def create_update(
     data: LeadUpdatePostCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(requires("lead_update:create", "lead", path_param="lead_id")),
 ) -> LeadUpdatePostResponse:
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
+    lead = await get_lead_or_404(db, lead_id)
 
     actor_id = current_user.id if current_user else None
     post = LeadUpdatePost(
@@ -453,13 +445,8 @@ async def edit_update(
     data: LeadUpdatePostEdit,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(requires("lead_update:update", "lead", path_param="lead_id")),
 ) -> LeadUpdatePostResponse:
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
-
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
     payload = data.model_dump(exclude_unset=True)
     for key, value in payload.items():
@@ -481,13 +468,8 @@ async def publish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(requires("lead_update:update", "lead", path_param="lead_id")),
 ) -> LeadUpdatePostResponse:
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
-
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
@@ -506,13 +488,8 @@ async def unpublish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(requires("lead_update:update", "lead", path_param="lead_id")),
 ) -> LeadUpdatePostResponse:
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
-
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
     post.published_at = None
     await db.flush()
@@ -530,13 +507,8 @@ async def delete_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _authz=Depends(requires("lead_update:delete", "lead", path_param="lead_id")),
 ) -> None:
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
-
     post = await _load_post(db, lead_id, post_id)
     if post is None:
         raise HTTPException(status_code=404, detail="Update niet gevonden")
@@ -555,14 +527,9 @@ async def download_update_eml(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    _visible: Lead = Depends(get_visible_lead),
 ) -> Response:
     """Stream a .eml that opens as an editable draft in Outlook (Windows)."""
-    lead = await db.get(Lead, lead_id)
-    if lead is None:
-        raise HTTPException(status_code=404, detail="Lead niet gevonden")
-    _check_lead_access(lead, init_ctx)
-
     post = require_found(await _load_post(db, lead_id, post_id), "Update")
 
     body_html = markdown_to_html(post.body_internal or "")
