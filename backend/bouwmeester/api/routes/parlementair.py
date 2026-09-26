@@ -10,11 +10,15 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found, validate_list
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authority import require_can_change_resource_role
+from bouwmeester.core.authority import (
+    require_can_change_resource_role,
+    require_can_grant_resource_role,
+)
 from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context, sees_eenheid
 from bouwmeester.core.permissions import (
     PermissionContext,
     get_permission_context,
@@ -76,6 +80,28 @@ async def _require_can_review(
     return item
 
 
+def _item_response(
+    item: ParlementairItem, org_ctx: OrgContext
+) -> ParlementairItemResponse:
+    """The item with only the suggestions whose target node the caller sees.
+
+    Suggestions embed their target node; ``parlementair:read`` must not
+    reveal nodes the org filter hides.  Decided on the loaded rows with the
+    same rule as ``node:read``, so a list costs no extra queries.
+    """
+    response = ParlementairItemResponse.model_validate(item)
+    visible = {
+        edge.id
+        for edge in item.suggested_edges
+        if edge.target_node is not None
+        and sees_eenheid(org_ctx, edge.target_node.organisatie_eenheid_id)
+    }
+    response.suggested_edges = [
+        edge for edge in response.suggested_edges if edge.id in visible
+    ]
+    return response
+
+
 async def _require_can_review_edge(
     db: AsyncSession, perm_ctx: PermissionContext, edge_id: UUID
 ) -> SuggestedEdge:
@@ -97,6 +123,7 @@ async def list_imports(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> list[ParlementairItemResponse]:
     """List imported parliamentary items. Filter by status, bron, type, or search."""
@@ -109,7 +136,7 @@ async def list_imports(
         skip=skip,
         limit=limit,
     )
-    return validate_list(ParlementairItemResponse, imports)
+    return [_item_response(item, org_ctx) for item in imports]
 
 
 @router.get("/imports/{import_id}", response_model=ParlementairItemResponse)
@@ -117,6 +144,7 @@ async def get_import(
     import_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> ParlementairItemResponse:
     """Get a single parliamentary import item by ID."""
@@ -124,7 +152,7 @@ async def get_import(
     item = await repo.get_by_id(import_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Import not found")
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
 
 
 @router.post("/imports/trigger")
@@ -190,12 +218,13 @@ async def get_review_queue(
     current_user: OptionalUser,
     type_filter: str | None = Query(None, alias="type"),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> list[ParlementairItemResponse]:
     """Get parliamentary items pending review, optionally filtered by type."""
     repo = ParlementairItemRepository(db)
     imports = await repo.get_review_queue(item_type=type_filter)
-    return validate_list(ParlementairItemResponse, imports)
+    return [_item_response(item, org_ctx) for item in imports]
 
 
 @router.put("/imports/{import_id}/reject", response_model=ParlementairItemResponse)
@@ -205,6 +234,7 @@ async def reject_import(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> ParlementairItemResponse:
     """Reject a parliamentary import item (sets status to rejected)."""
     await _require_can_review(db, perm_ctx, import_id)
@@ -223,7 +253,7 @@ async def reject_import(
         details={"item_id": str(import_id)},
     )
 
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
 
 
 @router.put("/imports/{import_id}/reopen", response_model=ParlementairItemResponse)
@@ -233,6 +263,7 @@ async def reopen_import(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> ParlementairItemResponse:
     """Reopen a rejected or out-of-scope item for review."""
     from bouwmeester.services.parlementair_import_service import (
@@ -272,7 +303,52 @@ async def reopen_import(
 
     # Re-fetch to ensure all relationships are loaded for serialization
     item = await repo.get_by_id(import_id)
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
+
+
+async def _make_sole_person_owner(
+    db: AsyncSession, perm_ctx: PermissionContext, node_id: UUID, person_id: UUID
+) -> None:
+    """Make *person_id* the eigenaar of the node, replacing other people.
+
+    Naming an eigenaar is a grant like any other (``core.authority``): the
+    reviewer must hold what eigenaar gives and cannot name themselves.
+    Replacing current eigenaars also needs the authority to remove them.
+    Eigenaar grants to an eenheid stay.
+    """
+    owners = (
+        await db.scalars(
+            select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id == node_id,
+                ResourcePermission.rol == "eigenaar",
+                ResourcePermission.person_id.is_not(None),
+            )
+        )
+    ).all()
+    if any(owner.person_id == person_id for owner in owners):
+        return
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="corpus_node",
+        resource_id=node_id,
+        rol="eigenaar",
+        target_person_id=person_id,
+    )
+    db.add(
+        ResourcePermission(
+            person_id=person_id,
+            resource_type="corpus_node",
+            resource_id=node_id,
+            rol="eigenaar",
+        )
+    )
+    await db.flush()
+    for owner in owners:
+        await require_can_change_resource_role(db, perm_ctx, owner, new_rol=None)
+        await db.delete(owner)
+    await db.flush()
 
 
 @router.post("/imports/{import_id}/complete", response_model=ParlementairItemResponse)
@@ -283,6 +359,7 @@ async def complete_review(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> ParlementairItemResponse:
     """Complete review: assign eigenaar, create follow-up tasks, mark as reviewed."""
     item = await _require_can_review(db, perm_ctx, import_id)
@@ -295,31 +372,7 @@ async def complete_review(
     if person is None:
         raise HTTPException(status_code=404, detail="Eigenaar person not found")
 
-    # Upsert eigenaar stakeholder on the corpus node
-    stmt = select(ResourcePermission).where(
-        ResourcePermission.resource_type == "corpus_node",
-        ResourcePermission.resource_id == item.corpus_node_id,
-        ResourcePermission.rol == "eigenaar",
-    )
-    result = await db.execute(stmt)
-    existing = result.scalar_one_or_none()
-    # Naming the first eigenaar of a freshly imported item is the point of
-    # the review.  Replacing someone who already owns it is a change of
-    # rights like any other.
-    if existing is not None and existing.person_id != body.eigenaar_id:
-        await require_can_change_resource_role(db, perm_ctx, existing, new_rol=None)
-    if existing is None:
-        db.add(
-            ResourcePermission(
-                person_id=body.eigenaar_id,
-                resource_type="corpus_node",
-                resource_id=item.corpus_node_id,
-                rol="eigenaar",
-            )
-        )
-    elif existing.person_id != body.eigenaar_id:
-        existing.person_id = body.eigenaar_id
-    await db.flush()
+    await _make_sole_person_owner(db, perm_ctx, item.corpus_node_id, body.eigenaar_id)
 
     # Auto-complete existing review tasks before creating new ones
     stmt = select(Task).where(
@@ -359,7 +412,7 @@ async def complete_review(
         details={"item_id": str(import_id), "eigenaar_id": str(body.eigenaar_id)},
     )
 
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
 
 
 class UpdateSuggestedEdgeRequest(BaseModel):
@@ -394,8 +447,7 @@ async def approve_edge(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
-    # Reviewing is parlementair:review; creating the edge is what creating any
-    # edge needs (write access on one end), decided on the suggestion itself.
+    # Approving creates an edge: core.authz decides it on the suggestion.
     suggested_edge = await _require_can_review_edge(db, perm_ctx, edge_id)
     await require(db, perm_ctx, "suggested_edge:update", "suggested_edge", edge_id)
     suggested_edge_repo = SuggestedEdgeRepository(db)
@@ -487,6 +539,9 @@ async def reset_suggested_edge(
 ) -> SuggestedEdgeResponse:
     """Reset a suggested edge back to pending, undoing approve/reject."""
     suggested_edge = await _require_can_review_edge(db, perm_ctx, edge_id)
+    # Resetting an approved suggestion deletes the edge it created, so it is
+    # decided in core.authz like removing the suggestion's edge.
+    await require(db, perm_ctx, "suggested_edge:delete", "suggested_edge", edge_id)
     repo = SuggestedEdgeRepository(db)
 
     # If it was approved, delete the actual edge that was created
