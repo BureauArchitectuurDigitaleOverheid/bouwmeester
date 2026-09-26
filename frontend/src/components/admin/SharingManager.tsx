@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useSharing, useCreateSharing, useDeleteSharing } from '@/hooks/useSharing';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { usePermissions } from '@/hooks/usePermissions';
 import type { SharingGrantCreate } from '@/hooks/useSharing';
 import { NlddButton } from '@/components/nldd/NlddLink';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
@@ -28,6 +29,7 @@ const INITIAL_FORM: SharingGrantCreate & { mode: ShareMode } = {
 export function SharingManager() {
   const { data: shares, isLoading } = useSharing();
   const { data: eenheden } = useOrganisatieFlat();
+  const { managesEenheid } = usePermissions();
   const createSharing = useCreateSharing();
   const deleteSharing = useDeleteSharing();
 
@@ -72,6 +74,11 @@ export function SharingManager() {
   const sortedEenheden = useMemo(
     () => [...(eenheden ?? [])].sort((a, b) => a.naam.localeCompare(b.naam)),
     [eenheden],
+  );
+  // Sharing needs org:manage on the source: only eenheden this person manages.
+  const sourceEenheden = useMemo(
+    () => sortedEenheden.filter((e) => managesEenheid(e.id)),
+    [sortedEenheden, managesEenheid],
   );
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -148,7 +155,7 @@ export function SharingManager() {
               <nldd-dropdown ref={sourceEenheidRef}>
                 <select value={form.source_eenheid_id ?? ''} onChange={() => {}} required>
                   <option value="">Selecteer eenheid...</option>
-                  {sortedEenheden.map((e) => (
+                  {sourceEenheden.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.naam}
                     </option>

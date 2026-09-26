@@ -17,35 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
-from bouwmeester.models.org_naam import OrganisatieEenheidNaam
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
-from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole
-
-
-async def _make_person(db: AsyncSession, naam: str) -> Person:
-    uid = uuid.uuid4()
-    email = f"{naam.lower().replace(' ', '-')}-{uid.hex[:8]}@example.com"
-    person = Person(id=uid, naam=naam, email=email, functie="tester", is_active=True)
-    db.add(person)
-    await db.flush()
-    db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
-    await db.flush()
-    return person
-
-
-async def _make_org(db: AsyncSession, naam: str) -> OrganisatieEenheid:
-    org = OrganisatieEenheid(id=uuid.uuid4(), naam=naam, type="directie")
-    db.add(org)
-    await db.flush()
-    db.add(
-        OrganisatieEenheidNaam(eenheid_id=org.id, naam=naam, geldig_van=date.today())
-    )
-    await db.flush()
-    return org
+from tests.factories import make_org, make_person
 
 
 def _make_app_and_client(db_session, person):
@@ -70,10 +45,10 @@ def _make_app_and_client(db_session, person):
 @pytest.fixture
 async def editor_setup(db_session: AsyncSession):
     """Editor on org_own, plus a separate org_other outside their scope."""
-    org_own = await _make_org(db_session, "Eigen Directie")
-    org_other = await _make_org(db_session, "Ander Ministerie")
+    org_own = await make_org(db_session, "Eigen Directie")
+    org_other = await make_org(db_session, "Ander Ministerie")
 
-    editor = await _make_person(db_session, "Abram Bewerker")
+    editor = await make_person(db_session, "Abram Bewerker", account=False)
     db_session.add(
         PersonOrganisatieEenheid(
             person_id=editor.id,

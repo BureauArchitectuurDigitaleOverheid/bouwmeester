@@ -2,7 +2,6 @@ import { useRef, useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePeople, useMergePersons } from '@/hooks/usePeople';
 import { useAuth } from '@/contexts/AuthContext';
-import { useOrgContext } from '@/contexts/OrgContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { isPersonOnline, formatRelativeTime } from '@/utils/people';
 import { formatFunctie } from '@/types';
@@ -101,9 +100,8 @@ function PersonRolesPanel({
   personId: string;
 }) {
   const { person: authPerson } = useAuth();
-  const { visibleEenheidIds } = useOrgContext();
+  const { isSuperAdmin, hasSystemPermission, managesEenheid } = usePermissions();
   const isSelf = authPerson?.id === personId;
-  const isAdmin = authPerson?.is_admin ?? false;
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
   const { data: orgUnits } = useOrganisatieFlat();
@@ -140,24 +138,27 @@ function PersonRolesPanel({
 
   // Determine the caller's max role rank for filtering
   const myMaxRank = useMemo(() => {
-    if (isAdmin) return 999;
+    if (isSuperAdmin) return 999;
     const myRoleIds = authPerson?.roles?.map((r) => r.role_id) ?? [];
     return Math.max(0, ...(roles ?? []).filter((r) => myRoleIds.includes(r.id)).map((r) => r.rank));
-  }, [isAdmin, authPerson?.roles, roles]);
+  }, [isSuperAdmin, authPerson?.roles, roles]);
 
-  // Filter org units to only those within the user's visible scope
+  // Offer only eenheden where the backend will accept the assignment: the
+  // ones this person manages (and everything below), or all of them for a
+  // system-wide role.
   const scopedOrgUnits = useMemo(() => {
     if (!orgUnits) return [];
-    if (isAdmin || visibleEenheidIds.includes('*')) return orgUnits;
-    return orgUnits.filter((u) => visibleEenheidIds.includes(u.id));
-  }, [orgUnits, visibleEenheidIds, isAdmin]);
+    if (hasSystemPermission('people:assign_role')) return orgUnits;
+    return orgUnits.filter((u) => managesEenheid(u.id));
+  }, [orgUnits, hasSystemPermission, managesEenheid]);
 
   // Filter roles to those the user can assign (rank < myMaxRank)
   const assignableRoles = useMemo(() => {
     if (!roles) return [];
-    if (isAdmin) return roles;
-    return roles.filter((r) => r.rank < myMaxRank);
-  }, [roles, myMaxRank, isAdmin]);
+    if (isSuperAdmin) return roles;
+    // System roles are super_admin-only; the backend refuses them otherwise.
+    return roles.filter((r) => r.level !== 'system' && r.rank < myMaxRank);
+  }, [roles, myMaxRank, isSuperAdmin]);
 
   const handleAssign = (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,9 +221,11 @@ function PersonRolesPanel({
           </nldd-table-row>
           {assignments.map((a) => {
             const roleRank = roles?.find((r) => r.id === a.role_id)?.rank ?? 0;
-            const canRevoke =
-              !(isSelf && a.role_id === 'super_admin') &&
-              (isAdmin || roleRank < myMaxRank);
+            // Stepping down from your own role is always allowed, except
+            // super_admin; anyone else's role needs a higher rank.
+            const canRevoke = isSelf
+              ? a.role_id !== 'super_admin'
+              : isSuperAdmin || roleRank < myMaxRank;
             return (
               <AssignmentRow
                 key={a.id}
@@ -238,8 +241,9 @@ function PersonRolesPanel({
         <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
       )}
 
-      {/* Add role button / form — directly after roles */}
-      {!showForm ? (
+      {/* Add role button / form — directly after roles. Nobody but a
+          super_admin assigns roles to themselves. */}
+      {isSelf && !isSuperAdmin ? null : !showForm ? (
         <NlddButton
           text="Rol toewijzen"
           startIcon="plus"
@@ -624,6 +628,7 @@ function PersonResourcePermissionsSection({ personId }: { personId: string }) {
 
 export function RoleManager() {
   const { person: authPerson } = useAuth();
+  const { isSuperAdmin } = usePermissions();
   const { data: people, isLoading: loadingPeople } = usePeople();
   const { data: roles, isLoading: loadingRoles } = useRoles();
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
@@ -708,8 +713,8 @@ export function RoleManager() {
         accessible-label="Zoek personen"
       />
 
-      {/* Merge bar */}
-      {selectedIds.size >= 2 && !showMergeConfirm && (
+      {/* Merge bar: merging moves roles and placements, super_admin-only */}
+      {isSuperAdmin && selectedIds.size >= 2 && !showMergeConfirm && (
         <nldd-banner variant="accent" size="sm" text={`${selectedIds.size} personen geselecteerd`}>
           <div slot="actions">
             <NlddButton

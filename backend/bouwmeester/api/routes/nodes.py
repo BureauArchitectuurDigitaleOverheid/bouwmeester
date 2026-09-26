@@ -7,13 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import (
+    require_can_change_resource_role,
+    require_can_grant_resource_role,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import (
     OrgContext,
     check_resource_org_scope,
     get_org_context,
 )
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+)
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -376,14 +384,20 @@ async def add_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
-    _perm=Depends(require_permission("resource_permission:manage")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> NodeStakeholderResponse:
     """Add a person as stakeholder on a node with a role."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     service = NodeService(db)
     node = require_found(await service.get(id), "Node")
     require_found(await db.get(Person, data.person_id), "Person")
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="corpus_node",
+        resource_id=id,
+        rol=data.rol,
+        target_person_id=data.person_id,
+    )
 
     repo = ResourcePermissionRepository(db)
     rp = await repo.create_permission(data.person_id, "corpus_node", id, data.rol)
@@ -427,11 +441,9 @@ async def update_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
-    _perm=Depends(require_permission("resource_permission:manage")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> NodeStakeholderResponse:
     """Update a stakeholder's role on a node."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     repo = ResourcePermissionRepository(db)
     rp = require_found(
         await repo.get_with_person(stakeholder_id),
@@ -443,6 +455,7 @@ async def update_node_stakeholder(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stakeholder not found",
         )
+    await require_can_change_resource_role(db, perm_ctx, rp, new_rol=data.rol)
 
     old_rol = rp.rol
     rp.rol = data.rol
@@ -488,11 +501,9 @@ async def remove_node_stakeholder(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    org_ctx: OrgContext = Depends(get_org_context),
-    _perm=Depends(require_permission("resource_permission:manage")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     """Remove a stakeholder from a node."""
-    await check_resource_org_scope(db, "corpus_node", id, org_ctx)
     repo = ResourcePermissionRepository(db)
     rp = require_found(
         await repo.get_with_person(stakeholder_id),
@@ -504,6 +515,7 @@ async def remove_node_stakeholder(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stakeholder not found",
         )
+    await require_can_change_resource_role(db, perm_ctx, rp, new_rol=None)
 
     rp_person_id = str(rp.person_id)
     rp_rol = rp.rol

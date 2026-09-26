@@ -31,7 +31,7 @@ type Tab =
 
 export function AdminPage() {
   const { person, oidcConfigured, loading, viewAsNonAdmin } = useAuth();
-  const { hasPermission, hasAnyPermission } = usePermissions();
+  const { hasPermission, hasAnyPermission, hasSystemPermission } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as Tab | null;
 
@@ -117,14 +117,16 @@ export function AdminPage() {
   if (hasPermission('org:manage')) {
     tabs.push({ id: 'sharing', label: 'Delen' });
   }
-  if (hasPermission('org:manage')) {
+  if (hasSystemPermission('org:manage')) {
     tabs.push({ id: 'reconciliation', label: 'Reconciliatie' });
   }
-  if (hasPermission('org:manage')) {
+  if (hasSystemPermission('org:manage')) {
     tabs.push({ id: 'sync-status', label: 'Sync-status' });
   }
   if (hasPermission('config:manage')) {
     tabs.push({ id: 'config', label: 'Omgevingsvariabelen' });
+  }
+  if (hasSystemPermission('config:manage')) {
     tabs.push({ id: 'schema', label: 'Relatieschema' });
   }
   if (hasPermission('database:backup')) {

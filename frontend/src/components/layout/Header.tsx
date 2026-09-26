@@ -129,7 +129,7 @@ function DevPersonPicker({
 }: {
   people: Person[];
   currentPerson: Person | null | undefined;
-  onPick: (id: string) => void;
+  onPick: (id: string | null) => void;
 }) {
   // nldd-dropdown, not nldd-combo-box. The combo-box is "a text input with
   // autocomplete": it shows the chosen value as editable, spell-checked text
@@ -142,11 +142,23 @@ function DevPersonPicker({
   // native control slotted into a custom element. The dropdown re-emits the
   // change itself, with the value in `detail`.
   const ref = useRef<HTMLElement>(null);
+  // The dropdown also emits `change` when its options are rebuilt (the
+  // people list loading), and picking now reloads the app as that person.
+  // Only a change that follows the user's own click or key counts.
+  const userIsPicking = useRef(false);
+  useNlddEvent(ref, 'pointerdown', () => {
+    userIsPicking.current = true;
+  });
+  useNlddEvent(ref, 'keydown', () => {
+    userIsPicking.current = true;
+  });
   useNlddEvent(ref, 'change', (event) => {
+    if (!userIsPicking.current) return;
+    userIsPicking.current = false;
     const value =
       (event as CustomEvent<{ value?: string }>).detail?.value ??
       (event.target as HTMLSelectElement | null)?.value;
-    if (value) onPick(value);
+    if (value !== undefined && value !== (currentPerson?.id ?? '')) onPick(value || null);
   });
 
   // The selected person is mirrored onto the <select> rather than passed as
@@ -170,9 +182,7 @@ function DevPersonPicker({
       width="200px"
     >
       <select ref={selectRef}>
-        <option value="" disabled>
-          Kies persoon
-        </option>
+        <option value="">Geen persoon (alles toegestaan)</option>
         {people.map((person) => (
           <option key={person.id} value={person.id}>
             {person.naam}

@@ -1,21 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { QueryKey } from '@tanstack/react-query';
 import { useToast } from '@/contexts/ToastContext';
-import { ApiError } from '@/api/client';
+import { errorDetail } from '@/api/client';
 
 interface MutationWithErrorOptions<TData, TVariables> {
   mutationFn: (variables: TVariables) => Promise<TData>;
   errorMessage: string;
   invalidateKeys?: QueryKey[];
   onSuccess?: (data: TData, variables: TVariables) => void;
-}
-
-function extractDetail(error: Error): string {
-  if (error instanceof ApiError && error.body) {
-    const body = error.body as Record<string, unknown>;
-    if (typeof body.detail === 'string') return body.detail;
-  }
-  return '';
 }
 
 /**
@@ -35,7 +27,7 @@ export function useMutationWithError<TData = unknown, TVariables = void>({
     mutationFn,
     onError: (error: Error) => {
       console.error(`${errorMessage}:`, error);
-      const detail = extractDetail(error);
+      const detail = errorDetail(error);
       showError(detail ? `${errorMessage}: ${detail}` : errorMessage);
     },
     onSuccess: (data, variables) => {

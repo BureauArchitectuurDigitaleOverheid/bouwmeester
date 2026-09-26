@@ -9,19 +9,18 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import date
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import or_, select
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
-from bouwmeester.models.role import PersonRole
+from bouwmeester.repositories.org_tree import get_ancestor_ids, get_membership_ids
+from bouwmeester.repositories.resource_scope import resolve_resource_eenheid_id
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +32,8 @@ class OrgContext:
     person_id: UUID | None = None
     own_eenheid_ids: list[UUID] = field(default_factory=list)
     managed_eenheid_ids: list[UUID] = field(default_factory=list)
+    # The managed eenheden plus everything below them.
+    managed_subtree_ids: list[UUID] = field(default_factory=list)
     visible_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_eenheid_ids: list[UUID] = field(default_factory=list)
     shared_node_ids: list[UUID] = field(default_factory=list)
@@ -40,101 +41,11 @@ class OrgContext:
     is_authenticated: bool = False
 
 
-async def _get_own_eenheid_ids(
-    db: AsyncSession,
-    person_id: UUID,
-) -> list[UUID]:
-    """Return eenheid IDs where the person is currently an active member."""
-    today = date.today()
-    stmt = select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
-        PersonOrganisatieEenheid.person_id == person_id,
-        PersonOrganisatieEenheid.start_datum <= today,
-        or_(
-            PersonOrganisatieEenheid.eind_datum.is_(None),
-            PersonOrganisatieEenheid.eind_datum >= today,
-        ),
-    )
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
-async def _walk_parents(
-    db: AsyncSession,
-    eenheid_ids: list[UUID],
-) -> set[UUID]:
-    """Walk up the parent chain for each eenheid and collect all parent IDs."""
-    collected: set[UUID] = set()
-    to_visit = set(eenheid_ids)
-
-    while to_visit:
-        stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.parent_id).where(
-            OrganisatieEenheid.id.in_(to_visit)
-        )
-        result = await db.execute(stmt)
-        rows = result.all()
-
-        next_visit: set[UUID] = set()
-        for row in rows:
-            if row.parent_id is not None and row.parent_id not in collected:
-                collected.add(row.parent_id)
-                next_visit.add(row.parent_id)
-
-        to_visit = next_visit
-
-    return collected
-
-
-async def _get_managed_eenheid_ids(
-    db: AsyncSession,
-    person_id: UUID,
-) -> list[UUID]:
-    """Return eenheid IDs where the person manages the sub-tree.
-
-    Includes both unit_manager and ministry_admin roles, since both
-    grant visibility over the eenheid and its descendants.
-    """
-    today = date.today()
-    stmt = select(PersonRole.organisatie_eenheid_id).where(
-        PersonRole.person_id == person_id,
-        PersonRole.role_id.in_(["unit_manager", "ministry_admin"]),
-        PersonRole.organisatie_eenheid_id.isnot(None),
-        PersonRole.start_datum <= today,
-        or_(
-            PersonRole.eind_datum.is_(None),
-            PersonRole.eind_datum >= today,
-        ),
-    )
-    result = await db.execute(stmt)
-    return list(result.scalars().all())
-
-
-async def _walk_children(
-    db: AsyncSession,
-    eenheid_ids: list[UUID],
-) -> set[UUID]:
-    """Recursively collect all descendant eenheid IDs."""
-    collected: set[UUID] = set()
-    to_visit = set(eenheid_ids)
-
-    while to_visit:
-        stmt = select(OrganisatieEenheid.id).where(
-            OrganisatieEenheid.parent_id.in_(to_visit),
-        )
-        result = await db.execute(stmt)
-        children = set(result.scalars().all())
-
-        new_children = children - collected
-        collected.update(new_children)
-        to_visit = new_children
-
-    return collected
-
-
 async def build_org_context(
     db: AsyncSession,
-    person: Person,
+    person: Person | None,
     *,
-    perm_ctx=None,
+    perm_ctx: PermissionContext | None = None,
 ) -> OrgContext:
     """Build an OrgContext for the given person.
 
@@ -147,8 +58,18 @@ async def build_org_context(
     redundant ``build_permission_context`` call when the caller already
     has one.
     """
-    from bouwmeester.core.permissions import build_permission_context
+    from bouwmeester.core.authority import managed_eenheid_ids, managed_subtree_ids
+    from bouwmeester.core.permissions import (
+        anonymous_permission_context,
+        build_permission_context,
+    )
 
+    if person is None:
+        # Dev mode sees everything; otherwise an anonymous request sees nothing.
+        anon = perm_ctx or anonymous_permission_context()
+        return OrgContext(
+            is_admin=anon.is_super_admin, is_authenticated=anon.is_authenticated
+        )
     if perm_ctx is None:
         perm_ctx = await build_permission_context(db, person)
     if perm_ctx.is_super_admin:
@@ -158,13 +79,12 @@ async def build_org_context(
             is_authenticated=True,
         )
 
-    own_ids = await _get_own_eenheid_ids(db, person.id)
-    parent_ids = await _walk_parents(db, own_ids)
+    own_ids = await get_membership_ids(db, person.id)
+    parent_ids = await get_ancestor_ids(db, own_ids)
+    managed_ids = managed_eenheid_ids(perm_ctx)
+    managed_subtree = await managed_subtree_ids(db, perm_ctx) or set()
 
-    managed_ids = await _get_managed_eenheid_ids(db, person.id)
-    managed_sub_ids = await _walk_children(db, managed_ids)
-
-    all_visible = set(own_ids) | parent_ids | set(managed_ids) | managed_sub_ids
+    all_visible = set(own_ids) | parent_ids | managed_subtree
 
     # Query shared access grants targeting the user's eenheden
     from bouwmeester.repositories.shared_access import SharedAccessRepository
@@ -177,6 +97,7 @@ async def build_org_context(
         person_id=person.id,
         own_eenheid_ids=own_ids,
         managed_eenheid_ids=managed_ids,
+        managed_subtree_ids=list(managed_subtree),
         visible_eenheid_ids=list(all_visible),
         shared_eenheid_ids=shared_eenheid_ids,
         shared_node_ids=shared_node_ids,
@@ -189,6 +110,7 @@ async def get_org_context(
     request: Request,
     person: Person | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrgContext:
     """FastAPI dependency that returns the OrgContext for the current user.
 
@@ -199,17 +121,7 @@ async def get_org_context(
     if cached is not None:
         return cached
 
-    if person is None:
-        # In dev mode (no OIDC), treat as admin so all data is visible
-        from bouwmeester.core.config import get_settings
-
-        settings = get_settings()
-        if not settings.OIDC_ISSUER:
-            ctx = OrgContext(is_admin=True, is_authenticated=True)
-        else:
-            ctx = OrgContext(is_authenticated=False)
-    else:
-        ctx = await build_org_context(db, person)
+    ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
 
     request.state.org_context = ctx
     return ctx
@@ -317,80 +229,3 @@ async def check_resource_org_scope(
     if not found:
         raise HTTPException(status_code=404, detail=f"{resource_type} not found")
     check_org_scope(eenheid_id, org_ctx)
-
-
-async def resolve_resource_eenheid_id(
-    db: AsyncSession,
-    resource_type: str,
-    resource_id: UUID,
-) -> tuple[bool, UUID | None]:
-    """Resolve the organisatie_eenheid_id for a polymorphic resource.
-
-    Returns ``(found, eenheid_id)`` — *found* is ``False`` when the
-    resource does not exist (distinguishing from a resource that exists
-    but has no eenheid assigned).
-    """
-    if resource_type == "corpus_node":
-        from bouwmeester.models.corpus_node import CorpusNode
-
-        stmt = select(CorpusNode.organisatie_eenheid_id).where(
-            CorpusNode.id == resource_id
-        )
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "organisatie_eenheid":
-        from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-
-        stmt = select(OrganisatieEenheid.id).where(OrganisatieEenheid.id == resource_id)
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "opdracht":
-        from bouwmeester.models.opdracht import Opdracht
-
-        stmt = select(Opdracht.opdrachtgever_id).where(Opdracht.id == resource_id)
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "task":
-        from bouwmeester.models.task import Task
-
-        stmt = select(Task.organisatie_eenheid_id).where(Task.id == resource_id)
-        result = await db.execute(stmt)
-        row = result.one_or_none()
-        return (True, row[0]) if row is not None else (False, None)
-
-    if resource_type == "initiatief":
-        from bouwmeester.models.resource_permission import ResourcePermission
-
-        stmt = select(ResourcePermission.organisatie_eenheid_id).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == resource_id,
-            ResourcePermission.organisatie_eenheid_id.isnot(None),
-        )
-        result = await db.execute(stmt)
-        first = result.scalars().first()
-        return (True, first)
-
-    if resource_type == "lead":
-        from bouwmeester.models.lead import Lead
-        from bouwmeester.models.resource_permission import ResourcePermission
-
-        stmt = (
-            select(ResourcePermission.organisatie_eenheid_id)
-            .join(Lead, Lead.initiatief_id == ResourcePermission.resource_id)
-            .where(
-                Lead.id == resource_id,
-                ResourcePermission.resource_type == "initiatief",
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-            )
-        )
-        result = await db.execute(stmt)
-        first = result.scalars().first()
-        return (True, first)
-
-    return (False, None)

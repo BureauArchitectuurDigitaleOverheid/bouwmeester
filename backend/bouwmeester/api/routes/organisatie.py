@@ -9,6 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import (
+    require_can_create_eenheid,
+    require_can_dissolve_eenheid,
+    require_can_move_eenheid,
+    require_can_set_manager,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
@@ -17,6 +23,7 @@ from bouwmeester.core.permissions import (
     require_permission,
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.repositories.org_tree import get_subtree_ids
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -42,13 +49,14 @@ async def _check_eenheid_write_access(
     perm_ctx: PermissionContext,
     org_ctx: OrgContext,
 ) -> None:
-    """Allow update/delete on an eenheid that is either in scope or owned.
+    """Allow editing an eenheid that is either in scope or owned.
 
-    A user with org:manage may mutate any eenheid within their org scope
-    (the regular ministry-admin / unit-manager case). Editors who created
-    a stakeholder eenheid outside their scope are granted an "eigenaar"
-    resource-permission at create-time and may mutate it via that path.
-    Raises 403 otherwise.
+    Covers the ordinary fields (naam, beschrijving) and is the first gate
+    for delete.  Anything that shifts rights (parent, type, manager,
+    dissolving) is checked on top of this by ``core.authority`` via
+    ``_check_structural_changes``.  Editors who created a stakeholder
+    eenheid outside their scope hold an "eigenaar" resource-permission on
+    it and may edit it through that.  Raises 403 otherwise.
 
     TOOI/synthetische rijen zijn read-only behalve voor super_admin —
     die kennen we als bron != 'handmatig'. Mutaties op die rijen worden
@@ -75,7 +83,7 @@ async def _check_eenheid_write_access(
         )
 
     all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-    if org_ctx.is_admin or eenheid_id in all_visible:
+    if eenheid_id in all_visible:
         return
     if perm_ctx.person_id is not None and await check_resource_permission(
         db,
@@ -88,6 +96,39 @@ async def _check_eenheid_write_access(
     raise HTTPException(
         status_code=403, detail="Geen toegang tot deze organisatie-eenheid"
     )
+
+
+async def _check_structural_changes(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    repo: OrganisatieEenheidRepository,
+    current: OrganisatieEenheid,
+    data: OrganisatieEenheidUpdate,
+) -> None:
+    """Guard the parts of an update that change who controls the eenheid.
+
+    Name and description are ordinary edits.  Moving the eenheid, changing
+    it between internal and external, naming a manager and dissolving it
+    (which ends the manager's role) all shift rights, so each goes through
+    the same checks as the equivalent direct action.
+    """
+    fields = data.model_fields_set
+    await require_can_move_eenheid(
+        db,
+        perm_ctx,
+        current,
+        new_parent_id=data.parent_id if "parent_id" in fields else current.parent_id,
+        new_type=data.type if "type" in fields and data.type else current.type,
+    )
+    current_manager = await repo.get_current_manager_id(current.id)
+    if "manager_id" in fields and data.manager_id != current_manager:
+        await require_can_set_manager(
+            db, perm_ctx, eenheid_id=current.id, new_manager_id=data.manager_id
+        )
+    if "geldig_tot" in fields and data.geldig_tot != current.geldig_tot:
+        await require_can_dissolve_eenheid(
+            db, perm_ctx, current, has_manager=current_manager is not None
+        )
 
 
 async def _enrich_with_managers(
@@ -290,6 +331,9 @@ async def create_organisatie(
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
+    await require_can_create_eenheid(
+        db, perm_ctx, parent_id=data.parent_id, manager_id=data.manager_id
+    )
     eenheid = await repo.create(data)
 
     if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
@@ -350,13 +394,15 @@ async def update_organisatie(
     """Update an org unit. Detects circular parent references."""
     await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
+    current = require_found(await repo.get(id), "Eenheid")
+    await _check_structural_changes(db, perm_ctx, repo, current, data)
 
     # Cycle detection for parent_id changes
     if data.parent_id is not None:
         if data.parent_id == id:
             raise HTTPException(400, "Eenheid kan niet zijn eigen parent zijn")
-        descendants = await repo.get_descendant_ids(id)
-        if data.parent_id in descendants:
+        # Same parent source (parent_id) as the rights and visibility walks.
+        if data.parent_id in await get_subtree_ids(db, [id]):
             raise HTTPException(400, "Circulaire parent-relatie gedetecteerd")
 
     eenheid = require_found(await repo.update(id, data), "Eenheid")
@@ -397,6 +443,10 @@ async def delete_organisatie(
     await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
+    # Deleting needs no members and no sub-eenheden (checked below), so the
+    # only right it can take away is the manager's role.
+    if await repo.get_current_manager_id(id) is not None:
+        await require_can_set_manager(db, perm_ctx, eenheid_id=id, new_manager_id=None)
     if await repo.has_children(id):
         raise HTTPException(
             status_code=409,

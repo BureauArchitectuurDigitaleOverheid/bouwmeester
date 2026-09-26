@@ -23,16 +23,15 @@ interface AuthPerson {
   needs_onboarding: boolean;
   onboarding_features: OnboardingFeature[];
   is_admin: boolean;
-  organisatie_eenheden: OrgEenheid[];
   managed_eenheden: OrgEenheid[];
   needs_placement: boolean;
   has_pending_placement: boolean;
   placement_denied: boolean;
   roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
   permissions?: string[];
-  scoped_permissions?: Record<string, string[]>;
   system_permissions?: string[];
-  visible_eenheid_ids?: string[];
+  /** Eenheden whose members this person manages; "*" means all. */
+  managed_subtree_ids?: string[];
 }
 
 interface AuthState {
@@ -108,16 +107,14 @@ async function fetchAuthStatus(): Promise<AuthState> {
           needs_onboarding: data.person.needs_onboarding ?? false,
           onboarding_features: data.person.onboarding_features ?? [],
           is_admin: data.person.is_admin ?? false,
-          organisatie_eenheden: data.person.organisatie_eenheden ?? [],
           managed_eenheden: data.person.managed_eenheden ?? [],
           needs_placement: data.person.needs_placement ?? false,
           has_pending_placement: data.person.has_pending_placement ?? false,
           placement_denied: data.person.placement_denied ?? false,
           roles: data.person.roles ?? [],
           permissions: data.person.permissions ?? [],
-          scoped_permissions: data.person.scoped_permissions ?? {},
           system_permissions: data.person.system_permissions ?? [],
-          visible_eenheid_ids: data.person.visible_eenheid_ids ?? [],
+          managed_subtree_ids: data.person.managed_subtree_ids ?? [],
         }
       : null,
     error: null,

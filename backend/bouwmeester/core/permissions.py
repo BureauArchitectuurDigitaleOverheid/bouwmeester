@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
@@ -62,6 +63,8 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
             "resource_permission:manage",
         },
         "betrokken": {"opdracht:read"},
+        # Informational: the person is the client's contact, no access.
+        "contactpersoon": set(),
     },
     "organisatie_eenheid": {
         "eigenaar": {"org:manage", "resource_permission:manage"},
@@ -90,16 +93,13 @@ class PermissionContext:
             return True
         return perm in self.effective_permissions
 
-    def has_permission_for_eenheid(self, perm: str, eenheid_id: UUID) -> bool:
-        """Check if the user has a permission for a specific eenheid."""
-        if self.is_super_admin:
-            return True
-        # System-level permissions apply everywhere
-        if perm in self.system_permissions:
-            return True
-        # Check scoped permissions for this specific eenheid
-        eenheid_perms = self.scoped_permissions.get(eenheid_id, set())
-        return perm in eenheid_perms
+    def has_system_permission(self, perm: str) -> bool:
+        """Check if a system-level role grants the permission.
+
+        For tenant-wide actions; rights on one eenheid are resolved in
+        ``core.authority.rights_on_eenheid`` (with inheritance).
+        """
+        return self.is_super_admin or perm in self.system_permissions
 
     def has_any_permission(self, *perms: str) -> bool:
         if self.is_super_admin:
@@ -138,9 +138,9 @@ async def build_permission_context(
 
     # Grant implicit viewer role for eenheden the person is a member of
     # but has no explicit PersonRole on.
-    from bouwmeester.core.org_context import _get_own_eenheid_ids
+    from bouwmeester.repositories.org_tree import get_membership_ids
 
-    member_eenheid_ids = await _get_own_eenheid_ids(db, person.id)
+    member_eenheid_ids = await get_membership_ids(db, person.id)
     for eid in member_eenheid_ids:
         if eid not in scoped_roles:
             scoped_roles[eid] = ["viewer"]
@@ -237,19 +237,56 @@ async def get_permission_context(
         return cached
 
     if person is None:
-        from bouwmeester.core.config import get_settings
-
-        settings = get_settings()
-        if not settings.OIDC_ISSUER:
-            # Dev mode: treat as super_admin
-            ctx = PermissionContext(is_authenticated=True, is_super_admin=True)
-        else:
-            ctx = PermissionContext(is_authenticated=False)
+        ctx = anonymous_permission_context()
     else:
         ctx = await build_permission_context(db, person)
 
     request.state.permission_context = ctx
     return ctx
+
+
+def anonymous_permission_context() -> PermissionContext:
+    """Context for a request without a user: everything in dev, nothing else."""
+    from bouwmeester.core.config import is_dev_mode
+
+    if is_dev_mode():
+        return PermissionContext(is_authenticated=True, is_super_admin=True)
+    return PermissionContext(is_authenticated=False)
+
+
+async def get_admin_user(
+    person: Person | None = Depends(get_optional_user),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+) -> Person | None:
+    """Dependency: the current user if super_admin or platform_admin.
+
+    Returns ``None`` only in dev mode: with OIDC configured,
+    ``get_optional_user`` already answers 401 when no Person resolves.
+    """
+    if person is None:
+        return None
+    if perm_ctx.is_super_admin or "platform_admin" in perm_ctx.system_roles:
+        return person
+    raise HTTPException(status_code=403, detail="Alleen voor beheerders")
+
+
+async def get_super_admin_user(
+    admin: Person | None = Depends(get_admin_user),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+) -> Person | None:
+    """Like :func:`get_admin_user`, but refuses ``platform_admin``.
+
+    For actions that can mint or take over rights (granting super_admin,
+    restoring a database, merging persons, rotating an agent's key).
+    platform_admin is an infra role and must not be able to promote itself.
+    """
+    if admin is None or perm_ctx.is_super_admin:
+        return admin
+    raise HTTPException(status_code=403, detail="Alleen voor systeembeheerders")
+
+
+AdminUser = Annotated[Person | None, Depends(get_admin_user)]
+SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
 
 
 async def check_resource_permission(
@@ -292,12 +329,28 @@ def require_permission(*perms: str):
         if perm_ctx.is_super_admin:
             return perm_ctx
         if not perm_ctx.has_any_permission(*perms):
-            raise HTTPException(status_code=403, detail="Insufficient permissions")
+            raise HTTPException(status_code=403, detail="Onvoldoende rechten")
         return perm_ctx
 
     return _check
 
 
-def require_any_permission(*perms: str):
-    """Alias for require_permission (OR logic)."""
-    return require_permission(*perms)
+def require_system_permission(perm: str):
+    """Dependency factory: 403 unless *perm* comes from a system-level role.
+
+    For tenant-wide operations (org syncs, merging eenheden) that a role
+    scoped to one eenheid must not be able to trigger, even though
+    ``require_permission`` would accept it (it checks any scope).
+    """
+
+    async def _check(
+        perm_ctx: PermissionContext = Depends(require_permission(perm)),
+    ) -> PermissionContext:
+        if perm_ctx.has_system_permission(perm):
+            return perm_ctx
+        raise HTTPException(
+            status_code=403,
+            detail="Alleen systeembeheerders mogen dit uitvoeren",
+        )
+
+    return _check

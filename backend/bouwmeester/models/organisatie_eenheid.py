@@ -24,6 +24,24 @@ if TYPE_CHECKING:
     from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 
 
+# Types that make up the internal organisation (ministerie down to team).
+# Everything else (gemeente, zbo, marktpartij, ...) is an external
+# organisation that people are linked to as contacts.  Keep in sync with the
+# internal part of HANDMATIG_AANMAAKBARE_TYPES in frontend/src/types/index.ts.
+INTERNAL_EENHEID_TYPES = frozenset(
+    {
+        "ministerie",
+        "directoraat_generaal",
+        "directie",
+        "dienst",
+        "afdeling",
+        "cluster",
+        "bureau",
+        "team",
+    }
+)
+
+
 class OrganisatieEenheid(Base):
     __tablename__ = "organisatie_eenheid"
 

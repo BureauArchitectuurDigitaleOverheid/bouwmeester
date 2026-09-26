@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import require_system_permission
 from bouwmeester.repositories.edge_schema_rule import EdgeSchemaRuleRepository
 from bouwmeester.repositories.edge_type import EdgeTypeRepository
 from bouwmeester.schema.edge_schema_rule import ValidEdgeTypesResponse
@@ -51,6 +52,7 @@ async def create_edge_type(
     data: EdgeTypeCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_system_permission("config:manage")),
 ) -> EdgeTypeResponse:
     """Create a new edge type definition."""
     repo = EdgeTypeRepository(db)
@@ -75,6 +77,7 @@ async def delete_edge_type(
     id: str,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_system_permission("config:manage")),
 ) -> None:
     """Delete an edge type permanently."""
     repo = EdgeTypeRepository(db)

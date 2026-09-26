@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_deleted
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import require_system_permission
 from bouwmeester.repositories.edge_schema_rule import EdgeSchemaRuleRepository
 from bouwmeester.schema.edge_schema_rule import (
     EdgeSchemaRuleCreate,
@@ -35,6 +36,7 @@ async def create_rule(
     data: EdgeSchemaRuleCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_system_permission("config:manage")),
 ) -> EdgeSchemaRuleResponse:
     """Create a new edge schema rule."""
     repo = EdgeSchemaRuleRepository(db)
@@ -47,6 +49,7 @@ async def delete_rule(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_system_permission("config:manage")),
 ) -> None:
     """Delete an edge schema rule."""
     repo = EdgeSchemaRuleRepository(db)

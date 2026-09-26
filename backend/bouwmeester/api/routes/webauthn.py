@@ -59,7 +59,7 @@ async def _init_webauthn_session(
     session["webauthn_session"] = True
     session["webauthn_created_at"] = time.time()
     session["person_db_id"] = str(person.id)
-    session["person_email"] = person.email or ""
+    session["person_email"] = person.oidc_email or ""
     session["person_name"] = person.naam
     session["person_sub"] = person.oidc_subject or ""
     session["is_admin"] = perm_ctx.is_super_admin
@@ -357,8 +357,10 @@ async def authenticate_verify(
             detail="Gebruiker niet gevonden of inactief",
         )
 
-    email = person.email or ""
-    if not is_email_allowed(email):
+    # Check the whitelist against the address Keycloak last vouched for, not
+    # the editable profile email.  No OIDC login yet means no passkey login.
+    email = person.oidc_email or ""
+    if not email or not is_email_allowed(email):
         raise HTTPException(
             status_code=403,
             detail="Toegang geweigerd — niet op de whitelist",

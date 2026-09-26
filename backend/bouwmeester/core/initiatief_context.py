@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
@@ -38,12 +39,27 @@ class InitiatiefContext:
 
 async def build_initiatief_context(
     db: AsyncSession,
-    person: Person,
+    person: Person | None,
+    *,
+    perm_ctx: PermissionContext | None = None,
 ) -> InitiatiefContext:
-    """Build an InitiatiefContext for the given person."""
-    from bouwmeester.core.permissions import build_permission_context
+    """Build an InitiatiefContext for the given person.
 
-    perm_ctx = await build_permission_context(db, person)
+    Pass an existing *perm_ctx* to avoid building it a second time.
+    """
+    from bouwmeester.core.permissions import (
+        anonymous_permission_context,
+        build_permission_context,
+    )
+
+    if person is None:
+        # Dev mode sees everything; otherwise an anonymous request sees nothing.
+        anon = perm_ctx or anonymous_permission_context()
+        return InitiatiefContext(
+            is_admin=anon.is_super_admin, is_authenticated=anon.is_authenticated
+        )
+    if perm_ctx is None:
+        perm_ctx = await build_permission_context(db, person)
     if perm_ctx.is_super_admin:
         return InitiatiefContext(
             person_id=person.id,
@@ -94,22 +110,14 @@ async def get_initiatief_context(
     request: Request,
     person: Person | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefContext:
     """FastAPI dependency that returns the InitiatiefContext."""
     cached = getattr(request.state, "initiatief_context", None)
     if cached is not None:
         return cached
 
-    if person is None:
-        from bouwmeester.core.config import get_settings
-
-        settings = get_settings()
-        if not settings.OIDC_ISSUER:
-            ctx = InitiatiefContext(is_admin=True, is_authenticated=True)
-        else:
-            ctx = InitiatiefContext(is_authenticated=False)
-    else:
-        ctx = await build_initiatief_context(db, person)
+    ctx = await build_initiatief_context(db, person, perm_ctx=perm_ctx)
 
     request.state.initiatief_context = ctx
     return ctx

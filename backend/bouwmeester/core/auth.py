@@ -247,7 +247,7 @@ async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) ->
     existing = await db.execute(
         select(PersonEmail).where(func.lower(PersonEmail.email) == email)
     )
-    existing_row = existing.scalar_one_or_none()
+    existing_row = existing.scalars().first()
     if existing_row is not None:
         if existing_row.person_id != person_id:
             logger.warning(
@@ -280,54 +280,78 @@ async def get_or_create_person(
     Only links an existing Person by email if ``email_verified`` is True,
     to prevent account takeover via unverified email claims.
     """
+    # The ZAD realm marks SSO Rijk addresses verified (trustEmail on the
+    # broker) and only admins create local accounts, so a real login always
+    # arrives with email_verified=true.
+    email = normalize_email(email)
+
     stmt = select(Person).where(Person.oidc_subject == sub)
     result = await db.execute(stmt)
     person = result.scalar_one_or_none()
 
     if person is not None:
-        # Auto-accumulate emails across logins
-        await _ensure_email_linked(db, person.id, email)
-        return person
-
-    # Only link by email if the OIDC provider has verified the email address.
-    if email_verified:
-        person = await find_person_by_email(db, email)
-
-        if person is not None:
-            person.oidc_subject = sub
-            if name and not person.naam:
-                person.naam = name
+        # Only an address the IdP vouched for becomes the login address.
+        if email_verified:
+            if person.oidc_email != email:
+                person.oidc_email = email
+                await db.flush()
             await _ensure_email_linked(db, person.id, email)
-            await db.flush()
-            await db.refresh(person)
-            return person
+        return person
 
-    # Create brand-new person from OIDC claims.
-    try:
-        person = Person(
-            naam=name or email,
-            email=email,
-            oidc_subject=sub,
+    email_owner = await find_person_by_email(db, email)
+
+    # Link to an existing Person only on a verified email, and only if that
+    # Person is not already bound to another identity.
+    if email_owner is not None and email_verified:
+        if email_owner.oidc_subject is None:
+            email_owner.oidc_subject = sub
+            email_owner.oidc_email = email
+            if name and not email_owner.naam:
+                email_owner.naam = name
+            await db.flush()
+            await db.refresh(email_owner)
+            return email_owner
+        logger.warning(
+            "Verified email %s belongs to person %s with another OIDC subject; "
+            "creating a separate person for subject %s",
+            email,
+            email_owner.id,
+            sub,
         )
-        db.add(person)
-        await db.flush()
-        # Create PersonEmail row for the new person
-        email_obj = PersonEmail(person_id=person.id, email=email, is_default=True)
-        db.add(email_obj)
-        await db.flush()
-        await db.refresh(person)
-        return person
+    elif email_owner is not None:
+        logger.warning(
+            "Unverified email %s belongs to person %s; not linking subject %s",
+            email,
+            email_owner.id,
+            sub,
+        )
+
+    # Create a brand-new Person.  It only claims the email address when
+    # nobody holds it yet; a duplicate can be merged by an admin later.
+    # Savepoints keep a lost race from rolling back the whole request.
+    try:
+        async with db.begin_nested():
+            person = Person(
+                naam=name or email,
+                email=email,
+                oidc_subject=sub,
+                oidc_email=email if email_verified else None,
+            )
+            db.add(person)
+            await db.flush()
     except IntegrityError:
-        # Concurrent insert — roll back and re-fetch.
-        await db.rollback()
-        stmt = select(Person).where(Person.oidc_subject == sub)
-        result = await db.execute(stmt)
-        person = result.scalar_one_or_none()
-        if person is None:
-            person = await find_person_by_email(db, email)
-        if person is None:
-            raise  # Unexpected — re-raise the original error.
-        return person
+        # A concurrent login with the same subject won; use its row.
+        result = await db.execute(select(Person).where(Person.oidc_subject == sub))
+        return result.scalar_one()
+    if email_owner is None:
+        try:
+            async with db.begin_nested():
+                db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
+                await db.flush()
+        except IntegrityError:
+            pass  # claimed concurrently by someone else; keep the person
+    await db.refresh(person)
+    return person
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +487,28 @@ async def validate_session_token(
     return False
 
 
+async def validate_bearer_token(token: str, settings: Settings) -> dict | None:
+    """Validate a Bearer token from the ``Authorization`` header.
+
+    Stricter than a session token: it must be a JWT that validates locally
+    against our issuer *and* our client (``aud``/``azp``), and its email
+    must be on the whitelist.  There is no userinfo fallback, because
+    userinfo accepts any token of any client in the realm.
+    """
+    from bouwmeester.core.whitelist import is_email_allowed
+
+    jwks = await get_jwks(settings)
+    if not jwks:
+        return None
+    claims = validate_jwt_locally(token, jwks, settings)
+    if not claims:
+        return None
+    if not is_email_allowed(claims.get("email") or ""):
+        logger.warning("Bearer token rejected: email not on whitelist")
+        return None
+    return claims
+
+
 async def _validate_token(request: Request, settings: Settings) -> dict | None:
     """Validate the Bearer token or session access token.
 
@@ -493,6 +539,9 @@ async def _validate_token(request: Request, settings: Settings) -> dict | None:
 
     if not token:
         return None
+
+    if is_bearer:
+        return await validate_bearer_token(token, settings)
 
     # Try local JWT validation first (avoids network call).
     jwks = await get_jwks(settings)
@@ -735,12 +784,27 @@ async def _touch_last_seen(db: AsyncSession, person: Person) -> None:
         del _last_seen_updated[oldest]
 
 
+# Cookie set by the frontend's dev-mode person picker.  Only read when no
+# identity provider is configured, which Settings refuses outside local dev.
+DEV_PERSON_COOKIE = "bm_dev_person"
+
+
+async def _dev_person(request: Request, db: AsyncSession) -> Person | None:
+    raw = request.cookies.get(DEV_PERSON_COOKIE)
+    if not raw:
+        return None
+    try:
+        return await db.get(Person, UUID(raw))
+    except ValueError:
+        return None
+
+
 async def _resolve_user(
     request: Request,
     db: AsyncSession,
     settings: Settings,
 ) -> Person | None:
-    """Common auth chain: API key → WebAuthn session → OIDC.
+    """Common auth chain: API key → WebAuthn session → OIDC (or dev pick).
 
     Returns the authenticated :class:`Person` or ``None`` if no valid
     authentication method was found.
@@ -757,9 +821,13 @@ async def _resolve_user(
         await _touch_last_seen(db, person)
         return person
 
-    # 3. OIDC auth.
+    # 3. No identity provider: local development.  The person picked in the
+    # frontend's dev picker stands in for a login, so local testing runs with
+    # that person's real rights.  Without a pick everything is allowed.
     if not settings.OIDC_ISSUER:
-        return None
+        return await _dev_person(request, db)
+
+    # 4. OIDC auth.
 
     claims = await _validate_token(request, settings)
     if claims is None:
@@ -801,35 +869,23 @@ async def get_optional_user(
 
     Checks API key first, then WebAuthn session, then OIDC.  If none are
     present/configured, returns ``None`` (dev mode).
-    """
-    return await _resolve_user(request, db, settings)
 
-
-async def get_admin_user(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
-) -> Person | None:
-    """Dependency that requires the current user to be an admin.
-
-    Checks API key first, then WebAuthn session, then OIDC.  In development
-    mode (no OIDC and no API key) returns ``None`` (all access open).
-    Raises 403 if the user is authenticated but not an admin.
-
-    Uses the RBAC system (``super_admin`` or ``platform_admin`` person_role).
+    With OIDC configured, ``None`` is only returned on public routes.  Many
+    handlers treat ``None`` as "dev mode, allow everything", so a request
+    that got past the middleware but maps to no Person (e.g. a token
+    without an ``email`` claim) must be rejected here instead of silently
+    running as that dev-mode user.
     """
     person = await _resolve_user(request, db, settings)
-    if person is None:
-        return None
-    from bouwmeester.core.permissions import build_permission_context
+    if person is None and settings.OIDC_ISSUER:
+        from bouwmeester.middleware.auth_required import is_public_path
 
-    perm_ctx = await build_permission_context(db, person)
-    if perm_ctx.is_super_admin or "platform_admin" in perm_ctx.system_roles:
-        return person
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Admin access required",
-    )
+        if not is_public_path(request.url.path):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Niet ingelogd",
+            )
+    return person
 
 
 # Type aliases for convenient use in route signatures.
@@ -844,19 +900,10 @@ async def get_admin_user(
 #   so the app keeps working in dev without an OIDC provider.  When deployed
 #   behind the Keycloak gateway, every request carries a valid token and
 #   OptionalUser returns the authenticated Person.
-# - AdminUser: requires admin role.  Returns None in dev mode (no OIDC).
+# - AdminUser / SuperAdminUser: see core.permissions (they build on the
+#   PermissionContext).
 CurrentUser = Annotated[Person, Depends(get_current_user)]
 OptionalUser = Annotated[Person | None, Depends(get_optional_user)]
-AdminUser = Annotated[Person | None, Depends(get_admin_user)]
-
-# New RBAC dependency — returns the resolved PermissionContext.
-# Import here to avoid circular imports at module level.
-from bouwmeester.core.permissions import (  # noqa: E402
-    PermissionContext,
-    get_permission_context,
-)
-
-PermUser = Annotated[PermissionContext, Depends(get_permission_context)]
 
 
 def effective_person_id(

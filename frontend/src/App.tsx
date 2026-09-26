@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CurrentPersonProvider } from '@/contexts/CurrentPersonContext';
-import { OrgContextProvider } from '@/contexts/OrgContext';
 import { VocabularyProvider } from '@/contexts/VocabularyContext';
 import { TaskDetailProvider } from '@/contexts/TaskDetailContext';
 import { NodeDetailProvider } from '@/contexts/NodeDetailContext';
@@ -159,7 +158,6 @@ function AuthenticatedApp() {
       <AuthGate>
         <OnboardingGate>
         <CurrentPersonProvider>
-          <OrgContextProvider>
           <VocabularyProvider>
           <GlobalFileDropProvider>
             <ChatProvider>
@@ -202,7 +200,6 @@ function AuthenticatedApp() {
           </ChatProvider>
           </GlobalFileDropProvider>
           </VocabularyProvider>
-          </OrgContextProvider>
         </CurrentPersonProvider>
         </OnboardingGate>
       </AuthGate>

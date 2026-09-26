@@ -69,6 +69,25 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         await self.session.flush()
         return await self.get_with_person(rp.id)  # type: ignore[return-value]
 
+    async def find_grants(
+        self,
+        resource_type: str,
+        resource_id: UUID,
+        *,
+        person_id: UUID | None = None,
+        eenheid_id: UUID | None = None,
+    ) -> list[ResourcePermission]:
+        """Grants on a resource for one person or one eenheid."""
+        stmt = select(ResourcePermission).where(
+            ResourcePermission.resource_type == resource_type,
+            ResourcePermission.resource_id == resource_id,
+        )
+        if person_id is not None:
+            stmt = stmt.where(ResourcePermission.person_id == person_id)
+        if eenheid_id is not None:
+            stmt = stmt.where(ResourcePermission.organisatie_eenheid_id == eenheid_id)
+        return list((await self.session.execute(stmt)).scalars().all())
+
     async def get_roles_for_person_resource(
         self, person_id: UUID, resource_type: str, resource_id: UUID
     ) -> set[str]:

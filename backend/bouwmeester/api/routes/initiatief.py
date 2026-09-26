@@ -8,6 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import (
+    require_can_change_grants,
+    require_can_grant_resource_role,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
@@ -305,7 +309,14 @@ async def add_member(
 ) -> InitiatiefMemberResponse:
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="initiatief",
+        resource_id=id,
+        rol=data.rol,
+        target_person_id=data.person_id,
+    )
     member = await repo.add_member(id, data.person_id, data.rol)
 
     await log_activity(
@@ -341,16 +352,14 @@ async def remove_member(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
-    # Prevent removing the last eigenaar
-    current_role = await repo.get_member_role(id, person_id)
-    if current_role == "eigenaar":
-        eigenaar_count = await repo.count_eigenaren(id)
-        if eigenaar_count <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Er moet tenminste 1 eigenaar zijn",
-            )
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="initiatief",
+        resource_id=id,
+        person_id=person_id,
+        new_rol=None,
+    )
     if not await repo.remove_member(id, person_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -380,16 +389,14 @@ async def update_member_role(
 ) -> InitiatiefMemberResponse:
     """Update a member's role (e.g. promote to eigenaar)."""
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
-    # Prevent demoting the last eigenaar
-    if data.rol != "eigenaar":
-        eigenaar_count = await repo.count_eigenaren(id)
-        current_role = await repo.get_member_role(id, person_id)
-        if current_role == "eigenaar" and eigenaar_count <= 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Er moet tenminste 1 eigenaar zijn",
-            )
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="initiatief",
+        resource_id=id,
+        person_id=person_id,
+        new_rol=data.rol,
+    )
     member = await repo.update_member_role(id, person_id, data.rol)
     if member is None:
         raise HTTPException(
@@ -439,7 +446,14 @@ async def add_eenheid(
 
     repo = InitiatiefRepository(db)
     require_found(await repo.get_by_id(id), "Initiatief")
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="initiatief",
+        resource_id=id,
+        rol=data.rol,
+        target_eenheid_id=data.eenheid_id,
+    )
     try:
         rp = await repo.add_eenheid(id, data.eenheid_id, data.rol)
     except IntegrityError:
@@ -481,7 +495,14 @@ async def remove_eenheid(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="initiatief",
+        resource_id=id,
+        eenheid_id=eenheid_id,
+        new_rol=None,
+    )
     if not await repo.remove_eenheid(id, eenheid_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -511,7 +532,14 @@ async def update_eenheid_rol(
 ) -> InitiatiefEenheidResponse:
     """Update an eenheid's role on this initiatief."""
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
+    await require_can_change_grants(
+        db,
+        perm_ctx,
+        resource_type="initiatief",
+        resource_id=id,
+        eenheid_id=eenheid_id,
+        new_rol=data.rol,
+    )
     rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
     if rp is None:
         raise HTTPException(

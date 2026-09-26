@@ -7,6 +7,7 @@ import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { PersonCardExpandable } from '@/components/people/PersonCardExpandable';
 import { Icon } from '@/components/nldd/Icon';
 import { useOrganisatieEenheid, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
+import { usePermissions } from '@/hooks/usePermissions';
 import { formatOrganisatieType, ORGANISATIE_TYPE_BADGE_COLORS, formatFunctie } from '@/types';
 import type { Person, OrganisatieEenheidPersonenGroup } from '@/types';
 
@@ -260,6 +261,7 @@ export function OrganisatieDetail({
   onDropPerson,
 }: OrganisatieDetailProps) {
   const { data: eenheid, isLoading } = useOrganisatieEenheid(selectedId);
+  const { isSuperAdmin } = usePermissions();
   const { data: personenGroup } = useOrganisatiePersonenRecursive(selectedId);
 
   const totalCount = personenGroup ? countAllPersonen(personenGroup) : 0;
@@ -371,9 +373,11 @@ export function OrganisatieDetail({
         <Button variant="secondary" size="sm" icon="person" onClick={onAddPerson}>
           Persoon toevoegen
         </Button>
-        <Button variant="secondary" size="sm" icon="sparkles" onClick={onAddAgent}>
-          Agent toevoegen
-        </Button>
+        {isSuperAdmin && (
+          <Button variant="secondary" size="sm" icon="sparkles" onClick={onAddAgent}>
+            Agent toevoegen
+          </Button>
+        )}
       </nldd-container>
 
       {/* People — recursive grouped view */}

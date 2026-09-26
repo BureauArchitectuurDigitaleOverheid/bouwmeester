@@ -10,11 +10,21 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
-from bouwmeester.core.auth import AdminUser, OptionalUser
+from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import (
+    require_can_delete_person,
+    require_can_edit_person,
+    require_can_place,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, apply_org_filter, get_org_context
-from bouwmeester.core.permissions import require_permission
-from bouwmeester.core.query_utils import normalize_email
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    SuperAdminUser,
+    get_permission_context,
+    require_permission,
+)
+from bouwmeester.core.query_utils import find_person_by_email, normalize_email
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
@@ -48,6 +58,45 @@ from bouwmeester.schema.person import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/people", tags=["people"])
+
+
+def _editable_person(*, identity: bool):
+    """Dependency: load the person from the path and check the caller may edit.
+
+    ``identity`` guards email addresses (see ``require_can_edit_person``).
+    """
+
+    async def _load(
+        id: UUID,
+        perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+        db: AsyncSession = Depends(get_db),
+    ) -> Person:
+        person = require_found(await db.get(Person, id), "Person")
+        await require_can_edit_person(db, perm_ctx, person, identity=identity)
+        return person
+
+    return _load
+
+
+profile_editable_person = _editable_person(identity=False)
+identity_editable_person = _editable_person(identity=True)
+
+
+async def _require_can_place(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    person_id: UUID,
+    eenheid_id: UUID,
+    *,
+    ending: bool = False,
+) -> tuple[Person, OrganisatieEenheid]:
+    """Load person and eenheid and check the caller may change the placement."""
+    person = require_found(await db.get(Person, person_id), "Person")
+    eenheid = require_found(
+        await db.get(OrganisatieEenheid, eenheid_id), "Organisatie-eenheid"
+    )
+    await require_can_place(db, perm_ctx, person, eenheid, ending=ending)
+    return person, eenheid
 
 
 async def _find_name_duplicates(
@@ -106,7 +155,7 @@ async def create_person(
     actor_id: UUID | None = Query(None),
     force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:create")),
+    perm_ctx: PermissionContext = Depends(require_permission("people:create")),
 ) -> PersonCreateResponse:
     """Create a person.
 
@@ -115,16 +164,11 @@ async def create_person(
     duplicates unless force=true is passed.
     """
     # Agent creation requires admin privileges (agents bypass email whitelist).
-    # In dev mode (no OIDC) current_user is None so all access is open.
-    if data.is_agent and current_user is not None:
-        from bouwmeester.core.permissions import build_permission_context
-
-        perm_ctx = await build_permission_context(db, current_user)
-        if not perm_ctx.is_super_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Alleen administrators kunnen agents aanmaken",
-            )
+    if data.is_agent and not perm_ctx.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen administrators kunnen agents aanmaken",
+        )
 
     # Agent names must be unique among active agents
     if data.is_agent:
@@ -172,6 +216,10 @@ async def create_person(
         await db.flush()
 
     # Also create a PersonEmail row if email was provided
+    if data.email and await find_person_by_email(db, data.email) is not None:
+        raise HTTPException(
+            status_code=409, detail=f"E-mailadres '{data.email}' is al in gebruik"
+        )
     if data.email:
         email_obj = PersonEmail(person_id=person.id, email=data.email, is_default=True)
         db.add(email_obj)
@@ -404,20 +452,24 @@ async def update_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    person: Person = Depends(profile_editable_person),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonDetailResponse:
     """Update person fields (naam, functie, etc.)."""
+    if "email" in data.model_fields_set and data.email != normalize_email(
+        person.email or ""
+    ):
+        await require_can_edit_person(db, perm_ctx, person, identity=True)
     # Changing is_agent requires admin privileges (agents bypass email whitelist).
-    # In dev mode (no OIDC) current_user is None so all access is open.
-    if data.is_agent is not None and current_user is not None:
-        from bouwmeester.core.permissions import build_permission_context
-
-        perm_ctx = await build_permission_context(db, current_user)
-        if not perm_ctx.is_super_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Alleen administrators kunnen de agent-status wijzigen",
-            )
+    if (
+        data.is_agent is not None
+        and data.is_agent != person.is_agent
+        and not perm_ctx.is_super_admin
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen administrators kunnen de agent-status wijzigen",
+        )
 
     repo = PersonRepository(db)
     require_found(await repo.update(id, data), "Person")
@@ -444,12 +496,13 @@ async def delete_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:manage")),
+    perm_ctx: PermissionContext = Depends(require_permission("people:manage")),
 ) -> None:
     """Delete a person permanently."""
     repo = PersonRepository(db)
-    person = await repo.get(id)
-    person_naam = person.naam if person else None
+    person = require_found(await repo.get(id), "Person")
+    await require_can_delete_person(db, perm_ctx, person)
+    person_naam = person.naam
     require_deleted(await repo.delete(id), "Person")
     await log_activity(
         db,
@@ -466,7 +519,7 @@ async def delete_person(
 @router.post("/{id}/rotate-api-key", response_model=ApiKeyResponse)
 async def rotate_api_key(
     id: UUID,
-    admin: AdminUser,
+    admin: SuperAdminUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> ApiKeyResponse:
@@ -546,15 +599,10 @@ async def add_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
 ) -> PersonOrganisatieResponse:
     """Place a person in an org unit. Returns 409 if already active in that unit."""
-    require_found(await db.get(Person, id), "Person")
-
-    eenheid = require_found(
-        await db.get(OrganisatieEenheid, data.organisatie_eenheid_id),
-        "Organisatie-eenheid",
-    )
+    _, eenheid = await _require_can_place(db, perm_ctx, id, data.organisatie_eenheid_id)
 
     # Check for existing active placement in same org unit
     existing = await db.execute(
@@ -616,7 +664,7 @@ async def update_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
 ) -> PersonOrganisatieResponse:
     """Update an org placement (e.g. set eind_datum to end placement)."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -625,8 +673,17 @@ async def update_person_organisatie(
     )
     result = await db.execute(stmt)
     placement = require_found(result.scalar_one_or_none(), "Placement")
-
     update_data = data.model_dump(exclude_unset=True)
+    # Only an earlier end date counts as ending; a later one would reopen it.
+    ending = (
+        set(update_data) == {"eind_datum"}
+        and data.eind_datum is not None
+        and (placement.eind_datum is None or data.eind_datum <= placement.eind_datum)
+    )
+    await _require_can_place(
+        db, perm_ctx, id, placement.organisatie_eenheid_id, ending=ending
+    )
+
     for key, value in update_data.items():
         setattr(placement, key, value)
     await db.flush()
@@ -666,7 +723,7 @@ async def delete_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
 ) -> None:
     """Delete an org placement permanently."""
     stmt = select(PersonOrganisatieEenheid).where(
@@ -675,6 +732,9 @@ async def delete_person_organisatie(
     )
     result = await db.execute(stmt)
     placement = require_found(result.scalar_one_or_none(), "Placement")
+    await _require_can_place(
+        db, perm_ctx, id, placement.organisatie_eenheid_id, ending=True
+    )
     await db.delete(placement)
     await db.flush()
 
@@ -700,10 +760,9 @@ async def add_person_email(
     data: PersonEmailCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    _person: Person = Depends(identity_editable_person),
 ) -> PersonEmailResponse:
     """Add an email address to a person. First email auto-becomes default."""
-    require_found(await db.get(Person, id), "Person")
     email = normalize_email(data.email)
 
     # Check uniqueness
@@ -753,7 +812,7 @@ async def remove_person_email(
     email_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    _person: Person = Depends(identity_editable_person),
 ) -> None:
     """Remove an email address. Auto-promotes another email to default if needed."""
     stmt = select(PersonEmail).where(
@@ -790,7 +849,7 @@ async def set_default_email(
     email_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    _person: Person = Depends(identity_editable_person),
 ) -> PersonEmailResponse:
     """Set an email as the default for a person."""
     # Verify the target email exists and belongs to this person
@@ -833,10 +892,9 @@ async def add_person_phone(
     data: PersonPhoneCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    _person: Person = Depends(profile_editable_person),
 ) -> PersonPhoneResponse:
     """Add a phone number to a person. First phone auto-becomes default."""
-    require_found(await db.get(Person, id), "Person")
 
     if data.label not in PHONE_LABELS:
         raise HTTPException(
@@ -884,7 +942,7 @@ async def remove_person_phone(
     phone_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    _person: Person = Depends(profile_editable_person),
 ) -> None:
     """Remove a phone number. Auto-promotes another to default if needed."""
     stmt = select(PersonPhone).where(
@@ -921,7 +979,7 @@ async def set_default_phone(
     phone_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:update")),
+    _person: Person = Depends(profile_editable_person),
 ) -> PersonPhoneResponse:
     """Set a phone number as the default for a person."""
     # Verify the target phone exists and belongs to this person
@@ -957,7 +1015,7 @@ async def set_default_phone(
 @router.post("/merge", status_code=status.HTTP_200_OK)
 async def merge_persons(
     data: PersonMergeRequest,
-    admin: AdminUser,
+    admin: SuperAdminUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ) -> PersonDetailResponse:

@@ -11,38 +11,9 @@ from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import build_permission_context
 from bouwmeester.models.eenheid_module import EenheidModule
-from bouwmeester.models.org_naam import OrganisatieEenheidNaam
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
-from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
-
-
-async def _make_person(db: AsyncSession, naam: str) -> Person:
-    uid = uuid.uuid4()
-    email = f"{naam.lower().replace(' ', '-')}-{uid.hex[:8]}@example.com"
-    person = Person(id=uid, naam=naam, email=email, functie="tester", is_active=True)
-    db.add(person)
-    await db.flush()
-    db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
-    await db.flush()
-    return person
-
-
-async def _make_org(
-    db: AsyncSession, naam: str, parent_id: uuid.UUID | None = None
-) -> OrganisatieEenheid:
-    org = OrganisatieEenheid(
-        id=uuid.uuid4(), naam=naam, type="directie", parent_id=parent_id
-    )
-    db.add(org)
-    await db.flush()
-    db.add(
-        OrganisatieEenheidNaam(eenheid_id=org.id, naam=naam, geldig_van=date.today())
-    )
-    await db.flush()
-    return org
+from tests.factories import make_org, make_person
 
 
 def _make_app_and_client(db_session, person):
@@ -67,10 +38,10 @@ def _make_app_and_client(db_session, person):
 @pytest.fixture
 async def module_setup(db_session: AsyncSession):
     """Create org hierarchy: parent -> child, editor in child, super_admin."""
-    parent = await _make_org(db_session, "Ministerie Test")
-    child = await _make_org(db_session, "Directie Test", parent_id=parent.id)
+    parent = await make_org(db_session, "Ministerie Test")
+    child = await make_org(db_session, "Directie Test", parent=parent)
 
-    editor = await _make_person(db_session, "Module Editor")
+    editor = await make_person(db_session, "Module Editor", account=False)
     db_session.add(
         PersonOrganisatieEenheid(
             person_id=editor.id,
@@ -88,7 +59,7 @@ async def module_setup(db_session: AsyncSession):
     )
     await db_session.flush()
 
-    admin = await _make_person(db_session, "Module Admin")
+    admin = await make_person(db_session, "Module Admin", account=False)
     db_session.add(
         PersonRole(
             person_id=admin.id,
@@ -222,7 +193,7 @@ async def test_member_without_explicit_role_gets_viewer_permissions(module_setup
     s = module_setup
     db = s["db"]
 
-    member = await _make_person(db, "Implicit Viewer")
+    member = await make_person(db, "Implicit Viewer", account=False)
     db.add(
         PersonOrganisatieEenheid(
             person_id=member.id,
@@ -256,7 +227,7 @@ async def test_member_without_role_respects_module_disables(module_setup):
     s = module_setup
     db = s["db"]
 
-    member = await _make_person(db, "Module Limited Member")
+    member = await make_person(db, "Module Limited Member", account=False)
     db.add(
         PersonOrganisatieEenheid(
             person_id=member.id,
@@ -290,7 +261,7 @@ async def test_multi_eenheid_user_partial_disable(module_setup):
     db = s["db"]
 
     # Create second eenheid without initiatieven disable
-    org_b = await _make_org(db, "Directie B", parent_id=s["parent"].id)
+    org_b = await make_org(db, "Directie B", parent=s["parent"])
     db.add(
         PersonOrganisatieEenheid(
             person_id=s["editor"].id,

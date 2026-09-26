@@ -6,6 +6,7 @@ import { NlddButton } from '@/components/nldd/NlddLink';
 import { eventValue, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import { EmptyState } from '@/components/common/EmptyState';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   useInitiatieven,
   useInitiatievenForEenheid,
@@ -29,7 +30,14 @@ const MODULE_DESCRIPTIONS: Record<string, string> = {
 };
 
 export function EenheidBeheerManager() {
-  const { data: allEenheden = [], isLoading } = useOrganisatieFlat();
+  const { data: organisatie = [], isLoading } = useOrganisatieFlat();
+  const { managesEenheid } = usePermissions();
+  // Module toggles need org:manage on the eenheid: only offer the ones this
+  // person manages (everything for a super_admin).
+  const allEenheden = useMemo(
+    () => organisatie.filter((e) => managesEenheid(e.id)),
+    [organisatie, managesEenheid],
+  );
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLElement>(null);

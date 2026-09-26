@@ -61,5 +61,6 @@ class PersonRoleResponse(BaseModel):
 class MyPermissionsResponse(BaseModel):
     roles: list[PersonRoleResponse]
     permissions: list[str]
-    scoped_permissions: dict[str, list[str]] = {}
     system_permissions: list[str] = []
+    # Eenheden whose members this person manages ("*" = all).
+    managed_subtree_ids: list[str] = []

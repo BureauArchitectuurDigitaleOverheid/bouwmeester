@@ -207,6 +207,20 @@ Production access is restricted to whitelisted email addresses stored in the `wh
 
 The inventory test fails CI on any new GET `/api/*` route that lacks an authz dependency, so adding a list-endpoint without `apply_org_filter` is impossible without an explicit whitelist or known-debt entry.
 
+### Authority over grants (`core/authority.py`)
+
+Anything that changes *who has access to what* goes through a `require_can_*` guard in `core/authority.py`, never through `require_permission` + `check_org_scope`: placements, naming a manager, moving or dissolving an eenheid, assigning or revoking roles, deciding placement requests, editing a person (emails are identity), granting resource roles. REST routes and chat tools call the same guards.
+
+- A role on an eenheid applies to everything below it (`rights_on_eenheid`). Seeing an eenheid never implies authority over it.
+- Nobody grants themselves a role; nobody decides their own placement request.
+- Tenant-wide actions (syncs, merges) use `require_system_permission`, not `require_permission`.
+- Tree walks for access (`repositories/org_tree.py`) read `OrganisatieEenheid.parent_id`; internal org types live in `INTERNAL_EENHEID_TYPES`.
+- Tests: `tests/test_grant_authority.py`, built on `tests/factories.py`.
+
+### Testing rights locally
+
+Local dev has no identity provider. Without a pick in the header's person picker every request is allowed; after picking someone, the backend (dev mode only, via the `bm_dev_person` cookie) runs every request with that person's real roles and memberships. `just seed` gives managers, `ministry_admin`s, editors and viewers across a real tree to pick from.
+
 ## Pull requests
 
 - Always branch from the latest remote main: `git fetch origin && git checkout -b <branch> origin/main`

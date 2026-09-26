@@ -17,9 +17,20 @@ from pydantic import (
 PHONE_LABELS = {"werk": "Werk", "mobiel": "Mobiel", "prive": "Priv\u00e9"}
 
 
+def _normalize_email(value: str | None) -> str | None:
+    """Store emails lower-case and trimmed.
+
+    Lookups compare case-insensitively, and the unique index is on
+    ``lower(email)``, so an address must never enter in another case.
+    """
+    return value.strip().lower() if value else value
+
+
 class PersonEmailCreate(BaseModel):
     email: EmailStr
     is_default: bool = False
+
+    normalize_email = field_validator("email")(_normalize_email)
 
 
 class PersonEmailResponse(BaseModel):
@@ -60,6 +71,8 @@ class PersonPhoneResponse(BaseModel):
 
 
 class PersonBase(BaseModel):
+    normalize_email = field_validator("email")(_normalize_email)
+
     naam: str = Field(min_length=1, max_length=200)
     email: str | None = Field(None, max_length=254)
     functie: str | None = Field(None, max_length=200)
@@ -73,6 +86,8 @@ class PersonCreate(PersonBase):
 
 
 class PersonUpdate(BaseModel):
+    normalize_email = field_validator("email")(_normalize_email)
+
     naam: str | None = Field(None, min_length=1, max_length=200)
     email: str | None = Field(None, max_length=254)
     functie: str | None = Field(None, max_length=200)

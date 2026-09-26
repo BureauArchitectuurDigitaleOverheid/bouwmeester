@@ -10,7 +10,6 @@ Verifies that:
 """
 
 import uuid
-from datetime import date, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -21,75 +20,13 @@ from bouwmeester.core.database import get_db
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.edge_type import EdgeType
-from bouwmeester.models.org_naam import OrganisatieEenheidNaam
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
-from bouwmeester.models.person_email import PersonEmail
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
 from bouwmeester.models.task import Task
+from tests.factories import grant_role, make_org, make_person, place
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-async def _make_person(db: AsyncSession, naam: str) -> Person:
-    """Helper: create a person with email."""
-    uid = uuid.uuid4()
-    email = f"{naam.lower().replace(' ', '-')}-{uid.hex[:8]}@example.com"
-    person = Person(id=uid, naam=naam, email=email, functie="tester", is_active=True)
-    db.add(person)
-    await db.flush()
-    db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
-    await db.flush()
-    return person
-
-
-async def _make_org(
-    db: AsyncSession, naam: str, type_: str = "directie", parent_id=None
-) -> OrganisatieEenheid:
-    """Helper: create an org unit."""
-    org = OrganisatieEenheid(
-        id=uuid.uuid4(), naam=naam, type=type_, parent_id=parent_id
-    )
-    db.add(org)
-    await db.flush()
-    db.add(
-        OrganisatieEenheidNaam(eenheid_id=org.id, naam=naam, geldig_van=date.today())
-    )
-    await db.flush()
-    return org
-
-
-async def _place_person(db: AsyncSession, person: Person, org: OrganisatieEenheid):
-    """Helper: place person in org unit."""
-    db.add(
-        PersonOrganisatieEenheid(
-            person_id=person.id,
-            organisatie_eenheid_id=org.id,
-            start_datum=date.today(),
-        )
-    )
-    await db.flush()
-
-
-async def _assign_role(
-    db: AsyncSession,
-    person: Person,
-    role_id: str,
-    org: OrganisatieEenheid | None = None,
-):
-    """Helper: assign a role to a person."""
-    db.add(
-        PersonRole(
-            person_id=person.id,
-            role_id=role_id,
-            organisatie_eenheid_id=org.id if org else None,
-            start_datum=date.today() - timedelta(days=1),
-        )
-    )
-    await db.flush()
 
 
 def _make_app_and_client(db_session, person):
@@ -120,16 +57,16 @@ async def scope_setup(db_session: AsyncSession):
     editor (org_a only) and one for a permissionless viewer.
     Each client gets its own app instance so dependency overrides don't clash.
     """
-    org_a = await _make_org(db_session, "Org A")
-    org_b = await _make_org(db_session, "Org B")
+    org_a = await make_org(db_session, "Org A")
+    org_b = await make_org(db_session, "Org B")
 
-    editor = await _make_person(db_session, "Editor User")
-    await _place_person(db_session, editor, org_a)
-    await _assign_role(db_session, editor, "editor", org_a)
+    editor = await make_person(db_session, "Editor User", account=False)
+    await place(db_session, editor, org_a)
+    await grant_role(db_session, editor, "editor", org_a)
 
-    viewer = await _make_person(db_session, "Viewer User")
-    await _place_person(db_session, viewer, org_a)
-    await _assign_role(db_session, viewer, "viewer", org_a)
+    viewer = await make_person(db_session, "Viewer User", account=False)
+    await place(db_session, viewer, org_a)
+    await grant_role(db_session, viewer, "viewer", org_a)
 
     # Nodes
     node_a = CorpusNode(
@@ -453,8 +390,8 @@ async def test_update_task_in_own_org_succeeds(scope_setup):
 @pytest.fixture
 async def admin_setup(db_session: AsyncSession):
     """Set up a super_admin user with a role assignment."""
-    admin = await _make_person(db_session, "Admin User")
-    await _assign_role(db_session, admin, "super_admin")
+    admin = await make_person(db_session, "Admin User", account=False)
+    await grant_role(db_session, admin, "super_admin")
 
     # Get the assignment ID
     from sqlalchemy import select
@@ -490,15 +427,15 @@ async def test_cannot_revoke_own_super_admin(admin_setup):
 @pytest.fixture
 async def ministry_setup(db_session: AsyncSession):
     """Set up a ministry_admin with sub-tree visibility."""
-    ministry = await _make_org(db_session, "Testministerie", type_="ministerie")
-    child = await _make_org(
-        db_session, "Child directie", type_="directie", parent_id=ministry.id
+    ministry = await make_org(db_session, "Testministerie", type_="ministerie")
+    child = await make_org(
+        db_session, "Child directie", type_="directie", parent=ministry
     )
-    other = await _make_org(db_session, "Other directie", type_="directie")
+    other = await make_org(db_session, "Other directie", type_="directie")
 
-    admin = await _make_person(db_session, "Ministry Admin")
-    await _place_person(db_session, admin, ministry)
-    await _assign_role(db_session, admin, "ministry_admin", ministry)
+    admin = await make_person(db_session, "Ministry Admin", account=False)
+    await place(db_session, admin, ministry)
+    await grant_role(db_session, admin, "ministry_admin", ministry)
 
     # Create nodes in child and other orgs
     child_node = CorpusNode(

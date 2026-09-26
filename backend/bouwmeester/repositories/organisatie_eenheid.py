@@ -112,7 +112,7 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
 
         # Manager change
         if "manager_id" in changes:
-            current_manager_id = await self._get_current_manager_id(eenheid.id)
+            current_manager_id = await self.get_current_manager_id(eenheid.id)
             if changes["manager_id"] != current_manager_id:
                 await self._rotate_unit_manager_role(
                     eenheid.id,
@@ -166,11 +166,14 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
                 PersonRole.start_datum <= today,
                 PersonRole.eind_datum.is_(None),
             )
+            # Oldest first, so with two active managers the most recent one
+            # ends up in the dict: the same one get_current_manager_id returns.
+            .order_by(PersonRole.start_datum.asc())
         )
         result = await self.session.execute(stmt)
         return {row[0]: row[1] for row in result.all()}
 
-    async def _get_current_manager_id(self, eenheid_id: UUID) -> UUID | None:
+    async def get_current_manager_id(self, eenheid_id: UUID) -> UUID | None:
         """Get current manager's person_id from person_role."""
         today = date.today()
         stmt = select(PersonRole.person_id).where(
@@ -179,8 +182,11 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             PersonRole.start_datum <= today,
             PersonRole.eind_datum.is_(None),
         )
+        # Two active managers can exist (a role assigned next to one set via
+        # the eenheid); report the most recent instead of failing.
+        stmt = stmt.order_by(PersonRole.start_datum.desc()).limit(1)
         result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     # ------------------------------------------------------------------
     # Queries

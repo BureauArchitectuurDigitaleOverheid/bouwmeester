@@ -156,34 +156,58 @@ export function OpdrachtDetailModal({ opdrachtId, open, onClose }: OpdrachtDetai
 
   const handleAddMember = async (personId: string) => {
     if (!opdrachtId || !personId) return;
-    await addMemberMutation.mutateAsync({ opdrachtId, personId });
-    setAddMemberValue('');
+    try {
+      await addMemberMutation.mutateAsync({ opdrachtId, personId });
+      setAddMemberValue('');
+    } catch {
+      // Refusals are shown as a toast by useMutationWithError.
+    }
   };
 
   const handleRemoveMember = async (personId: string) => {
     if (!opdrachtId) return;
-    await removeMemberMutation.mutateAsync({ opdrachtId, personId });
+    try {
+      await removeMemberMutation.mutateAsync({ opdrachtId, personId });
+    } catch {
+      // Refusals are shown as a toast by useMutationWithError.
+    }
   };
 
   const handleUpdateMemberRole = async (personId: string, rol: string) => {
     if (!opdrachtId) return;
-    await updateMemberRoleMutation.mutateAsync({ opdrachtId, personId, rol });
+    try {
+      await updateMemberRoleMutation.mutateAsync({ opdrachtId, personId, rol });
+    } catch {
+      // Refusals are shown as a toast by useMutationWithError.
+    }
   };
 
   const handleAddEenheid = async (eenheidId: string) => {
     if (!opdrachtId || !eenheidId) return;
-    await addEenheidMutation.mutateAsync({ opdrachtId, eenheidId });
-    setAddEenheidValue('');
+    try {
+      await addEenheidMutation.mutateAsync({ opdrachtId, eenheidId });
+      setAddEenheidValue('');
+    } catch {
+      // Refusals are shown as a toast by useMutationWithError.
+    }
   };
 
   const handleRemoveEenheid = async (eenheidId: string) => {
     if (!opdrachtId) return;
-    await removeEenheidMutation.mutateAsync({ opdrachtId, eenheidId });
+    try {
+      await removeEenheidMutation.mutateAsync({ opdrachtId, eenheidId });
+    } catch {
+      // Refusals are shown as a toast by useMutationWithError.
+    }
   };
 
   const handleUpdateEenheidRol = async (eenheidId: string, rol: string) => {
     if (!opdrachtId) return;
-    await updateEenheidRolMutation.mutateAsync({ opdrachtId, eenheidId, rol });
+    try {
+      await updateEenheidRolMutation.mutateAsync({ opdrachtId, eenheidId, rol });
+    } catch {
+      // Refusals are shown as a toast by useMutationWithError.
+    }
   };
 
   const handleMatchContacts = async () => {

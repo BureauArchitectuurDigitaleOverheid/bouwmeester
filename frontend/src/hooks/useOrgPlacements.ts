@@ -30,7 +30,8 @@ export function useApprovePlacement() {
   return useMutationWithError({
     mutationFn: (id: string) => api.approvePlacement(id),
     errorMessage: 'Fout bij goedkeuren teamverzoek',
-    invalidateKeys: [queryKeys.orgPlacements.all],
+    // Approving places the person: org chart and people views change.
+    invalidateKeys: [queryKeys.orgPlacements.all, queryKeys.organisatie.all, queryKeys.people.all],
   });
 }
 
