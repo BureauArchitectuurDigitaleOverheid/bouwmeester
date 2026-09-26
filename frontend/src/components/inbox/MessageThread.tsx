@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Icon } from '@/components/nldd/Icon';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { RichTextEditor } from '@/components/common/RichTextEditor';
 import { Modal } from '@/components/common/Modal';
@@ -26,14 +25,21 @@ interface MessageBubbleProps {
 function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBubbleProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const smileRef = useRef<HTMLButtonElement>(null);
 
-  // The chat bubble itself (asymmetric corner, sender-colored background, a
-  // rich-text-content color override so links/buttons read on a dark fill)
-  // is not one of the nine design-system patterns — there is no bubble/chat
-  // component in nldd — so it stays custom markup. What IS layout (alignment
-  // of the bubble to a side, the row it sits in with its hover-revealed
-  // react-button) is an nldd-container below.
+  const body = (
+    <>
+      {!isCurrentUser && message.sender_name && (
+        <nldd-text size="xs" weight="medium" color="secondary">
+          {message.sender_name}
+        </nldd-text>
+      )}
+      <RichTextDisplay content={message.message} fallback="" color={isCurrentUser ? 'inherit' : 'content'} />
+      <nldd-text size="xxs" color={isCurrentUser ? 'inherit' : 'secondary'}>
+        {timeAgo(message.created_at)}
+      </nldd-text>
+    </>
+  );
+
   return (
     <nldd-container layout="row" horizontal-alignment={isCurrentUser ? 'right' : 'left'}>
       <div style={{ maxWidth: '80%' }}>
@@ -42,73 +48,36 @@ function MessageBubble({ message, isCurrentUser, reactions, onReact }: MessageBu
             nldd-container row-reverse equivalent, so this direction switch
             stays plain CSS. */}
         <div
-          style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '4px', flexDirection: isCurrentUser ? 'row-reverse' : 'row' }}
+          style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', flexDirection: isCurrentUser ? 'row-reverse' : 'row' }}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => { if (!showPicker) setHovered(false); }}
         >
-          {/* The chat bubble itself (asymmetric corner, sender-colored fill)
-              is not one of the nine design-system patterns, so it stays custom
-              markup, same call as ChatMessageBubble.tsx. Colors are tokens. */}
-          <div
-            style={{
-              borderRadius: '16px',
-              paddingInline: '16px',
-              paddingBlock: '10px',
-              ...(isCurrentUser
-                ? {
-                    backgroundColor: 'var(--primitives-color-accent-600)',
-                    color: 'var(--primitives-color-neutral-0)',
-                    borderBottomRightRadius: '6px',
-                  }
-                : {
-                    backgroundColor: 'var(--semantics-surfaces-tinted-background-color)',
-                    color: 'var(--primitives-color-neutral-900)',
-                    borderBottomLeftRadius: '6px',
-                  }),
-            }}
-          >
-            {!isCurrentUser && message.sender_name && (
-              <nldd-text size="xs" weight="medium" style={{ opacity: 0.7, display: 'block', marginBottom: '4px' }}>
-                {message.sender_name}
-              </nldd-text>
-            )}
-            {/* This selector override (forcing rich-text content, links and
-                buttons to white) has no design-system equivalent: RichTextDisplay
-                renders arbitrary user content, and there is no "invert my
-                descendants' color" attribute on any nldd-* component. It only
-                applies on the filled (isCurrentUser) bubble. */}
-            <div className={isCurrentUser ? '[&_*]:text-white [&_button]:bg-white/20 [&_button]:text-white [&_a]:text-white [&_a]:underline [&_a]:decoration-white/60 [&_a:hover]:!text-white [&_a:hover]:decoration-white' : undefined} style={{ fontSize: '14px' }}>
-              <RichTextDisplay content={message.message} fallback="" />
-            </div>
-            <nldd-text size="xxs" style={{ display: 'block', marginTop: '4px', opacity: isCurrentUser ? 0.6 : 1 }} {...(isCurrentUser ? { color: 'inherit' } : { color: 'secondary' })}>
-              {timeAgo(message.created_at)}
-            </nldd-text>
-          </div>
-          {/* EmojiPicker anchors itself via getBoundingClientRect on a real DOM
-              button ref, so this trigger stays a native <button>, matching the
-              documented exception in EmojiPicker.tsx/ReactionBar.tsx. */}
-          <div className={`shrink-0 ${hovered || showPicker ? 'visible' : 'invisible'}`} style={{ paddingTop: '4px' }}>
-            <button
-              ref={smileRef}
-              onClick={() => setShowPicker(!showPicker)}
-              className="hover-tinted"
+          {isCurrentUser ? (
+            // nldd-box was checked: it draws tinted, base and critical
+            // surfaces only, no accent fill, so your own bubble keeps this
+            // one filled surface. Radius is the surface token nldd-box uses.
+            <div
               style={{
-                padding: '4px',
-                borderRadius: '9999px',
-                backgroundColor: 'var(--primitives-color-neutral-0)',
-                border: '1px solid var(--primitives-color-neutral-200)',
-                boxShadow: 'var(--primitives-box-shadows-level-1)',
+                borderRadius: 'var(--semantics-surfaces-corner-radius)',
+                backgroundColor: 'var(--primitives-color-accent-600)',
+                color: 'var(--primitives-color-neutral-0)',
               }}
             >
-              <Icon name="face-smiling" size="sm" color="secondary-content" />
-            </button>
-            {showPicker && (
-              <EmojiPicker
-                anchorRef={smileRef}
-                onSelect={(emoji) => { onReact(emoji); setShowPicker(false); setHovered(false); }}
-                onClose={() => { setShowPicker(false); setHovered(false); }}
-              />
-            )}
+              <nldd-container gap="4" padding-inline="16" padding-block="10">{body}</nldd-container>
+            </div>
+          ) : (
+            <nldd-box>
+              <nldd-container gap="4" padding-inline="16" padding-block="10">{body}</nldd-container>
+            </nldd-box>
+          )}
+          <div className={hovered || showPicker ? 'shrink-0' : 'shrink-0 invisible'}>
+            <EmojiPicker
+              icon="face-smiling"
+              accessibleLabel="Reageer met een emoji"
+              variant="neutral-tinted"
+              onSelect={(emoji) => { onReact(emoji); setHovered(false); }}
+              onOpenChange={(open) => { setShowPicker(open); if (!open) setHovered(false); }}
+            />
           </div>
         </div>
         <nldd-container layout="row" horizontal-alignment={isCurrentUser ? 'right' : 'left'}>

@@ -1,5 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
-import { useNlddEvent } from '@/components/nldd/events';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 /** An action offered alongside the message, e.g. undoing what just happened. */
 export interface ToastAction {
@@ -38,45 +37,42 @@ const VARIANTS = {
  * for the consumer to remove it; this provider keeps no timers of its own. A
  * `critical` notification ignores the clock and waits for the user, so an error
  * never disappears on its own.
+ *
+ * Created here rather than rendered as JSX. nldd-notification places itself:
+ * on connect it moves into the design system's shared region (or into the
+ * topmost open overlay), wherever it was written. React would still remove it
+ * from the parent it rendered it into, and once it has moved that removeChild
+ * throws NotFoundError and unmounts the app. So React owns only the lifetime
+ * and the element owns its place.
  */
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number) => void }) {
-  const ref = useRef<HTMLElement>(null);
-  const actionRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = document.createElement('nldd-notification');
+    el.setAttribute('variant', VARIANTS[toast.variant]);
+    el.setAttribute('text', toast.message);
+    el.setAttribute('duration', String(toast.variant === 'warning' ? 8000 : 5000));
+    el.addEventListener('dismiss', () => onDismiss(toast.id));
 
-  useNlddEvent(
-    ref,
-    'dismiss',
-    useCallback(() => onDismiss(toast.id), [onDismiss, toast.id]),
-  );
+    if (toast.action) {
+      const { label, onAction } = toast.action;
+      const button = document.createElement('nldd-button');
+      button.setAttribute('slot', 'actions');
+      button.setAttribute('variant', 'inherit-tinted');
+      button.setAttribute('size', 'sm');
+      button.setAttribute('text', label);
+      button.addEventListener('click', () => {
+        onAction();
+        onDismiss(toast.id);
+      });
+      el.append(button);
+    }
 
-  useNlddEvent(
-    actionRef,
-    'click',
-    useCallback(() => {
-      toast.action?.onAction();
-      onDismiss(toast.id);
-    }, [toast, onDismiss]),
-  );
+    // Anywhere connected will do: it moves itself into the region from here.
+    document.body.append(el);
+    return () => el.remove();
+  }, [toast, onDismiss]);
 
-  return (
-    <nldd-notification
-      ref={ref}
-      variant={VARIANTS[toast.variant]}
-      text={toast.message}
-      duration={toast.variant === 'warning' ? 8000 : 5000}
-    >
-      {toast.action && (
-        <div slot="actions">
-          <nldd-button
-            ref={actionRef}
-            variant="inherit-tinted"
-            size="sm"
-            text={toast.action.label}
-          />
-        </div>
-      )}
-    </nldd-notification>
-  );
+  return null;
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -110,18 +106,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showError, showSuccess, showWarning }}>
       {children}
-      {toasts.length > 0 && (
-        // Viewport-fixed stack pinned to a corner. nldd-container has no
-        // fixed positioning or z-index, so the outer box is plain CSS and the
-        // stacking inside it is an nldd-container.
-        <div style={{ position: 'fixed', bottom: '16px', right: '16px', zIndex: 100 }}>
-          <nldd-container gap="8">
-            {toasts.map((toast) => (
-              <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
-            ))}
-          </nldd-container>
-        </div>
-      )}
+      {/* No wrapper: nldd-notification positions and stacks itself. */}
+      {toasts.map((toast) => (
+        <ToastItem key={toast.id} toast={toast} onDismiss={dismiss} />
+      ))}
     </ToastContext.Provider>
   );
 }
