@@ -517,11 +517,7 @@ async def remove_member(
         person_id=person_id,
         new_rol=None,
     )
-    if not await repo.remove_member(id, person_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contactpersoon niet gevonden",
-        )
+    require_deleted(await repo.remove_member(id, person_id), "Contactpersoon")
 
     await log_activity(
         db,
@@ -554,11 +550,7 @@ async def update_member_role(
         new_rol=data.rol,
     )
     member = await repo.update_member_role(id, person_id, data.rol)
-    if member is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Contactpersoon niet gevonden",
-        )
+    require_found(member, "Contactpersoon")
 
     await log_activity(
         db,
@@ -660,11 +652,7 @@ async def remove_eenheid(
         eenheid_id=eenheid_id,
         new_rol=None,
     )
-    if not await repo.remove_eenheid(id, eenheid_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Eenheid niet gevonden",
-        )
+    require_deleted(await repo.remove_eenheid(id, eenheid_id), "Eenheid")
 
     await log_activity(
         db,
@@ -697,11 +685,7 @@ async def update_eenheid_rol(
         new_rol=data.rol,
     )
     rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
-    if rp is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Eenheid niet gevonden",
-        )
+    require_found(rp, "Eenheid")
 
     await log_activity(
         db,

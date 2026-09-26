@@ -3,9 +3,10 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
@@ -81,8 +82,7 @@ async def _share_source_eenheden(
     eenheid_ids: list[UUID | None] = [source_eenheid_id] if source_eenheid_id else []
     if source_node_id is not None:
         node = await db.get(CorpusNode, source_node_id)
-        if node is None:
-            raise HTTPException(404, "Item niet gevonden")
+        require_found(node, "Item")
         if node.organisatie_eenheid_id:
             eenheid_ids.append(node.organisatie_eenheid_id)
     return eenheid_ids or [None]
@@ -158,8 +158,7 @@ async def revoke_share(
     from bouwmeester.models.shared_access import SharedAccess
 
     share = await db.get(SharedAccess, share_id)
-    if share is None:
-        raise HTTPException(404, "Share not found")
+    require_found(share, "Share")
 
     for eenheid_id in await _share_source_eenheden(
         db, share.source_eenheid_id, share.source_node_id

@@ -794,8 +794,7 @@ async def remove_contact(
         )
     )
     contact = result.scalar_one_or_none()
-    if contact is None:
-        raise HTTPException(status_code=404, detail="Contact not found")
+    require_found(contact, "Contact")
     await require_can_change_resource_role(db, perm_ctx, contact, new_rol=None)
     await db.delete(contact)
     await db.flush()
@@ -876,8 +875,7 @@ async def unlink_node(
         )
     )
     link = result.scalar_one_or_none()
-    if link is None:
-        raise HTTPException(status_code=404, detail="Node link not found")
+    require_found(link, "Node link")
     await db.delete(link)
     await db.flush()
 
@@ -1059,8 +1057,7 @@ async def download_attachment(
         )
     )
     attachment = result.scalar_one_or_none()
-    if attachment is None:
-        raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
+    require_found(attachment, "Bijlage")
 
     if not attachment.pad:
         raise HTTPException(status_code=404, detail="Bestand niet gevonden")
@@ -1091,8 +1088,7 @@ async def delete_attachment(
         )
     )
     attachment = result.scalar_one_or_none()
-    if attachment is None:
-        raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
+    require_found(attachment, "Bijlage")
 
     attachment_pad = attachment.pad
     attachment_naam = attachment.bestandsnaam

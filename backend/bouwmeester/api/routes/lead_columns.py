@@ -63,7 +63,6 @@ async def list_columns(
     _authz=Depends(_READ_INITIATIEF),
 ) -> list[LeadColumnResponse]:
     """List funnel-kolommen for an initiatief. Anyone who may read it."""
-
     repo = LeadColumnRepository(db)
     columns = await repo.list_for_initiatief(initiatief_id)
     counts = await repo.lead_counts_for_initiatief(initiatief_id)
@@ -83,7 +82,6 @@ async def create_column(
     _authz=Depends(_CREATE_COLUMN),
 ) -> LeadColumnResponse:
     """Create a new funnel-kolom."""
-
     repo = LeadColumnRepository(db)
     if await repo.slug_or_name_exists(initiatief_id, name=data.name):
         raise HTTPException(
@@ -121,7 +119,6 @@ async def update_column(
     _authz=Depends(_UPDATE_COLUMN),
 ) -> LeadColumnResponse:
     """Update a funnel-kolom (name/color/flags). Slug is immutable."""
-
     repo = LeadColumnRepository(db)
     existing = await repo.get(column_id)
     if existing is None or existing.initiatief_id != initiatief_id:
@@ -167,7 +164,6 @@ async def delete_column(
     _authz=Depends(_DELETE_COLUMN),
 ) -> None:
     """Delete a kolom. Migrates leads to ``move_to`` if non-empty."""
-
     repo = LeadColumnRepository(db)
     deleted, error = await repo.delete_with_move(initiatief_id, column_id, move_to)
     if not deleted:
@@ -221,7 +217,6 @@ async def reorder_columns(
     _authz=Depends(_UPDATE_COLUMN),
 ) -> list[LeadColumnResponse]:
     """Reorder kolommen. Body must list every column id."""
-
     repo = LeadColumnRepository(db)
     ok, error = await repo.reorder(initiatief_id, data.column_ids)
     if not ok:

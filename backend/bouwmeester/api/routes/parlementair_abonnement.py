@@ -134,7 +134,6 @@ async def list_abonnementen(
     _authz=Depends(_READ_INITIATIEF),
 ) -> list[AbonnementMetTellingResponse]:
     """Welke zoektermen dit initiatief volgt, met wat ze opleveren."""
-
     repo = ParlementairAbonnementRepository(db)
     abonnementen = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
     tellingen = await repo.telling_per_abonnement(SCOPE_INITIATIEF, initiatief_id)
@@ -155,7 +154,6 @@ async def create_abonnement(
     actor_id: UUID | None = None,
 ) -> AbonnementMetTellingResponse:
     """Volg een nieuwe zoekterm voor dit initiatief."""
-
     repo = ParlementairAbonnementRepository(db)
     bestaand = await repo.get_by_term(SCOPE_INITIATIEF, initiatief_id, payload.term)
     if bestaand is not None:
@@ -323,7 +321,6 @@ async def update_abonnement(
     _authz=Depends(_UPDATE_ABONNEMENT),
 ) -> AbonnementMetTellingResponse:
     """Zet een term aan of uit, of pas de notitie aan."""
-
     repo = ParlementairAbonnementRepository(db)
     abonnement = await repo.get(abonnement_id)
     if not _hoort_bij(abonnement, initiatief_id):
@@ -357,7 +354,6 @@ async def delete_abonnement(
     actor_id: UUID | None = None,
 ) -> None:
     """Stop met volgen. De treffers verdwijnen mee (cascade)."""
-
     repo = ParlementairAbonnementRepository(db)
     abonnement = await repo.get(abonnement_id)
     if not _hoort_bij(abonnement, initiatief_id):
@@ -386,7 +382,6 @@ async def get_signaalcontext(
     _authz=Depends(_READ_INITIATIEF),
 ) -> SignaalcontextResponse:
     """De interne context die de prompts gebruiken."""
-
     tekst = await SignaalcontextRepository(db).tekst_voor(
         SCOPE_INITIATIEF, initiatief_id
     )

@@ -513,8 +513,7 @@ async def delete_update(
     _authz=Depends(_DELETE_POST),
 ) -> None:
     post = await _load_post(db, lead_id, post_id)
-    if post is None:
-        raise HTTPException(status_code=404, detail="Update niet gevonden")
+    require_found(post, "Update")
     await db.delete(post)
     await db.flush()
 

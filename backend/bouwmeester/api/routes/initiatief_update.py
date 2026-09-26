@@ -74,7 +74,6 @@ async def list_updates(
     _authz=Depends(_READ_INITIATIEF),
 ) -> list[InitiatiefUpdatePostResponse]:
     """All updates (drafts + published) for anyone who may read the initiatief."""
-
     stmt = (
         select(InitiatiefUpdatePost)
         .where(InitiatiefUpdatePost.initiatief_id == initiatief_id)

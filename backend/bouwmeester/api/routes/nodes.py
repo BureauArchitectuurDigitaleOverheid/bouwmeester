@@ -366,7 +366,6 @@ async def get_node_tasks(
     _authz=Depends(_READ_NODE),
 ) -> list[TaskResponse]:
     """List all tasks linked to a specific node."""
-
     task_repo = TaskRepository(db)
     tasks = await task_repo.get_by_node(id, skip=skip, limit=limit, org_ctx=org_ctx)
     return validate_list(TaskResponse, tasks)
@@ -380,7 +379,6 @@ async def get_node_stakeholders(
     _authz=Depends(_READ_NODE),
 ) -> list[NodeStakeholderResponse]:
     """List stakeholders (eigenaar/betrokken/adviseur) of a node."""
-
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource("corpus_node", id)
     return [
@@ -693,8 +691,7 @@ async def update_node_bron_detail(
     stmt = select(Bron).where(Bron.id == id)
     result = await db.execute(stmt)
     bron = result.scalar_one_or_none()
-    if bron is None:
-        raise HTTPException(status_code=404, detail="Bron detail not found")
+    require_found(bron, "Bron detail")
 
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
