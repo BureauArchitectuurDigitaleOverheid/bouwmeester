@@ -81,25 +81,38 @@ async def _require_can_review(
     return item
 
 
+def _sees_target(edge: SuggestedEdge, org_ctx: OrgContext) -> bool:
+    """Does the caller see the suggestion's (loaded) target node?
+
+    Suggestions embed their target node; ``parlementair:read`` must not
+    reveal nodes the org filter hides.  Decided on the loaded row with the
+    same rule as ``node:read``, so a list costs no extra queries.
+    """
+    return edge.target_node is not None and sees_eenheid(
+        org_ctx, edge.target_node.organisatie_eenheid_id
+    )
+
+
 def _item_response(
     item: ParlementairItem, org_ctx: OrgContext
 ) -> ParlementairItemResponse:
-    """The item with only the suggestions whose target node the caller sees.
-
-    Suggestions embed their target node; ``parlementair:read`` must not
-    reveal nodes the org filter hides.  Decided on the loaded rows with the
-    same rule as ``node:read``, so a list costs no extra queries.
-    """
+    """The item with only the suggestions whose target node the caller sees."""
     response = ParlementairItemResponse.model_validate(item)
-    visible = {
-        edge.id
-        for edge in item.suggested_edges
-        if edge.target_node is not None
-        and sees_eenheid(org_ctx, edge.target_node.organisatie_eenheid_id)
-    }
+    visible = {edge.id for edge in item.suggested_edges if _sees_target(edge, org_ctx)}
     response.suggested_edges = [
         edge for edge in response.suggested_edges if edge.id in visible
     ]
+    return response
+
+
+def _edge_response(edge: SuggestedEdge, org_ctx: OrgContext) -> SuggestedEdgeResponse:
+    """One suggestion, its target node left out when the caller cannot see it.
+
+    A reviewer acts on the item's node; the target may lie elsewhere.
+    """
+    response = SuggestedEdgeResponse.model_validate(edge)
+    if not _sees_target(edge, org_ctx):
+        response.target_node = None
     return response
 
 
@@ -428,6 +441,7 @@ async def update_suggested_edge(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
     suggested_edge = require_found(
@@ -439,7 +453,7 @@ async def update_suggested_edge(
     suggested_edge.edge_type_id = body.edge_type_id
     await db.flush()
     updated = await repo.get_by_id(edge_id)
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/approve", response_model=SuggestedEdgeResponse)
@@ -449,6 +463,7 @@ async def approve_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Approve a suggested edge, creating the actual edge in the graph."""
     suggested_edge = require_found(
@@ -500,7 +515,7 @@ async def approve_edge(
     )
 
     updated = await suggested_edge_repo.get_by_id(edge_id)
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/reject", response_model=SuggestedEdgeResponse)
@@ -510,6 +525,7 @@ async def reject_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Reject a suggested edge (sets status to rejected)."""
     repo = SuggestedEdgeRepository(db)
@@ -529,7 +545,7 @@ async def reject_edge(
         details={"suggested_edge_id": str(edge_id)},
     )
 
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/reset", response_model=SuggestedEdgeResponse)
@@ -539,6 +555,7 @@ async def reset_suggested_edge(
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_RESET_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Reset a suggested edge back to pending, undoing approve/reject.
 
@@ -571,4 +588,4 @@ async def reset_suggested_edge(
         details={"suggested_edge_id": str(edge_id)},
     )
 
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)

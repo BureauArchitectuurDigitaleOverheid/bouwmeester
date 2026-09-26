@@ -8,13 +8,14 @@ import uuid
 import pytest
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.parlementair_item import SuggestedEdge
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.services.caller import caller_for
 from bouwmeester.services.chat_service import _authorize_write_tool
 from bouwmeester.services.mattermost_slash_service import MattermostSlashService
 from bouwmeester.services.notification_service import NotificationService
-from tests.authz_world import World
+from tests.authz_world import World, make_item
 from tests.factories import client_as
 
 # ---------------------------------------------------------------------------
@@ -147,3 +148,36 @@ async def test_edge_notification_hides_an_unreadable_end(world):
     full = by_person[super_admin.id]
     assert team_node.title in full.message
     assert elders_node.title in full.message
+
+
+# ---------------------------------------------------------------------------
+# Suggested-edge actions do not reveal a target node the reviewer cannot see
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("method", "action"),
+    [("PUT", "reject"), ("PUT", "reset"), ("PATCH", ""), ("PUT", "approve")],
+)
+@pytest.mark.parametrize(
+    ("target", "shown"), [("node_elders", False), ("node_afdeling", True)]
+)
+async def test_suggested_edge_action_redacts_target(
+    world, method, action, target, shown
+):
+    item = await make_item(world, "node_team")
+    suggested = SuggestedEdge(
+        parlementair_item_id=item.id,
+        target_node_id=world.res[target],
+        edge_type_id=world.res["edge_type"],
+        confidence=0.9,
+    )
+    world.db.add(suggested)
+    await world.db.flush()
+    url = f"/api/parlementair/edges/{suggested.id}" + (f"/{action}" if action else "")
+    body = {"edge_type_id": world.res["edge_type"]} if method == "PATCH" else None
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.request(method, url, json=body)
+
+    assert resp.status_code == 200, resp.text
+    assert (resp.json()["target_node"] is not None) is shown
