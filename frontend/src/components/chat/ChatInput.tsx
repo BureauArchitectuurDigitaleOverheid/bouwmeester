@@ -164,118 +164,111 @@ export function ChatInput() {
   const hasAttachments = pendingAttachments.length > 0 || uploadingCount > 0;
 
   return (
-    // border-top + the drag-over ring: a focus/drag-state ring around the
-    // whole input strip has no nldd-container equivalent (container has no
-    // border or ring styling at all, only padding/gap/layout), so this outer
-    // chrome stays plain CSS.
+    // The top rule and the drag-over ring: nldd-container draws no border,
+    // and nldd-box paints a tinted surface ringed on every side, which would
+    // box the whole composer in. So this strip keeps plain CSS on the design
+    // system's divider tokens.
     <div
       style={{
-        borderTop: '1px solid var(--primitives-color-neutral-50)',
-        padding: '12px',
+        borderTop: 'var(--semantics-dividers-thickness) solid var(--semantics-dividers-color)',
         boxShadow: isDragging ? 'inset 0 0 0 2px var(--primitives-color-accent-400)' : undefined,
       }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Attachment preview strip */}
-      {hasAttachments && (
-        <nldd-container layout="wrap" gap="8" padding-bottom="8">
-          {pendingAttachments.map((att) => (
-            // An attachment pill: no nldd-tag/nldd-token fits a file preview
-            // with a thumbnail and a remove button, so the chip's own
-            // background/rounding stays scoped CSS around nldd-container's
-            // flex layout.
-            <div
-              key={att.id}
-              style={{ borderRadius: '8px', paddingInline: '8px', paddingBlock: '6px', fontSize: '12px', backgroundColor: 'var(--primitives-color-coolgray-100)' }}
-            >
-              <nldd-container layout="row" gap="6" vertical-alignment="center">
-                {isImageContentType(att.content_type) ? (
-                  <nldd-image
-                    src={chatAttachmentPreviewUrl(att.id)}
-                    alt={att.bestandsnaam}
-                    width="32"
-                    height={32}
-                    object-fit="cover"
-                    shape="rounded"
+      <nldd-container padding="12" gap="8">
+        {/* Attachment preview strip */}
+        {hasAttachments && (
+          <nldd-container layout="wrap" gap="8">
+            {pendingAttachments.map((att) => (
+              // nldd-box, not nldd-token: a token holds text only, and this pill
+              // shows a thumbnail of the image about to be sent.
+              <nldd-box key={att.id}>
+                <nldd-container layout="row" gap="6" vertical-alignment="center" padding-inline="8" padding-block="6">
+                  {isImageContentType(att.content_type) ? (
+                    <nldd-image
+                      src={chatAttachmentPreviewUrl(att.id)}
+                      alt={att.bestandsnaam}
+                      width="32"
+                      height={32}
+                      object-fit="cover"
+                      shape="rounded"
+                    />
+                  ) : (
+                    <Icon name="file-text" size="md" />
+                  )}
+                  {/* A max-width to cut against: nldd-text has no width of its own. */}
+                  <nldd-text size="xs" className="truncate" style={{ maxWidth: '120px' }} title={att.bestandsnaam}>
+                    {att.bestandsnaam}
+                  </nldd-text>
+                  <NlddIconButton
+                    icon="close"
+                    accessibleLabel="Verwijderen"
+                    variant="neutral-transparent"
+                    size="xs"
+                    onClick={() => removeAttachment(att.id)}
                   />
-                ) : (
-                  <Icon name="file-text" size="md" />
-                )}
-                {/* truncate + fixed max-width: no nldd-text single-line
-                    ellipsis equivalent. */}
-                <span className="truncate" style={{ maxWidth: '120px' }} title={att.bestandsnaam}>
-                  {att.bestandsnaam}
-                </span>
-                <NlddIconButton
-                  icon="close"
-                  accessibleLabel="Verwijderen"
-                  variant="neutral-transparent"
-                  size="xs"
-                  onClick={() => removeAttachment(att.id)}
-                />
-              </nldd-container>
-            </div>
-          ))}
-          {uploadingCount > 0 && (
-            <div
-              style={{ borderRadius: '8px', paddingInline: '8px', paddingBlock: '6px', fontSize: '12px', backgroundColor: 'var(--primitives-color-coolgray-100)' }}
-            >
-              <nldd-container layout="row" gap="6" vertical-alignment="center">
-                <nldd-activity-indicator size="16" />
-                <nldd-text size="xs" color="secondary">Uploaden...</nldd-text>
-              </nldd-container>
-            </div>
-          )}
-        </nldd-container>
-      )}
+                </nldd-container>
+              </nldd-box>
+            ))}
+            {uploadingCount > 0 && (
+              <nldd-box>
+                <nldd-container layout="row" gap="6" vertical-alignment="center" padding-inline="8" padding-block="6">
+                  <nldd-activity-indicator size="16" />
+                  <nldd-text size="xs" color="secondary">Uploaden...</nldd-text>
+                </nldd-container>
+              </nldd-box>
+            )}
+          </nldd-container>
+        )}
 
-      <nldd-container
-        layout="row"
-        gap="8"
-        vertical-alignment="bottom"
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        role="group"
-      >
-        {/* File picker button */}
-        <NlddIconButton
-          icon="paperclip"
-          accessibleLabel="Bestand toevoegen"
-          variant="neutral-transparent"
-          size="md"
-          disabled={isLoading}
-          onClick={() => fileInputRef.current?.click()}
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={ACCEPTED_TYPES}
-          multiple
-          style={{ display: 'none' }}
-          onChange={handleFileInputChange}
-        />
+        <nldd-container
+          layout="row"
+          gap="8"
+          vertical-alignment="bottom"
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          role="group"
+        >
+          {/* File picker button */}
+          <NlddIconButton
+            icon="paperclip"
+            accessibleLabel="Bestand toevoegen"
+            variant="neutral-transparent"
+            size="md"
+            disabled={isLoading}
+            onClick={() => fileInputRef.current?.click()}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_TYPES}
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFileInputChange}
+          />
 
-        <nldd-container width="full" min-width="0" gap="0">
-          <RichTextEditor
-            key={editorKey}
-            value={value}
-            onChange={setValue}
-            placeholder="Stel een vraag... @ personen, # nodes/taken"
-            rows={1}
-            readOnly={isLoading}
-            autoFocus
+          <nldd-container width="full" min-width="0" gap="0">
+            <RichTextEditor
+              key={editorKey}
+              value={value}
+              onChange={setValue}
+              placeholder="Stel een vraag... @ personen, # nodes/taken"
+              rows={1}
+              readOnly={isLoading}
+              autoFocus
+            />
+          </nldd-container>
+          <NlddIconButton
+            icon="paper-plane"
+            accessibleLabel="Versturen"
+            variant="primary"
+            size="md"
+            disabled={isLoading || uploadingCount > 0}
+            onClick={handleSend}
           />
         </nldd-container>
-        <NlddIconButton
-          icon="paper-plane"
-          accessibleLabel="Versturen"
-          variant="primary"
-          size="md"
-          disabled={isLoading || uploadingCount > 0}
-          onClick={handleSend}
-        />
       </nldd-container>
     </div>
   );

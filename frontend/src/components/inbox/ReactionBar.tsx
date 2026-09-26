@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
 import { useNlddEvent } from '@/components/nldd/events';
-import { Icon } from '@/components/nldd/Icon';
 import { EmojiPicker } from './EmojiPicker';
 import type { ReactionSummary } from '@/types';
 
@@ -32,7 +31,6 @@ interface ReactionBarProps {
 
 export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const btnRef = useRef<HTMLButtonElement>(null);
 
   if (reactions.length === 0 && !pickerOpen) {
     return null;
@@ -43,35 +41,13 @@ export function ReactionBar({ reactions, onReact }: ReactionBarProps) {
       {reactions.map((r) => (
         <ReactionChip key={r.emoji} reaction={r} onReact={onReact} />
       ))}
-      {/* EmojiPicker anchors itself via getBoundingClientRect on a real DOM
-          button ref, so this trigger stays a native <button> (matching the
-          special case documented in EmojiPicker.tsx) rather than becoming an
-          nldd-icon-button, which would nest one control inside another.
-          `plain-button` supplies the background/border reset the design system
-          would otherwise give it, so the chip row is not a row of grey boxes. */}
-      <button
-        ref={btnRef}
-        className="plain-button hover-tinted"
-        onClick={() => setPickerOpen(!pickerOpen)}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          width: '24px',
-          height: '24px',
-          borderRadius: '9999px',
-        }}
-        aria-label="Reactie toevoegen"
-      >
-        <Icon name="face-smiling-badge-plus" size="sm" color="secondary-content" />
-      </button>
-      {pickerOpen && (
-        <EmojiPicker
-          anchorRef={btnRef}
-          onSelect={onReact}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
+      <EmojiPicker
+        icon="face-smiling-badge-plus"
+        accessibleLabel="Reactie toevoegen"
+        size="xs"
+        onSelect={onReact}
+        onOpenChange={setPickerOpen}
+      />
     </nldd-container>
   );
 }

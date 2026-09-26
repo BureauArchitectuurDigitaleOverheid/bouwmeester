@@ -1,101 +1,74 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useRef } from 'react';
+import { useNlddEvent } from '@/components/nldd/events';
+import { NlddButton } from '@/components/nldd/NlddButton';
 
 const EMOJIS = ['👍', '👎', '❤️', '😊', '😂', '🎉', '👀', '🤔', '✅', '🔥', '💯', '👏'];
 
 interface EmojiPickerProps {
   onSelect: (emoji: string) => void;
-  onClose: () => void;
-  anchorRef: React.RefObject<HTMLButtonElement | null>;
+  /** Accessible name of the trigger button. */
+  accessibleLabel: string;
+  icon: string;
+  variant?: 'neutral-transparent' | 'neutral-tinted';
+  size?: 'xs' | 'sm' | 'md';
+  /** Reports the popover opening and closing, e.g. to keep a hover-revealed trigger visible. */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function EmojiPicker({ onSelect, onClose, anchorRef }: EmojiPickerProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+/**
+ * An icon button that opens a grid of emoji.
+ *
+ * The popover sits in the button's `popup` slot, so the design system anchors
+ * it, toggles it and handles light dismiss and Escape. On a narrow screen it
+ * becomes a bottom sheet by itself.
+ */
+export function EmojiPicker({
+  onSelect,
+  accessibleLabel,
+  icon,
+  variant = 'neutral-transparent',
+  size = 'sm',
+  onOpenChange,
+}: EmojiPickerProps) {
+  const popoverRef = useRef<HTMLElement>(null);
 
-  useEffect(() => {
-    if (anchorRef.current) {
-      const rect = anchorRef.current.getBoundingClientRect();
-      setPos({
-        top: rect.top - 4,
-        left: rect.left,
-      });
-    }
-  }, [anchorRef]);
+  // The popover's own events do not bubble, so listen on the popover itself.
+  useNlddEvent(popoverRef, 'open', useCallback(() => onOpenChange?.(true), [onOpenChange]));
+  useNlddEvent(popoverRef, 'close', useCallback(() => onOpenChange?.(false), [onOpenChange]));
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        ref.current && !ref.current.contains(e.target as Node) &&
-        anchorRef.current && !anchorRef.current.contains(e.target as Node)
-      ) {
-        onClose();
-      }
-    };
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [onClose, anchorRef]);
+  const pick = (emoji: string) => {
+    onSelect(emoji);
+    // The component's own hide(): it no-ops when already closed.
+    (popoverRef.current as { hide?: () => void } | null)?.hide?.();
+  };
 
-  if (!pos) return null;
-
-  return createPortal(
-    // Portalled popup positioned via getBoundingClientRect against the
-    // trigger button (see anchorRef), on a fixed 6-column emoji grid: no
-    // nldd component renders a viewport-anchored popup with computed
-    // top/left coordinates, so the panel and its emoji buttons stay plain CSS.
-    // The buttons carry `plain-button` for the chrome reset: an emoji is the
-    // whole label, and a border around each one would read as a grid of boxes.
-    <div
-      ref={ref}
-      style={{
-        position: 'fixed',
-        top: pos.top,
-        left: pos.left,
-        transform: 'translateY(-100%)',
-        backgroundColor: 'var(--primitives-color-neutral-0)',
-        border: '1px solid var(--primitives-color-neutral-200)',
-        borderRadius: '8px',
-        boxShadow: 'var(--primitives-box-shadows-level-3)',
-        padding: '8px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(6, 1fr)',
-        gap: '4px',
-        zIndex: 60,
-        width: '220px',
-      }}
+  return (
+    <nldd-icon-button
+      icon={icon}
+      variant={variant}
+      size={size}
+      accessible-label={accessibleLabel}
+      popup-type="dialog"
     >
-      {EMOJIS.map((emoji) => (
-        <button
-          key={emoji}
-          onClick={() => {
-            onSelect(emoji);
-            onClose();
-          }}
-          className="plain-button hover-tinted"
-          style={{
-            width: '32px',
-            height: '32px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '18px',
-            borderRadius: '4px',
-          }}
-        >
-          {emoji}
-        </button>
-      ))}
-    </div>,
-    document.body,
+      <nldd-popover
+        slot="popup"
+        ref={popoverRef}
+        accessible-label="Kies een reactie"
+        width="248px"
+        placement="top-start"
+      >
+        <nldd-container layout="grid" column-count={6} gap="4" padding="8" horizontal-alignment="center">
+          {EMOJIS.map((emoji) => (
+            <NlddButton
+              key={emoji}
+              variant="neutral-transparent"
+              size="sm"
+              text={emoji}
+              onClick={() => pick(emoji)}
+            />
+          ))}
+        </nldd-container>
+      </nldd-popover>
+    </nldd-icon-button>
   );
 }

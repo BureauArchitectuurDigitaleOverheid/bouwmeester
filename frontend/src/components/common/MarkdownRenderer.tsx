@@ -159,9 +159,11 @@ interface MarkdownRendererProps {
   content: string;
   compact?: boolean;
   onBmLink?: (type: 'node' | 'task' | 'lead', id: string) => void;
+  /** Passed to nldd-rich-text: `inherit` follows the color of a filled surface. */
+  color?: 'content' | 'inherit';
 }
 
-export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendererProps) {
+export function MarkdownRenderer({ content, compact, onBmLink, color = 'content' }: MarkdownRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
@@ -206,7 +208,7 @@ export function MarkdownRenderer({ content, compact, onBmLink }: MarkdownRendere
   // heading demotion is left of it.
   return (
     <div ref={containerRef} onClick={handleClick}>
-      <nldd-rich-text spacing={compact ? 'tight' : 'snug'}>
+      <nldd-rich-text spacing={compact ? 'tight' : 'snug'} color={color}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={compact ? compactComponents : components}

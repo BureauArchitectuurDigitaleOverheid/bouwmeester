@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useState, type ReactNode } from 'react';
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer';
-import { Icon } from '@/components/nldd/Icon';
+import { ImageLightbox } from '@/components/common/ImageLightbox';
 import { ChatActionCard } from './ChatActionCard';
 import { ChatPendingActionCard } from './ChatPendingActionCard';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
@@ -22,52 +21,6 @@ function fixNumberedBoldHeadings(text: string): string {
   return text.replace(
     /^(\d+)\.\n\*\*(.+?)\*\*:?$/gm,
     (_match, num, title) => `### ${num}. ${title}`,
-  );
-}
-
-/**
- * Rendered through a portal to `document.body`: this component lives inside
- * the split view's inspector pane, and an overlay left as a light-DOM sibling
- * there gets slotted into the main pane and steals its height instead of
- * covering the viewport.
- */
-function ImageLightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  return createPortal(
-    // Full-viewport dimmed overlay behind a portalled image: no nldd component
-    // renders an image lightbox, so this stays plain fixed-position CSS.
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 50,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'var(--semantics-overlays-backdrop-color)',
-      }}
-      onClick={onClose}
-    >
-      <img
-        src={src}
-        alt={alt}
-        style={{
-          maxWidth: '90vw',
-          maxHeight: '90vh',
-          borderRadius: '8px',
-          boxShadow: 'var(--primitives-box-shadows-level-4)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>,
-    document.body,
   );
 }
 
@@ -100,22 +53,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
         gap="0"
         horizontal-alignment={isUser ? 'right' : 'left'}
       >
-        {/* No nldd component renders a chat message bubble, so the rounded
-            pill shape and its background are scoped CSS. The background color
-            comes from the design system's color tokens, never a literal. */}
-        <div
-          style={{
-            maxWidth: '85%',
-            borderRadius: '8px',
-            paddingInline: '12px',
-            paddingBlock: '8px',
-            fontSize: '14px',
-            backgroundColor: isUser
-              ? 'var(--primitives-color-lintblauw-600)'
-              : 'var(--primitives-color-coolgray-100)',
-            color: isUser ? 'var(--primitives-color-coolgray-0)' : undefined,
-          }}
-        >
+        <Bubble isUser={isUser}>
           {/* Attachment previews (user messages) */}
           {attachments.length > 0 && (
             <nldd-container layout="wrap" gap="6" padding-bottom="6">
@@ -145,38 +83,22 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
                     />
                   </button>
                 ) : (
-                  // A file-attachment pill: no nldd-tag/nldd-token fits (those
-                  // are for labeled values, not file previews), so the chip's
-                  // own background/padding stays scoped CSS around
-                  // nldd-container's flex layout.
-                  <div
-                    key={att.id}
-                    style={{
-                      borderRadius: '4px',
-                      paddingInline: '8px',
-                      paddingBlock: '4px',
-                      fontSize: '12px',
-                      backgroundColor: isUser
-                        ? 'color-mix(in oklch, var(--primitives-color-lintblauw-700) 50%, transparent)'
-                        : 'var(--primitives-color-coolgray-200)',
-                    }}
-                  >
-                    <nldd-container layout="row" gap="4" vertical-alignment="center">
-                      <Icon name="file-text" size="sm" />
-                      {/* truncate + fixed max-width: no nldd-text equivalent
-                          for single-line ellipsis truncation. */}
-                      <span className="truncate" style={{ maxWidth: '100px' }}>{att.bestandsnaam}</span>
-                    </nldd-container>
-                  </div>
+                  // nldd-token rather than nldd-tag: a tag never shrinks
+                  // below its label, and a long file name would run out of
+                  // the bubble; the token cuts it off with an ellipsis.
+                  <nldd-token key={att.id} text={att.bestandsnaam} title={att.bestandsnaam} />
                 ),
               )}
             </nldd-container>
           )}
 
           {isUser ? (
-            // whitespace-pre-wrap preserves the user's own line breaks; no
-            // nldd-text equivalent for that CSS white-space value.
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            // pre-wrap keeps the user's own line breaks. On a span inside,
+            // not on the host, as in RichTextDisplay: on the host it also
+            // renders the whitespace around the component's slot.
+            <nldd-text size="sm" color="inherit">
+              <span className="whitespace-pre-wrap">{message.content}</span>
+            </nldd-text>
           ) : message.content ? (
             // MarkdownRenderer styles its own headings and lists, so the
             // wrapper carries nothing.
@@ -202,7 +124,7 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
               ))}
             </nldd-container>
           )}
-        </div>
+        </Bubble>
       </nldd-container>
 
       {/* Image lightbox */}
@@ -214,5 +136,36 @@ export function ChatMessageBubble({ message }: ChatMessageBubbleProps) {
         />
       )}
     </>
+  );
+}
+
+/**
+ * The bubble around one message.
+ *
+ * The assistant's is an nldd-box. The user's own is filled, and nldd-box was
+ * checked for that: it draws tinted, base and critical surfaces only, no
+ * accent fill, so that one surface stays a styled div on the same radius
+ * token nldd-box uses.
+ */
+function Bubble({ isUser, children }: { isUser: boolean; children: ReactNode }) {
+  const inner = (
+    <nldd-container padding-inline="12" padding-block="8">
+      {children}
+    </nldd-container>
+  );
+  return isUser ? (
+    <div
+      style={{
+        maxWidth: '85%',
+        borderRadius: 'var(--semantics-surfaces-corner-radius)',
+        backgroundColor: 'var(--primitives-color-lintblauw-600)',
+        color: 'var(--primitives-color-coolgray-0)',
+      }}
+    >
+      {inner}
+    </div>
+  ) : (
+    // max-width: nldd-box has no width attribute of its own.
+    <nldd-box style={{ maxWidth: '85%' }}>{inner}</nldd-box>
   );
 }

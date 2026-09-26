@@ -1,7 +1,9 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useCallback, useState, useRef } from 'react';
 import { Modal } from '@/components/common/Modal';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { Input } from '@/components/common/Input';
+import { Select } from '@/components/common/Select';
+import { ImageLightbox } from '@/components/common/ImageLightbox';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { Icon } from '@/components/nldd/Icon';
 import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
@@ -164,15 +166,6 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   const [lightboxSrc, setLightboxSrc] = useState<{ src: string; alt: string } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [activityToDelete, setActivityToDelete] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!lightboxSrc) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxSrc(null);
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [lightboxSrc]);
 
   if (!open) return null;
 
@@ -417,14 +410,12 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             return (
               <nldd-card background="tinted">
                 <nldd-container gap="12" padding="12">
-                  <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Funnel-afweging
-                  </nldd-text>
-                  <EngagementTypeDropdown value={editEngagementType} onChange={setEditEngagementType} />
+                  <nldd-title size={6}><h3>Funnel-afweging</h3></nldd-title>
+                  <Select label="Engagement type" options={ENGAGEMENT_OPTIONS} value={editEngagementType} onChange={(e) => setEditEngagementType(e.target.value as EngagementType | '')} />
                   <nldd-container layout="grid" column-count={3} gap="8">
-                    <ScoreDropdown label={labelStrategisch} value={editScoreStrategisch} onChange={setEditScoreStrategisch} />
-                    <ScoreDropdown label={labelPolitiek} value={editScorePolitiek} onChange={setEditScorePolitiek} />
-                    <ScoreDropdown label={labelPositie} value={editScorePositie} onChange={setEditScorePositie} />
+                    <ScoreSelect label={labelStrategisch} value={editScoreStrategisch} onChange={setEditScoreStrategisch} />
+                    <ScoreSelect label={labelPolitiek} value={editScorePolitiek} onChange={setEditScorePolitiek} />
+                    <ScoreSelect label={labelPositie} value={editScorePositie} onChange={setEditScorePositie} />
                   </nldd-container>
                 </nldd-container>
               </nldd-card>
@@ -442,9 +433,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
               <nldd-card background="tinted">
                 <nldd-container gap="12" padding="12">
                   <nldd-container layout="row" gap="8" vertical-alignment="center">
-                    <nldd-text size="xs" weight="medium" color="success" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Publicatie op /c/{linkedInit.slug}
-                    </nldd-text>
+                    <nldd-title size={6}><h3>Publicatie op /c/{linkedInit.slug}</h3></nldd-title>
                     <PublicVisibleSwitch checked={editPublicVisible} onChange={setEditPublicVisible} />
                   </nldd-container>
                   {editPublicVisible && !status.visible && (
@@ -699,7 +688,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             count={lead.attachments.length}
             separated
             action={
-              <label style={{ cursor: 'pointer' }}>
+              <>
+                <NlddButton variant="neutral-transparent" size="sm" startIcon="upload" onClick={() => fileInputRef.current?.click()} text="Uploaden" />
                 <input
                   type="file"
                   multiple
@@ -707,8 +697,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                   ref={fileInputRef}
                   onChange={handleFileUpload}
                 />
-                <NlddButton variant="neutral-transparent" size="sm" startIcon="upload" onClick={() => fileInputRef.current?.click()} text="Uploaden" />
-              </label>
+              </>
             }
           >
             {lead.attachments.length > 0 ? (
@@ -962,31 +951,14 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
       )}
     </Modal>
 
+    {/* Only ever opened from inside the open Modal, so its top-layer window
+        stacks above the Modal's. */}
     {lightboxSrc && (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'var(--semantics-overlays-backdrop-color)',
-        }}
-        onClick={() => setLightboxSrc(null)}
-      >
-        <img
-          src={lightboxSrc.src}
-          alt={lightboxSrc.alt}
-          style={{
-            maxWidth: '90vw',
-            maxHeight: '90vh',
-            borderRadius: '12px',
-            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)',
-          }}
-          onClick={(e) => e.stopPropagation()}
-        />
-      </div>
+      <ImageLightbox
+        src={lightboxSrc.src}
+        alt={lightboxSrc.alt}
+        onClose={() => setLightboxSrc(null)}
+      />
     )}
     <ConfirmDialog
       open={showDeleteConfirm}
@@ -1026,40 +998,21 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   );
 }
 
-function EngagementTypeDropdown({
-  value,
-  onChange,
-}: {
-  value: EngagementType | '';
-  onChange: (value: EngagementType | '') => void;
-}) {
-  // nldd-dropdown stops the slotted select's native `change` and re-emits its
-  // own CustomEvent from the host, so a React onChange on the select never
-  // fires (see src/components/nldd/events.ts). Listen on the dropdown instead.
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(
-    ref,
-    'change',
-    useCallback((e: Event) => onChange(eventValue(e) as EngagementType | ''), [onChange]),
-  );
+/** A leading empty option: every funnel field may stay unset. */
+const ENGAGEMENT_OPTIONS = [
+  { value: '', label: '—' },
+  ...(Object.keys(ENGAGEMENT_TYPE_LABELS) as EngagementType[]).map((k) => ({
+    value: k,
+    label: ENGAGEMENT_TYPE_LABELS[k],
+  })),
+];
 
-  return (
-    <nldd-form-field label="Engagement type">
-      <nldd-dropdown ref={ref} accessible-label="Engagement type" width="full">
-        <select value={value} onChange={() => {}}>
-          <option value="">—</option>
-          {(Object.keys(ENGAGEMENT_TYPE_LABELS) as EngagementType[]).map((k) => (
-            <option key={k} value={k}>
-              {ENGAGEMENT_TYPE_LABELS[k]}
-            </option>
-          ))}
-        </select>
-      </nldd-dropdown>
-    </nldd-form-field>
-  );
-}
+const SCORE_OPTIONS = [
+  { value: '', label: '—' },
+  ...[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: String(n) })),
+];
 
-function ScoreDropdown({
+function ScoreSelect({
   label,
   value,
   onChange,
@@ -1068,33 +1021,13 @@ function ScoreDropdown({
   value: number | '';
   onChange: (value: number | '') => void;
 }) {
-  // Same nldd-dropdown wiring as EngagementTypeDropdown above.
-  const ref = useRef<HTMLElement>(null);
-  useNlddEvent(
-    ref,
-    'change',
-    useCallback(
-      (e: Event) => {
-        const next = eventValue(e);
-        onChange(next === '' ? '' : Number(next));
-      },
-      [onChange],
-    ),
-  );
-
   return (
-    <nldd-form-field label={label}>
-      <nldd-dropdown ref={ref} accessible-label={label} width="full">
-        <select value={value} onChange={() => {}}>
-          <option value="">—</option>
-          {[1, 2, 3, 4, 5].map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-      </nldd-dropdown>
-    </nldd-form-field>
+    <Select
+      label={label}
+      options={SCORE_OPTIONS}
+      value={String(value)}
+      onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+    />
   );
 }
 
@@ -1165,21 +1098,13 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
         <nldd-container layout="row" gap="8" vertical-alignment="center">
           <nldd-icon name={att.soort === 'link' ? 'external-link' : 'paperclip'} size="16" aria-hidden="true" />
           {att.soort === 'link' && att.url ? (
-            // `.link-hover-underline` (utilities.css) is a real hover state;
-            // no nldd-* link primitive fits here (this is a bare href inside
-            // a row, not nldd-list-item-segment).
-            <a
-              href={att.url}
-              target="_blank"
-              rel="noreferrer"
-              className="link-hover-underline"
-              style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--primitives-color-accent-100)' }}
-              title={att.url}
-            >
-              {att.bestandsnaam ?? att.url}
-            </a>
+            // The link inherits its size from the text around it, so the
+            // ellipsis on that text cuts the link off too.
+            <nldd-text size="sm" className="truncate row-fill" title={att.url}>
+              <nldd-link href={att.url} target="_blank" text={att.bestandsnaam ?? att.url} />
+            </nldd-text>
           ) : (
-            <nldd-text size="sm" style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <nldd-text size="sm" className="truncate row-fill">
               {att.bestandsnaam ?? '(naamloos)'}
             </nldd-text>
           )}
@@ -1217,14 +1142,20 @@ function AttachmentRow({ attachment: att, downloadUrl, onDelete, onZoom }: Attac
             type="button"
             onClick={() => onZoom(downloadUrl, att.bestandsnaam ?? 'bijlage')}
             className="plain-button group"
-            style={{ position: 'relative', marginLeft: '8px', display: 'block' }}
+            style={{ position: 'relative', marginLeft: '8px', display: 'block', width: 'fit-content' }}
           >
-            <img
+            {/* A fixed 4:3 box rather than the image's own height: nldd-image
+                has no max-height, and a portrait scan would otherwise take the
+                whole panel. `contain` shows it uncropped inside that box. */}
+            <nldd-image
               src={downloadUrl}
               alt={att.bestandsnaam ?? 'bijlage'}
-              style={{ borderRadius: '8px', border: '1px solid var(--primitives-color-neutral-200)', maxHeight: '192px', objectFit: 'contain' }}
+              width="256"
+              aspect-ratio="4/3"
+              object-fit="contain"
+              shape="rounded"
             />
-            <div className="group-hover-dim-overlay" style={{ position: 'absolute', inset: 0, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="group-hover-dim-overlay" style={{ position: 'absolute', inset: 0, borderRadius: 'var(--components-image-rounded-corner-radius)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <nldd-icon
                 name="magnifier"
                 size="24"
