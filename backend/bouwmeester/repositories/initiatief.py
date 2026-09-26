@@ -111,11 +111,6 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def get_by_slug(self, slug: str) -> Initiatief | None:
-        stmt = select(Initiatief).where(Initiatief.slug == slug)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
-
     async def _slug_exists(self, slug: str, exclude_id: UUID | None = None) -> bool:
         stmt = select(Initiatief.id).where(Initiatief.slug == slug)
         if exclude_id is not None:
