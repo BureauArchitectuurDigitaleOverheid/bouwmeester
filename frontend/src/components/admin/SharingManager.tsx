@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { useSharing, useCreateSharing, useDeleteSharing } from '@/hooks/useSharing';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
-import { useEenhedenWith } from '@/hooks/useCan';
+import { useCan, useEenhedenWith } from '@/hooks/useCan';
 import type { SharingGrantCreate } from '@/hooks/useSharing';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
@@ -67,6 +67,24 @@ export function SharingManager() {
   // backend decides that one on submit.
   const { includes: mayManage } = useEenhedenWith('org:manage');
   const sourceEenheden = sortedEenheden.filter((e) => mayManage(e.id));
+  // Managing the source is not enough: the backend also refuses some
+  // targets (one the caller sits in, for instance). Ask for the chosen pair.
+  const sharePair =
+    form.mode === 'eenheid' && form.source_eenheid_id && form.target_eenheid_id
+      ? {
+          type: 'organisatie_eenheid' as const,
+          id: form.source_eenheid_id,
+          targetEenheidId: form.target_eenheid_id,
+        }
+      : null;
+  const {
+    allowed: mayShare,
+    isLoading: shareDeciding,
+    isError: shareDecisionFailed,
+  } = useCan('eenheid:share', sharePair);
+  const shareRefused = !!sharePair && !shareDeciding && !shareDecisionFailed && !mayShare;
+  // A shared item's eenheid is not known here; the backend decides on submit.
+  const canSubmit = form.mode === 'node' || mayShare;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,6 +186,7 @@ export function SharingManager() {
             placeholder="Selecteer eenheid..."
             options={sortedEenheden.map((e) => ({ value: e.id, label: e.naam }))}
             required
+            error={shareRefused ? 'Je mag de broneenheid niet met deze eenheid delen.' : undefined}
           />
 
           {/* Access level. Always has a value, so marked required rather than
@@ -207,7 +226,7 @@ export function SharingManager() {
               type="submit"
               text="Toevoegen"
               startIcon="plus"
-              disabled={createSharing.isPending}
+              disabled={!canSubmit || createSharing.isPending}
             />
             <NlddButton
               type="button"

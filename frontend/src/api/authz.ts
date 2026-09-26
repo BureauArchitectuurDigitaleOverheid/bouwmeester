@@ -1,34 +1,39 @@
 import { apiGet, apiPost } from './client';
 
 /**
- * Resource types the evaluation endpoint accepts: mirrored by hand from
- * backend `schema/authz.py` `EVALUATION_RESOURCE_TYPES`, which is
- * `core/authz.py` `RESOURCE_TYPES` plus `role`.
+ * Resource types the evaluation endpoint accepts: backend `schema/authz.py`
+ * `EVALUATION_RESOURCE_TYPES`. An unknown type makes the backend reject the
+ * whole request, so `authz.resourceTypes.test.ts` reads the backend source
+ * and fails when this list drifts from it.
  */
-export type AuthzResourceType =
-  | 'corpus_node'
-  | 'edge'
-  | 'task'
-  | 'lead'
-  | 'initiatief'
-  | 'opdracht'
-  | 'organisatie_eenheid'
-  | 'tag'
-  | 'samenwerkingsverband'
-  | 'person'
-  | 'initiatief_update'
-  | 'lead_column'
-  | 'lead_update'
-  | 'lead_activity'
-  | 'lead_attachment'
-  | 'parlementair_abonnement'
-  | 'mattermost_channel_link'
-  | 'github_link'
-  | 'stakeholder_assessment'
-  | 'suggested_edge'
-  | 'suggested_lead'
+export const AUTHZ_RESOURCE_TYPES = [
+  'corpus_node',
+  'edge',
+  'task',
+  'lead',
+  'initiatief',
+  'opdracht',
+  'organisatie_eenheid',
+  'tag',
+  'samenwerkingsverband',
+  'parlementair_item',
+  'person',
+  'initiatief_update',
+  'lead_column',
+  'lead_update',
+  'lead_activity',
+  'lead_attachment',
+  'parlementair_abonnement',
+  'mattermost_channel_link',
+  'github_link',
+  'stakeholder_assessment',
+  'suggested_edge',
+  'suggested_lead',
   // Only for the grant actions `role:assign` and `role:revoke`.
-  | 'role';
+  'role',
+] as const;
+
+export type AuthzResourceType = (typeof AUTHZ_RESOURCE_TYPES)[number];
 
 /**
  * What an action is about: an existing resource (`id`), or one about to be
