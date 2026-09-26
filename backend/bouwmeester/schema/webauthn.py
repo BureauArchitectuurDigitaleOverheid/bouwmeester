@@ -1,4 +1,4 @@
-"""Pydantic schemas for WebAuthn biometric re-authentication."""
+"""Pydantic schemas for WebAuthn passkey re-authentication."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class RegisterVerifyRequest(BaseModel):
     """Browser's attestation response after navigator.credentials.create()."""
 
     credential: str  # JSON string from the browser
-    label: str = Field("Biometrie", max_length=100)
+    label: str = Field("Passkey", max_length=100)
 
 
 class AuthenticateOptionsRequest(BaseModel):

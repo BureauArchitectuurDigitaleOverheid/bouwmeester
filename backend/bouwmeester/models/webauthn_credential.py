@@ -1,4 +1,4 @@
-"""WebAuthn credential model for biometric re-authentication."""
+"""WebAuthn credential model for passkey re-authentication."""
 
 import uuid
 from datetime import datetime

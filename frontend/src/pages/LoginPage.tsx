@@ -1,45 +1,45 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { authenticateWithBiometric, getStoredPersonId, isWebAuthnCancellation } from '@/api/webauthn';
+import { authenticateWithPasskey, getStoredPersonId, isWebAuthnCancellation } from '@/api/webauthn';
 import { useNlddEvent } from '@/components/nldd/events';
 import { NlddButton } from '@/components/nldd/NlddLink';
 import logoImg from '/logo.png?url';
 
 export function LoginPage() {
-  const { login, refreshAuthStatus, authError, canBiometricReauth } = useAuth();
-  const [biometricLoading, setBiometricLoading] = useState(false);
-  const [biometricError, setBiometricError] = useState<string | null>(null);
+  const { login, refreshAuthStatus, authError, canPasskeyLogin } = useAuth();
+  const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const loginRef = useRef<HTMLElement>(null);
 
-  const handleBiometricLogin = useCallback(async () => {
+  const handlePasskeyLogin = useCallback(async () => {
     const personId = getStoredPersonId();
     if (!personId) return;
 
-    setBiometricLoading(true);
-    setBiometricError(null);
+    setPasskeyLoading(true);
+    setPasskeyError(null);
 
     try {
-      const success = await authenticateWithBiometric(personId);
+      const success = await authenticateWithPasskey(personId);
       if (success) {
         await refreshAuthStatus();
       } else {
-        setBiometricError('Biometrische verificatie mislukt. Probeer het opnieuw.');
+        setPasskeyError('Inloggen met passkey mislukt. Probeer het opnieuw.');
       }
     } catch (err) {
       if (isWebAuthnCancellation(err)) {
-        setBiometricError(null); // User cancelled
+        setPasskeyError(null); // User cancelled
       } else {
-        setBiometricError('Biometrische inlog mislukt. Gebruik SSO om in te loggen.');
+        setPasskeyError('Inloggen met passkey mislukt. Gebruik SSO om in te loggen.');
       }
     } finally {
-      setBiometricLoading(false);
+      setPasskeyLoading(false);
     }
   }, [refreshAuthStatus]);
 
   useNlddEvent(loginRef, 'click', login);
 
   const errorMessage =
-    biometricError ||
+    passkeyError ||
     (authError ? 'Er ging iets mis bij het inloggen. Probeer het opnieuw of neem contact op met een beheerder.' : null);
 
   return (
@@ -56,13 +56,13 @@ export function LoginPage() {
 
           {errorMessage && <nldd-banner variant="critical" size="sm" text={errorMessage} />}
 
-          {canBiometricReauth && (
+          {canPasskeyLogin && (
             <NlddButton
-              text="Biometrisch inloggen"
+              text="Inloggen met passkey"
               startIcon="key"
-              loading={biometricLoading}
-              disabled={biometricLoading}
-              onClick={handleBiometricLogin}
+              loading={passkeyLoading}
+              disabled={passkeyLoading}
+              onClick={handlePasskeyLogin}
               width="full"
             />
           )}
@@ -70,7 +70,7 @@ export function LoginPage() {
           <nldd-button
             ref={loginRef}
             text="Inloggen met SSO Rijk"
-            variant={canBiometricReauth ? 'secondary' : 'primary'}
+            variant={canPasskeyLogin ? 'secondary' : 'primary'}
             width="full"
           />
         </nldd-container>

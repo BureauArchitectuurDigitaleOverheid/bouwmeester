@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     SESSION_COOKIE_SECURE: bool = False
     SESSION_TTL_SECONDS: int = 604800  # 7 days
 
-    # WebAuthn (biometric re-authentication)
+    # WebAuthn (passkey re-authentication)
     WEBAUTHN_RP_ID: str = ""
     WEBAUTHN_RP_NAME: str = "Bouwmeester"
     WEBAUTHN_ORIGIN: str = ""

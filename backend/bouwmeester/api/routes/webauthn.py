@@ -1,4 +1,4 @@
-"""WebAuthn routes -- biometric credential registration and authentication."""
+"""WebAuthn routes -- passkey registration and authentication."""
 
 from __future__ import annotations
 

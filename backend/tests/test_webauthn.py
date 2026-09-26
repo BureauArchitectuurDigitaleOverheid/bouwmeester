@@ -1,4 +1,4 @@
-"""Tests for WebAuthn biometric credential registration and authentication."""
+"""Tests for WebAuthn passkey registration and authentication."""
 
 import uuid
 from unittest.mock import MagicMock
@@ -62,7 +62,7 @@ async def webauthn_credential(db_session: AsyncSession, webauthn_person):
         credential_id=b"\x01\x02\x03\x04\x05\x06\x07\x08",
         public_key=b"\x10\x20\x30\x40",
         sign_count=0,
-        label="Test Biometrie",
+        label="Test passkey",
     )
     db_session.add(cred)
     await db_session.flush()
