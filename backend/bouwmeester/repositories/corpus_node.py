@@ -7,7 +7,7 @@ Overrides BaseRepository.create() and update() to manage temporal records
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.org_context import OrgContext, apply_org_filter
@@ -156,89 +156,6 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         stmt = stmt.order_by(CorpusNode.title.asc()).offset(skip).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def get_neighbors(self, id: UUID) -> dict:
-        """Return the node and its directly connected nodes with edges."""
-        node = await self.get(id)
-        if node is None:
-            return {"node": None, "neighbors": []}
-
-        # Nodes connected via edges_from (this node -> neighbor)
-        stmt_from = (
-            select(Edge, CorpusNode)
-            .join(CorpusNode, Edge.to_node_id == CorpusNode.id)
-            .where(Edge.from_node_id == id)
-        )
-        # Nodes connected via edges_to (neighbor -> this node)
-        stmt_to = (
-            select(Edge, CorpusNode)
-            .join(CorpusNode, Edge.from_node_id == CorpusNode.id)
-            .where(Edge.to_node_id == id)
-        )
-
-        result_from = await self.session.execute(stmt_from)
-        result_to = await self.session.execute(stmt_to)
-
-        neighbors = []
-        for edge, neighbor_node in result_from.all():
-            neighbors.append({"node": neighbor_node, "edge": edge})
-        for edge, neighbor_node in result_to.all():
-            neighbors.append({"node": neighbor_node, "edge": edge})
-
-        return {"node": node, "neighbors": neighbors}
-
-    async def get_graph(self, node_id: UUID, depth: int = 2) -> dict:
-        """Return a subgraph around a node using a recursive CTE for BFS traversal."""
-        # Use a recursive CTE to find all nodes within `depth` hops
-        cte_query = text(
-            """
-            WITH RECURSIVE graph_walk AS (
-                -- Base case: the starting node
-                SELECT
-                    id AS node_id,
-                    0 AS level
-                FROM corpus_node
-                WHERE id = :start_id
-
-                UNION
-
-                -- Recursive case: follow edges in both directions
-                SELECT
-                    CASE
-                        WHEN e.from_node_id = gw.node_id THEN e.to_node_id
-                        ELSE e.from_node_id
-                    END AS node_id,
-                    gw.level + 1 AS level
-                FROM graph_walk gw
-                JOIN edge e ON e.from_node_id = gw.node_id
-                             OR e.to_node_id = gw.node_id
-                WHERE gw.level < :max_depth
-            )
-            SELECT DISTINCT node_id FROM graph_walk
-            """
-        )
-        result = await self.session.execute(
-            cte_query, {"start_id": str(node_id), "max_depth": depth}
-        )
-        node_ids = [row[0] for row in result.all()]
-
-        if not node_ids:
-            return {"nodes": [], "edges": []}
-
-        # Fetch all nodes
-        nodes_stmt = select(CorpusNode).where(CorpusNode.id.in_(node_ids))
-        nodes_result = await self.session.execute(nodes_stmt)
-        nodes = list(nodes_result.scalars().all())
-
-        # Fetch all edges between these nodes
-        edges_stmt = select(Edge).where(
-            Edge.from_node_id.in_(node_ids),
-            Edge.to_node_id.in_(node_ids),
-        )
-        edges_result = await self.session.execute(edges_stmt)
-        edges = list(edges_result.scalars().all())
-
-        return {"nodes": nodes, "edges": edges}
 
     async def get_beleidskompas_progress(
         self,
