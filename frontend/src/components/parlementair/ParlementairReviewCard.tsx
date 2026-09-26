@@ -226,7 +226,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   // item's node; an item without node is decided like a new node.
   const nodeResource = corpusNodeId ? ({ type: 'corpus_node', id: corpusNodeId } as const) : null;
   const { allowed: canReview } = useCan('parlementair:review', nodeResource ?? { type: 'corpus_node' });
-  // Editing the node: its tags, and naming yourself its first eigenaar.
+  // Editing the node's tags; without it the tags show read-only.
   const { allowed: canUpdateNode } = useCan('node:update', nodeResource);
   const { allowed: canCreateTag } = useCan('tag:create', { type: 'tag' });
   const { data: nodeEdges } = useQuery({
@@ -273,11 +273,19 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
       description: functieLabel(p.functie),
     }),
   );
-  // The backend lets a reviewer name themselves eigenaar only with
-  // node:update on the node; otherwise "(mij)" is not offered.
-  const eigenaarOptions = canUpdateNode
-    ? sortedPeopleOptions
-    : sortedPeopleOptions.filter((o) => o.value !== currentPerson?.id);
+  // Whether the chosen eigenaar may be named is the backend's decision (it
+  // depends on who owns the node now and on the reviewer's own rights), so
+  // the choice is checked rather than the list filtered. One question for
+  // the chosen person instead of one per person in the whole list.
+  const {
+    allowed: mayNameOwner,
+    isLoading: namingOwnerLoading,
+    isError: namingOwnerError,
+  } = useCan(
+    'parlementair:name_owner',
+    corpusNodeId && eigenaarId ? { type: 'corpus_node', id: corpusNodeId, targetPersonId: eigenaarId } : null,
+  );
+  const ownerRefused = !!eigenaarId && !namingOwnerLoading && !namingOwnerError && !mayNameOwner;
 
   // Edge type options
   const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
@@ -530,6 +538,16 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           )}
 
           {/* Tags on corpus node */}
+          {corpusNodeId && !canUpdateNode && (nodeTags?.length ?? 0) > 0 && (
+            <nldd-container gap="6" max-width="320px">
+              <nldd-text size="xs" weight="medium">Tags</nldd-text>
+              <nldd-container layout="wrap" gap="4">
+                {nodeTags?.map((nt) => (
+                  <nldd-tag key={nt.tag.id} color="neutral" size="sm" text={nt.tag.name} />
+                ))}
+              </nldd-container>
+            </nldd-container>
+          )}
           {corpusNodeId && canUpdateNode && (
             <nldd-container gap="6" max-width="320px">
               <nldd-text size="xs" weight="medium">Tags</nldd-text>
@@ -802,8 +820,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 label="Eigenaar"
                 value={eigenaarId}
                 onChange={setEigenaarId}
-                options={eigenaarOptions}
+                options={sortedPeopleOptions}
                 placeholder="Selecteer eigenaar..."
+                error={ownerRefused ? 'Je mag deze persoon hier niet als eigenaar aanwijzen.' : undefined}
               />
             </nldd-container>
           )}
@@ -814,7 +833,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               <NlddButton
                 size="sm"
                 onClick={handleCompleteSubmit}
-                disabled={!eigenaarId || completeReview.isPending}
+                disabled={!eigenaarId || !mayNameOwner || completeReview.isPending}
                 loading={completeReview.isPending}
                 text="Beoordeling afronden"
               />

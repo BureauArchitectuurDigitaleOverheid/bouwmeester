@@ -31,14 +31,12 @@ const INITIATIEF_ROLS = Object.keys(INITIATIEF_ROL_LABELS);
  */
 export function InitiatiefMensen({ initiatief }: { initiatief: InitiatiefDetail }) {
   const resource = { type: 'initiatief', id: initiatief.id } as const;
-  // Adding a member hands out the default rol; making someone eigenaar is
-  // a stronger grant, asked separately.
+  // Adding a member hands out the default rol.
   const { allowed: canManage } = useCan('resource_role:grant', { ...resource, rol: 'contributor' });
-  const { allowed: canGrantOwner } = useCan('resource_role:grant', { ...resource, rol: 'eigenaar' });
 
   return (
     <nldd-container gap="32">
-      <Members initiatief={initiatief} canManage={canManage} canGrantOwner={canGrantOwner} />
+      <Members initiatief={initiatief} canManage={canManage} />
       <Eenheden initiatief={initiatief} canManage={canManage} />
       <nldd-container gap="8">
         <SectionHeading icon="person" text="Stakeholders" />
@@ -51,19 +49,15 @@ export function InitiatiefMensen({ initiatief }: { initiatief: InitiatiefDetail 
 function Members({
   initiatief,
   canManage,
-  canGrantOwner,
 }: {
   initiatief: InitiatiefDetail;
   canManage: boolean;
-  canGrantOwner: boolean;
 }) {
   const addMemberMutation = useAddInitiatiefMember();
   const removeMemberMutation = useRemoveInitiatiefMember();
   const updateRoleMutation = useUpdateInitiatiefMemberRole();
   const { data: allPeople = [] } = usePeople();
   const [addMemberValue, setAddMemberValue] = useState('');
-
-  const eigenaarCount = initiatief.members.filter((m) => m.rol === 'eigenaar').length;
 
   const availablePeopleOptions = useMemo(() => {
     const memberIds = new Set(initiatief.members.map((m) => m.person_id));
@@ -92,8 +86,6 @@ function Members({
               key={member.person_id}
               initiatiefId={initiatief.id}
               member={member}
-              lastEigenaar={member.rol === 'eigenaar' && eigenaarCount === 1}
-              canGrantOwner={canGrantOwner}
               onRemove={() => removeMemberMutation.mutate({ initiatiefId: initiatief.id, personId: member.person_id })}
               onSetRole={(rol) => void setRole(member.person_id, rol)}
             />
@@ -132,32 +124,28 @@ function Members({
 }
 
 /**
- * One member. Changing the rol needs the authority to hand out eigenaar
- * (and never demotes the last one); removing is the backend's revoke
- * decision, which lets you leave yourself and keeps the last eigenaar.
+ * One member, as the backend decides it. Removing is the revoke of the
+ * current rol (it lets you leave yourself and keeps the last eigenaar,
+ * counting eenheden that are eigenaar too). Changing the rol is that same
+ * revoke plus the grant of the new rol to this person.
  */
 function MemberRow({
   initiatiefId,
   member,
-  lastEigenaar,
-  canGrantOwner,
   onRemove,
   onSetRole,
 }: {
   initiatiefId: string;
   member: InitiatiefMember;
-  lastEigenaar: boolean;
-  canGrantOwner: boolean;
   onRemove: () => void;
   onSetRole: (rol: 'eigenaar' | 'contributor') => void;
 }) {
-  const { allowed: canRemove } = useCan('resource_role:revoke', {
-    type: 'initiatief',
-    id: initiatiefId,
-    rol: member.rol,
-    targetPersonId: member.person_id,
-  });
+  const grant = { type: 'initiatief', id: initiatiefId, targetPersonId: member.person_id } as const;
   const isEigenaar = member.rol === 'eigenaar';
+  const newRol = isEigenaar ? 'contributor' : 'eigenaar';
+  const { allowed: canRemove } = useCan('resource_role:revoke', { ...grant, rol: member.rol });
+  const { allowed: canGrantNew } = useCan('resource_role:grant', { ...grant, rol: newRol });
+  const canSetRole = canRemove && canGrantNew;
   return (
     <nldd-list-item>
       <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
@@ -167,13 +155,13 @@ function MemberRow({
             {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
           </Badge>
         </nldd-container>
-        {((canGrantOwner && !lastEigenaar) || canRemove) && (
+        {(canSetRole || canRemove) && (
           <div className="hug">
-            {canGrantOwner && !lastEigenaar && (
+            {canSetRole && (
               <NlddButton
                 variant="neutral-transparent"
                 size="sm"
-                onClick={() => onSetRole(isEigenaar ? 'contributor' : 'eigenaar')}
+                onClick={() => onSetRole(newRol)}
                 text={isEigenaar ? 'Maak bijdrager' : 'Maak eigenaar'}
               />
             )}

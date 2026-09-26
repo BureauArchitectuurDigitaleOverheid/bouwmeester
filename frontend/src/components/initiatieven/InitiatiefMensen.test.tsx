@@ -146,3 +146,52 @@ describe('InitiatiefMensen eenheid grants', () => {
     expect(container.querySelector('nldd-tag[text="Bijdrager"]')).not.toBeNull();
   });
 });
+
+describe('InitiatiefMensen member rol changes', () => {
+  const buttons = (container: HTMLElement, text: string) => container.querySelectorAll(`nldd-button[text="${text}"]`);
+
+  // Ann is the only eigenaar member, but Team Recht is eigenaar too: the
+  // backend counts that, so revoking Ann's eigenaar is allowed.
+  const WITH_EIGENAAR_EENHEID: InitiatiefDetail = {
+    ...INITIATIEF,
+    eenheden: [eenheid('e1', 'Team Recht', 'eigenaar')],
+  };
+
+  it('asks the grant of the new rol per member', async () => {
+    fakeBackend(mockFetch, { decide: () => false });
+    renderMensen();
+
+    await waitFor(() =>
+      expect(askedQuestions()).toContainEqual({
+        action: 'resource_role:grant',
+        resource: { type: 'initiatief', id: 'i1', properties: { rol: 'contributor', target_person_id: 'p1' } },
+      }),
+    );
+    expect(askedQuestions()).toContainEqual({
+      action: 'resource_role:grant',
+      resource: { type: 'initiatief', id: 'i1', properties: { rol: 'eigenaar', target_person_id: 'p2' } },
+    });
+  });
+
+  it('offers "Maak bijdrager" to the only eigenaar member when the backend allows the revoke', async () => {
+    fakeBackend(mockFetch, {
+      decide: ({ action, resource }) =>
+        resource.properties?.target_person_id === 'p1' &&
+        (action === 'resource_role:revoke' || resource.properties?.rol === 'contributor'),
+    });
+    const { container } = renderMensen(WITH_EIGENAAR_EENHEID);
+
+    await waitFor(() => expect(buttons(container, 'Maak bijdrager')).toHaveLength(1));
+    expect(buttons(container, 'Maak eigenaar')).toHaveLength(0);
+  });
+
+  it('offers no rol change when the revoke is refused, even with the grant', async () => {
+    fakeBackend(mockFetch, { decide: ({ action }) => action === 'resource_role:grant' });
+    const { container } = renderMensen();
+
+    // The add control rides in the same batch: once it shows, all decisions landed.
+    await waitFor(() => expect(container.querySelector('[placeholder="Lid toevoegen..."]')).not.toBeNull());
+    expect(buttons(container, 'Maak bijdrager')).toHaveLength(0);
+    expect(buttons(container, 'Maak eigenaar')).toHaveLength(0);
+  });
+});
