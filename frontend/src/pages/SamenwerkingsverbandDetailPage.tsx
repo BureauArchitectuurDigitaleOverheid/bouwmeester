@@ -21,6 +21,7 @@ import { PersonQuickCreateForm } from '@/components/people/PersonQuickCreateForm
 import { Icon } from '@/components/nldd/Icon';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
 import { useNlddEvent } from '@/components/nldd/events';
+import { formatDate } from '@/utils/dates';
 import {
   SAMENWERKINGSVERBAND_TYPE_LABELS,
   SAMENWERKINGSVERBAND_TYPE_BADGE_COLORS,
@@ -210,14 +211,13 @@ export function SamenwerkingsverbandDetailPage() {
       description: p.functie ?? undefined,
     }));
 
-  const datum = (d: string) => new Date(d).toLocaleDateString('nl-NL');
   const periode =
     swv.start_datum && swv.eind_datum
-      ? `${datum(swv.start_datum)} – ${datum(swv.eind_datum)}`
+      ? `${formatDate(swv.start_datum)} – ${formatDate(swv.eind_datum)}`
       : swv.start_datum
-        ? `sinds ${datum(swv.start_datum)}`
+        ? `sinds ${formatDate(swv.start_datum)}`
         : swv.eind_datum
-          ? `tot ${datum(swv.eind_datum)}`
+          ? `tot ${formatDate(swv.eind_datum)}`
           : null;
 
   return (
@@ -226,11 +226,11 @@ export function SamenwerkingsverbandDetailPage() {
           line. As a row, the link gave way and broke over two lines; now the
           buttons move to the next line and every label stays whole. */}
       <nldd-container layout="wrap" width="full" gap="8" vertical-alignment="center">
-        <nldd-container width="fit-content" className="row-fill">
+        <div className="hug">
           <BackLink to="/samenwerkingsverbanden" text="Terug naar overzicht" />
-        </nldd-container>
+        </div>
         {!editing && (
-          <div className="hug">
+          <div className="hug margin-left-auto">
             <Button variant="ghost" size="sm" icon="pencil" onClick={startEdit}>
               Bewerken
             </Button>
@@ -445,9 +445,9 @@ export function SamenwerkingsverbandDetailPage() {
               // buttons stay visible there. Plain `group-hover-reveal`
               // hid them at every width, which left no way to edit or
               // remove a lid on a phone.
-              const sinds = `sinds ${new Date(lid.start_datum).toLocaleDateString('nl-NL')}`;
+              const sinds = `sinds ${formatDate(lid.start_datum)}`;
               const tot = lid.eind_datum
-                ? `tot ${new Date(lid.eind_datum).toLocaleDateString('nl-NL')}`
+                ? `tot ${formatDate(lid.eind_datum)}`
                 : null;
               const details = [lid.person_expertise, lid.rol, sinds, tot]
                 .filter(Boolean)

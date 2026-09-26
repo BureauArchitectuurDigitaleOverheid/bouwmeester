@@ -14,7 +14,7 @@ import { MultiSelect } from '@/components/common/MultiSelect';
 import type { MultiSelectOption } from '@/components/common/MultiSelect';
 import { CreatableSelect } from '@/components/common/CreatableSelect';
 import type { SelectOption } from '@/components/common/CreatableSelect';
-import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   OPDRACHT_TYPE_LABELS,
@@ -56,25 +56,30 @@ function OpdrachtenSearchField({ value, onChange }: { value: string; onChange: (
  * until asked for; the count says whether any of them is narrowing the list.
  */
 function FiltersToggle({
-  open,
   activeCount,
-  onToggle,
+  onChange,
 }: {
-  open: boolean;
   activeCount: number;
-  onToggle: () => void;
+  onChange: (open: boolean) => void;
 }) {
+  // A toggle button, which announces its state in both positions
+  // (aria-pressed true/false). nldd-button's `expanded` only ever wrote
+  // aria-expanded="true": closed, the attribute was absent, and aria-controls
+  // on the host never reached the button inside the shadow root.
+  //
+  // Uncontrolled on purpose: the button keeps its own state and reports it.
+  // Driving `selected` from React left aria-pressed="" (neither true nor
+  // false) once the attribute was removed again.
   const ref = useRef<HTMLElement>(null);
-  useNlddEvent(ref, 'click', onToggle);
+  useNlddEvent(ref, 'change', (e) =>
+    onChange(Boolean((e as CustomEvent<{ selected?: boolean }>).detail?.selected)),
+  );
   return (
-    <nldd-button
+    <nldd-toggle-button
       ref={ref}
-      variant="secondary"
       size="sm"
-      start-icon="filter"
+      icon="filter"
       text={activeCount > 0 ? `Filters (${activeCount})` : 'Filters'}
-      expanded={orUndef(open)}
-      aria-controls="opdrachten-filters"
     />
   );
 }
@@ -357,7 +362,7 @@ export function OpdrachtenPage() {
 
       {/* Page header */}
       <nldd-toolbar label="Opdrachtacties">
-        <nldd-toolbar-item slot="start" priority={1} min-width="60%">
+        <nldd-toolbar-item slot="start" priority={1} min-width="224px">
           {/* A fixed width: a fit-content container measures its children and
               they measure it back. */}
           <nldd-container width="224px">
@@ -412,18 +417,14 @@ export function OpdrachtenPage() {
           reliably override a custom element's own display. */}
       <nldd-container gap="8">
         <div className="hidden-from-sm">
-          <FiltersToggle
-            open={filtersOpen}
-            activeCount={activeFilterCount}
-            onToggle={() => setFiltersOpen((o) => !o)}
-          />
+          <FiltersToggle activeCount={activeFilterCount} onChange={setFiltersOpen} />
         </div>
         <div id="opdrachten-filters" className={filtersOpen ? undefined : 'hidden-below-sm-block'}>
           <nldd-container
             layout="grid"
             gap="8"
             column-count={1}
-            sm-column-count={1}
+            sm-column-count={2}
             md-column-count={3}
             lg-column-count={6}
           >

@@ -173,7 +173,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
           slot, where a long title pushed them past the edge of the screen:
           all that showed of "Verwijder" was a sliver of red. */}
       <nldd-container layout="wrap" width="full" gap="8" vertical-alignment="center">
-        <nldd-container width="fit-content" className="row-fill">
+        {/* Both hug their content, so the line wraps once they no longer
+            fit side by side. The link used to be row-fill, whose basis is 0:
+            the line never wrapped and the link was squeezed instead. */}
+        <div className="hug">
           <NlddButton
             variant="neutral-transparent"
             size="sm"
@@ -181,8 +184,8 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
             startIcon="arrow-left"
             onClick={() => navigate(corpusUrl)}
           />
-        </nldd-container>
-        <div className="hug hug-gap-8">
+        </div>
+        <div className="hug hug-gap-8 margin-left-auto">
           <Button variant="secondary" size="sm" icon="pencil" onClick={() => setShowEditForm(true)}>
             Bewerken
           </Button>

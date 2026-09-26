@@ -300,7 +300,10 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
             <nldd-title size={6}><h3>Beleidskompas</h3></nldd-title>
             <nldd-link href={KCBR_MAIN_URL} target="_blank" accessible-label="Bekijk Beleidskompas op KCBR" start-icon="external-link" />
             <nldd-spacer size="flexible" />
-            <div className="hug hug-stack">
+            {/* A fixed width: a bar takes the width of its parent, so a
+                parent sized to its content (fit-content, hug) leaves it
+                nothing. As a fit-content container it measured 0px. */}
+            <nldd-container width="120px">
               <nldd-progress-bar
                 value={completedCount}
                 max={totalSteps}
@@ -308,7 +311,7 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
                 size="sm"
                 value-text={`${completedCount}/${totalSteps}`}
               />
-            </div>
+            </nldd-container>
           </nldd-container>
 
           {/* Stakeholders reference (recurring question) — only shown when stakeholders exist */}

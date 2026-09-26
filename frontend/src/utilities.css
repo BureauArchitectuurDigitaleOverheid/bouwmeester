@@ -204,6 +204,16 @@
   flex-shrink: 1;
   min-width: 0;
 }
+/* The group may shrink, so the text in it has to be able to as well: without
+ * this it keeps its flex `min-width: auto` and runs over its neighbours
+ * instead of ending in an ellipsis. Not with `hug-top`, which is for text
+ * that wraps. */
+.hug.hug-truncate:not(.hug-top) > nldd-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* # Hover-reveal within a group
  *

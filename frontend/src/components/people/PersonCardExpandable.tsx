@@ -170,17 +170,16 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
               </a>
             )}
             {person.functie && !person.is_agent && (
-              // nldd-container's layout has no responsive show/hide (unlike
-              // gap/padding/column-count, which do take sm-/md-/lg- variants),
-              // so hiding it below sm is a utility class. It has to be the
-              // -block variant: `hidden-below-sm` forces `display: inline`
-              // above the breakpoint, which flattens a row container and
-              // collapses its contents to zero width.
-              <div className="hug hug-truncate hidden-below-sm-block">
-                <Icon name="Briefcase" size="xs" />
-                <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {formatFunctie(person.functie)}
-                </nldd-text>
+              // Hidden below sm by a wrapper, not on the hug itself: the
+              // hidden-* utilities reset `display` above the breakpoint, and
+              // on the same element that undid hug's inline-flex.
+              <div className="hidden-below-sm-block" style={{ minWidth: 0 }}>
+                <div className="hug hug-truncate" style={{ maxWidth: '100%' }}>
+                  <Icon name="Briefcase" size="xs" />
+                  <nldd-text size="xs" color="secondary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                    {formatFunctie(person.functie)}
+                  </nldd-text>
+                </div>
               </div>
             )}
             {person.description && person.is_agent && (

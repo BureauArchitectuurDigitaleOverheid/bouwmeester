@@ -204,8 +204,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             {/* Eigenaar / stakeholders compact row */}
             {stakeholders && stakeholders.length > 0 && (
               <nldd-container layout="row" gap="16" vertical-alignment="top">
+                {/* Grow, not hug: the content is containers and tags, and a
+                    container adds nothing to a shrink-to-fit parent's width. */}
                 {eigenaren.length > 0 && (
-                  <div className="hug hug-stack hug-gap-8 hug-truncate">
+                  <nldd-container width="fit-content" className="row-fill" gap="8">
                     <nldd-container layout="row" gap="4" vertical-alignment="center">
                       <nldd-icon name="users" size="16" aria-hidden="true" />
                       <nldd-text size="xs" weight="bold" color="secondary"><h4>Eigenaar</h4></nldd-text>
@@ -215,10 +217,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                         <nldd-tag key={s.id} text={s.person.naam} color="accent" />
                       ))}
                     </nldd-container>
-                  </div>
+                  </nldd-container>
                 )}
                 {otherStakeholders.length > 0 && (
-                  <div className="hug hug-stack hug-gap-8 hug-truncate">
+                  <nldd-container width="fit-content" className="row-fill" gap="8">
                     <nldd-text size="xs" weight="bold" color="secondary"><h4>Betrokkenen</h4></nldd-text>
                     <nldd-container layout="wrap" gap="6">
                       {otherStakeholders.slice(0, 6).map((s) => (
@@ -232,7 +234,7 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                         <nldd-tag color="neutral" text={`+${otherStakeholders.length - 6}`} />
                       )}
                     </nldd-container>
-                  </div>
+                  </nldd-container>
                 )}
               </nldd-container>
             )}
