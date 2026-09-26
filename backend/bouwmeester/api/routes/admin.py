@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.encryption import decrypt_value, encrypt_value
-from bouwmeester.core.permissions import AdminUser, SuperAdminUser
+from bouwmeester.core.permissions import (
+    AdminUser,
+    PermissionContext,
+    SuperAdminUser,
+    get_permission_context,
+)
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest
@@ -436,6 +441,18 @@ _DEFAULT_CONFIG = [
 ]
 
 
+def _super_admin_only(entry: AppConfig) -> bool:
+    """Is this a setting the app trusts with credentials or data?
+
+    Secrets (API keys, the bot token, the slash-command token) and the
+    addresses the app sends requests and credentials to (``*_URL``).
+    Whoever sets the slash-command token can act as any linked user, and
+    whoever sets an address receives what is sent there, so only
+    super_admin changes these; platform_admin sees them masked.
+    """
+    return entry.is_secret or entry.key.endswith("_URL")
+
+
 def _mask_secret(value: str) -> str:
     """Mask a secret value for display, showing only last 4 chars."""
     if not value or len(value) <= 4:
@@ -495,14 +512,20 @@ async def update_config(
     data: AppConfigUpdate,
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> AppConfigResponse:
-    """Update a configuration value."""
+    """Update a configuration value (keys and addresses: super_admin only)."""
     result = await db.execute(select(AppConfig).where(AppConfig.key == key))
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuratie '{key}' niet gevonden",
+        )
+    if _super_admin_only(entry) and not perm_ctx.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen systeembeheerders wijzigen sleutels en adressen",
         )
 
     entry.value = encrypt_value(data.value) if entry.is_secret else data.value

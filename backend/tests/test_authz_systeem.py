@@ -137,6 +137,39 @@ async def test_tenant_wide_needs_system_role(
     }
 
 
+# Settings the app trusts with credentials or data (secrets and addresses)
+# are super_admin's; ordinary settings are platform_admin's too.
+CONFIG_KEYS = [
+    ("MATTERMOST_WEBHOOK_TOKEN", False),  # would let one act as any user
+    ("MATTERMOST_BOT_TOKEN", False),
+    ("MATTERMOST_URL", False),  # the bot token is sent there
+    ("ANTHROPIC_API_KEY", False),
+    ("VLAM_API_URL", False),  # prompts with corpus data go there
+    ("FCC_ODATA_URL", False),
+    ("LLM_MODEL", True),
+    ("MATTERMOST_ENABLED", True),
+]
+
+
+@pytest.mark.parametrize(("key", "platform_admin_may"), CONFIG_KEYS)
+async def test_security_config_is_super_admin_only(
+    world, monkeypatch, key, platform_admin_may
+):
+    import bouwmeester.api.routes.admin as admin_routes
+
+    monkeypatch.setattr(admin_routes, "_defaults_seeded", False)
+    got = {}
+    for who in ("platform_admin", "super_admin"):
+        async with client_as(world.db, world.person[who]) as c:
+            await c.get("/api/admin/config")
+            resp = await c.patch(f"/api/admin/config/{key}", json={"value": "x"})
+        got[who] = resp.status_code
+    assert got == {
+        "platform_admin": 200 if platform_admin_may else 403,
+        "super_admin": 200,
+    }
+
+
 # ---------------------------------------------------------------------------
 # One resource: decided where it lives
 # ---------------------------------------------------------------------------
