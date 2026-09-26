@@ -15,7 +15,7 @@ export async function registerCredential(label: string): Promise<WebAuthnCredent
   const { options_json } = await apiPost<{ options_json: string }>('/api/webauthn/register/options');
   const options = JSON.parse(options_json);
 
-  // 2. Prompt the browser for biometric registration.
+  // 2. Prompt the browser to create a passkey.
   const credential = await startRegistration({ optionsJSON: options });
 
   // 3. Send the attestation back to the server for verification.
@@ -25,14 +25,14 @@ export async function registerCredential(label: string): Promise<WebAuthnCredent
   });
 }
 
-export async function authenticateWithBiometric(personId: string): Promise<boolean> {
+export async function authenticateWithPasskey(personId: string): Promise<boolean> {
   // 1. Get authentication options from the server.
   const { options_json } = await apiPost<{ options_json: string }>('/api/webauthn/authenticate/options', {
     person_id: personId,
   });
   const options = JSON.parse(options_json);
 
-  // 2. Prompt the browser for biometric authentication.
+  // 2. Prompt the browser for the passkey.
   const credential = await startAuthentication({ optionsJSON: options });
 
   // 3. Send the assertion back to the server for verification.

@@ -28,11 +28,11 @@ export function WebAuthnSettings() {
   });
 
   const registerMutation = useMutation({
-    mutationFn: () => registerCredential('Biometrie'),
+    mutationFn: () => registerCredential('Passkey'),
     onSuccess: () => {
       setError(null);
-      setSuccess('Biometrische inlog is geregistreerd');
-      // Store person_id in localStorage for biometric re-auth.
+      setSuccess('Passkey is toegevoegd');
+      // Store person_id in localStorage for passkey login.
       if (person?.id) {
         setStoredPersonId(person.id);
       }
@@ -53,7 +53,7 @@ export function WebAuthnSettings() {
     mutationFn: deleteCredential,
     onSuccess: (_data, deletedId) => {
       // If we just deleted the last credential, clear the stored person ID
-      // so the biometric login button no longer appears on the login page.
+      // so the passkey login button no longer appears on the login page.
       if (credentials && credentials.length === 1 && credentials[0].id === deletedId) {
         clearStoredPersonId();
       }
@@ -65,9 +65,9 @@ export function WebAuthnSettings() {
     return (
       <nldd-card>
         <nldd-container padding="24" gap="4">
-          <nldd-text weight="medium">Biometrische inlog</nldd-text>
+          <nldd-text weight="medium">Passkeys</nldd-text>
           <nldd-text size="sm" color="secondary">
-            Je browser ondersteunt geen biometrische inlog (WebAuthn). Gebruik een moderne browser om deze
+            Je browser ondersteunt geen passkeys (WebAuthn). Gebruik een moderne browser om deze
             functie te gebruiken.
           </nldd-text>
         </nldd-container>
@@ -81,9 +81,9 @@ export function WebAuthnSettings() {
         <nldd-container layout="row" gap="12" vertical-alignment="center">
           <Icon name="key" size="lg" />
           <nldd-container gap="2">
-            <nldd-text weight="medium">Biometrische inlog</nldd-text>
+            <nldd-text weight="medium">Passkeys</nldd-text>
             <nldd-text size="sm" color="secondary">
-              Gebruik Face ID, vingerafdruk of Windows Hello om snel opnieuw in te loggen.
+              Log snel opnieuw in met een passkey. Je ontgrendelt hem met Face ID, je vingerafdruk, je pincode of een beveiligingssleutel.
             </nldd-text>
           </nldd-container>
         </nldd-container>
@@ -104,7 +104,7 @@ export function WebAuthnSettings() {
           ) : (
             <>
               {credentials && credentials.length > 0 && (
-                <nldd-list variant="box-tinted" dividers="always" accessible-label="Biometrische inlogmethoden">
+                <nldd-list variant="box-tinted" dividers="always" accessible-label="Passkeys">
                   {credentials.map((cred) => (
                     <nldd-list-item key={cred.id}>
                       <nldd-icon-cell icon="key" size="20" />
@@ -133,7 +133,7 @@ export function WebAuthnSettings() {
               )}
 
               <NlddButton
-                text="Registreer biometrische inlog"
+                text="Passkey toevoegen"
                 startIcon="plus"
                 loading={registerMutation.isPending}
                 disabled={registerMutation.isPending}
@@ -152,11 +152,11 @@ export function WebAuthnSettings() {
             setDeleteCredId(null);
           }
         }}
-        title="Biometrische inlog verwijderen"
+        title="Passkey verwijderen"
         confirmLabel="Verwijderen"
         variant="danger"
       >
-        <p>Weet je zeker dat je deze biometrische inlog wilt verwijderen?</p>
+        <p>Weet je zeker dat je deze passkey wilt verwijderen?</p>
       </ConfirmDialog>
     </nldd-card>
   );

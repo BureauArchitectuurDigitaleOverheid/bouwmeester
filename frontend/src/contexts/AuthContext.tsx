@@ -50,7 +50,7 @@ interface AuthContextValue extends AuthState {
   login: () => void;
   logout: () => void;
   refreshAuthStatus: () => Promise<void>;
-  canBiometricReauth: boolean;
+  canPasskeyLogin: boolean;
   realIsAdmin: boolean;
   viewAsNonAdmin: boolean;
   toggleViewAsNonAdmin: () => void;
@@ -240,10 +240,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    // Intentionally NOT clearing the stored biometric person ID here.
-    // If the user has registered a biometric credential, they should see
-    // the biometric login button after logout. If a different person uses
-    // the device, the biometric auth will simply fail (wrong fingerprint)
+    // Intentionally NOT clearing the stored passkey person ID here.
+    // If the user has registered a passkey, they should see
+    // the passkey login button after logout. If a different person uses
+    // the device, the passkey check will simply fail
     // and they can use SSO instead.
 
     // Clear cached API responses to prevent data leakage across sessions
@@ -255,7 +255,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Recalculated on every render (both calls are trivial) so it picks up
   // localStorage changes after registration or logout.
-  const canBiometricReauth = isWebAuthnAvailable() && !!getStoredPersonId();
+  const canPasskeyLogin = isWebAuthnAvailable() && !!getStoredPersonId();
 
   const [viewAsNonAdmin, setViewAsNonAdmin] = useState(false);
   const toggleViewAsNonAdmin = useCallback(() => setViewAsNonAdmin((prev) => !prev), []);
@@ -279,7 +279,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     refreshAuthStatus,
-    canBiometricReauth,
+    canPasskeyLogin,
     realIsAdmin,
     viewAsNonAdmin,
     toggleViewAsNonAdmin,
