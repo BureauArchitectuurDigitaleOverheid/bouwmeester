@@ -92,37 +92,22 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         self, person_id: UUID, resource_type: str, resource_id: UUID
     ) -> set[str]:
         """Return all roles a person has on a resource (direct + via eenheid)."""
-        today = date.today()
-
-        direct_stmt = select(ResourcePermission.rol).where(
-            ResourcePermission.person_id == person_id,
-            ResourcePermission.resource_type == resource_type,
-            ResourcePermission.resource_id == resource_id,
+        result = await self.session.execute(
+            _person_roles_stmt(person_id, resource_type, resource_id)
         )
+        return {rol for _rid, rol in result.all()}
 
-        eenheid_stmt = (
-            select(ResourcePermission.rol)
-            .join(
-                PersonOrganisatieEenheid,
-                PersonOrganisatieEenheid.organisatie_eenheid_id
-                == ResourcePermission.organisatie_eenheid_id,
-            )
-            .where(
-                ResourcePermission.resource_type == resource_type,
-                ResourcePermission.resource_id == resource_id,
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-                PersonOrganisatieEenheid.person_id == person_id,
-                PersonOrganisatieEenheid.start_datum <= today,
-                or_(
-                    PersonOrganisatieEenheid.eind_datum.is_(None),
-                    PersonOrganisatieEenheid.eind_datum >= today,
-                ),
-            )
+    async def get_roles_for_person_by_resource(
+        self, person_id: UUID, resource_type: str
+    ) -> dict[UUID, set[str]]:
+        """Every role a person has on resources of one type, in one query."""
+        result = await self.session.execute(
+            _person_roles_stmt(person_id, resource_type, None)
         )
-
-        combined = union(direct_stmt, eenheid_stmt)
-        result = await self.session.execute(combined)
-        return set(result.scalars().all())
+        roles: dict[UUID, set[str]] = {}
+        for rid, rol in result.all():
+            roles.setdefault(rid, set()).add(rol)
+        return roles
 
     async def list_for_person(self, person_id: UUID) -> list[ResourcePermission]:
         """Return all resource permissions for a person."""
@@ -161,3 +146,34 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         for resource_id, rol in result.all():
             mapping.setdefault(resource_id, set()).add(rol)
         return mapping
+
+
+def _person_roles_stmt(person_id: UUID, resource_type: str, resource_id: UUID | None):
+    """(resource_id, rol) a person holds, directly or through a placement."""
+    today = date.today()
+    on_resource = [ResourcePermission.resource_type == resource_type]
+    if resource_id is not None:
+        on_resource.append(ResourcePermission.resource_id == resource_id)
+
+    direct_stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
+        ResourcePermission.person_id == person_id, *on_resource
+    )
+    eenheid_stmt = (
+        select(ResourcePermission.resource_id, ResourcePermission.rol)
+        .join(
+            PersonOrganisatieEenheid,
+            PersonOrganisatieEenheid.organisatie_eenheid_id
+            == ResourcePermission.organisatie_eenheid_id,
+        )
+        .where(
+            *on_resource,
+            ResourcePermission.organisatie_eenheid_id.isnot(None),
+            PersonOrganisatieEenheid.person_id == person_id,
+            PersonOrganisatieEenheid.start_datum <= today,
+            or_(
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+                PersonOrganisatieEenheid.eind_datum >= today,
+            ),
+        )
+    )
+    return union(direct_stmt, eenheid_stmt)

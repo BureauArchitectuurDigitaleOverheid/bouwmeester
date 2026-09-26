@@ -73,8 +73,8 @@ Tenant-wide fallbacks (step 5):
 corpus_node Product decision: the corpus is tenant-wide.  A node with an
             eenheid is written by rights on that eenheid; a node without
             one by anyone holding the permission through any role.
-lead        A lead without initiatief and without eenheid (migration
-            period, see ``leads._check_lead_access``).
+lead        A lead without initiatief and without eenheid (leads from
+            before initiatieven existed).
 opdracht    Same rule as the corpus: FCC imports mostly arrive without
             opdrachtgever or opdrachtnemer-eenheid.  With one of those, only
             rights on that eenheid count.
@@ -105,7 +105,6 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
     RESOURCE_ROLE_PERMISSIONS,
     PermissionContext,
-    check_resource_permission,
     get_permission_context,
 )
 from bouwmeester.models.edge import Edge
@@ -127,6 +126,7 @@ from bouwmeester.repositories.org_tree import (
     get_membership_ids,
     get_self_and_ancestor_ids,
 )
+from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.resource_scope import get_authority_eenheid_ids
 
 # ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ class _Location:
     node_id: UUID | None = None  # the node itself, for node shares
 
 
-Locator = Callable[[AsyncSession, UUID], Awaitable[_Location | None]]
+Locator = Callable[[AsyncSession, PermissionContext, UUID], Awaitable[_Location | None]]
 
 
 @dataclass(frozen=True)
@@ -209,7 +209,9 @@ async def _row(db: AsyncSession, *columns: Any, where: Any) -> Any:
 
 
 def _parent_column(model: Any, parent_type: str, column: Any) -> Locator:
-    async def locate(db: AsyncSession, rid: UUID) -> _Location | None:
+    async def locate(
+        db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+    ) -> _Location | None:
         row = await _row(db, column, where=model.id == rid)
         if row is None:
             return None
@@ -219,7 +221,9 @@ def _parent_column(model: Any, parent_type: str, column: Any) -> Locator:
 
 
 def _scope_columns(model: Any) -> Locator:
-    async def locate(db: AsyncSession, rid: UUID) -> _Location | None:
+    async def locate(
+        db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+    ) -> _Location | None:
         row = await _row(db, model.scope_type, model.scope_id, where=model.id == rid)
         if row is None:
             return None
@@ -228,14 +232,18 @@ def _scope_columns(model: Any) -> Locator:
     return locate
 
 
-async def _locate_edge(db: AsyncSession, rid: UUID) -> _Location | None:
+async def _locate_edge(
+    db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+) -> _Location | None:
     row = await _row(db, Edge.from_node_id, Edge.to_node_id, where=Edge.id == rid)
     if row is None:
         return None
     return _Location(parents=(("corpus_node", row[0]), ("corpus_node", row[1])))
 
 
-async def _locate_task(db: AsyncSession, rid: UUID) -> _Location | None:
+async def _locate_task(
+    db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+) -> _Location | None:
     row = await _row(
         db, Task.node_id, Task.organisatie_eenheid_id, where=Task.id == rid
     )
@@ -247,13 +255,22 @@ async def _locate_task(db: AsyncSession, rid: UUID) -> _Location | None:
     return _Location(parents=(("corpus_node", node_id),))
 
 
-async def _locate_lead(db: AsyncSession, rid: UUID) -> _Location | None:
-    found, eenheid_ids = await get_authority_eenheid_ids(db, "lead", rid)
-    if not found:
+async def _locate_lead(
+    db: AsyncSession, perm_ctx: PermissionContext, rid: UUID
+) -> _Location | None:
+    lead = await db.get(Lead, rid)
+    if lead is None:
         return None
-    lead = await db.get(Lead, rid)  # already in the identity map
-    parents = (("initiatief", lead.initiatief_id),) if lead.initiatief_id else ()
-    return _Location(eenheid_ids=tuple(eenheid_ids), parents=parents)
+    if lead.initiatief_id is None:
+        own = lead.organisatie_eenheid_id
+        return _Location(eenheid_ids=(own,) if own else ())
+    # A lead lives in its initiatief's owner eenheden; the initiatief's
+    # location is cached, so all leads of one initiatief share one lookup.
+    initiatief = await _locate(db, perm_ctx, "initiatief", lead.initiatief_id)
+    return _Location(
+        eenheid_ids=initiatief.eenheid_ids if initiatief else (),
+        parents=(("initiatief", lead.initiatief_id),),
+    )
 
 
 # The delegation table; see the module docstring for the same in prose.
@@ -339,7 +356,7 @@ async def _locate(
     if key in perm_ctx.authz_cache:
         return perm_ctx.authz_cache[key]
     if resource_type in DELEGATIONS:
-        loc = await DELEGATIONS[resource_type].locate(db, rid)
+        loc = await DELEGATIONS[resource_type].locate(db, perm_ctx, rid)
     elif resource_type in _EENHEID_TYPES:
         found, eenheid_ids = await get_authority_eenheid_ids(db, resource_type, rid)
         loc = (
@@ -421,6 +438,24 @@ def write_eenheid_ids(perm_ctx: PermissionContext) -> list[UUID]:
 # ---------------------------------------------------------------------------
 # Decision
 # ---------------------------------------------------------------------------
+
+
+async def _resource_roles(
+    db: AsyncSession, perm_ctx: PermissionContext, resource_type: str
+) -> dict[UUID, set[str]]:
+    """The caller's resource roles on every resource of one type.
+
+    One query per type per request, so deciding N leads (a reorder) does not
+    cost N queries.  Like the decisions themselves, a grant made later in
+    the same request is not seen.
+    """
+    key = ("resource_roles", resource_type)
+    if key not in perm_ctx.authz_cache:
+        assert perm_ctx.person_id is not None
+        perm_ctx.authz_cache[key] = await ResourcePermissionRepository(
+            db
+        ).get_roles_for_person_by_resource(perm_ctx.person_id, resource_type)
+    return perm_ctx.authz_cache[key]
 
 
 async def _holds_on_eenheden(
@@ -524,11 +559,10 @@ async def _resolve(
         resource_id is not None
         and perm_ctx.person_id is not None
         and any(permission in granted for granted in role_perms.values())
-        and await check_resource_permission(
-            db, perm_ctx.person_id, resource_type, resource_id, permission
-        )
     ):
-        return True
+        held = await _resource_roles(db, perm_ctx, resource_type)
+        if any(permission in role_perms.get(r, ()) for r in held.get(resource_id, ())):
+            return True
 
     # 3. Parent delegation.
     for parent_type, parent_id in loc.parents:

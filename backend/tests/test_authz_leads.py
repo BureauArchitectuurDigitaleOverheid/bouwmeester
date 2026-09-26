@@ -420,6 +420,41 @@ async def test_leads_of_one_initiatief_share_one_decision(lw):
     assert len(decisions) == 1
 
 
+async def _decision_queries(lw, who: str, n: int) -> int:
+    """Queries spent deciding lead:update on *n* leads of one initiatief."""
+    from sqlalchemy import event
+
+    db = lw.w.db
+    leads = [
+        Lead(title=f"Lead {i}", stage="verkennen", initiatief_id=lw.id("initiatief"))
+        for i in range(n)
+    ]
+    db.add_all(leads)
+    await db.flush()
+    ctx = await _ctx(lw.w, who)
+    count = 0
+
+    def _count(_state):
+        nonlocal count
+        count += 1
+
+    event.listen(db.sync_session, "do_orm_execute", _count)
+    try:
+        for lead in leads:
+            assert await can(db, ctx, "lead:update", "lead", lead.id)
+    finally:
+        event.remove(db.sync_session, "do_orm_execute", _count)
+    return count
+
+
+@pytest.mark.parametrize("who", ["role_only", "afd_editor"])
+async def test_reorder_decision_costs_constant_queries(lw, who):
+    """Owner eenheden and resource roles are looked up once, not per lead."""
+    few = await _decision_queries(lw, who, 2)
+    many = await _decision_queries(lw, who, 12)
+    assert many == few
+
+
 # Lead contacts are grants: (who, lead key, contact, rol, expected status)
 CONTACT_GRANTS = [
     # an editor of the lead adds contacts, themselves included
