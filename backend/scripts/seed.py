@@ -3772,7 +3772,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_1.id,
             target_node_id=instr_algo_register.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.9,
             reason="Gedeelde tags: algoritmen, ai",
             status="pending",
@@ -3782,7 +3782,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_1.id,
             target_node_id=bk_algo_kader.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.8,
             reason="Gedeelde tags: algoritmen",
             status="pending",
@@ -3862,7 +3862,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_2.id,
             target_node_id=instr_digid.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.85,
             reason="Gedeelde tags: digitale identiteit",
             status="pending",
@@ -3872,7 +3872,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_2.id,
             target_node_id=instr_eidas_wallet.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.75,
             reason="Gedeelde tags: eIDAS",
             status="pending",

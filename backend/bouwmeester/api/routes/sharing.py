@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
-from bouwmeester.core.authz import require
+from bouwmeester.core.authority import require_can_share
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
@@ -15,7 +15,6 @@ from bouwmeester.core.permissions import (
     get_permission_context,
     require_permission,
 )
-from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.repositories.shared_access import SharedAccessRepository
 from bouwmeester.schema.shared_access import (
     SharedAccessCreate,
@@ -69,36 +68,20 @@ async def list_shares(
     return [_to_response(s) for s in shares]
 
 
-async def _share_source_eenheden(
-    db: AsyncSession, source_eenheid_id: UUID | None, source_node_id: UUID | None
-) -> list[UUID | None]:
-    """The eenheden a share gives away; ``[None]`` for a tenant-wide source.
-
-    Sharing (or unsharing) needs org:manage on every one of them: seeing an
-    eenheid is not enough, or a team member could share its whole
-    directorate onward.  ``authz`` decides org:manage without an eenheid by
-    system roles only.
-    """
-    eenheid_ids: list[UUID | None] = [source_eenheid_id] if source_eenheid_id else []
-    if source_node_id is not None:
-        node = await db.get(CorpusNode, source_node_id)
-        require_found(node, "Item")
-        if node.organisatie_eenheid_id:
-            eenheid_ids.append(node.organisatie_eenheid_id)
-    return eenheid_ids or [None]
-
-
 @router.post("", response_model=SharedAccessResponse)
 async def create_share(
     data: SharedAccessCreate,
     perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a shared access grant."""
-    for eenheid_id in await _share_source_eenheden(
-        db, data.source_eenheid_id, data.source_node_id
-    ):
-        await require(db, perm, "org:manage", "organisatie_eenheid", eenheid_id)
+    """Create a shared access grant (``require_can_share`` decides)."""
+    await require_can_share(
+        db,
+        perm,
+        source_eenheid_id=data.source_eenheid_id,
+        source_node_id=data.source_node_id,
+        target_eenheid_id=data.target_eenheid_id,
+    )
 
     from bouwmeester.models.shared_access import SharedAccess
 
@@ -160,10 +143,13 @@ async def revoke_share(
     share = await db.get(SharedAccess, share_id)
     require_found(share, "Share")
 
-    for eenheid_id in await _share_source_eenheden(
-        db, share.source_eenheid_id, share.source_node_id
-    ):
-        await require(db, perm, "org:manage", "organisatie_eenheid", eenheid_id)
+    await require_can_share(
+        db,
+        perm,
+        source_eenheid_id=share.source_eenheid_id,
+        source_node_id=share.source_node_id,
+        target_eenheid_id=None,
+    )
 
     repo = SharedAccessRepository(db)
     await repo.delete(share_id)

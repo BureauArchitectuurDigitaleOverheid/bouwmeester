@@ -2,8 +2,9 @@
 
 Every decision about handing out or changing access lives here: placing
 people in an eenheid, naming a manager, moving an eenheid, assigning roles,
-editing someone's identity, and granting roles on a resource.  Routes and
-services call these guards instead of composing their own checks.
+editing someone's identity, granting roles on a resource, and sharing an
+eenheid or node with another eenheid.  Routes and services call these
+guards instead of composing their own checks.
 
 Three layers sit below this module: ``core.permissions`` resolves what a
 person holds (roles and permissions per eenheid), ``core.authz`` decides
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.authz import can, get_eenheid_ids, require, rights_on_eenheid
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
+from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
@@ -555,6 +557,78 @@ async def _manages_person(
     return False
 
 
+async def _trusted_placement_eenheid_ids(
+    db: AsyncSession, person_id: UUID
+) -> set[UUID]:
+    """Eenheden where a placement of *person_id* grants access at first login.
+
+    Current and future placements in or below the internal organisation that
+    a manager made or an import brought: ``hold_unconfirmed_placements``
+    keeps exactly these when a contact becomes an account.
+    """
+    today = date.today()
+    eenheid_ids = set(
+        (
+            await db.scalars(
+                select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
+                    PersonOrganisatieEenheid.person_id == person_id,
+                    PersonOrganisatieEenheid.bron != _UNCONFIRMED_PLACEMENT_BRON,
+                    (PersonOrganisatieEenheid.eind_datum.is_(None))
+                    | (PersonOrganisatieEenheid.eind_datum >= today),
+                )
+            )
+        ).all()
+    )
+    return {eid for eid in eenheid_ids if await _touches_organisation(db, eid)}
+
+
+_IDENTITY_REFUSAL = (
+    "Deze persoon heeft al toegang via een plaatsing of rol. Alleen wie die "
+    "toegang zelf kan geven, of een systeembeheerder, wijzigt de e-mailadressen."
+)
+
+
+async def _require_identity_authority(
+    db: AsyncSession, perm_ctx: PermissionContext, person: Person
+) -> None:
+    """Guard the emails of a contact that already holds access.
+
+    The first login with a verified email links to the record and takes
+    over what it holds: trusted placements (a new hire placed by a manager)
+    and resource grants.  Adding an email is therefore handing all of that
+    to whoever controls the address, so the caller must be able to hand it
+    out themselves: manage the members of every such eenheid, and hold the
+    grant authority over every grant.  A contact holding nothing (a
+    counterpart at a gemeente) stays open to ``people:update``.
+    """
+    for eenheid_id in await _trusted_placement_eenheid_ids(db, person.id):
+        if not await can_manage_members(db, perm_ctx, eenheid_id):
+            raise _forbidden(_IDENTITY_REFUSAL)
+    grants = (
+        await db.scalars(
+            select(ResourcePermission).where(ResourcePermission.person_id == person.id)
+        )
+    ).all()
+    for grant in grants:
+        try:
+            await _require_grant_authority(
+                db,
+                perm_ctx,
+                resource_type=grant.resource_type,
+                resource_id=grant.resource_id,
+                rols=frozenset({grant.rol}),
+                target_person_id=person.id,
+                target_eenheid_id=None,
+            )
+        except HTTPException as exc:
+            if exc.status_code not in (
+                status.HTTP_403_FORBIDDEN,
+                status.HTTP_404_NOT_FOUND,
+            ):
+                raise
+            raise _forbidden(_IDENTITY_REFUSAL) from exc
+
+
 async def require_can_edit_person(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -569,14 +643,20 @@ async def require_can_edit_person(
     person themselves or a super_admin may change them.  Other fields
     (naam, functie, phone numbers) may also be kept up to date by a manager
     of one of the person's eenheden.  Contacts are maintained by anyone
-    with ``people:update``.
+    with ``people:update``, except the emails of a contact that already
+    holds access (``_require_identity_authority``).
+
+    The naam is not identity: a login links to a person by verified email
+    only (``core.auth.get_or_create_person``).
     """
     if perm_ctx.is_super_admin or person.id == perm_ctx.person_id:
         return
     if not await is_account(db, person):
-        if perm_ctx.has_permission("people:update"):
-            return
-        raise _forbidden("Onvoldoende rechten")
+        if not perm_ctx.has_permission("people:update"):
+            raise _forbidden("Onvoldoende rechten")
+        if identity:
+            await _require_identity_authority(db, perm_ctx, person)
+        return
     if identity:
         raise _forbidden(
             "Alleen de persoon zelf of een systeembeheerder kan e-mailadressen wijzigen"
@@ -627,16 +707,40 @@ async def _grant_reaches_caller(
 ) -> bool:
     """True if a grant to this person or eenheid would benefit the caller.
 
-    An eenheid grant counts for every member of that eenheid, as in
-    ``core.authz`` (resource roles, step 2).
+    An eenheid grant counts for every member placed directly in that
+    eenheid, as in ``core.authz`` (resource roles, step 2), so membership of
+    a sub-eenheid does not count.  Nobody places themselves
+    (``require_can_place``), so the eenheden that can reach the caller are
+    those they are placed in now, will be placed in (a future start date),
+    or asked to join (a pending request: whoever approves it decides about
+    the membership, not about this grant).
     """
     if perm_ctx.person_id is None:
         return False
     if target_person_id is not None:
         return target_person_id == perm_ctx.person_id
     if target_eenheid_id is not None:
-        return target_eenheid_id in await get_membership_ids(db, perm_ctx.person_id)
+        return target_eenheid_id in await _joined_or_joining_ids(db, perm_ctx.person_id)
     return False
+
+
+async def _joined_or_joining_ids(db: AsyncSession, person_id: UUID) -> set[UUID]:
+    """Eenheden *person_id* is placed in, will be placed in, or asked to join."""
+    today = date.today()
+    placed = await db.scalars(
+        select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
+            PersonOrganisatieEenheid.person_id == person_id,
+            (PersonOrganisatieEenheid.eind_datum.is_(None))
+            | (PersonOrganisatieEenheid.eind_datum >= today),
+        )
+    )
+    requested = await db.scalars(
+        select(OrgPlacementRequest.organisatie_eenheid_id).where(
+            OrgPlacementRequest.person_id == person_id,
+            OrgPlacementRequest.status == "pending",
+        )
+    )
+    return set(placed.all()) | set(requested.all())
 
 
 # The permission that lets someone hand out roles on a resource.  Leads have
@@ -724,6 +828,53 @@ async def _require_grant_authority(
         raise _forbidden("Je kunt jezelf geen rol op dit item geven")
 
 
+async def _share_source_eenheden(
+    db: AsyncSession, source_eenheid_id: UUID | None, source_node_id: UUID | None
+) -> list[UUID | None]:
+    """The eenheden a share gives away; ``[None]`` for a tenant-wide source."""
+    eenheid_ids: list[UUID | None] = [source_eenheid_id] if source_eenheid_id else []
+    if source_node_id is not None:
+        node = await db.get(CorpusNode, source_node_id)
+        if node is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Item niet gevonden")
+        if node.organisatie_eenheid_id:
+            eenheid_ids.append(node.organisatie_eenheid_id)
+    return eenheid_ids or [None]
+
+
+async def require_can_share(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    source_eenheid_id: UUID | None,
+    source_node_id: UUID | None,
+    target_eenheid_id: UUID | None,
+) -> None:
+    """Guard creating (``target_eenheid_id``) or revoking (``None``) a share.
+
+    A share is a grant: the members of the target see the source, and with
+    an edit share work on it with the rights they hold in the target.  So
+    it needs ``org:manage`` on every eenheid it gives away (seeing an
+    eenheid is not enough, or a team member could share its whole
+    directorate onward; without an eenheid, system roles decide).  Creating
+    one must not reach the caller: nobody shares with an eenheid they are
+    in or are joining (``_grant_reaches_caller``).  Revoking only takes
+    access away.
+    """
+    for eenheid_id in await _share_source_eenheden(
+        db, source_eenheid_id, source_node_id
+    ):
+        await require(db, perm_ctx, "org:manage", "organisatie_eenheid", eenheid_id)
+    if (
+        target_eenheid_id is not None
+        and not perm_ctx.is_super_admin
+        and await _grant_reaches_caller(
+            db, perm_ctx, target_person_id=None, target_eenheid_id=target_eenheid_id
+        )
+    ):
+        raise _forbidden("Je kunt niet delen met een eenheid waar je zelf in zit")
+
+
 async def _require_keeps_an_owner(
     db: AsyncSession, grant: ResourcePermission, new_rol: str | None
 ) -> None:
@@ -758,8 +909,10 @@ async def require_can_name_first_owner(
 
     Naming who owns a freshly imported parliamentary item is the point of
     reviewing it, so whoever may review it (``parlementair:review`` on the
-    node) may do so, but never name themselves.  Once the node has an
-    eigenaar, changing that is a grant like any other.
+    node) may do so.  Naming yourself is only allowed when you already edit
+    the node (``node:update``): a reviewer without it would otherwise hand
+    themselves rights.  Once the node has an eigenaar, changing that is a
+    grant like any other.
     """
     has_owner = await db.scalar(
         select(ResourcePermission.id)
@@ -776,8 +929,14 @@ async def require_can_name_first_owner(
             detail="Dit item heeft al een eigenaar",
         )
     await require(db, perm_ctx, "parlementair:review", "corpus_node", node_id)
-    if not perm_ctx.is_super_admin and target_person_id == perm_ctx.person_id:
-        raise _forbidden("Je kunt jezelf geen eigenaar maken")
+    if (
+        not perm_ctx.is_super_admin
+        and target_person_id == perm_ctx.person_id
+        and not await can(db, perm_ctx, "node:update", "corpus_node", node_id)
+    ):
+        raise _forbidden(
+            "Je kunt jezelf alleen eigenaar maken van een item dat je al mag bewerken"
+        )
 
 
 async def require_can_grant_resource_role(
