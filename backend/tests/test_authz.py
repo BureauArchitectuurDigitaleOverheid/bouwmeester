@@ -186,6 +186,7 @@ async def world(db_session: AsyncSession) -> World:
         },
         res={
             "eenheid_elders": elders.id,
+            "eenheid_team": team.id,
             "node_directie": node_directie.id,
             "node_afdeling": node_afdeling.id,
             "node_team": node_team.id,
@@ -306,7 +307,28 @@ CASES = [
     ("team_editor", "opdracht:create", "opdracht", None, "directie", False),
     # no tenant-wide fallback for initiatieven or team tasks
     ("team_editor", "task:create", "task", None, None, False),
+    # org:update: a manager edits the eenheden below, editors do not
+    ("manager", "org:update", "organisatie_eenheid", "eenheid_team", None, True),
+    ("manager", "org:update", "organisatie_eenheid", "eenheid_elders", None, False),
+    ("team_editor", "org:update", "organisatie_eenheid", "eenheid_team", None, False),
+    ("super_admin", "org:update", "organisatie_eenheid", "eenheid_team", None, True),
 ]
+
+
+@pytest.mark.parametrize(
+    ("who", "eenheid", "expected"),
+    [
+        ("manager", "team", 200),
+        ("team_editor", "team", 403),
+        ("manager", "elders", 403),
+    ],
+)
+async def test_route_update_eenheid_needs_org_update(world, who, eenheid, expected):
+    """Editing an eenheid's attributes is org:update there, not a manager check."""
+    url = f"/api/organisatie/{world.org[eenheid].id}"
+    async with client_as(world.db, world.person[who]) as c:
+        resp = await c.put(url, json={"beschrijving": "Bijgewerkt"})
+    assert resp.status_code == expected, resp.text
 
 
 @pytest.mark.parametrize(

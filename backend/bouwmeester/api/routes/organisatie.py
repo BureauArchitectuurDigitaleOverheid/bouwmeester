@@ -3,24 +3,22 @@
 from collections import defaultdict
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    can_manage_members,
     require_can_create_eenheid,
     require_can_dissolve_eenheid,
     require_can_move_eenheid,
     require_can_set_manager,
 )
-from bouwmeester.core.authz import require
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
     PermissionContext,
-    get_permission_context,
     require_permission,
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
@@ -45,22 +43,23 @@ router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
 async def _require_can_edit_eenheid(
-    db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
-) -> None:
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(
+        requires("org:update", "organisatie_eenheid")
+    ),
+) -> PermissionContext:
     """Gate for editing or deleting an eenheid (404/403).
 
-    Needs org:manage on the eenheid (inherited from above, or as eigenaar of
-    a stakeholder eenheid one created) or managing its members; seeing it is
-    not enough.  Structural changes are checked by ``core.authority`` on top.
-    TOOI, scraped and synthetic rows belong to their sync: only super_admin
-    edits them by hand.
+    Needs org:update on the eenheid (held there or above it, or as eigenaar
+    of a stakeholder eenheid one created); seeing it is not enough.
+    Structural changes are checked by ``core.authority`` on top.  TOOI,
+    scraped and synthetic rows belong to their sync: only super_admin edits
+    them by hand.
     """
-    # Managers hold no org permission yet; until a scoped org:update exists
-    # their authority over the eenheid is what lets them keep it up to date.
-    if not await can_manage_members(db, perm_ctx, eenheid_id):
-        await require(db, perm_ctx, "org:manage", "organisatie_eenheid", eenheid_id)
     if perm_ctx.is_super_admin:
-        return
+        return perm_ctx
+    eenheid_id = UUID(request.path_params["id"])
     bron = await db.scalar(
         select(OrganisatieEenheid.bron).where(OrganisatieEenheid.id == eenheid_id)
     )
@@ -73,6 +72,7 @@ async def _require_can_edit_eenheid(
                 "alleen super_admin kan ze handmatig wijzigen."
             ),
         )
+    return perm_ctx
 
 
 async def _check_structural_changes(
@@ -363,10 +363,9 @@ async def update_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    perm_ctx: PermissionContext = Depends(_require_can_edit_eenheid),
 ) -> OrganisatieEenheidResponse:
     """Update an org unit. Detects circular parent references."""
-    await _require_can_edit_eenheid(db, perm_ctx, id)
     repo = OrganisatieEenheidRepository(db)
     current = require_found(await repo.get(id), "Eenheid")
     await _check_structural_changes(db, perm_ctx, repo, current, data)
@@ -408,10 +407,9 @@ async def delete_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    perm_ctx: PermissionContext = Depends(_require_can_edit_eenheid),
 ) -> None:
     """Delete an org unit. Fails if it has children or members."""
-    await _require_can_edit_eenheid(db, perm_ctx, id)
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     # Deleting needs no members and no sub-eenheden (checked below), so the

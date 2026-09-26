@@ -67,7 +67,7 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
         "contactpersoon": set(),
     },
     "organisatie_eenheid": {
-        "eigenaar": {"org:manage", "resource_permission:manage"},
+        "eigenaar": {"org:manage", "org:update", "resource_permission:manage"},
     },
 }
 
