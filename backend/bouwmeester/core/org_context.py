@@ -16,10 +16,15 @@ from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.authz import write_eenheid_ids
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
-from bouwmeester.repositories.org_tree import get_ancestor_ids, get_membership_ids
+from bouwmeester.repositories.org_tree import (
+    get_ancestor_ids,
+    get_membership_ids,
+    get_subtree_ids,
+)
 from bouwmeester.repositories.resource_scope import resolve_resource_eenheid_id
 
 logger = logging.getLogger(__name__)
@@ -53,6 +58,8 @@ async def build_org_context(
     - Own memberships (active plaatsingen)
     - Parent chain (walking up from each own eenheid)
     - Managed sub-trees (walking down from eenheden where person is manager)
+    - Writable sub-trees (walking down from eenheden where a scoped role
+      grants a write permission, see ``core.authz.write_eenheid_ids``)
 
     Pass an existing *perm_ctx* (a ``PermissionContext``) to avoid a
     redundant ``build_permission_context`` call when the caller already
@@ -83,8 +90,10 @@ async def build_org_context(
     parent_ids = await get_ancestor_ids(db, own_ids)
     managed_ids = managed_eenheid_ids(perm_ctx)
     managed_subtree = await managed_subtree_ids(db, perm_ctx) or set()
+    # Rights inherit downward (core.authz), so what you can write you see.
+    writable_subtree = await get_subtree_ids(db, write_eenheid_ids(perm_ctx))
 
-    all_visible = set(own_ids) | parent_ids | managed_subtree
+    all_visible = set(own_ids) | parent_ids | managed_subtree | writable_subtree
 
     # Query shared access grants targeting the user's eenheden
     from bouwmeester.repositories.shared_access import SharedAccessRepository

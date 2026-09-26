@@ -233,6 +233,7 @@ _WRITE_AUTHZ_CALL_PREFIX = "require_can_"
 
 # Write routes that need no resource decision.  One line of reason each.
 _WRITE_ALLOWLIST: dict[str, str] = {
+    "POST /api/authz/evaluations": "read-only: the caller's own rights via can()",
     "POST /api/auth/onboarding": "self-scoped: own onboarding state",
     "POST /api/auth/onboarding/dismiss": "self-scoped: own onboarding state",
     "POST /api/auth/onboarding/refresh": "self-scoped: own onboarding state",

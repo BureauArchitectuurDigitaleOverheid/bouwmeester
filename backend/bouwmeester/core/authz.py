@@ -75,7 +75,17 @@ corpus_node Product decision: the corpus is tenant-wide.  A node with an
             one by anyone holding the permission through any role.
 lead        A lead without initiatief and without eenheid (migration
             period, see ``leads._check_lead_access``).
+opdracht    Same rule as the corpus: FCC imports mostly arrive without
+            opdrachtgever or opdrachtnemer-eenheid.  With one of those, only
+            rights on that eenheid count.
+samenwerkingsverband
+            Samenwerkingsverbanden are ad-hoc cross-organisation groups
+            without an eenheid.  Their members are asked as
+            ``samenwerkingsverband:update`` on the group itself.
 tag         Tags are one shared vocabulary without an eenheid.
+person      Creating a person or contact (``people:create``, no id).  An
+            existing person is not decided here: editing, placing and
+            deleting go through the ``core.authority`` guards.
 =========== ==============================================================
 """
 
@@ -108,6 +118,7 @@ from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
+from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
 from bouwmeester.models.shared_access import SharedAccess
 from bouwmeester.models.stakeholder_assessment import StakeholderAssessment
 from bouwmeester.models.tag import Tag
@@ -287,15 +298,37 @@ _EENHEID_TYPES = frozenset(
 )
 
 # Types that live nowhere in particular: only their existence is looked up.
-_PLAIN_TYPES: dict[str, Any] = {"tag": Tag}
+_PLAIN_TYPES: dict[str, Any] = {
+    "samenwerkingsverband": Samenwerkingsverband,
+    "tag": Tag,
+}
 
-TENANT_WIDE_WHEN_UNSCOPED = frozenset({"corpus_node", "lead", "tag"})
+# Types decided here only when created; changing an existing one is a grant
+# decision in ``core.authority`` (a person's emails are their identity).
+_CREATE_ONLY_TYPES = frozenset({"person"})
+
+TENANT_WIDE_WHEN_UNSCOPED = frozenset(
+    {"corpus_node", "lead", "opdracht", "person", "samenwerkingsverband", "tag"}
+)
+
+# Every resource type can() knows (for input validation by callers).
+RESOURCE_TYPES = frozenset(
+    set(DELEGATIONS)
+    | set(_EENHEID_TYPES)
+    | set(_PLAIN_TYPES)
+    | _CREATE_ONLY_TYPES
+    | {"task", "lead"}
+)
 
 # Types whose eenheid can be shared for editing (``SharedAccess``).
 _SHAREABLE_TYPES = frozenset({"corpus_node", "task"})
 
 # Permission prefix per resource type where they differ.
-_PERM_DOMAIN = {"corpus_node": "node", "organisatie_eenheid": "org"}
+_PERM_DOMAIN = {
+    "corpus_node": "node",
+    "organisatie_eenheid": "org",
+    "person": "people",
+}
 _DOMAIN_TYPE = {v: k for k, v in _PERM_DOMAIN.items()}
 
 
@@ -321,6 +354,10 @@ async def _locate(
         model = _PLAIN_TYPES[resource_type]
         found = await _row(db, model.id, where=model.id == rid)
         loc = _Location() if found is not None else None
+    elif resource_type in _CREATE_ONLY_TYPES:
+        raise ValueError(
+            f"authz: an existing {resource_type} is decided by core.authority"
+        )
     else:
         raise ValueError(f"authz: unknown resource type {resource_type!r}")
     perm_ctx.authz_cache[key] = loc
@@ -350,6 +387,35 @@ def _child_type_of(permission: str, resource_type: str) -> str | None:
     if child == resource_type or child not in DELEGATIONS:
         return None
     return child if resource_type in DELEGATIONS[child].parent_types else None
+
+
+# ---------------------------------------------------------------------------
+# Where someone can write (used by core.org_context for visibility)
+# ---------------------------------------------------------------------------
+
+_WRITE_VERBS = frozenset({"create", "update", "delete", "manage"})
+
+
+def _is_eenheid_write(permission: str) -> bool:
+    """True if *permission* lets step 4 write something that lives in an eenheid."""
+    domain, _, verb = permission.partition(":")
+    resource_type = _DOMAIN_TYPE.get(domain, domain)
+    located = resource_type in _EENHEID_TYPES or resource_type in DELEGATIONS
+    return verb in _WRITE_VERBS and located
+
+
+def write_eenheid_ids(perm_ctx: PermissionContext) -> list[UUID]:
+    """Eenheden where a scoped role lets the person write (and so below them).
+
+    Rights inherit downward, so whoever can write in an eenheid must also
+    see what lies below it; ``core.org_context`` makes those subtrees
+    visible.
+    """
+    return [
+        eid
+        for eid, perms in perm_ctx.scoped_permissions.items()
+        if any(_is_eenheid_write(p) for p in perms)
+    ]
 
 
 # ---------------------------------------------------------------------------

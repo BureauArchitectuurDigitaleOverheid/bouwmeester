@@ -24,9 +24,11 @@ from bouwmeester.models.edge_type import EdgeType
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_column import LeadColumn
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.models.samenwerkingsverband import Samenwerkingsverband
 from bouwmeester.models.shared_access import SharedAccess
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.lead_column import LeadColumnRepository
@@ -63,6 +65,7 @@ async def world(db_session: AsyncSession) -> World:
     afdeling = await make_org(db, "Afdeling", "afdeling", directie)
     team = await make_org(db, "Team", "team", afdeling)
     elders = await make_org(db, "Elders", "directie", dg)
+    sibling_team = await make_org(db, "Ander team", "team", afdeling)
 
     # Only super_admin and platform_admin exist as system roles.
     platform_admin = await make_person(db, "Platformbeheerder")
@@ -92,6 +95,16 @@ async def world(db_session: AsyncSession) -> World:
     node_team = await _node(db, "Teamdossier", team)
     node_elders = await _node(db, "Dossier elders", elders)
     node_free = await _node(db, "Dossier zonder eenheid")
+    node_sibling = await _node(db, "Dossier ander team", sibling_team)
+    opdracht_free = Opdracht(type="opdracht", titel="FCC-import", begrotingsjaar=2026)
+    opdracht_directie = Opdracht(
+        type="opdracht",
+        titel="Directie-opdracht",
+        begrotingsjaar=2026,
+        opdrachtgever_id=directie.id,
+    )
+    samenwerkingsverband = Samenwerkingsverband(naam="Werkgroep", type="werkgroep")
+    db.add_all([opdracht_free, opdracht_directie, samenwerkingsverband])
     db.add(
         ResourcePermission(
             person_id=role_only.id,
@@ -160,6 +173,7 @@ async def world(db_session: AsyncSession) -> World:
             "afdeling": afdeling,
             "team": team,
             "elders": elders,
+            "sibling_team": sibling_team,
         },
         person={
             "platform_admin": platform_admin,
@@ -177,6 +191,10 @@ async def world(db_session: AsyncSession) -> World:
             "node_team": node_team.id,
             "node_elders": node_elders.id,
             "node_free": node_free.id,
+            "node_sibling": node_sibling.id,
+            "opdracht_free": opdracht_free.id,
+            "samenwerkingsverband": samenwerkingsverband.id,
+            "opdracht_directie": opdracht_directie.id,
             "edge_team_directie": edge_team_directie.id,
             "edge_directie_elders": edge_directie_elders.id,
             "task_team": task_team.id,
@@ -253,7 +271,39 @@ CASES = [
     ("team_editor", "tag:create", "corpus_node", "node_free", None, True),
     ("team_editor", "tag:create", "corpus_node", "node_directie", None, False),
     ("team_editor", "tag:create", "tag", None, None, True),
+    ("team_editor", "people:create", "person", None, None, True),
+    ("platform_admin", "people:create", "person", None, None, False),
+    (
+        "team_editor",
+        "samenwerkingsverband:update",
+        "samenwerkingsverband",
+        "samenwerkingsverband",
+        None,
+        True,
+    ),
+    (
+        "viewer",
+        "samenwerkingsverband:update",
+        "samenwerkingsverband",
+        "samenwerkingsverband",
+        None,
+        False,
+    ),
+    (
+        "manager",
+        "samenwerkingsverband:delete",
+        "samenwerkingsverband",
+        "samenwerkingsverband",
+        None,
+        True,
+    ),
     ("viewer", "tag:create", "tag", None, None, False),
+    ("team_editor", "opdracht:update", "opdracht", "opdracht_free", None, True),
+    ("viewer", "opdracht:update", "opdracht", "opdracht_free", None, False),
+    ("team_editor", "opdracht:update", "opdracht", "opdracht_directie", None, False),
+    ("manager", "opdracht:update", "opdracht", "opdracht_directie", None, True),
+    ("team_editor", "opdracht:create", "opdracht", None, None, True),
+    ("team_editor", "opdracht:create", "opdracht", None, "directie", False),
     # no tenant-wide fallback for initiatieven or team tasks
     ("team_editor", "task:create", "task", None, None, False),
 ]
@@ -440,3 +490,147 @@ async def test_chat_write_tools_ask_authz(world):
     assert allowed is None
     assert edge_into_team is None
     assert task_on_directie is not None
+
+
+# ---------------------------------------------------------------------------
+# Visibility follows write rights downward
+# ---------------------------------------------------------------------------
+
+
+async def test_afdeling_editor_sees_team_resources_below(world):
+    """Rights inherit downward, so the afdeling editor also sees team items."""
+    ctx = await _ctx(world, "afd_editor")
+    org_ctx = await build_org_context(
+        world.db, world.person["afd_editor"], perm_ctx=ctx
+    )
+    assert world.org["team"].id in org_ctx.visible_eenheid_ids
+    async with client_as(world.db, world.person["afd_editor"]) as c:
+        detail = await c.get(f"/api/nodes/{world.res['node_team']}")
+        listing = await c.get("/api/nodes", params={"search": "Teamdossier"})
+    assert detail.status_code == 200
+    assert str(world.res["node_team"]) in {n["id"] for n in listing.json()}
+
+
+async def test_team_member_does_not_see_sibling_team(world):
+    ctx = await _ctx(world, "viewer")
+    org_ctx = await build_org_context(world.db, world.person["viewer"], perm_ctx=ctx)
+    assert world.org["sibling_team"].id not in org_ctx.visible_eenheid_ids
+    async with client_as(world.db, world.person["viewer"]) as c:
+        detail = await c.get(f"/api/nodes/{world.res['node_sibling']}")
+    assert detail.status_code == 404
+
+
+async def test_team_editor_does_not_see_sibling_team(world):
+    """Writing in a team does not open up the teams next to it."""
+    ctx = await _ctx(world, "team_editor")
+    org_ctx = await build_org_context(
+        world.db, world.person["team_editor"], perm_ctx=ctx
+    )
+    assert world.org["sibling_team"].id not in org_ctx.visible_eenheid_ids
+
+
+# ---------------------------------------------------------------------------
+# POST /api/authz/evaluations
+# ---------------------------------------------------------------------------
+
+
+def _ask(action: str, resource_type: str, resource_id=None, **properties) -> dict:
+    resource: dict = {"type": resource_type}
+    if resource_id is not None:
+        resource["id"] = str(resource_id)
+    if properties:
+        resource["properties"] = {k: str(v) for k, v in properties.items()}
+    return {"action": action, "resource": resource}
+
+
+async def test_evaluations_answer_in_order(world):
+    asks = [
+        _ask("node:update", "corpus_node", world.res["node_team"]),
+        _ask("node:update", "corpus_node", world.res["node_directie"]),
+        _ask("edge:update", "edge", world.res["edge_team_directie"]),
+        _ask("task:create", "task", eenheid_id=world.org["team"].id),
+        _ask("node:create", "corpus_node"),
+    ]
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {
+        "evaluations": [
+            {"decision": True},
+            {"decision": False},
+            {"decision": True},
+            {"decision": True},
+            {"decision": True},
+        ]
+    }
+
+
+async def test_evaluations_missing_resource_is_false_not_404(world):
+    asks = [
+        _ask("node:update", "corpus_node", uuid.uuid4()),
+        _ask("edge:delete", "edge", uuid.uuid4()),
+    ]
+    async with client_as(world.db, world.person["super_admin"]) as c:
+        resp = await c.post("/api/authz/evaluations", json={"evaluations": asks})
+    assert resp.status_code == 200
+    assert resp.json() == {"evaluations": [{"decision": False}, {"decision": False}]}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"evaluations": []},
+        {"evaluations": [_ask("node:read", "corpus_node")] * 51},
+        {"evaluations": [_ask("node:read", "onbekend_type")]},
+        {"evaluations": [{"action": "node:read", "resource": {"type": "x"}}]},
+        {"evaluations": [_ask("node read", "corpus_node")]},
+        {
+            "subject": {"type": "user", "id": str(uuid.uuid4())},
+            "evaluations": [_ask("node:read", "corpus_node")],
+        },
+        {
+            "evaluations": [
+                {
+                    **_ask("node:read", "corpus_node"),
+                    "subject": {"type": "user", "id": str(uuid.uuid4())},
+                }
+            ]
+        },
+    ],
+    ids=[
+        "empty",
+        "too-many",
+        "unknown-type",
+        "bad-type",
+        "bad-action",
+        "subject-top",
+        "subject-item",
+    ],
+)
+async def test_evaluations_reject_bad_input(world, body):
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.post("/api/authz/evaluations", json=body)
+    assert resp.status_code == 422
+
+
+def test_evaluations_endpoint_is_not_public():
+    from bouwmeester.middleware.auth_required import is_public_path
+
+    assert not is_public_path("/api/authz/evaluations")
+
+
+async def test_existing_person_is_not_decided_here(world):
+    ctx = await _ctx(world, "team_editor")
+    with pytest.raises(ValueError):
+        await can(world.db, ctx, "people:update", "person", world.person["viewer"].id)
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        resp = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    _ask("people:update", "person", world.person["viewer"].id),
+                    _ask("people:create", "person"),
+                ]
+            },
+        )
+    assert resp.json() == {"evaluations": [{"decision": False}, {"decision": True}]}
