@@ -124,20 +124,6 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_resource_ids_for_person(
-        self, person_id: UUID, resource_type: str
-    ) -> dict[UUID, set[str]]:
-        """Return {resource_id: {roles}} for a person's resources."""
-        stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
-            ResourcePermission.person_id == person_id,
-            ResourcePermission.resource_type == resource_type,
-        )
-        result = await self.session.execute(stmt)
-        mapping: dict[UUID, set[str]] = {}
-        for resource_id, rol in result.all():
-            mapping.setdefault(resource_id, set()).add(rol)
-        return mapping
-
 
 def _person_roles_stmt(person_id: UUID, resource_type: str):
     """(resource_id, rol) a person holds, directly or through a placement."""

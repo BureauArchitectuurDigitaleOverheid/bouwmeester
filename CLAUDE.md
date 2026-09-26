@@ -230,7 +230,7 @@ The inventory test fails CI on any new GET `/api/*` route that lacks an authz de
 
 ### Authority over grants (`core/authority.py`)
 
-Anything that changes *who has access to what* goes through a `require_can_*` guard in `core/authority.py`, never through `require_permission` + `check_org_scope`: placements, naming a manager, moving or dissolving an eenheid, assigning or revoking roles, deciding placement requests, editing a person (emails are identity), granting resource roles. REST routes and chat tools call the same guards.
+Anything that changes *who has access to what* goes through a `require_can_*` guard in `core/authority.py`, never through `require_permission` or a visibility check: placements, naming a manager, moving or dissolving an eenheid, assigning or revoking roles, deciding placement requests, editing a person (emails are identity), granting resource roles. REST routes and chat tools call the same guards.
 
 - A role on an eenheid applies to everything below it (`rights_on_eenheid`). Seeing an eenheid never implies authority over it.
 - Nobody grants themselves a role; nobody decides their own placement request.

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.models.person import Person
-from bouwmeester.models.role import Permission, PersonRole, Role, RolePermission
+from bouwmeester.models.role import PersonRole, Role, RolePermission
 
 
 class RoleRepository:
@@ -23,25 +23,10 @@ class RoleRepository:
     async def get_role(self, role_id: str) -> Role | None:
         return await self.session.get(Role, role_id)
 
-    async def list_permissions(self) -> list[Permission]:
-        stmt = select(Permission).order_by(Permission.category, Permission.id)
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
     async def get_role_permission_ids(self, role_id: str) -> set[str]:
         """Return the set of permission IDs granted by a role."""
         stmt = select(RolePermission.permission_id).where(
             RolePermission.role_id == role_id
-        )
-        result = await self.session.execute(stmt)
-        return set(result.scalars().all())
-
-    async def get_permissions_for_roles(self, role_ids: list[str]) -> set[str]:
-        """Return the union of all permission IDs for the given roles."""
-        if not role_ids:
-            return set()
-        stmt = select(RolePermission.permission_id).where(
-            RolePermission.role_id.in_(role_ids)
         )
         result = await self.session.execute(stmt)
         return set(result.scalars().all())

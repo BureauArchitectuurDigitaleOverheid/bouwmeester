@@ -44,26 +44,6 @@ class SharedAccessRepository(BaseRepository[SharedAccess]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_incoming_for_eenheden(
-        self, eenheid_ids: list[UUID]
-    ) -> list[SharedAccess]:
-        """Return active shares where any of the given eenheden are the target."""
-        if not eenheid_ids:
-            return []
-        stmt = (
-            select(SharedAccess)
-            .where(
-                SharedAccess.target_eenheid_id.in_(eenheid_ids),
-                share_active_today(),
-            )
-            .options(
-                selectinload(SharedAccess.source_eenheid),
-                selectinload(SharedAccess.source_node),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
-
     async def get_shared_eenheid_ids(
         self, target_eenheid_ids: list[UUID]
     ) -> list[UUID]:

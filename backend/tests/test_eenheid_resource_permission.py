@@ -72,7 +72,7 @@ async def test_add_eenheid_creates_resource_permission(eenheid_rp_setup):
     assert rp.rol == "contributor"
 
 
-async def test_eenheid_access_level_via_resource_permission(eenheid_rp_setup):
+async def test_eenheid_rights_via_resource_permission(eenheid_rp_setup):
     """Person gets access to initiatief via eenheid resource_permission."""
     s = eenheid_rp_setup
 
