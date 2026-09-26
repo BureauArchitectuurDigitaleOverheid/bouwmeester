@@ -495,7 +495,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
               <nldd-text
                 size="sm"
                 color="secondary"
-                className="whitespace-pre-wrap surface-tinted"
+                className="surface-tinted"
                 style={{
                   borderRadius: 'var(--primitives-corner-radius-md)',
                   padding: '12px',
@@ -503,7 +503,9 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                   overflowY: 'auto',
                 }}
               >
-                {item.document_tekst}
+                {/* pre-wrap on the text, not the nldd-text host: there it
+                    leaks into the shadow template and indents the first line. */}
+                <span style={{ whiteSpace: 'pre-wrap' }}>{item.document_tekst}</span>
               </nldd-text>
             </nldd-container>
           )}

@@ -675,8 +675,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                     </nldd-container>
                   )}
                   {lead.public_summary && (
-                    <nldd-text size="sm" color="secondary" style={{ whiteSpace: 'pre-wrap', display: 'block' }}>
-                      {lead.public_summary}
+                    <nldd-text size="sm" color="secondary">
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{lead.public_summary}</span>
                     </nldd-text>
                   )}
                 </nldd-container>
@@ -934,8 +934,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                                 <nldd-text size="xs" weight="medium" color="success">
                                   Uitkomst
                                 </nldd-text>
-                                <nldd-text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-                                  {activity.uitkomst}
+                                <nldd-text size="xs">
+                                  <span style={{ whiteSpace: 'pre-wrap' }}>{activity.uitkomst}</span>
                                 </nldd-text>
                               </nldd-container>
                             </nldd-card>
@@ -946,8 +946,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
                                 <nldd-text size="xs" weight="medium" color="warning">
                                   Vervolgacties
                                 </nldd-text>
-                                <nldd-text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-                                  {activity.vervolgacties}
+                                <nldd-text size="xs">
+                                  <span style={{ whiteSpace: 'pre-wrap' }}>{activity.vervolgacties}</span>
                                 </nldd-text>
                               </nldd-container>
                             </nldd-card>

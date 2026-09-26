@@ -113,9 +113,14 @@ export function RichTextDisplay({ content, fallback = 'Geen beschrijving beschik
     }
     // Plain text fallback — auto-linkify URLs. `pre-wrap` is content, not
     // styling: the line breaks are the only structure this text has.
+    //
+    // It goes on a span inside the element, not on nldd-text itself. On the
+    // host it is inherited into the shadow root, and the whitespace the
+    // component's template has around its slot then renders too: every plain
+    // description opened with an indent of a few words.
     return (
-      <nldd-text size="sm" color="secondary" style={{ whiteSpace: 'pre-wrap' }}>
-        {linkifyText(content)}
+      <nldd-text size="sm" color="secondary">
+        <span style={{ whiteSpace: 'pre-wrap' }}>{linkifyText(content)}</span>
       </nldd-text>
     );
   }
