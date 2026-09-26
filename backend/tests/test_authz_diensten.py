@@ -7,10 +7,13 @@ import uuid
 
 import pytest
 
+from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.services.caller import caller_for
 from bouwmeester.services.chat_service import _authorize_write_tool
 from bouwmeester.services.mattermost_slash_service import MattermostSlashService
+from bouwmeester.services.notification_service import NotificationService
 from tests.authz_world import World
 from tests.factories import client_as
 
@@ -96,3 +99,51 @@ async def test_chat_and_slash_share_one_caller(world):
     assert slash.org_ctx is chat.org_ctx
     # a command always comes from a known person, never anonymous
     assert await MattermostSlashService(world.db)._caller(uuid.uuid4()) is None
+
+
+# ---------------------------------------------------------------------------
+# Edge notifications name the other node only to those who can read it
+# ---------------------------------------------------------------------------
+
+
+async def test_edge_notification_hides_an_unreadable_end(world):
+    db = world.db
+    team_node = await db.get(CorpusNode, world.res["node_team"])
+    elders_node = await db.get(CorpusNode, world.res["node_elders"])
+    viewer = world.person["viewer"]  # sees the team node, not the elders one
+    super_admin = world.person["super_admin"]  # sees both
+    db.add_all(
+        [
+            ResourcePermission(
+                person_id=viewer.id,
+                resource_type="corpus_node",
+                resource_id=team_node.id,
+                rol="betrokken",
+            ),
+            ResourcePermission(
+                person_id=super_admin.id,
+                resource_type="corpus_node",
+                resource_id=elders_node.id,
+                rol="betrokken",
+            ),
+            # a grant to an eenheid has no person to notify
+            ResourcePermission(
+                organisatie_eenheid_id=world.org["team"].id,
+                resource_type="corpus_node",
+                resource_id=team_node.id,
+                rol="betrokken",
+            ),
+        ]
+    )
+    await db.flush()
+
+    sent = await NotificationService(db).notify_edge_created(team_node, elders_node)
+
+    by_person = {n.person_id: n for n in sent}
+    assert set(by_person) == {viewer.id, super_admin.id}
+    hidden = by_person[viewer.id]
+    assert elders_node.title not in hidden.title + hidden.message
+    assert hidden.related_node_id == team_node.id
+    full = by_person[super_admin.id]
+    assert team_node.title in full.message
+    assert elders_node.title in full.message
