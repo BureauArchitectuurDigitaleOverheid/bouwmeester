@@ -28,8 +28,6 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.org_tree import (
-    get_ancestor_ids,
-    get_membership_ids,
     get_subtree_ids,
 )
 
@@ -76,7 +74,12 @@ async def build_org_context(
     has one.
     """
     from bouwmeester.core.authority import managed_eenheid_ids
-    from bouwmeester.core.authz import readable_modules, role_read_ids
+    from bouwmeester.core.authz import (
+        memberships,
+        readable_modules,
+        role_read_ids,
+        self_and_ancestor_ids,
+    )
     from bouwmeester.core.permissions import (
         anonymous_permission_context,
         build_permission_context,
@@ -97,8 +100,10 @@ async def build_org_context(
             is_authenticated=True,
         )
 
-    own_ids = await get_membership_ids(db, person.id)
-    parent_ids = await get_ancestor_ids(db, own_ids)
+    # The same memberships and ancestor chains core.authz decides with,
+    # loaded once per request.
+    own_ids = list(await memberships(db, perm_ctx))
+    parent_ids = await self_and_ancestor_ids(db, perm_ctx, own_ids)
     managed_ids = managed_eenheid_ids(perm_ctx)
     # Rights inherit downward (core.authz), so what you can write you see.
     # Managers write in what they manage, so this also covers their subtree.
