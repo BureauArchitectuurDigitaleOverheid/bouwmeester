@@ -21,6 +21,7 @@ import {
 import type { Task } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCanCreateTask } from '@/hooks/useTasks';
 
 type ViewMode = 'list' | 'board' | 'personal';
 
@@ -67,6 +68,7 @@ interface TaskViewProps {
 
 export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const canCreate = useCanCreateTask(defaultNodeId);
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredView);
   const { openTaskDetail } = useTaskDetail();
   const [statusFilter, setStatusFilter] = useState<string>('');
@@ -190,10 +192,12 @@ export function TaskView({ tasks, defaultNodeId }: TaskViewProps) {
               looking at. Matches CorpusPage. */}
           <ViewToggle value={viewMode} onChange={handleViewChange} options={VIEW_OPTIONS} />
         </nldd-toolbar-item>
-        <nldd-toolbar-item slot="end" priority={2}>
-          <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} text="Nieuwe taak" compactBelowSm />
-          <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
-        </nldd-toolbar-item>
+        {canCreate && (
+          <nldd-toolbar-item slot="end" priority={2}>
+            <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} text="Nieuwe taak" compactBelowSm />
+            <nldd-menu-item slot="overflow" text="Nieuwe taak" icon="plus"></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {/* Content */}

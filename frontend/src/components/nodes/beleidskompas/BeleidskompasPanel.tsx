@@ -14,6 +14,7 @@ import { NodeCreateForm } from '../NodeCreateForm';
 import { NODE_TYPE_LABELS, NODE_TYPE_LABELS_PLURAL, NODE_TYPE_COLORS, type NodeType } from '@/types';
 import { EDGE_TYPE_ONDERDEEL_VAN } from './constants';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 import { NlddListItemButton } from '@/components/nldd/NlddLink';
 
 /**
@@ -42,13 +43,19 @@ function DisclosureSegment({
   );
 }
 
-interface StepActionButtonsProps {
+// Both actions link a node to the dossier; they are left out (undefined)
+// for someone who may not add edges to it.
+interface StepActions {
+  onCreateNew?: (nodeType: NodeType) => void;
+  onLinkExisting?: (nodeType: NodeType) => void;
+}
+
+interface StepActionButtonsProps extends StepActions {
   nodeType: NodeType;
-  onCreateNew: (nodeType: NodeType) => void;
-  onLinkExisting: (nodeType: NodeType) => void;
 }
 
 function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepActionButtonsProps) {
+  if (!onCreateNew || !onLinkExisting) return null;
   return (
     <nldd-container layout="row" gap="2" vertical-alignment="center">
       <NlddButton
@@ -69,11 +76,9 @@ function StepActionButtons({ nodeType, onCreateNew, onLinkExisting }: StepAction
   );
 }
 
-interface BeleidskompasStepRowProps {
+interface BeleidskompasStepRowProps extends StepActions {
   status: StepStatus;
   dossierId: string;
-  onCreateNew: (nodeType: NodeType) => void;
-  onLinkExisting: (nodeType: NodeType) => void;
 }
 
 function StepNumberBadge({ number, complete }: { number: number; complete: boolean }) {
@@ -104,10 +109,8 @@ function StepTypeGroups({
   status,
   onCreateNew,
   onLinkExisting,
-}: {
+}: StepActions & {
   status: StepStatus;
-  onCreateNew: (nodeType: NodeType) => void;
-  onLinkExisting: (nodeType: NodeType) => void;
 }) {
   const { openNodeDetail } = useNodeDetail();
   const isMultiType = status.step.nodeTypes.length > 1;
@@ -224,11 +227,13 @@ function BeleidskompasStepRow({ status, dossierId, onCreateNew, onLinkExisting }
             onCreateNew={onCreateNew}
             onLinkExisting={onLinkExisting}
           />
-          <KompasStepSuggestions
-            dossierId={dossierId}
-            stepNodeTypes={status.step.nodeTypes}
-            stepDescription={status.step.question}
-          />
+          {onLinkExisting && (
+            <KompasStepSuggestions
+              dossierId={dossierId}
+              stepNodeTypes={status.step.nodeTypes}
+              stepDescription={status.step.question}
+            />
+          )}
         </nldd-container>
       </nldd-container>
     </nldd-list-item>
@@ -246,6 +251,7 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
   const { steps, completedCount, totalSteps } = useCompletenessAnalysis(graphData, nodeId);
   const [linkModalType, setLinkModalType] = useState<NodeType | null>(null);
   const [createModalType, setCreateModalType] = useState<NodeType | null>(null);
+  const { allowed: canLink } = useCan('edge:create', { type: 'corpus_node', id: nodeId });
 
   // Collect IDs of nodes already linked to this dossier via onderdeel_van
   const linkedNodeIds = useMemo(() => {
@@ -323,8 +329,8 @@ export function BeleidskompasPanel({ nodeId, stakeholderCount, onNavigateToStake
                 key={stepStatus.step.id}
                 status={stepStatus}
                 dossierId={nodeId}
-                onCreateNew={(nodeType) => setCreateModalType(nodeType)}
-                onLinkExisting={(nodeType) => setLinkModalType(nodeType)}
+                onCreateNew={canLink ? (nodeType) => setCreateModalType(nodeType) : undefined}
+                onLinkExisting={canLink ? (nodeType) => setLinkModalType(nodeType) : undefined}
               />
             ))}
           </nldd-list>

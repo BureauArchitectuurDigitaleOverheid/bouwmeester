@@ -30,6 +30,8 @@ import { useTaskDetail } from '@/contexts/TaskDetailContext';
 import { useNodeDetail } from '@/contexts/NodeDetailContext';
 import { formatDateLong } from '@/utils/dates';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
+import { useCanCreateTask } from '@/hooks/useTasks';
 
 /**
  * Icon per node type, for the modal's header. `nldd-icon`'s closed set has no
@@ -75,6 +77,10 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
   const [showEdit, setShowEdit] = useState(false);
   const [showTaskCreate, setShowTaskCreate] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const nodeResource = nodeId ? ({ type: 'corpus_node', id: nodeId } as const) : null;
+  const { allowed: canUpdate } = useCan('node:update', nodeResource);
+  const { allowed: canDelete } = useCan('node:delete', nodeResource);
+  const canCreateTask = useCanCreateTask(nodeId);
   const deleteNode = useDeleteNode();
   const navigate = useNavigate();
   const location = useLocation();
@@ -135,14 +141,16 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
             onClose={onClose}
             actions={
               <>
-                <NlddButton
-                  variant="secondary"
-                  size="sm"
-                  startIcon="pencil"
-                  onClick={() => setShowEdit(true)}
-                  disabled={!node}
-                  text="Bewerken"
-                />
+                {canUpdate && (
+                  <NlddButton
+                    variant="secondary"
+                    size="sm"
+                    startIcon="pencil"
+                    onClick={() => setShowEdit(true)}
+                    disabled={!node}
+                    text="Bewerken"
+                  />
+                )}
                 <NlddButton
                   variant="secondary"
                   size="sm"
@@ -154,14 +162,16 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
                   disabled={!node}
                   text="Openen"
                 />
-                <NlddButton
-                  variant="destructive"
-                  size="sm"
-                  startIcon="trash"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={!node}
-                  text="Verwijderen"
-                />
+                {canDelete && (
+                  <NlddButton
+                    variant="destructive"
+                    size="sm"
+                    startIcon="trash"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={!node}
+                    text="Verwijderen"
+                  />
+                )}
               </>
             }
           />
@@ -293,13 +303,15 @@ export function NodeDetailModal({ nodeId, open, onClose }: NodeDetailModalProps)
               count={openTasks.length}
               separated
               action={
-                <NlddButton
-                  variant="neutral-transparent"
-                  size="sm"
-                  startIcon="plus"
-                  onClick={() => setShowTaskCreate(true)}
-                  text="Taak"
-                />
+                canCreateTask && (
+                  <NlddButton
+                    variant="neutral-transparent"
+                    size="sm"
+                    startIcon="plus"
+                    onClick={() => setShowTaskCreate(true)}
+                    text="Taak"
+                  />
+                )
               }
             >
               <RelatedItemsList
