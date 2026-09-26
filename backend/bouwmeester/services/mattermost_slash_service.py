@@ -9,7 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.authz import _contexts, can
+from bouwmeester.core.authz import can, visibility
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
@@ -126,7 +126,7 @@ class MattermostSlashService:
             caller = None
             if person is not None:
                 perm_ctx = await build_permission_context(self.session, person)
-                org_ctx, init_ctx = await _contexts(self.session, perm_ctx)
+                org_ctx, init_ctx = await visibility(self.session, perm_ctx)
                 caller = _Caller(perm_ctx, org_ctx, init_ctx)
             self._callers[person_id] = caller
         return self._callers[person_id]
