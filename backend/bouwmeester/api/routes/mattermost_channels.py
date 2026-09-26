@@ -40,6 +40,7 @@ from bouwmeester.schema.mattermost_channel_link import (
     MattermostChannelSearchResult,
 )
 from bouwmeester.services.mattermost_service import vul_teamnaam_aan
+from bouwmeester.services.mattermost_slash_service import channel_link_refusal
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,16 @@ router = APIRouter(tags=["mattermost-channels"])
 # ---------------------------------------------------------------------------
 # Initiatief-scope endpoints
 # ---------------------------------------------------------------------------
+
+
+async def _require_may_link(db, channel_id: str, current_user) -> None:
+    """403 when the caller may not link this channel (a private one they are
+    not a member of: its posts would be ingested)."""
+    refusal = await channel_link_refusal(
+        db, channel_id, current_user.id if current_user else None
+    )
+    if refusal:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
 
 
 async def _met_teamnaam(db, links: list) -> list[MattermostChannelLinkResponse]:
@@ -99,6 +110,7 @@ async def create_initiatief_channel(
         )
     ),
 ) -> MattermostChannelLinkResponse:
+    await _require_may_link(db, data.channel_id, current_user)
     repo = MattermostChannelLinkRepository(db)
     existing = await repo.get_by_channel_id(data.channel_id)
     if existing is not None:
@@ -175,6 +187,7 @@ async def create_lead_channel(
         requires("mattermost_channel_link:create", "lead", path_param="lead_id")
     ),
 ) -> MattermostChannelLinkResponse:
+    await _require_may_link(db, data.channel_id, current_user)
     repo = MattermostChannelLinkRepository(db)
     existing = await repo.get_by_channel_id(data.channel_id)
     if existing is not None:

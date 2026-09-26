@@ -9,6 +9,7 @@ and everything below it, never above.
 
 import uuid
 from datetime import date
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
@@ -182,8 +183,13 @@ def _fill(iw: World, path: str, body):
 )
 async def test_write_routes_follow_authz(iw, who, method, path, body, expected):
     path, body = _fill(iw, path, body)
+    linkable = patch(
+        "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
+        AsyncMock(return_value=None),
+    )
     async with client_as(iw.db, iw.person[who]) as c:
-        resp = await c.request(method, path, json=body)
+        with linkable:
+            resp = await c.request(method, path, json=body)
     assert resp.status_code == expected, resp.text
 
 

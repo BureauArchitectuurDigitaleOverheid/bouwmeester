@@ -1,6 +1,7 @@
 """Tests voor MattermostChannelLink routes en skeleton-ingest."""
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,6 +13,16 @@ from bouwmeester.models.mattermost_channel_link import (
     MattermostChannelLink,
 )
 from bouwmeester.models.mattermost_post_link import MattermostPostLink
+
+
+@pytest.fixture(autouse=True)
+def open_channels():
+    """Mattermost is not running: treat every channel as linkable."""
+    with patch(
+        "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
+        AsyncMock(return_value=None),
+    ) as refusal:
+        yield refusal
 
 
 def _channel_id() -> str:
@@ -307,3 +318,25 @@ async def test_record_post_skips_bot_self(db_session, sample_initiatief):
         select(MattermostPostLink).where(MattermostPostLink.post_id == post["id"])
     )
     assert result.scalar_one_or_none() is None
+
+
+async def test_private_channel_of_others_is_refused(
+    client, sample_initiatief, sample_lead, open_channels
+):
+    """A private channel the caller is not in may not be linked (its posts
+    would be ingested); the refusal comes from ``channel_link_refusal``."""
+    open_channels.return_value = "Je bent geen lid van dit kanaal"
+    body = {
+        "channel_id": _channel_id(),
+        "channel_name": "p",
+        "channel_display_name": "P",
+    }
+    init = await client.post(
+        f"/api/initiatieven/{sample_initiatief.id}/mattermost-channels", json=body
+    )
+    lead = await client.post(
+        f"/api/leads/{sample_lead.id}/mattermost-channels", json=body
+    )
+    assert init.status_code == 403, init.text
+    assert lead.status_code == 403, lead.text
+    assert "geen lid" in init.json()["detail"]
