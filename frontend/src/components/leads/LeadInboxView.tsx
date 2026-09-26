@@ -216,9 +216,9 @@ export function LeadInboxView({
         return (
           <nldd-container key={group} gap="0">
             <nldd-container padding-inline="12" padding-block="6">
-              <nldd-text size="xs" weight="medium" color="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {DATE_GROUP_LABELS[group]}
-              </nldd-text>
+              <nldd-title size={6}>
+                <h3>{DATE_GROUP_LABELS[group]}</h3>
+              </nldd-title>
             </nldd-container>
 
             <nldd-list variant="simple" dividers="always" accessible-label={`Leads: ${DATE_GROUP_LABELS[group]}`}>

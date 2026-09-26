@@ -25,23 +25,12 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
   return (
     <nldd-card ref={ref} button accessible-label={lead.title}>
       <nldd-container gap="6" padding="12">
-        {/* nldd-text has no line-clamp attribute, so the two-line title clamp
-            is an inline style. */}
-        <nldd-text
-          size="sm"
-          weight="medium"
-          style={{
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
+        <nldd-text size="sm" weight="medium" className="line-clamp-2">
           {lead.title}
         </nldd-text>
 
         {lead.organization && (
-          <nldd-text size="xs" color="secondary" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <nldd-text size="xs" color="secondary" className="truncate">
             {lead.organisatie_eenheid?.naam ?? lead.organization}
           </nldd-text>
         )}
@@ -62,14 +51,14 @@ export function LeadCard({ lead, onClick }: LeadCardProps) {
         <nldd-container layout="row" gap="8" vertical-alignment="center">
           {isInbox ? (
             lead.brought_by && (
-              <nldd-text size="xs" color="secondary" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <nldd-text size="xs" color="secondary" className="truncate" style={{ maxWidth: '120px' }}>
                 via {lead.brought_by.naam}
               </nldd-text>
             )
           ) : (
             <>
               {lead.assignee && (
-                <nldd-text size="xs" color="secondary" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <nldd-text size="xs" color="secondary" className="truncate" style={{ maxWidth: '120px' }}>
                   {lead.assignee.naam}
                 </nldd-text>
               )}

@@ -26,7 +26,7 @@ import {
   EDGE_COLOR,
   EDGE_LABEL_BG_COLOR,
   EDGE_LABEL_COLOR,
-  FLOATING_PANEL_BORDER,
+  FLOATING_PANEL_STYLE,
   GRID_COLOR,
   MINIMAP_MASK_COLOR,
 } from './graphColors';
@@ -394,23 +394,12 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
           proOptions={{ hideAttribution: true }}
         >
           <Background color={resolveColor(GRID_COLOR)} gap={20} size={1} />
-          <Controls
-            showInteractive={false}
-            style={{
-              borderRadius: '10px',
-              border: FLOATING_PANEL_BORDER,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}
-          />
+          <Controls showInteractive={false} style={FLOATING_PANEL_STYLE} />
           {!isMobile && (
             <MiniMap
               nodeColor={minimapNodeColor}
               maskColor={resolveColor(MINIMAP_MASK_COLOR)}
-              style={{
-                borderRadius: '10px',
-                border: FLOATING_PANEL_BORDER,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              }}
+              style={FLOATING_PANEL_STYLE}
             />
           )}
         </ReactFlow>

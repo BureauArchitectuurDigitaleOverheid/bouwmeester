@@ -82,14 +82,6 @@ function StageBadge({ stage }: { stage: string }) {
 }
 
 // -- Event description --
-/** Two-line clamp shared by the rich-text event bodies below. */
-const clampStyle: React.CSSProperties = {
-  display: '-webkit-box',
-  WebkitLineClamp: 2,
-  WebkitBoxOrient: 'vertical',
-  overflow: 'hidden',
-};
-
 function EventDescription({ event }: { event: LeadTimelineEvent }) {
   switch (event.event_type) {
     case 'created':
@@ -111,9 +103,11 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
 
     case 'note':
       return event.content ? (
-        <nldd-text size="sm" style={{ ...clampStyle, display: '-webkit-box', marginTop: '8px' }}>
-          <RichTextDisplay content={event.content} fallback="" />
-        </nldd-text>
+        <nldd-container padding-top="8">
+          <nldd-text size="sm" className="line-clamp-2">
+            <RichTextDisplay content={event.content} fallback="" />
+          </nldd-text>
+        </nldd-container>
       ) : null;
 
     case 'meeting':
@@ -123,11 +117,11 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
         <nldd-container layout="row" gap="8" padding-top="8">
           <Icon name={eventIconName(event.event_type)} size="sm" color="secondary-content" style={{ flexShrink: 0 }} />
           {event.content ? (
-            <nldd-text size="sm" color="secondary" style={{ ...clampStyle, flex: 1 }}>
+            <nldd-text size="sm" color="secondary" className="line-clamp-2 row-fill">
               <RichTextDisplay content={event.content} fallback="" />
             </nldd-text>
           ) : (
-            <nldd-text size="sm" color="secondary" style={clampStyle}>
+            <nldd-text size="sm" color="secondary" className="line-clamp-2">
               {getActivityLabel(event.event_type)}
             </nldd-text>
           )}
@@ -136,9 +130,11 @@ function EventDescription({ event }: { event: LeadTimelineEvent }) {
 
     default:
       return event.content ? (
-        <nldd-text size="sm" style={{ ...clampStyle, marginTop: '8px' }}>
-          <RichTextDisplay content={event.content} fallback="" />
-        </nldd-text>
+        <nldd-container padding-top="8">
+          <nldd-text size="sm" className="line-clamp-2">
+            <RichTextDisplay content={event.content} fallback="" />
+          </nldd-text>
+        </nldd-container>
       ) : null;
   }
 }

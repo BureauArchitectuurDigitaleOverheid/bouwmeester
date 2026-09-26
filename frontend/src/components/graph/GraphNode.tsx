@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import { Handle, Position } from 'reactflow';
 import type { NodeProps } from 'reactflow';
-import { NodeType, nodeTypeColor } from '@/types';
+import { NODE_TYPE_COLORS, NodeType, nodeTypeColor } from '@/types';
+import { Badge } from '@/components/common/Badge';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 
 export interface GraphNodeData {
@@ -14,7 +15,6 @@ export interface GraphNodeData {
 function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
   const { nodeLabel } = useVocabulary();
   const color = nodeTypeColor(data.nodeType);
-  const bgColor = nodeTypeColor(data.nodeType, 50);
   const label = nodeLabel(data.nodeType);
 
   return (
@@ -22,8 +22,8 @@ function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
       onClick={data.onClick}
       style={{
         background: 'var(--semantics-surfaces-base-background-color)',
-        borderRadius: '10px',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
+        borderRadius: 'var(--components-card-corner-radius)',
+        boxShadow: 'var(--components-card-box-shadow)',
         // The type color at 20%: a var() takes no hex alpha suffix, so mix instead.
         border: `1px solid color-mix(in oklch, ${color} 20%, transparent)`,
         minWidth: '180px',
@@ -32,51 +32,17 @@ function GraphNodeComponent({ data }: NodeProps<GraphNodeData>) {
         overflow: 'hidden',
       }}
     >
-      {/* Colored top bar */}
-      <div
-        style={{
-          height: '4px',
-          background: color,
-          borderRadius: '10px 10px 0 0',
-        }}
-      />
+      {/* Colored top bar; the frame's overflow clips it to the corners. */}
+      <div style={{ height: '4px', background: color }} />
 
-      <div style={{ padding: '10px 12px' }}>
-        {/* Type badge */}
-        <div
-          style={{
-            display: 'inline-block',
-            padding: '1px 8px',
-            borderRadius: '9999px',
-            fontSize: '10px',
-            fontWeight: 600,
-            color: color,
-            background: bgColor,
-            marginBottom: '6px',
-            letterSpacing: '0.025em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {label}
+      <nldd-container gap="6" padding-block="10" padding-inline="12">
+        <div className="hug">
+          <Badge color={NODE_TYPE_COLORS[data.nodeType] ?? 'coolgray'}>{label}</Badge>
         </div>
-
-        {/* Title */}
-        <div
-          style={{
-            fontSize: '13px',
-            fontWeight: 500,
-            color: 'var(--semantics-content-color)',
-            lineHeight: '1.4',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-          }}
-        >
+        <nldd-text size="sm" weight="medium" className="line-clamp-2">
           {data.label}
-        </div>
-      </div>
+        </nldd-text>
+      </nldd-container>
 
       <Handle
         type="target"

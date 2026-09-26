@@ -3,7 +3,7 @@ import { Select } from '@/components/common/Select';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { NlddIconButton } from '@/components/nldd/NlddIconButton';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import {
   useCreateLeadColumn,
   useDeleteLeadColumn,
@@ -17,39 +17,41 @@ import { NlddButton } from '@/components/nldd/NlddButton';
 
 type NlddTagColor = NonNullable<React.ComponentProps<'nldd-tag'>['color']>;
 
+type NlddIconColor = NonNullable<React.ComponentProps<'nldd-icon'>['color']>;
+
 /**
  * The closed set of nldd-tag color names `LeadColumn.color` may hold,
  * mirrored from backend `schema.lead_column.LEAD_COLUMN_COLORS` (kept in
- * sync by hand). `swatchVar` is the CSS custom property whose value IS that
- * color, at the "100" step (the tag's own solid-fill weight), so the picker
- * shows the real hue rather than a guessed one.
+ * sync by hand). The swatch is an nldd-icon in that color: the icon takes the
+ * same Rijkshuisstijl names and semantic roles as the tag, except that its
+ * grey is 'secondary-content' rather than 'neutral'.
  */
-const COLOR_PRESETS: { label: string; value: NlddTagColor; swatchVar: string }[] = [
+const COLOR_PRESETS: { label: string; value: NlddTagColor }[] = [
   // Semantic roles
-  { label: 'Neutraal', value: 'neutral', swatchVar: '--primitives-color-neutral-400' },
-  { label: 'Accent', value: 'accent', swatchVar: '--primitives-color-accent-100' },
-  { label: 'Succes', value: 'success', swatchVar: '--primitives-color-success-100' },
-  { label: 'Waarschuwing', value: 'warning', swatchVar: '--primitives-color-warning-100' },
-  { label: 'Kritiek', value: 'critical', swatchVar: '--primitives-color-critical-100' },
+  { label: 'Neutraal', value: 'neutral' },
+  { label: 'Accent', value: 'accent' },
+  { label: 'Succes', value: 'success' },
+  { label: 'Waarschuwing', value: 'warning' },
+  { label: 'Kritiek', value: 'critical' },
   // Rijkshuisstijl
-  { label: 'Lintblauw', value: 'lintblauw', swatchVar: '--primitives-color-lintblauw-100' },
-  { label: 'Donkerblauw', value: 'donkerblauw', swatchVar: '--primitives-color-donkerblauw-100' },
-  { label: 'Hemelblauw', value: 'hemelblauw', swatchVar: '--primitives-color-hemelblauw-100' },
-  { label: 'Lichtblauw', value: 'lichtblauw', swatchVar: '--primitives-color-lichtblauw-100' },
-  { label: 'Paars', value: 'paars', swatchVar: '--primitives-color-paars-100' },
-  { label: 'Violet', value: 'violet', swatchVar: '--primitives-color-violet-100' },
-  { label: 'Robijnrood', value: 'robijnrood', swatchVar: '--primitives-color-robijnrood-100' },
-  { label: 'Roze', value: 'roze', swatchVar: '--primitives-color-roze-100' },
-  { label: 'Rood', value: 'rood', swatchVar: '--primitives-color-rood-100' },
-  { label: 'Oranje', value: 'oranje', swatchVar: '--primitives-color-oranje-100' },
-  { label: 'Donkergeel', value: 'donkergeel', swatchVar: '--primitives-color-donkergeel-100' },
-  { label: 'Geel', value: 'geel', swatchVar: '--primitives-color-geel-100' },
-  { label: 'Donkerbruin', value: 'donkerbruin', swatchVar: '--primitives-color-donkerbruin-100' },
-  { label: 'Bruin', value: 'bruin', swatchVar: '--primitives-color-bruin-100' },
-  { label: 'Donkergroen', value: 'donkergroen', swatchVar: '--primitives-color-donkergroen-100' },
-  { label: 'Groen', value: 'groen', swatchVar: '--primitives-color-groen-100' },
-  { label: 'Mosgroen', value: 'mosgroen', swatchVar: '--primitives-color-mosgroen-100' },
-  { label: 'Mintgroen', value: 'mintgroen', swatchVar: '--primitives-color-mintgroen-100' },
+  { label: 'Lintblauw', value: 'lintblauw' },
+  { label: 'Donkerblauw', value: 'donkerblauw' },
+  { label: 'Hemelblauw', value: 'hemelblauw' },
+  { label: 'Lichtblauw', value: 'lichtblauw' },
+  { label: 'Paars', value: 'paars' },
+  { label: 'Violet', value: 'violet' },
+  { label: 'Robijnrood', value: 'robijnrood' },
+  { label: 'Roze', value: 'roze' },
+  { label: 'Rood', value: 'rood' },
+  { label: 'Oranje', value: 'oranje' },
+  { label: 'Donkergeel', value: 'donkergeel' },
+  { label: 'Geel', value: 'geel' },
+  { label: 'Donkerbruin', value: 'donkerbruin' },
+  { label: 'Bruin', value: 'bruin' },
+  { label: 'Donkergroen', value: 'donkergroen' },
+  { label: 'Groen', value: 'groen' },
+  { label: 'Mosgroen', value: 'mosgroen' },
+  { label: 'Mintgroen', value: 'mintgroen' },
 ];
 
 interface ColumnsManagerProps {
@@ -460,11 +462,16 @@ function ToggleChip({ active, activeIcon, inactiveIcon, label, title, activeColo
   );
 }
 
-/**
- * The column's color as one swatch; pressing it opens the palette. A plain
- * button for the same reason as the swatches below: at 16px the swatch is the
- * color, and there is no design-system control for picking one.
- */
+function swatchIconColor(color: NlddTagColor): NlddIconColor {
+  return color === 'neutral' ? 'secondary-content' : (color as NlddIconColor);
+}
+
+/** A filled circle in the color: the swatch in both controls below. */
+function Swatch({ color }: { color: NlddTagColor }) {
+  return <nldd-icon slot="icon" name="circle-filled" color={swatchIconColor(color)} />;
+}
+
+/** The column's color as one swatch; pressing it opens the palette. */
 function CurrentColorButton({
   color,
   expanded,
@@ -474,29 +481,27 @@ function CurrentColorButton({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(ref, 'click', onToggle);
   const preset = COLOR_PRESETS.find((p) => p.value === color) ?? COLOR_PRESETS[0];
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      title={`Kleur: ${preset.label}`}
-      aria-label={`Kleur wijzigen, nu ${preset.label}`}
-      aria-expanded={expanded}
-      style={{
-        height: '16px',
-        width: '16px',
-        border: 'none',
-        padding: 0,
-        cursor: 'pointer',
-        borderRadius: '9999px',
-        backgroundColor: `var(${preset.swatchVar})`,
-        boxShadow: '0 0 0 1px var(--primitives-color-neutral-300)',
-        alignSelf: 'center',
-      }}
-    />
+    <nldd-icon-button
+      ref={ref}
+      variant="neutral-transparent"
+      size="xs"
+      accessible-label={`Kleur wijzigen, nu ${preset.label}`}
+      expanded={orUndef(expanded)}
+    >
+      <Swatch color={preset.value} />
+    </nldd-icon-button>
   );
 }
 
+/**
+ * The palette as a radio group: one toggle button per color, the chosen one
+ * drawn selected by the button itself, so the choice does not rest on the
+ * color alone, and each option is announced by its name.
+ */
 function ColorSwatches({
   selected,
   onSelect,
@@ -504,32 +509,32 @@ function ColorSwatches({
   selected: string;
   onSelect: (color: NlddTagColor) => void;
 }) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(
+    ref,
+    'change',
+    useCallback(
+      (event: Event) => {
+        const value = (event as CustomEvent<{ value?: string }>).detail?.value;
+        if (value) onSelect(value as NlddTagColor);
+      },
+      [onSelect],
+    ),
+  );
+
   return (
-    <nldd-container layout="wrap" gap="4">
+    <nldd-toggle-button-group ref={ref} type="radio" size="xs" accessible-label="Kolomkleur">
       {COLOR_PRESETS.map((preset) => (
-        <button
+        <nldd-toggle-button
           key={preset.value}
-          type="button"
-          onClick={() => onSelect(preset.value)}
-          title={preset.label}
-          aria-label={preset.label}
-          style={{
-            height: '16px',
-            width: '16px',
-            // The swatch IS the color, and at 16px the user-agent border and
-            // padding would leave almost no fill visible.
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            borderRadius: '9999px',
-            backgroundColor: `var(${preset.swatchVar})`,
-            boxShadow:
-              selected === preset.value
-                ? `0 0 0 2px white, 0 0 0 4px var(${preset.swatchVar})`
-                : '0 0 0 1px var(--primitives-color-neutral-300)',
-          }}
-        />
+          variant="icon"
+          value={preset.value}
+          accessible-label={preset.label}
+          selected={orUndef(selected === preset.value)}
+        >
+          <Swatch color={preset.value} />
+        </nldd-toggle-button>
       ))}
-    </nldd-container>
+    </nldd-toggle-button-group>
   );
 }

@@ -1,5 +1,7 @@
-import { useState, useMemo, useCallback, useEffect, useRef, memo, type CSSProperties } from 'react';
-import { Icon } from '@/components/nldd/Icon';
+import { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
+import { NlddButton } from '@/components/nldd/NlddButton';
+import { NlddIconButton } from '@/components/nldd/NlddIconButton';
+import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -43,19 +45,15 @@ import {
   EDGE_COLOR,
   EDGE_LABEL_BG_COLOR,
   EDGE_LABEL_COLOR,
-  FLOATING_PANEL_BORDER,
+  FLOATING_PANEL_STYLE,
   GRID_COLOR,
   MINIMAP_MASK_COLOR,
 } from '@/components/graph/graphColors';
 
 /** `stageTagColor` gives an nldd-tag color name, which is also a valid
  * Rijkshuisstijl/semantic token segment (`--primitives-color-<name>-500` or
- * `--semantics-content-<name>-color` for the two semantic roles). This node
- * card renders its own chip with inline styles, matching the rest of
- * CommunityGraphNodeComponent's badges (all inline-styled — an nldd-tag
- * inside a reactflow-positioned node card would still need its host sized and
- * placed by hand, so there is no component win here), so the color has to
- * resolve to a CSS value rather than an nldd-tag `color` attribute. */
+ * `--semantics-content-<name>-color` for the semantic roles). The node's frame,
+ * top bar and handles paint with it, so it has to resolve to a CSS value. */
 function stageTagColorVar(stage: string): string {
   const name = stageTagColor(stage);
   if (name === 'success' || name === 'warning' || name === 'critical' || name === 'accent') {
@@ -200,24 +198,14 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       // slug zelf getoond — een per-graph-node lookup van de actieve
       // LeadColumn lijst zou hier overkill zijn.
       const fallbackKey = data.stage as LeadStage;
-      const stageColor = stageTagColorVar(fallbackKey);
       return (
-        <span
-          style={{
-            display: 'inline-block',
-            borderRadius: '9999px',
-            padding: '2px 8px',
-            fontSize: '10px',
-            fontWeight: 500,
-            marginBottom: '4px',
-            color: stageColor,
-            // A light tint of the stage color as the chip background, same
-            // idea as the person/org badges below (a hex color + low opacity).
-            backgroundColor: `color-mix(in srgb, ${stageColor} 16%, transparent)`,
-          }}
-        >
-          {LEAD_STAGE_LABELS[fallbackKey] ?? data.stage}
-        </span>
+        <div className="hug">
+          <nldd-tag
+            text={LEAD_STAGE_LABELS[fallbackKey] ?? data.stage}
+            color={stageTagColor(fallbackKey)}
+            size="sm"
+          />
+        </div>
       );
     }
     if (data.nodeType === 'person') {
@@ -226,19 +214,14 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       const functieLabel = formatFunctie(data.functie);
       const label = functieLabel ? `${roleLabel} · ${functieLabel}` : roleLabel;
       return (
-        <div style={{ marginBottom: '4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Icon name={isExtern ? 'person-circle' : 'person'} size="inherit" style={{ fontSize: '12px', color }} />
-            <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-              {label}
-            </span>
-          </div>
+        <nldd-container gap="2">
+          <NodeKindLabel icon={isExtern ? 'person-circle' : 'person'} color={color} text={label} />
           {data.expertise && (
-            <div style={{ color, fontSize: '9px', fontWeight: 500, marginTop: '1px', opacity: 0.85 }}>
+            <nldd-text size="xs" color="secondary">
               {data.expertise}
-            </div>
+            </nldd-text>
           )}
-        </div>
+        </nldd-container>
       );
     }
     if (data.nodeType === 'organisation') {
@@ -250,48 +233,22 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
           ? `Intern · ${data.orgType}`
           : 'Intern'
         : orgTypeLabel;
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px', minWidth: 0 }}>
-          <Icon name="apartment-building" size="inherit" style={{ fontSize: '12px', flexShrink: 0, color: badgeColor }} />
-          <span
-            style={{
-              color: badgeColor,
-              fontSize: '10px',
-              fontWeight: 600,
-              letterSpacing: '0.025em',
-              textTransform: 'uppercase',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {label}
-          </span>
-        </div>
-      );
+      return <NodeKindLabel icon="apartment-building" color={badgeColor} text={label} truncate />;
     }
     if (data.nodeType === 'corpus_node') {
       return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-          <Icon name="file-text" size="inherit" style={{ fontSize: '12px', color }} />
-          <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {data.corpusNodeType?.replace(/_/g, ' ') ?? 'Node'}
-          </span>
-        </div>
+        <NodeKindLabel
+          icon="file-text"
+          color={color}
+          text={data.corpusNodeType?.replace(/_/g, ' ') ?? 'Node'}
+        />
       );
     }
     if (data.nodeType === 'samenwerkingsverband') {
       const typeLabel = data.swvType
         ? SAMENWERKINGSVERBAND_TYPE_LABELS[data.swvType] ?? data.swvType
         : 'Verband';
-      return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-          <Icon name="handshake" size="inherit" style={{ fontSize: '12px', color }} />
-          <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
-            {typeLabel}
-          </span>
-        </div>
-      );
+      return <NodeKindLabel icon="handshake" color={color} text={typeLabel} />;
     }
     return null;
   })();
@@ -301,78 +258,30 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
       onClick={data.onClick}
       style={{
         background: 'var(--semantics-surfaces-base-background-color)',
-        borderRadius: '10px',
-        boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
+        borderRadius: 'var(--components-card-corner-radius)',
+        boxShadow: 'var(--components-card-box-shadow)',
         // The node color at a third: a var() takes no hex alpha suffix, so mix instead.
         border: `1px solid color-mix(in oklch, ${borderColor} 33%, transparent)`,
         minWidth: '160px',
         maxWidth: '220px',
         cursor: data.onClick ? 'pointer' : 'default',
         overflow: 'hidden',
-        position: 'relative',
         opacity: data.dimmed ? 0.18 : 1,
         transition: 'opacity 150ms ease',
         pointerEvents: data.dimmed ? 'none' : 'auto',
       }}
     >
-      <div style={{ height: '4px', background: color, borderRadius: '10px 10px 0 0' }} />
-      <div style={{ padding: '8px 12px', paddingBottom: data.onAddContact ? '28px' : '8px' }}>
+      {/* Colored top bar; the frame's overflow clips it to the corners. */}
+      <div style={{ height: '4px', background: color }} />
+      <nldd-container gap="4" padding-block="8" padding-inline="12">
         {badgeContent}
-        <div
-          style={{
-            fontSize: '13px',
-            fontWeight: 500,
-            color: 'var(--semantics-content-color)',
-            lineHeight: '1.4',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-          }}
-        >
-          {data.label}
-        </div>
-      </div>
-      {data.onAddContact && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            data.onAddContact?.();
-          }}
-          title="Contact toevoegen"
-          style={{
-            position: 'absolute',
-            bottom: '6px',
-            right: '6px',
-            width: '20px',
-            height: '20px',
-            borderRadius: '50%',
-            background: color,
-            // The icon reads this as currentColor and flips it to white or black,
-            // whichever contrasts with the fill.
-            color,
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            opacity: 0.8,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.opacity = '1';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.opacity = '0.8';
-          }}
-        >
-          <Icon
-            name="plus"
-            size="inherit"
-            style={{ fontSize: '12px', color: 'var(--semantics-content-contrast-color)' }}
-          />
-        </button>
-      )}
+        <nldd-container layout="row" gap="4" vertical-alignment="bottom">
+          <nldd-text size="sm" weight="medium" className="line-clamp-2 row-fill">
+            {data.label}
+          </nldd-text>
+          {data.onAddContact && <AddContactButton onAdd={data.onAddContact} />}
+        </nldd-container>
+      </nldd-container>
       <Handle
         type="target"
         position={Position.Top}
@@ -384,6 +293,58 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         style={{ width: '8px', height: '8px', background: color, border: '2px solid var(--semantics-surfaces-base-background-color)', bottom: '-4px' }}
       />
     </div>
+  );
+}
+
+/**
+ * What kind of thing a node is: an icon in the node's own color, which ties
+ * the node to the legend in the type toggles above the canvas, and the kind
+ * in words beside it.
+ */
+function NodeKindLabel({
+  icon,
+  color,
+  text,
+  truncate = false,
+}: {
+  icon: string;
+  color: string;
+  text: string;
+  truncate?: boolean;
+}) {
+  return (
+    <nldd-container layout="row" gap="4" vertical-alignment="center">
+      <nldd-icon name={icon} size="16" custom-color={color} aria-hidden="true" />
+      <nldd-text
+        size="xs"
+        weight="medium"
+        color="secondary"
+        className={truncate ? 'truncate row-fill' : 'row-fill'}
+      >
+        {text}
+      </nldd-text>
+    </nldd-container>
+  );
+}
+
+/**
+ * The + on a lead node. `nodrag` tells reactflow not to start a node drag from
+ * it, and stopPropagation keeps the click from also opening the lead: the
+ * element's own listener runs before React's root listener sees the click.
+ */
+function AddContactButton({ onAdd }: { onAdd: () => void }) {
+  return (
+    <NlddIconButton
+      icon="plus"
+      accessibleLabel="Contact toevoegen"
+      variant="neutral-tinted"
+      size="xs"
+      className="nodrag"
+      onClick={(event) => {
+        event.stopPropagation();
+        onAdd();
+      }}
+    />
   );
 }
 
@@ -441,22 +402,66 @@ function computeLayout(
 interface NodeTypeToggle {
   key: CommunityNodeType;
   label: string;
-  icon: React.ReactNode;
-  /** A Rijkshuisstijl color-scale name; the chip reads its 500 step as
-   *  foreground and a tint of it as background (see `.node-type-toggle`). */
-  activeColorScale: string;
+  icon: string;
+  /** The color the canvas paints this kind of node in, so the toggle's icon
+   *  doubles as the legend. Leads follow their stage and beleidsnodes their
+   *  own type, so those two have no single color and stay uncolored. */
+  color?: string;
 }
 
-/** 14px: the toggles' text size. nldd-icon's own scale starts at 16. */
-const ICON_SIZE_SM: CSSProperties = { fontSize: '14px' };
-
 const NODE_TYPE_TOGGLES: NodeTypeToggle[] = [
-  { key: 'lead', label: 'Leads', icon: <Icon name="lightbulb" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'hemelblauw' },
-  { key: 'person', label: 'Personen', icon: <Icon name="person" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'roze' },
-  { key: 'organisation', label: 'Organisaties', icon: <Icon name="apartment-building" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'groen' },
-  { key: 'samenwerkingsverband', label: 'Verbanden', icon: <Icon name="handshake" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'paars' },
-  { key: 'corpus_node', label: 'Beleidsnodes', icon: <Icon name="file-text" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'neutral' },
+  { key: 'lead', label: 'Leads', icon: 'lightbulb' },
+  { key: 'person', label: 'Personen', icon: 'person', color: PERSON_INTERN_COLOR },
+  { key: 'organisation', label: 'Organisaties', icon: 'apartment-building', color: ORG_COLOR },
+  { key: 'samenwerkingsverband', label: 'Verbanden', icon: 'handshake', color: SWV_COLOR },
+  { key: 'corpus_node', label: 'Beleidsnodes', icon: 'file-text' },
 ];
+
+/**
+ * The node-type filter as a checkbox toggle group. nldd-toggle-button has no
+ * color of its own, so the type color rides on the slotted icon; the selected
+ * state is the button's own.
+ */
+function NodeTypeToggles({
+  enabledTypes,
+  onToggle,
+}: {
+  enabledTypes: Set<CommunityNodeType>;
+  onToggle: (type: CommunityNodeType) => void;
+}) {
+  const ref = useRef<HTMLElement>(null);
+  useNlddEvent(
+    ref,
+    'change',
+    useCallback(
+      (event: Event) => {
+        const value = (event as CustomEvent<{ value?: string }>).detail?.value;
+        if (value) onToggle(value as CommunityNodeType);
+      },
+      [onToggle],
+    ),
+  );
+
+  return (
+    <nldd-toggle-button-group ref={ref} type="checkbox" size="sm" accessible-label="Toon in netwerk">
+      {NODE_TYPE_TOGGLES.map((toggle) => (
+        <nldd-toggle-button
+          key={toggle.key}
+          value={toggle.key}
+          text={toggle.label}
+          variant="icon-and-text"
+          selected={orUndef(enabledTypes.has(toggle.key))}
+        >
+          <nldd-icon
+            slot="icon"
+            name={toggle.icon}
+            {...(toggle.color ? { 'custom-color': toggle.color } : {})}
+          />
+        </nldd-toggle-button>
+      ))}
+    </nldd-toggle-button-group>
+  );
+}
 
 // ---- Inner component ----
 interface CommunityGraphInnerProps {
@@ -723,35 +728,21 @@ function CommunityGraphInner({
       <LeadMetricsBar initiatiefId={initiatiefId || undefined} />
 
       {/* Node type toggles + focus indicator */}
-      <div className="node-type-toggle-row">
-        {NODE_TYPE_TOGGLES.map((toggle) => {
-          const active = enabledTypes.has(toggle.key);
-          return (
-            <button
-              key={toggle.key}
-              onClick={() => toggleType(toggle.key)}
-              className="node-type-toggle"
-              style={active ? {
-                color: `var(--primitives-color-${toggle.activeColorScale}-800)`,
-                backgroundColor: `var(--primitives-color-${toggle.activeColorScale}-100)`,
-              } : undefined}
-            >
-              {toggle.icon}
-              {toggle.label}
-            </button>
-          );
-        })}
+      <nldd-container layout="row" gap="8" vertical-alignment="center">
+        <nldd-container width="fit-content" className="row-fill">
+          <NodeTypeToggles enabledTypes={enabledTypes} onToggle={toggleType} />
+        </nldd-container>
         {focusedNodeId && (
-          <button
-            onClick={() => setFocusedNodeId(null)}
-            className="node-type-toggle node-type-toggle-focus"
+          <NlddButton
+            variant="neutral-tinted"
+            size="sm"
+            startIcon="close"
+            text="Focus opheffen"
             title="Toon weer alle nodes"
-          >
-            <Icon name="close" size="inherit" style={ICON_SIZE_SM} />
-            Focus opheffen
-          </button>
+            onClick={() => setFocusedNodeId(null)}
+          />
         )}
-      </div>
+      </nldd-container>
 
       {/* Graph canvas */}
       <div
@@ -774,23 +765,12 @@ function CommunityGraphInner({
           proOptions={{ hideAttribution: true }}
         >
           <Background color={resolveColor(GRID_COLOR)} gap={20} size={1} />
-          <Controls
-            showInteractive={false}
-            style={{
-              borderRadius: '10px',
-              border: FLOATING_PANEL_BORDER,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            }}
-          />
+          <Controls showInteractive={false} style={FLOATING_PANEL_STYLE} />
           {!isMobile && (
             <MiniMap
               nodeColor={minimapNodeColor}
               maskColor={resolveColor(MINIMAP_MASK_COLOR)}
-              style={{
-                borderRadius: '10px',
-                border: FLOATING_PANEL_BORDER,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              }}
+              style={FLOATING_PANEL_STYLE}
             />
           )}
         </ReactFlow>
