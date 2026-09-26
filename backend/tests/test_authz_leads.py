@@ -47,6 +47,12 @@ async def lw(world: World) -> LeadsWorld:  # noqa: F811
     db.add_all([lead_other, lead_team])
     await db.flush()
     lead = world.res["lead"]
+    opdrachtgever_grant = ResourcePermission(
+        person_id=opdrachtgever.id,
+        resource_type="lead",
+        resource_id=lead,
+        rol="opdrachtgever",
+    )
     db.add_all(
         [
             ResourcePermission(
@@ -55,12 +61,7 @@ async def lw(world: World) -> LeadsWorld:  # noqa: F811
                 resource_id=initiatief,
                 rol="viewer",
             ),
-            ResourcePermission(
-                person_id=opdrachtgever.id,
-                resource_type="lead",
-                resource_id=lead,
-                rol="opdrachtgever",
-            ),
+            opdrachtgever_grant,
         ]
     )
     activity = LeadActivity(
@@ -90,6 +91,7 @@ async def lw(world: World) -> LeadsWorld:  # noqa: F811
         post=post.id,
         attachment=attachment.id,
         github_link=link.id,
+        opdrachtgever_grant=opdrachtgever_grant.id,
     )
     return LeadsWorld(world)
 
@@ -415,3 +417,52 @@ async def test_leads_of_one_initiatief_share_one_decision(lw):
         k for k in ctx.authz_cache if k[0] == "decision" and k[1] == "initiatief:update"
     ]
     assert len(decisions) == 1
+
+
+# Lead contacts are grants: (who, lead key, contact, rol, expected status)
+CONTACT_GRANTS = [
+    # an editor of the lead adds contacts, themselves included
+    ("role_only", "lead", "viewer", "contactpersoon", 201),
+    ("role_only", "lead", "role_only", "betrokken", 201),
+    # opdrachtgever gives lead:update: an editor hands it out, not to themselves
+    ("role_only", "lead", "viewer", "opdrachtgever", 201),
+    ("role_only", "lead", "role_only", "opdrachtgever", 403),
+    ("opdrachtgever", "lead", "viewer", "opdrachtgever", 201),
+    # no write access, no grants
+    ("init_viewer", "lead", "viewer", "contactpersoon", 403),
+    ("init_viewer", "lead", "init_viewer", "opdrachtgever", 403),
+    # only the lead's own rols
+    ("role_only", "lead", "viewer", "eigenaar", 422),
+    # a lead without initiatief and eenheid: the tenant-wide editors decide
+    ("team_editor", "lead_free", "viewer", "opdrachtgever", 201),
+    ("team_editor", "lead_free", "team_editor", "opdrachtgever", 403),
+    ("viewer", "lead_free", "afd_editor", "contactpersoon", 403),
+]
+
+
+@pytest.mark.parametrize(
+    ("who", "lead", "contact", "rol", "expected"),
+    CONTACT_GRANTS,
+    ids=[f"{c[0]}-{c[3]}-for-{c[2]}-on-{c[1]}" for c in CONTACT_GRANTS],
+)
+async def test_contact_is_a_grant(lw, who, lead, contact, rol, expected):
+    body = {"person_id": str(lw.w.person[contact].id), "rol": rol}
+    async with client_as(lw.w.db, lw.w.person[who]) as c:
+        resp = await c.post(f"/api/leads/{lw.id(lead)}/contacts", json=body)
+    assert resp.status_code == expected, resp.text
+
+
+@pytest.mark.parametrize(
+    ("who", "expected"),
+    [
+        ("opdrachtgever", 204),  # leaving yourself
+        ("role_only", 204),  # an editor removes someone else's grant
+        ("init_viewer", 403),
+        ("viewer", 403),
+    ],
+)
+async def test_remove_contact_is_a_grant_change(lw, who, expected):
+    url = f"/api/leads/{lw.id('lead')}/contacts/{lw.id('opdrachtgever_grant')}"
+    async with client_as(lw.w.db, lw.w.person[who]) as c:
+        resp = await c.delete(url)
+    assert resp.status_code == expected, resp.text

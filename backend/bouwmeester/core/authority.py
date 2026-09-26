@@ -24,7 +24,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import require, rights_on_eenheid
+from bouwmeester.core.authz import can, require, rights_on_eenheid
 from bouwmeester.core.permissions import (
     RESOURCE_ROLE_PERMISSIONS,
     PermissionContext,
@@ -546,6 +546,36 @@ async def _grant_reaches_caller(
 # an owning eenheid, anyone who manages resource roles may keep them current.
 _UNSCOPED_CONTACT_TYPES = frozenset({"corpus_node", "opdracht"})
 
+# Resource types without an eigenaar role: whoever may edit the resource
+# keeps its roles current.  The rols listed here give that edit right
+# themselves, so they are handed out only by an editor, never to themselves
+# (a grant never exceeds what the grantor holds).
+_EDITOR_GRANTED_TYPES: dict[str, tuple[str, frozenset[str]]] = {
+    "lead": ("lead:update", frozenset({"opdrachtgever"})),
+}
+
+
+async def _require_editor_grant_authority(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    resource_type: str,
+    resource_id: UUID,
+    rols: frozenset[str],
+    target_person_id: UUID | None,
+    target_eenheid_id: UUID | None,
+) -> None:
+    edit_perm, editor_rols = _EDITOR_GRANTED_TYPES[resource_type]
+    if not await can(db, perm_ctx, edit_perm, resource_type, resource_id):
+        raise _forbidden("Alleen wie dit item mag bewerken, kan hier rollen toekennen")
+    if rols & editor_rols and await _grant_reaches_caller(
+        db,
+        perm_ctx,
+        target_person_id=target_person_id,
+        target_eenheid_id=target_eenheid_id,
+    ):
+        raise _forbidden("Je kunt jezelf geen rol op dit item geven")
+
 
 async def _require_grant_authority(
     db: AsyncSession,
@@ -553,11 +583,11 @@ async def _require_grant_authority(
     *,
     resource_type: str,
     resource_id: UUID,
-    owner_rol: bool,
+    rols: frozenset[str],
     target_person_id: UUID | None,
     target_eenheid_id: UUID | None,
 ) -> None:
-    """Authority to hand out (or change) a rol on a resource.
+    """Authority to hand out (or change) *rols* on a resource.
 
     - an eigenaar of the resource may hand out any rol;
     - otherwise ``resource_permission:manage`` must be effective on one of
@@ -566,10 +596,24 @@ async def _require_grant_authority(
     - a resource without such an eenheid only has its eigenaars, except that
       corpus nodes and opdrachten (both mostly without an eenheid today, the
       latter because FCC does not fill one) take non-owner contacts, yourself
-      included, from anyone with ``resource_permission:manage``.
+      included, from anyone with ``resource_permission:manage``;
+    - a type in ``_EDITOR_GRANTED_TYPES`` (leads) has no eigenaar: its
+      editors decide, see there.
     """
     if perm_ctx.is_super_admin:
         return
+    if resource_type in _EDITOR_GRANTED_TYPES:
+        await _require_editor_grant_authority(
+            db,
+            perm_ctx,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            rols=rols,
+            target_person_id=target_person_id,
+            target_eenheid_id=target_eenheid_id,
+        )
+        return
+    owner_rol = "eigenaar" in rols
     if perm_ctx.person_id is not None and await check_resource_permission(
         db, perm_ctx.person_id, resource_type, resource_id, "resource_permission:manage"
     ):
@@ -636,7 +680,7 @@ async def require_can_grant_resource_role(
         perm_ctx,
         resource_type=resource_type,
         resource_id=resource_id,
-        owner_rol=rol == "eigenaar",
+        rols=frozenset({rol}),
         target_person_id=target_person_id,
         target_eenheid_id=target_eenheid_id,
     )
@@ -691,7 +735,7 @@ async def require_can_change_resource_role(
         perm_ctx,
         resource_type=grant.resource_type,
         resource_id=grant.resource_id,
-        owner_rol="eigenaar" in {grant.rol, new_rol},
+        rols=frozenset(r for r in (grant.rol, new_rol) if r is not None),
         target_person_id=grant.person_id,
         target_eenheid_id=grant.organisatie_eenheid_id,
     )

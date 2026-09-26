@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_deleted, require_found, validate_list
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authority import (
+    require_can_change_resource_role,
+    require_can_grant_resource_role,
+)
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.github_url import parse_github_url
@@ -32,6 +36,7 @@ from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_node import LeadNode
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.github_link import GitHubLinkRepository
 from bouwmeester.repositories.lead import LeadRepository, StageNotInColumnsError
 from bouwmeester.repositories.lead_activity import LeadActivityRepository
@@ -342,6 +347,11 @@ async def merge_leads(
     """
     await require(db, perm_ctx, "lead:update", "lead", data.source_id)
     await require(db, perm_ctx, "lead:update", "lead", data.target_id)
+    # The merge moves the source's contacts (opdrachtgever included) to the
+    # target without the grant guard on purpose: every moved grant already
+    # held on the source, and the caller holds lead:update on the target, so
+    # nobody, the caller included, gets a right the caller could not use
+    # already.  The guard would wrongly refuse moving the caller's own grant.
     source = await get_lead_or_404(db, data.source_id)
     target = await get_lead_or_404(db, data.target_id)
     if source.initiatief_id != target.initiatief_id:
@@ -509,8 +519,6 @@ async def delete_lead(
 
     # Clean up resource_permission rows (no FK cascade on polymorphic)
     from sqlalchemy import delete as sa_delete
-
-    from bouwmeester.models.resource_permission import ResourcePermission
 
     await db.execute(
         sa_delete(ResourcePermission).where(
@@ -737,11 +745,22 @@ async def add_contact(
     data: LeadContactCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadContactResponse:
-    """Link a person as contact to a lead."""
+    """Link a person as contact to a lead.
+
+    A contact is a grant (``opdrachtgever`` gives ``lead:update``), so it
+    goes through the grant guard rather than plain write access.
+    """
     lead = await get_lead_or_404(db, lead_id)
-    from bouwmeester.models.resource_permission import ResourcePermission
+    await require_can_grant_resource_role(
+        db,
+        perm_ctx,
+        resource_type="lead",
+        resource_id=lead_id,
+        rol=data.rol,
+        target_person_id=data.person_id,
+    )
 
     contact = ResourcePermission(
         person_id=data.person_id,
@@ -791,11 +810,10 @@ async def remove_contact(
     contact_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_WRITE_LEAD),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
-    """Remove a contact link from a lead."""
+    """Remove a contact link from a lead (leaving it yourself is always allowed)."""
     lead = await get_lead_or_404(db, lead_id)
-    from bouwmeester.models.resource_permission import ResourcePermission
 
     result = await db.execute(
         select(ResourcePermission).where(
@@ -807,6 +825,7 @@ async def remove_contact(
     contact = result.scalar_one_or_none()
     if contact is None:
         raise HTTPException(status_code=404, detail="Contact not found")
+    await require_can_change_resource_role(db, perm_ctx, contact, new_rol=None)
     await db.delete(contact)
     await db.flush()
 
