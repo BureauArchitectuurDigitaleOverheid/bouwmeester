@@ -1,14 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef, memo, type CSSProperties } from 'react';
-import {
-  Building2,
-  User,
-  UserCircle2,
-  FileText,
-  Lightbulb,
-  Plus,
-  X,
-  Handshake,
-} from 'lucide-react';
+import { Icon } from '@/components/nldd/Icon';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import ReactFlow, {
   Background,
@@ -230,14 +221,13 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
     }
     if (data.nodeType === 'person') {
       const isExtern = data.personRole === 'extern';
-      const PersonIcon = isExtern ? UserCircle2 : User;
       const roleLabel = isExtern ? 'Extern' : 'Intern';
       const functieLabel = formatFunctie(data.functie);
       const label = functieLabel ? `${roleLabel} · ${functieLabel}` : roleLabel;
       return (
         <div style={{ marginBottom: '4px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <PersonIcon style={{ height: '12px', width: '12px', color }} />
+            <Icon name={isExtern ? 'person-circle' : 'person'} size="inherit" style={{ fontSize: '12px', color }} />
             <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
               {label}
             </span>
@@ -261,7 +251,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         : orgTypeLabel;
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px', minWidth: 0 }}>
-          <Building2 style={{ height: '12px', width: '12px', flexShrink: 0, color: badgeColor }} />
+          <Icon name="apartment-building" size="inherit" style={{ fontSize: '12px', flexShrink: 0, color: badgeColor }} />
           <span
             style={{
               color: badgeColor,
@@ -282,7 +272,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
     if (data.nodeType === 'corpus_node') {
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-          <FileText style={{ height: '12px', width: '12px', color }} />
+          <Icon name="file-text" size="inherit" style={{ fontSize: '12px', color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
             {data.corpusNodeType?.replace(/_/g, ' ') ?? 'Node'}
           </span>
@@ -295,7 +285,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
         : 'Verband';
       return (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
-          <Handshake style={{ height: '12px', width: '12px', color }} />
+          <Icon name="handshake" size="inherit" style={{ fontSize: '12px', color }} />
           <span style={{ color, fontSize: '10px', fontWeight: 600, letterSpacing: '0.025em', textTransform: 'uppercase' }}>
             {typeLabel}
           </span>
@@ -372,7 +362,7 @@ function CommunityGraphNodeComponent({ data }: NodeProps<CommunityGraphNodeData>
             (e.currentTarget as HTMLButtonElement).style.opacity = '0.8';
           }}
         >
-          <Plus style={{ width: '12px', height: '12px' }} />
+          <Icon name="plus" size="inherit" style={{ fontSize: '12px' }} />
         </button>
       )}
       <Handle
@@ -449,14 +439,15 @@ interface NodeTypeToggle {
   activeColorScale: string;
 }
 
-const ICON_SIZE_SM: CSSProperties = { height: '14px', width: '14px' };
+/** 14px: the toggles' text size. nldd-icon's own scale starts at 16. */
+const ICON_SIZE_SM: CSSProperties = { fontSize: '14px' };
 
 const NODE_TYPE_TOGGLES: NodeTypeToggle[] = [
-  { key: 'lead', label: 'Leads', icon: <Lightbulb style={ICON_SIZE_SM} />, activeColorScale: 'hemelblauw' },
-  { key: 'person', label: 'Personen', icon: <User style={ICON_SIZE_SM} />, activeColorScale: 'roze' },
-  { key: 'organisation', label: 'Organisaties', icon: <Building2 style={ICON_SIZE_SM} />, activeColorScale: 'groen' },
-  { key: 'samenwerkingsverband', label: 'Verbanden', icon: <Handshake style={ICON_SIZE_SM} />, activeColorScale: 'paars' },
-  { key: 'corpus_node', label: 'Beleidsnodes', icon: <FileText style={ICON_SIZE_SM} />, activeColorScale: 'neutral' },
+  { key: 'lead', label: 'Leads', icon: <Icon name="lightbulb" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'hemelblauw' },
+  { key: 'person', label: 'Personen', icon: <Icon name="person" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'roze' },
+  { key: 'organisation', label: 'Organisaties', icon: <Icon name="apartment-building" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'groen' },
+  { key: 'samenwerkingsverband', label: 'Verbanden', icon: <Icon name="handshake" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'paars' },
+  { key: 'corpus_node', label: 'Beleidsnodes', icon: <Icon name="file-text" size="inherit" style={ICON_SIZE_SM} />, activeColorScale: 'neutral' },
 ];
 
 // ---- Inner component ----
@@ -747,7 +738,7 @@ function CommunityGraphInner({
             className="node-type-toggle node-type-toggle-focus"
             title="Toon weer alle nodes"
           >
-            <X style={ICON_SIZE_SM} />
+            <Icon name="close" size="inherit" style={ICON_SIZE_SM} />
             Focus opheffen
           </button>
         )}
