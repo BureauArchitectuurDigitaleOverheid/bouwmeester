@@ -20,7 +20,10 @@ from bouwmeester.models.org_parent import OrganisatieEenheidParent
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.models.role import PersonRole
 
 YESTERDAY = date.today() - timedelta(days=1)
@@ -71,15 +74,23 @@ async def make_org(
     return org
 
 
-async def place(db: AsyncSession, person: Person, org: OrganisatieEenheid) -> None:
-    db.add(
-        PersonOrganisatieEenheid(
-            person_id=person.id,
-            organisatie_eenheid_id=org.id,
-            start_datum=YESTERDAY,
-        )
+async def place(
+    db: AsyncSession,
+    person: Person,
+    org: OrganisatieEenheid,
+    *,
+    bron: str = PLACEMENT_BRON_LEIDINGGEVENDE,
+) -> PersonOrganisatieEenheid:
+    """Place *person* in *org*; by default a manager's (trusted) placement."""
+    placement = PersonOrganisatieEenheid(
+        person_id=person.id,
+        organisatie_eenheid_id=org.id,
+        start_datum=YESTERDAY,
+        bron=bron,
     )
+    db.add(placement)
     await db.flush()
+    return placement
 
 
 async def grant_role(

@@ -11,9 +11,9 @@ those would take their placement away on first login, so every active
 'handmatig' placement in an internal eenheid, or in an eenheid below one,
 is confirmed here.  Only placements created after deploy are held.
 
-Downgrade turns every 'leidinggevende' placement back into 'handmatig': the
-code before this revision does not know the value, and 'handmatig' was what
-all of them were.
+Downgrade turns every 'leidinggevende' and 'detachering' placement back
+into 'handmatig': the code before this revision does not know those values,
+and 'handmatig' was what all of them were.
 
 Revision ID: 7c1e5a9d3b20
 Revises: 2765100a6afa
@@ -64,7 +64,7 @@ WHERE bron = 'handmatig'
 REVERT_SQL = """
 UPDATE person_organisatie_eenheid
 SET bron = 'handmatig'
-WHERE bron = 'leidinggevende'
+WHERE bron IN ('leidinggevende', 'detachering')
 """
 
 

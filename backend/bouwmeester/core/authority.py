@@ -42,13 +42,22 @@ from bouwmeester.models.organisatie_eenheid import (
     OrganisatieEenheid,
 )
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_DETACHERING,
+    PLACEMENT_BRON_HANDMATIG,
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole, Role
+from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
+    eenheid_references,
     get_membership_ids,
     get_self_and_ancestor_ids,
     get_subtree_ids,
+    placement_not_ended,
+    placement_trusted,
     touches_organisation,
 )
 
@@ -148,7 +157,8 @@ async def require_can_place(
 
     Placing a contact is ordinary contact administration (a counterpart at
     another ministry or a gemeente) and stays open to ``people:update``.
-    Such a placement grants nothing until the contact logs in, and then
+    Such a placement is informational: only a trusted placement gives
+    access (``org_tree.membership_ids_select``), and at first login
     ``hold_unconfirmed_placements`` turns it into a placement request.
 
     Without a concrete person (the evaluation endpoint), ``person=None``
@@ -171,16 +181,7 @@ async def require_can_place(
         return
     if contact if person is None else not await is_account(db, person):
         return
-    # Linking your own staff to an external organisation (a detachering) is
-    # the person's manager's call: it grants nothing inside the organisation.
-    # One that hangs inside it does (members see up the line), so there
-    # its managers decide like anywhere else in the organisation.
-    if (
-        person is not None
-        and eenheid.type not in INTERNAL_EENHEID_TYPES
-        and not await touches_organisation(db, eenheid.id)
-        and await _manages_person(db, perm_ctx, person)
-    ):
+    if person is not None and await _is_detachering(db, perm_ctx, person, eenheid):
         return
     ask = await _who_decides(db, eenheid)
     if ending:
@@ -193,44 +194,66 @@ async def require_can_place(
     )
 
 
-# ``PersonOrganisatieEenheid.bron`` of a placement a manager made or approved.
-# Manual placements with any other bron ("handmatig") were contact
-# administration and are not trusted when the contact logs in.
-CONFIRMED_PLACEMENT_BRON = "leidinggevende"
-_UNCONFIRMED_PLACEMENT_BRON = "handmatig"
+async def _is_detachering(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    person: Person,
+    eenheid: OrganisatieEenheid,
+) -> bool:
+    """True if the caller links their own staff to an external organisation.
+
+    A detachering is the person's manager's call.  It records who works
+    where and grants nothing (bron ``detachering`` is never trusted).  An
+    external eenheid that hangs inside the organisation is decided by its
+    managers like anywhere else in the organisation.
+    """
+    return (
+        eenheid.type not in INTERNAL_EENHEID_TYPES
+        and not await touches_organisation(db, eenheid.id)
+        and await _manages_person(db, perm_ctx, person)
+    )
 
 
 async def placement_bron(
-    db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    person: Person,
+    eenheid: OrganisatieEenheid,
 ) -> str:
-    """The bron to record for a placement the caller makes in *eenheid_id*."""
-    if await can_manage_members(db, perm_ctx, eenheid_id):
-        return CONFIRMED_PLACEMENT_BRON
-    return _UNCONFIRMED_PLACEMENT_BRON
+    """The bron to record for a placement the caller makes (or changes).
+
+    Only a manager of the eenheid (or above it) makes a trusted placement.
+    A manager placing own staff in an external organisation records a
+    detachering; anyone else does contact administration.  Neither of those
+    gives access.
+    """
+    if await can_manage_members(db, perm_ctx, eenheid.id):
+        return PLACEMENT_BRON_LEIDINGGEVENDE
+    if await _is_detachering(db, perm_ctx, person, eenheid):
+        return PLACEMENT_BRON_DETACHERING
+    return PLACEMENT_BRON_HANDMATIG
 
 
 async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
-    """Turn unconfirmed placements into requests when a contact becomes an account.
+    """Turn contact placements into requests when a contact becomes an account.
 
     Anyone with ``people:update`` may place a contact anywhere (contact
-    administration).  When that contact's first login links to the record,
-    those placements would suddenly grant access (implicit viewer,
-    visibility up the line).  So every active manual placement in or below
-    the internal organisation that no manager made or approved becomes a
-    pending placement request, which a manager of that eenheid decides.
-    Placements from authoritative imports (ROO, kabinet, TK, ABD) and in
-    external organisations are kept.
+    administration).  Such a placement is not trusted, so it gives no
+    access.  When that contact's first login links to the record, every
+    active ``handmatig`` placement in or below the internal organisation
+    becomes a pending placement request, so a manager of that eenheid can
+    confirm it.  Trusted placements (a manager's, a sync's), detacheringen
+    (informational only) and contact placements in external organisations
+    are kept as they are.
     """
     from bouwmeester.services.notification_service import NotificationService
 
-    today = date.today()
     placements = (
         await db.scalars(
             select(PersonOrganisatieEenheid).where(
                 PersonOrganisatieEenheid.person_id == person.id,
-                PersonOrganisatieEenheid.bron == _UNCONFIRMED_PLACEMENT_BRON,
-                (PersonOrganisatieEenheid.eind_datum.is_(None))
-                | (PersonOrganisatieEenheid.eind_datum >= today),
+                PersonOrganisatieEenheid.bron == PLACEMENT_BRON_HANDMATIG,
+                placement_not_ended(),
             )
         )
     ).all()
@@ -319,6 +342,22 @@ async def _has_internal_descendant(db: AsyncSession, eenheid_id: UUID) -> bool:
     return hit is not None
 
 
+async def _has_trusted_members(db: AsyncSession, eenheid_id: UUID) -> bool:
+    """True if *eenheid_id* or an eenheid below it has a trusted placement."""
+    hit = await db.scalar(
+        select(PersonOrganisatieEenheid.id)
+        .where(
+            PersonOrganisatieEenheid.organisatie_eenheid_id.in_(
+                await get_subtree_ids(db, [eenheid_id])
+            ),
+            placement_trusted(),
+            placement_not_ended(),
+        )
+        .limit(1)
+    )
+    return hit is not None
+
+
 async def require_can_move_eenheid(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -338,7 +377,10 @@ async def require_can_move_eenheid(
     An external eenheid (without internal parts) moves like it is created
     (``core.authz``): freely outside the internal organisation, and inside
     it only with ``org:create`` on the parent, both the one it leaves and
-    the one it goes to.
+    the one it goes to.  Its members would then see up the new line, so
+    when anything in it holds a trusted placement, hanging it inside the
+    organisation also needs a manager of the new parent.  Contact
+    placements in it stay informational: moving never confirms them.
     """
     if perm_ctx.is_super_admin:
         return
@@ -355,6 +397,16 @@ async def require_can_move_eenheid(
                 "org:create",
                 "organisatie_eenheid",
                 place={"parent_id": parent_id, "type": new_type},
+            )
+        if (
+            new_parent_id is not None
+            and await touches_organisation(db, new_parent_id)
+            and await _has_trusted_members(db, eenheid.id)
+            and not await can_manage_members(db, perm_ctx, new_parent_id)
+        ):
+            raise _forbidden(
+                "Deze eenheid heeft bevestigde leden. Alleen een leidinggevende "
+                "van de nieuwe bovenliggende eenheid kan hem hier onder hangen"
             )
         return
     if not await can_manage_members(db, perm_ctx, eenheid.id):
@@ -553,30 +605,38 @@ async def _manages_person(
 async def _trusted_placement_eenheid_ids(
     db: AsyncSession, person_id: UUID
 ) -> set[UUID]:
-    """Eenheden where a placement of *person_id* grants access at first login.
+    """Eenheden where *person_id* holds a trusted placement, now or later.
 
-    Current and future placements in or below the internal organisation that
-    a manager made or an import brought: ``hold_unconfirmed_placements``
-    keeps exactly these when a contact becomes an account.
+    Current and future ones: a manager's placement of a new hire gives
+    access from its start date.
     """
-    today = date.today()
-    eenheid_ids = set(
+    return set(
         (
             await db.scalars(
                 select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
                     PersonOrganisatieEenheid.person_id == person_id,
-                    PersonOrganisatieEenheid.bron != _UNCONFIRMED_PLACEMENT_BRON,
-                    (PersonOrganisatieEenheid.eind_datum.is_(None))
-                    | (PersonOrganisatieEenheid.eind_datum >= today),
+                    placement_trusted(),
+                    placement_not_ended(),
                 )
             )
         ).all()
     )
-    return {eid for eid in eenheid_ids if await touches_organisation(db, eid)}
+
+
+async def _membership_reaches(db: AsyncSession, eenheid_id: UUID) -> bool:
+    """True if membership of *eenheid_id* gives access to anything.
+
+    Inside the organisation it always does (members read up the line).  An
+    external organisation (a Kamerfractie, a gemeente) only when something
+    hangs on it: resources in it, grants it holds, shares.
+    """
+    if await touches_organisation(db, eenheid_id):
+        return True
+    return bool(await eenheid_references(db, eenheid_id))
 
 
 _IDENTITY_REFUSAL = (
-    "Deze persoon heeft al toegang via een plaatsing of rol. Alleen wie die "
+    "Deze persoon heeft al toegang via een plaatsing, rol of taak. Alleen wie die "
     "toegang zelf kan geven, of een systeembeheerder, wijzigt de e-mailadressen."
 )
 
@@ -587,15 +647,20 @@ async def _require_identity_authority(
     """Guard the emails of a contact that already holds access.
 
     The first login with a verified email links to the record and takes
-    over what it holds: trusted placements (a new hire placed by a manager)
-    and resource grants.  Adding an email is therefore handing all of that
-    to whoever controls the address, so the caller must be able to hand it
-    out themselves: manage the members of every such eenheid, and hold the
-    grant authority over every grant.  A contact holding nothing (a
-    counterpart at a gemeente) stays open to ``people:update``.
+    over everything ``core.authz`` gives the person: trusted placements (a
+    new hire placed by a manager; in an external organisation only when that
+    membership reaches something), resource grants, and the tasks assigned
+    to them (an assignee always reads their task).  Adding an email is
+    therefore handing all of that to whoever controls the address, so the
+    caller must be able to hand it out themselves: manage the members of
+    every such eenheid, hold the grant authority over every grant, and be
+    able to reassign every such task (``task:update``).  A contact holding
+    nothing (a counterpart at a gemeente) stays open to ``people:update``.
     """
     for eenheid_id in await _trusted_placement_eenheid_ids(db, person.id):
-        if not await can_manage_members(db, perm_ctx, eenheid_id):
+        if await _membership_reaches(db, eenheid_id) and not await can_manage_members(
+            db, perm_ctx, eenheid_id
+        ):
             raise _forbidden(_IDENTITY_REFUSAL)
     grants = (
         await db.scalars(
@@ -620,6 +685,12 @@ async def _require_identity_authority(
             ):
                 raise
             raise _forbidden(_IDENTITY_REFUSAL) from exc
+    task_ids = (
+        await db.scalars(select(Task.id).where(Task.assignee_id == person.id))
+    ).all()
+    for task_id in task_ids:
+        if not await can(db, perm_ctx, "task:update", "task", task_id):
+            raise _forbidden(_IDENTITY_REFUSAL)
 
 
 async def require_can_edit_person(
@@ -718,13 +789,16 @@ async def _grant_reaches_caller(
 
 
 async def _joined_or_joining_ids(db: AsyncSession, person_id: UUID) -> set[UUID]:
-    """Eenheden *person_id* is placed in, will be placed in, or asked to join."""
-    today = date.today()
+    """Eenheden *person_id* is placed in, will be placed in, or asked to join.
+
+    Every placement counts here, trusted or not: an informational one
+    becomes access as soon as a manager confirms it, and that manager
+    decides about the membership, not about this grant.
+    """
     placed = await db.scalars(
         select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
             PersonOrganisatieEenheid.person_id == person_id,
-            (PersonOrganisatieEenheid.eind_datum.is_(None))
-            | (PersonOrganisatieEenheid.eind_datum >= today),
+            placement_not_ended(),
         )
     )
     requested = await db.scalars(

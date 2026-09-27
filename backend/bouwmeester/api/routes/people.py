@@ -12,7 +12,6 @@ from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    CONFIRMED_PLACEMENT_BRON,
     placement_bron,
     require_can_delete_person,
     require_can_edit_person,
@@ -32,7 +31,11 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    TRUSTED_PLACEMENT_BRONNEN,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.models.person_phone import PersonPhone
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
@@ -607,32 +610,47 @@ async def add_person_organisatie(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonOrganisatieResponse:
-    """Place a person in an org unit. Returns 409 if already active in that unit."""
-    _, eenheid = await _require_can_place(db, perm_ctx, id, data.organisatie_eenheid_id)
+    """Place a person in an org unit. Returns 409 if already active in that unit.
+
+    A manager placing someone who already has an informational placement
+    there (contact administration) confirms that placement instead.
+    """
+    person, eenheid = await _require_can_place(
+        db, perm_ctx, id, data.organisatie_eenheid_id
+    )
+    bron = await placement_bron(db, perm_ctx, person, eenheid)
 
     # Check for existing active placement in same org unit
-    existing = await db.execute(
-        select(PersonOrganisatieEenheid).where(
-            PersonOrganisatieEenheid.person_id == id,
-            PersonOrganisatieEenheid.organisatie_eenheid_id
-            == data.organisatie_eenheid_id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
+    existing = (
+        await db.scalars(
+            select(PersonOrganisatieEenheid).where(
+                PersonOrganisatieEenheid.person_id == id,
+                PersonOrganisatieEenheid.organisatie_eenheid_id
+                == data.organisatie_eenheid_id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
         )
-    )
-    if existing.scalar_one_or_none() is not None:
+    ).all()
+    if any(p.bron in TRUSTED_PLACEMENT_BRONNEN for p in existing) or (
+        existing and bron not in TRUSTED_PLACEMENT_BRONNEN
+    ):
         raise HTTPException(
             status_code=409,
             detail="Persoon is al ingedeeld bij deze eenheid",
         )
 
-    placement = PersonOrganisatieEenheid(
-        person_id=id,
-        organisatie_eenheid_id=data.organisatie_eenheid_id,
-        dienstverband=data.dienstverband,
-        start_datum=data.start_datum,
-        bron=await placement_bron(db, perm_ctx, eenheid.id),
-    )
-    db.add(placement)
+    if existing:
+        placement = existing[0]
+        placement.bron = bron
+    else:
+        placement = PersonOrganisatieEenheid(
+            person_id=id,
+            organisatie_eenheid_id=data.organisatie_eenheid_id,
+            dienstverband=data.dienstverband,
+            start_datum=data.start_datum,
+            bron=bron,
+        )
+        db.add(placement)
     await db.flush()
     await db.refresh(placement)
 
@@ -687,22 +705,18 @@ async def update_person_organisatie(
         and data.eind_datum is not None
         and (placement.eind_datum is None or data.eind_datum <= placement.eind_datum)
     )
-    await _require_can_place(
+    person, eenheid = await _require_can_place(
         db, perm_ctx, id, placement.organisatie_eenheid_id, ending=ending
     )
 
     for key, value in update_data.items():
         setattr(placement, key, value)
-    if not ending and placement.bron == CONFIRMED_PLACEMENT_BRON:
-        # Reopened or changed by someone else than a manager: no longer
-        # confirmed (see ``hold_unconfirmed_placements``).
-        placement.bron = await placement_bron(
-            db, perm_ctx, placement.organisatie_eenheid_id
-        )
+    if not ending and placement.bron == PLACEMENT_BRON_LEIDINGGEVENDE:
+        # Changed or reopened by someone else than a manager: no longer
+        # trusted (see ``placement_bron``).
+        placement.bron = await placement_bron(db, perm_ctx, person, eenheid)
     await db.flush()
     await db.refresh(placement)
-
-    eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
 
     await log_activity(
         db,
@@ -712,14 +726,14 @@ async def update_person_organisatie(
         details={
             "person_id": str(id),
             "placement_id": str(placement_id),
-            "organisatie_eenheid_naam": eenheid.naam if eenheid else None,
+            "organisatie_eenheid_naam": eenheid.naam,
         },
     )
     return PersonOrganisatieResponse(
         id=placement.id,
         person_id=placement.person_id,
         organisatie_eenheid_id=placement.organisatie_eenheid_id,
-        organisatie_eenheid_naam=eenheid.naam if eenheid else "",
+        organisatie_eenheid_naam=eenheid.naam,
         dienstverband=placement.dienstverband,
         start_datum=placement.start_datum,
         eind_datum=placement.eind_datum,

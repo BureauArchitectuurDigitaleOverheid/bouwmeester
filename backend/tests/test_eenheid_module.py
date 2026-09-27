@@ -47,6 +47,7 @@ async def module_setup(db_session: AsyncSession):
             person_id=editor.id,
             organisatie_eenheid_id=child.id,
             start_datum=date.today(),
+            bron="leidinggevende",
         )
     )
     db_session.add(
@@ -199,6 +200,7 @@ async def test_member_without_explicit_role_gets_viewer_permissions(module_setup
             person_id=member.id,
             organisatie_eenheid_id=s["child"].id,
             start_datum=date.today(),
+            bron="leidinggevende",
         )
     )
     # No PersonRole added — only a placement
@@ -233,6 +235,7 @@ async def test_member_without_role_respects_module_disables(module_setup):
             person_id=member.id,
             organisatie_eenheid_id=s["child"].id,
             start_datum=date.today(),
+            bron="leidinggevende",
         )
     )
     db.add(
@@ -267,6 +270,7 @@ async def test_multi_eenheid_user_partial_disable(module_setup):
             person_id=s["editor"].id,
             organisatie_eenheid_id=org_b.id,
             start_datum=date.today(),
+            bron="leidinggevende",
         )
     )
     db.add(

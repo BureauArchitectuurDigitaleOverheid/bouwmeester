@@ -10,7 +10,6 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    CONFIRMED_PLACEMENT_BRON,
     can_manage_members,
     managed_subtree_ids,
     require_can_decide_placement_request,
@@ -18,7 +17,11 @@ from bouwmeester.core.authority import (
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    TRUSTED_PLACEMENT_BRONNEN,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
@@ -232,15 +235,17 @@ async def approve_placement(
         eenheid_id=req.organisatie_eenheid_id,
     )
 
-    already = await db.scalar(
-        select(PersonOrganisatieEenheid.id).where(
-            PersonOrganisatieEenheid.person_id == req.person_id,
-            PersonOrganisatieEenheid.organisatie_eenheid_id
-            == req.organisatie_eenheid_id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
+    already = (
+        await db.scalars(
+            select(PersonOrganisatieEenheid).where(
+                PersonOrganisatieEenheid.person_id == req.person_id,
+                PersonOrganisatieEenheid.organisatie_eenheid_id
+                == req.organisatie_eenheid_id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
         )
-    )
-    if already is not None:
+    ).all()
+    if any(p.bron in TRUSTED_PLACEMENT_BRONNEN for p in already):
         raise HTTPException(
             status_code=409, detail="Deze persoon is al ingedeeld bij deze eenheid"
         )
@@ -249,15 +254,20 @@ async def approve_placement(
     req.decided_at = datetime.now(UTC)
     req.decided_by = current_user.id if current_user else None
 
-    # Create the actual placement
-    placement = PersonOrganisatieEenheid(
-        person_id=req.person_id,
-        organisatie_eenheid_id=req.organisatie_eenheid_id,
-        dienstverband=req.dienstverband,
-        start_datum=date.today(),
-        bron=CONFIRMED_PLACEMENT_BRON,
-    )
-    db.add(placement)
+    if already:
+        # An informational placement (contact administration): approving
+        # confirms it.
+        already[0].bron = PLACEMENT_BRON_LEIDINGGEVENDE
+    else:
+        db.add(
+            PersonOrganisatieEenheid(
+                person_id=req.person_id,
+                organisatie_eenheid_id=req.organisatie_eenheid_id,
+                dienstverband=req.dienstverband,
+                start_datum=date.today(),
+                bron=PLACEMENT_BRON_LEIDINGGEVENDE,
+            )
+        )
     await db.flush()
 
     # Notify the requester

@@ -15,6 +15,30 @@ if TYPE_CHECKING:
     from bouwmeester.models.person import Person
 
 
+# ``PersonOrganisatieEenheid.bron`` values written by the application.
+# A placement a manager of the eenheid made or approved.
+PLACEMENT_BRON_LEIDINGGEVENDE = "leidinggevende"
+# Contact administration by anyone with people:update: informational.
+PLACEMENT_BRON_HANDMATIG = "handmatig"
+# A manager linking their own staff to an external organisation: records
+# who works where, never access.
+PLACEMENT_BRON_DETACHERING = "detachering"
+
+# Trusted placements: confirmed by someone with authority over the members
+# of the eenheid, or brought by an official sync.  Only these give access
+# (visibility, implicit viewer, grants to the eenheid); every other bron is
+# informational.  ``repositories.org_tree`` holds the SQL form.
+TRUSTED_PLACEMENT_BRONNEN = frozenset(
+    {
+        PLACEMENT_BRON_LEIDINGGEVENDE,
+        "tk_odata",  # services.tk_persoon_sync
+        "kabinet_yaml",  # services.kabinet_sync, historische_kabinetten_sync
+        "abd_scrape",  # services.abd_scrape
+        "roo_leidinggevende",  # ROO import of managers
+    }
+)
+
+
 class PersonOrganisatieEenheid(Base):
     __tablename__ = "person_organisatie_eenheid"
 

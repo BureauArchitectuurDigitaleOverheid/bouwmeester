@@ -67,7 +67,7 @@ async def build_permission_context(
 ) -> PermissionContext:
     """Build a PermissionContext by querying person_role + role_permission.
 
-    Members of an eenheid (via PersonOrganisatieEenheid) who have no
+    Members of an eenheid (a trusted placement, ``get_membership_ids``) who have no
     explicit PersonRole on that eenheid receive an implicit ``viewer``
     role so they can see modules enabled for their team.
     """

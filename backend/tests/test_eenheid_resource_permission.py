@@ -29,6 +29,7 @@ async def eenheid_rp_setup(db_session: AsyncSession):
             person_id=person.id,
             organisatie_eenheid_id=org.id,
             start_datum=date.today() - timedelta(days=30),
+            bron="leidinggevende",
         )
     )
     # Editor on the org: counts only on initiatieven that org owns

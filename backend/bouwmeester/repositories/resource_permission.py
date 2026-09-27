@@ -1,14 +1,13 @@
 """Repository for unified resource permission operations."""
 
-from datetime import date
 from uuid import UUID
 
-from sqlalchemy import or_, select, union
+from sqlalchemy import select, union
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.repositories.org_tree import membership_ids_select
 
 
 class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
@@ -126,29 +125,18 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
 
 
 def _person_roles_stmt(person_id: UUID, resource_type: str):
-    """(resource_id, rol) a person holds, directly or through a placement."""
-    today = date.today()
+    """(resource_id, rol) a person holds, directly or through a membership.
+
+    A role held by an eenheid counts for its members only
+    (``org_tree.membership_ids_select``: trusted placements).
+    """
     on_resource = [ResourcePermission.resource_type == resource_type]
 
     direct_stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
         ResourcePermission.person_id == person_id, *on_resource
     )
-    eenheid_stmt = (
-        select(ResourcePermission.resource_id, ResourcePermission.rol)
-        .join(
-            PersonOrganisatieEenheid,
-            PersonOrganisatieEenheid.organisatie_eenheid_id
-            == ResourcePermission.organisatie_eenheid_id,
-        )
-        .where(
-            *on_resource,
-            ResourcePermission.organisatie_eenheid_id.isnot(None),
-            PersonOrganisatieEenheid.person_id == person_id,
-            PersonOrganisatieEenheid.start_datum <= today,
-            or_(
-                PersonOrganisatieEenheid.eind_datum.is_(None),
-                PersonOrganisatieEenheid.eind_datum >= today,
-            ),
-        )
+    eenheid_stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
+        *on_resource,
+        ResourcePermission.organisatie_eenheid_id.in_(membership_ids_select(person_id)),
     )
     return union(direct_stmt, eenheid_stmt)

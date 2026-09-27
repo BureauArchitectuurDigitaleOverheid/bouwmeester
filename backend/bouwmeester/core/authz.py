@@ -53,6 +53,19 @@ One deliberate exception to read visibility: exporting the corpus and its
 edges (``import_export:export``) is a platform operation for system roles
 (platform_admin), like ``database:backup``, and reads everything.
 
+Membership: "placed in an eenheid" below always means a *trusted*
+placement (``repositories.org_tree.membership_ids_select``, the one
+definition).  A placement is trusted when someone with authority over the
+members of the eenheid made or approved it (bron ``leidinggevende``) or an
+official sync brought it (``TRUSTED_PLACEMENT_BRONNEN``: TK, kabinet, ABD,
+ROO).  Contact administration (bron ``handmatig``, anyone with
+``people:update``) and a manager's detachering of own staff into an
+external organisation (bron ``detachering``) are informational: they show
+who works where, but give no visibility, no implicit viewer role and no
+share of a resource role or share held by the eenheid.  Moving an eenheid
+never confirms the placements in it.  Roles (``PersonRole``) are separate
+grants and are not affected.
+
 Resolution order (first match wins; every step can only allow):
 
 0. Reads are visibility, not rights.  ``<type>:read`` on a corpus_node,
@@ -298,7 +311,7 @@ async def self_and_ancestor_ids(
 
 
 async def memberships(db: AsyncSession, perm_ctx: PermissionContext) -> list[UUID]:
-    """The eenheden the caller is placed in today, once per request."""
+    """The caller's memberships today (trusted placements), once per request."""
     key = ("memberships",)
     if key not in perm_ctx.authz_cache:
         perm_ctx.authz_cache[key] = (

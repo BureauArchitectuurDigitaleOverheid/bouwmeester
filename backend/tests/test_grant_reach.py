@@ -72,6 +72,37 @@ async def test_unconfirmed_placement_leaves_contact_editable(world: World):
     assert await _add_email(world, "viewer", contact) == 201
 
 
+async def test_assigned_task_needs_task_authority_for_email(world: World):
+    """The assignee reads the task: that goes with the record at first login."""
+    from bouwmeester.models.task import Task
+
+    contact = await make_person(world.db, "Opdrachtnemer", account=False)
+    task = await world.db.get(Task, world.res["task_elders"])
+    task.assignee_id = contact.id
+    await world.db.flush()
+
+    assert await _add_email(world, "viewer", contact) == 403
+    assert await _add_email(world, "super_admin", contact) == 201
+
+
+async def test_trusted_external_placement_counts_once_it_reaches_something(
+    world: World,
+):
+    gemeente = await make_org(world.db, "Gemeente", "gemeente")
+    world.org["gemeente"] = gemeente
+    contact = await _contact_in(world, "gemeente", "tk_odata")
+    world.db.add(
+        ResourcePermission(
+            organisatie_eenheid_id=gemeente.id,
+            resource_type="initiatief",
+            resource_id=world.res["initiatief"],
+            rol="contributor",
+        )
+    )
+    await world.db.flush()
+    assert await _add_email(world, "viewer", contact) == 403
+
+
 async def test_external_contact_stays_editable(world: World):
     gemeente = await make_org(world.db, "Gemeente", "gemeente")
     world.org["gemeente"] = gemeente
