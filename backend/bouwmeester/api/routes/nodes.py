@@ -67,6 +67,7 @@ from bouwmeester.services.financieel_service import FinancieelService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.node_service import NodeService
 from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.visibility_filters import opdracht_responses, task_responses
 
 # Resolve forward reference to EdgeResponse in CorpusNodeWithEdges.
 CorpusNodeWithEdges.model_rebuild()
@@ -111,7 +112,9 @@ async def list_nodes(
     dossier_ids = [r.id for r in responses if r.node_type == "dossier"]
     if dossier_ids:
         repo = CorpusNodeRepository(db)
-        progress_map = await repo.get_beleidskompas_progress(dossier_ids)
+        progress_map = await repo.get_beleidskompas_progress(
+            dossier_ids, org_ctx=org_ctx
+        )
         for r in responses:
             if r.node_type == "dossier" and r.id in progress_map:
                 completed, total = progress_map[r.id]
@@ -358,12 +361,12 @@ async def get_node_tasks(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
-    _authz=Depends(_READ_NODE),
+    perm_ctx: PermissionContext = Depends(_READ_NODE),
 ) -> list[TaskResponse]:
     """List all tasks linked to a specific node."""
     task_repo = TaskRepository(db)
     tasks = await task_repo.get_by_node(id, skip=skip, limit=limit, org_ctx=org_ctx)
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.get("/{id}/stakeholders", response_model=list[NodeStakeholderResponse])
@@ -716,12 +719,12 @@ async def get_node_opdrachten(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     org_ctx: OrgContext = Depends(get_org_context),
-    _authz=Depends(_READ_NODE),
+    perm_ctx: PermissionContext = Depends(_READ_NODE),
 ) -> list[OpdrachtResponse]:
     """Get opdrachten linked to a node (via instrument_id or OpdrachtNode)."""
     repo = OpdrachtRepository(db)
     opdrachten = await repo.get_by_node(id, org_ctx=org_ctx)
-    return validate_list(OpdrachtResponse, opdrachten)
+    return await opdracht_responses(db, perm_ctx, opdrachten)
 
 
 @router.get("/{id}/parlementair-item")
