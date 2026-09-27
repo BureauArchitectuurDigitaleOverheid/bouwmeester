@@ -8,7 +8,7 @@ from person_role (role_id='unit_manager').
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import joinedload
 
 from bouwmeester.core.query_utils import escape_like
@@ -553,12 +553,21 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             eenheid_id,
             end_date,
         )
-        # Also close unit_manager person_role entries
-        stmt = select(PersonRole).where(
-            PersonRole.organisatie_eenheid_id == eenheid_id,
-            PersonRole.role_id == "unit_manager",
-            PersonRole.eind_datum.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        for pr in result.scalars().all():
-            pr.eind_datum = end_date
+        # Every role held on it and every placement in it ends with it
+        # (``core.authority.require_can_dissolve_eenheid`` guards that).
+        for model, eenheid_col in (
+            (PersonRole, PersonRole.organisatie_eenheid_id),
+            (
+                PersonOrganisatieEenheid,
+                PersonOrganisatieEenheid.organisatie_eenheid_id,
+            ),
+        ):
+            await self.session.execute(
+                update(model)
+                .where(
+                    eenheid_col == eenheid_id,
+                    (model.eind_datum.is_(None)) | (model.eind_datum > end_date),
+                )
+                .values(eind_datum=end_date)
+                .execution_options(synchronize_session="fetch")
+            )

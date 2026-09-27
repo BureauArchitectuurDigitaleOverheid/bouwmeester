@@ -1668,8 +1668,8 @@ async def test_contact_in_eenheid_moved_inside_does_not_read_up_the_line(tree: T
     Create a stichting at the top, have a contact placed there, let the
     contact log in, then hang the stichting under the own team.  Placed by
     someone else than the stichting's owner, the placement is contact
-    administration and stays informational; placed by the owner it is
-    trusted, and then only a manager may move the stichting inside.
+    administration and stays informational; and bringing the stichting
+    inside needs a manager of the team anyway (round 7).
     """
     async with client_as(tree.db, tree.editor) as c:
         created = await c.post(
@@ -1687,7 +1687,7 @@ async def test_contact_in_eenheid_moved_inside_does_not_read_up_the_line(tree: T
         moved = await c.put(
             f"/api/organisatie/{stichting.id}", json={"parent_id": str(tree.team.id)}
         )
-    assert moved.status_code == 200, moved.text
+    assert moved.status_code == 403, moved.text
 
     assert (await _placement_of(tree.db, tree.contact, stichting)).bron == "handmatig"
     visible = await _visible_eenheden(tree, tree.contact)
@@ -1697,7 +1697,12 @@ async def test_contact_in_eenheid_moved_inside_does_not_read_up_the_line(tree: T
 async def test_owner_placed_contact_does_not_read_up_after_moving_inside(
     tree: Tree,
 ):
-    """Members of an external eenheid see that eenheid only, wherever it hangs."""
+    """A trusted member of an own root is not brought inside by its owner.
+
+    Only a manager of the new parent brings an eenheid into the
+    organisation (round 7); the owner's placements would otherwise count
+    there.
+    """
     async with client_as(tree.db, tree.editor) as c:
         created = await c.post(
             "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
@@ -1714,15 +1719,15 @@ async def test_owner_placed_contact_does_not_read_up_after_moving_inside(
         moved = await c.put(
             f"/api/organisatie/{stichting_id}", json={"parent_id": str(tree.team.id)}
         )
-    assert moved.status_code == 200, moved.text
+    assert moved.status_code == 403, moved.text
     await _first_login(tree, tree.contact)
     visible = await _visible_eenheden(tree, tree.contact)
     assert uuid.UUID(stichting_id) in visible
     assert not visible & {tree.team.id, tree.directie.id, tree.ministerie.id}
 
 
-async def test_moving_trusted_members_inside_needs_create_rights_only(tree: Tree):
-    """Moved members do not read up the new line, so no manager is needed."""
+async def test_moving_trusted_members_inside_needs_a_manager(tree: Tree):
+    """Bringing members into the organisation is a manager's call (round 7)."""
 
     async def move_fractie_under_team(who: Person):
         async with client_as(tree.db, who) as c:
@@ -1741,7 +1746,7 @@ async def test_moving_trusted_members_inside_needs_create_rights_only(tree: Tree
         return moved
 
     by_editor = await move_fractie_under_team(tree.editor)
-    assert by_editor.status_code == 200, by_editor.text
+    assert by_editor.status_code == 403, by_editor.text
 
 
 async def test_detachering_gives_no_share_of_a_partner_grant(tree: Tree):
