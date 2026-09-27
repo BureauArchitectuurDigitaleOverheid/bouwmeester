@@ -369,7 +369,11 @@ export function LeadIntakeDialog({ open, onClose, defaultInitiatiefId, sharedPar
 
     setStep('parsing');
     try {
-      const result = await parseLead.mutateAsync({ rawText: rawText.trim() || undefined, files: files.length > 0 ? files : undefined });
+      const result = await parseLead.mutateAsync({
+        rawText: rawText.trim() || undefined,
+        files: files.length > 0 ? files : undefined,
+        initiatiefId: initiatiefId || undefined,
+      });
       applyParseResult(result);
       setStep('confirm');
     } catch {

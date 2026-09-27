@@ -324,8 +324,15 @@ export function useCommunityGraph(initiatiefId?: string) {
 
 export function useParseLeadIntake() {
   return useMutation({
-    mutationFn: ({ rawText, files }: { rawText?: string; files?: File[] }) =>
-      parseLeadIntake(rawText, files),
+    mutationFn: ({
+      rawText,
+      files,
+      initiatiefId,
+    }: {
+      rawText?: string;
+      files?: File[];
+      initiatiefId?: string;
+    }) => parseLeadIntake(rawText, files, initiatiefId),
   });
 }
 

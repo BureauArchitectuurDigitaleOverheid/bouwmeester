@@ -1,5 +1,6 @@
 """API routes for leads (sales/intake funnel)."""
 
+import base64
 import logging
 from datetime import date
 from uuid import UUID
@@ -20,7 +21,13 @@ from bouwmeester.core.authority import (
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import prefetch, require, require_move, requires
+from bouwmeester.core.authz import (
+    can_anywhere,
+    prefetch,
+    require,
+    require_move,
+    requires,
+)
 from bouwmeester.core.database import get_db
 from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
@@ -75,6 +82,11 @@ from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.agent_rules import require_may_assign
 from bouwmeester.services.lead_rules import require_lead_create
+from bouwmeester.services.llm import (
+    BaseLLMService,
+    DataSensitivity,
+    get_llm_service_for,
+)
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.visibility_filters import (
@@ -118,10 +130,81 @@ def _robust_parse_json(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Give up with clear error
+    # Give up with clear error; the raw text stays out of the message, since
+    # it ends up in the logs and carries names and contact details.
     raise json.JSONDecodeError(
-        f"Could not parse LLM response as JSON. Raw text: {text[:200]}", text, 0
+        f"Could not parse LLM response as JSON ({len(text)} chars)", text, 0
     )
+
+
+# Files sent along with a lead prompt: a handful of small ones, so a single
+# request cannot fill the memory or the model's image budget.
+MAX_LLM_UPLOADS = 6
+MAX_LLM_UPLOAD_BYTES = 4 * 1024 * 1024
+
+
+async def read_llm_uploads(
+    files: list[UploadFile] | None,
+) -> list[tuple[bytes, str]]:
+    """The uploaded files for a lead prompt as (content, content type).
+
+    400 when there are more than ``MAX_LLM_UPLOADS`` or one exceeds
+    ``MAX_LLM_UPLOAD_BYTES``.
+    """
+    files = files or []
+    if len(files) > MAX_LLM_UPLOADS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Te veel bestanden: maximaal {MAX_LLM_UPLOADS} per keer.",
+        )
+    return [
+        (await read_upload_content(f, MAX_LLM_UPLOAD_BYTES), f.content_type or "")
+        for f in files
+    ]
+
+
+def image_part(content: bytes, content_type: str) -> dict:
+    """An image as vision content for the prompt."""
+    b64 = base64.b64encode(content).decode("ascii")
+    return {
+        "type": "image_url",
+        "image_url": {"url": f"data:{content_type};base64,{b64}"},
+    }
+
+
+async def llm_for_lead_content(db: AsyncSession) -> BaseLLMService:
+    """A language model cleared for lead content, or 503.
+
+    Leads carry internal content and personal data (contact names, emails,
+    phone numbers in an intake), so only a provider that may process
+    CONFIDENTIAL data gets them.
+    """
+    llm = await get_llm_service_for(DataSensitivity.CONFIDENTIAL, db)
+    if llm is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Geen taalmodel beschikbaar dat vertrouwelijke gegevens mag "
+                "verwerken. Leads bevatten namen en contactgegevens; configureer "
+                "in Beheer een VLAM-sleutel."
+            ),
+        )
+    return llm
+
+
+async def complete_lead_prompt(
+    llm: BaseLLMService, prompt: str, images: list[dict], max_tokens: int
+) -> str:
+    """Send a lead prompt, as a vision message when there are images."""
+    if not images:
+        return await llm._complete(prompt)
+    content: list[dict] = [{"type": "text", "text": prompt}, *images]
+    response = await llm._client.chat.completions.create(
+        model=llm._model,
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": content}],
+    )
+    return response.choices[0].message.content or ""
 
 
 # Reads and writes are decided by core.authz on the lead in the path.
@@ -1238,14 +1321,25 @@ async def delete_github_link(
 async def parse_intake(
     current_user: OptionalUser,
     raw_text: str | None = Form(None),
+    initiatief_id: UUID | None = Form(None),
     files: list[UploadFile] | None = None,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadParseResult:
-    """Parse raw intake text/images using AI to extract lead data."""
-    import base64
+    """Parse raw intake text/images using AI to extract lead data.
 
-    from bouwmeester.services.llm.factory import get_llm_service
+    For whoever may create a lead: in *initiatief_id* when given (the intake
+    dialog), otherwise anywhere (``can_anywhere``, the share target).
+    """
     from bouwmeester.services.llm.prompts import build_lead_intake_prompt
+
+    if initiatief_id is not None:
+        await require(db, perm_ctx, "lead:create", "initiatief", initiatief_id)
+    elif not await can_anywhere(db, perm_ctx, "lead:create", "lead"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Je mag nergens leads aanmaken.",
+        )
 
     # Collect text and images separately
     text_parts: list[str] = []
@@ -1254,24 +1348,11 @@ async def parse_intake(
     if raw_text:
         text_parts.append(raw_text)
 
-    if files:
-        for f in files:
-            content_bytes = await f.read()
-            ct = f.content_type or ""
-            if ct.startswith("image/"):
-                b64 = base64.b64encode(content_bytes).decode("ascii")
-                image_parts.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{ct};base64,{b64}"},
-                    }
-                )
-            else:
-                # Try to decode as text
-                try:
-                    text_parts.append(content_bytes.decode("utf-8", errors="replace"))
-                except Exception:
-                    pass
+    for content_bytes, ct in await read_llm_uploads(files):
+        if ct.startswith("image/"):
+            image_parts.append(image_part(content_bytes, ct))
+        else:
+            text_parts.append(content_bytes.decode("utf-8", errors="replace"))
 
     if not text_parts and not image_parts:
         raise HTTPException(
@@ -1279,12 +1360,7 @@ async def parse_intake(
             detail="Geen tekst of afbeelding opgegeven.",
         )
 
-    llm = await get_llm_service(db)
-    if llm is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Geen LLM-service beschikbaar.",
-        )
+    llm = await llm_for_lead_content(db)
 
     # Fetch existing tag names so VLAM can prefer them
     from bouwmeester.models.tag import Tag
@@ -1295,31 +1371,14 @@ async def parse_intake(
     combined_text = "\n\n".join(text_parts).strip()
     prompt = build_lead_intake_prompt(
         combined_text or "(zie afbeelding)",
-        existing_tags=existing_tag_names,
+        # A shorter tag list next to images, to stay within token limits
+        existing_tags=existing_tag_names[:50] if image_parts else existing_tag_names,
     )
 
     try:
-        if image_parts:
-            # Use vision-style multimodal message with text + images
-            # Use shorter tag list for vision to stay within token limits
-            shorter_prompt = build_lead_intake_prompt(
-                combined_text or "(zie afbeelding)",
-                existing_tags=existing_tag_names[:50],
-            )
-            content: list[dict] = [{"type": "text", "text": shorter_prompt}]
-            content.extend(image_parts)
-            response = await llm._client.chat.completions.create(
-                model=llm._model,
-                max_tokens=1024,
-                messages=[{"role": "user", "content": content}],
-            )
-            response_text = response.choices[0].message.content or ""
-        else:
-            response_text = await llm._complete(prompt)
-
-        logger.warning(
-            "LLM raw response (%d chars): %s", len(response_text), response_text[:1500]
-        )
+        response_text = await complete_lead_prompt(llm, prompt, image_parts, 1024)
+        # Only the length: the response carries names and contact details.
+        logger.debug("LLM intake response: %d chars", len(response_text))
         parsed = _robust_parse_json(response_text)
         return LeadParseResult(
             title=parsed.get("title"),

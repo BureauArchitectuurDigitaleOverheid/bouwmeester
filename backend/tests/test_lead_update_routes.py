@@ -210,11 +210,11 @@ async def test_parse_round_trip_with_mocked_llm(client, sample_lead, monkeypatch
     fake_llm = AsyncMock()
     fake_llm._complete = AsyncMock(return_value=fake_llm_response)
 
-    async def fake_get_llm_service(_db):
+    async def fake_get_llm_service(_sensitivity, _db):
         return fake_llm
 
     monkeypatch.setattr(
-        "bouwmeester.services.llm.factory.get_llm_service",
+        "bouwmeester.api.routes.leads.get_llm_service_for",
         fake_get_llm_service,
     )
 
@@ -242,11 +242,11 @@ async def test_parse_strips_markdown_codeblock_from_llm_response(
     fake_llm = AsyncMock()
     fake_llm._complete = AsyncMock(return_value=fake_response)
 
-    async def fake_get_llm_service(_db):
+    async def fake_get_llm_service(_sensitivity, _db):
         return fake_llm
 
     monkeypatch.setattr(
-        "bouwmeester.services.llm.factory.get_llm_service",
+        "bouwmeester.api.routes.leads.get_llm_service_for",
         fake_get_llm_service,
     )
 

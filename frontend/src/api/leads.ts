@@ -171,9 +171,15 @@ export async function mergeLeads(sourceId: string, targetId: string): Promise<Le
   return apiPost<Lead>('/api/leads/merge', { source_id: sourceId, target_id: targetId });
 }
 
-export async function parseLeadIntake(rawText?: string, files?: File[]): Promise<LeadParseResult> {
+export async function parseLeadIntake(
+  rawText?: string,
+  files?: File[],
+  initiatiefId?: string,
+): Promise<LeadParseResult> {
   const formData = new FormData();
   if (rawText) formData.append('raw_text', rawText);
+  // The backend decides on this initiatief whether you may create a lead
+  if (initiatiefId) formData.append('initiatief_id', initiatiefId);
   if (files) {
     for (const file of files) {
       formData.append('files', file);
