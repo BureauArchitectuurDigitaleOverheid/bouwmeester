@@ -435,16 +435,33 @@ _DEFAULT_CONFIG = [
 ]
 
 
+# Settings that decide where data goes or which external systems are called,
+# beyond the secrets and ``*_URL`` addresses ``_super_admin_only`` already
+# covers: the LLM provider that receives corpus content, and the switches
+# that turn the Mattermost and FCC integrations on or point them elsewhere.
+_DATA_FLOW_KEYS = frozenset(
+    {
+        "LLM_PROVIDER",
+        "MATTERMOST_ENABLED",
+        "FCC_SYNC_ENABLED",
+        "FCC_PUSH_ENABLED",
+        "FCC_USE_MOCK",
+        "FCC_PROJECT_ENTITY",
+    }
+)
+
+
 def _super_admin_only(entry: AppConfig) -> bool:
     """Is this a setting the app trusts with credentials or data?
 
-    Secrets (API keys, the bot token, the slash-command token) and the
-    addresses the app sends requests and credentials to (``*_URL``).
-    Whoever sets the slash-command token can act as any linked user, and
-    whoever sets an address receives what is sent there, so only
-    super_admin changes these; platform_admin sees them masked.
+    Secrets (API keys, the bot token, the slash-command token), the
+    addresses the app sends requests and credentials to (``*_URL``) and the
+    switches in ``_DATA_FLOW_KEYS``.  Whoever sets the slash-command token
+    can act as any linked user, and whoever sets an address or a provider
+    receives what is sent there, so only super_admin changes these;
+    platform_admin sees them (secrets masked).
     """
-    return entry.is_secret or entry.key.endswith("_URL")
+    return entry.is_secret or entry.key.endswith("_URL") or entry.key in _DATA_FLOW_KEYS
 
 
 def _mask_secret(value: str) -> str:
@@ -555,10 +572,14 @@ async def update_config(
 
 @router.get("/database/export")
 async def export_database(
-    admin: AdminUser,
+    admin: SuperAdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """Export full database as pg_dump (optionally age-encrypted)."""
+    """Export full database as pg_dump (optionally age-encrypted).
+
+    super_admin only (product decision): a dump holds everything, past every
+    visibility rule, so it is as strong as reading the whole database.
+    """
     from bouwmeester.services.database_backup_service import (
         export_database as do_export,
     )
@@ -599,7 +620,7 @@ async def export_database(
 
 @router.get("/database/info", response_model=DatabaseBackupInfo)
 async def export_database_info(
-    admin: AdminUser,
+    admin: SuperAdminUser,
 ) -> DatabaseBackupInfo:
     """Return metadata about the current database (revision, etc.)."""
     from bouwmeester.services.database_backup_service import _get_alembic_revision

@@ -14,7 +14,11 @@ from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context
-from bouwmeester.core.permissions import PermissionContext, get_permission_context
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+)
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.llm import (
     CorpusGapOverviewResponse,
@@ -38,8 +42,14 @@ async def suggest_tags(
     request: TagSuggestionRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("node:create", "node:update")),
 ) -> TagSuggestionResponse:
-    """Suggest tags for a corpus node based on title and description."""
+    """Suggest tags for a corpus node based on title and description.
+
+    Every call spends LLM budget, so only someone who writes nodes somewhere
+    (``node:create`` or ``node:update`` held through any role) may ask: the
+    suggestions serve the node create and edit forms.
+    """
     service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
     if not service:
         return TagSuggestionResponse(

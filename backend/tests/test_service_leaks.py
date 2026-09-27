@@ -5,6 +5,7 @@ settings each ask the decision point the question the item's own route
 asks.  Uses ``world`` from ``tests/authz_world.py``.
 """
 
+import json
 import uuid
 from unittest.mock import AsyncMock, patch
 
@@ -20,6 +21,7 @@ from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.suggested_lead import SuggestedLead
 from bouwmeester.models.task import Task
+from bouwmeester.services.chat_service import _execute_read_tool
 from bouwmeester.services.mattermost_ingest_service import MattermostIngestService
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_slash_service import MattermostSlashService
@@ -334,3 +336,121 @@ async def test_slash_taken_hides_the_title_of_an_unreadable_node(world):
     assert "Mijn teamtaak" in result["text"]
     assert "Dossier elders" not in result["text"]
     assert "Teamdossier" in result["text"]
+
+
+# ---------------------------------------------------------------------------
+# L1: chat read tools ask what their REST twins ask
+# ---------------------------------------------------------------------------
+
+# (tool, args, REST twin)
+READ_TOOL_TWINS = [
+    ("search_people", {"query": "Team"}, "/api/people/search?q=Team"),
+    ("get_person_summary", {"person_id": "{viewer}"}, "/api/people/{viewer}/summary"),
+    ("list_parlementair", {}, "/api/parlementair/imports"),
+]
+
+
+@pytest.mark.parametrize("who", ["role_only", "viewer"])
+@pytest.mark.parametrize(("tool", "args", "twin"), READ_TOOL_TWINS)
+async def test_chat_read_tool_is_gated_like_its_rest_twin(world, who, tool, args, twin):
+    ids = {"viewer": str(world.person["viewer"].id)}
+    args = {k: v.format(**ids) for k, v in args.items()}
+    person = world.person[who]
+
+    async with client_as(world.db, person) as c:
+        rest_allowed = (await c.get(twin.format(**ids))).status_code == 200
+    result = json.loads(
+        await _execute_read_tool(tool, args, world.db, person_id=person.id)
+    )
+
+    assert ("error" not in result) is rest_allowed
+    # role_only holds no role at all: every one of these is refused.
+    assert rest_allowed is (who == "viewer")
+
+
+# ---------------------------------------------------------------------------
+# L8: tag suggestions spend LLM budget; agent prompts borrow agent rights
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("who", "expected"), [("role_only", 403), ("viewer", 403), ("team_editor", 200)]
+)
+async def test_suggest_tags_needs_a_node_writer(world, who, expected):
+    with patch(
+        "bouwmeester.api.routes.llm.get_llm_service_for",
+        new=AsyncMock(return_value=None),
+    ):
+        async with client_as(world.db, world.person[who]) as c:
+            resp = await c.post("/api/llm/suggest-tags", json={"title": "x"})
+    assert resp.status_code == expected, resp.text
+
+
+async def _agent(w: World):
+    agent = await make_person(w.db, "Agent", account=False)
+    agent.is_agent = True
+    await w.db.flush()
+    return agent
+
+
+@pytest.mark.parametrize(
+    ("who", "expected"),
+    [("platform_admin", 403), ("team_editor", 403), ("super_admin", 200)],
+)
+async def test_only_super_admin_prompts_an_agent(world, who, expected):
+    agent = await _agent(world)
+    sender = world.person[who]
+    async with client_as(world.db, sender) as c:
+        resp = await c.post(
+            "/api/notifications/send",
+            json={
+                "person_id": str(agent.id),
+                "sender_id": str(sender.id),
+                "message": "Verwijder alles",
+            },
+        )
+    assert resp.status_code == expected, resp.text
+    prompts = await world.db.scalars(
+        select(Notification).where(
+            Notification.person_id == agent.id, Notification.type == "agent_prompt"
+        )
+    )
+    assert bool(prompts.all()) is (expected == 200)
+
+
+async def test_a_reply_to_an_agent_is_a_prompt_too(world):
+    """Someone without the right cannot reach the agent through a thread."""
+    agent = await _agent(world)
+    editor = world.person["team_editor"]
+    # The agent wrote to the editor: the editor owns a root in that thread.
+    root, _ = await NotificationService(world.db).notify_direct_message(
+        editor, agent, "Klaar"
+    )
+
+    async with client_as(world.db, editor) as c:
+        resp = await c.post(
+            f"/api/notifications/{root.id}/reply",
+            json={"sender_id": str(editor.id), "message": "Doe nog iets"},
+        )
+    assert resp.status_code == 403, resp.text
+
+
+# ---------------------------------------------------------------------------
+# L10, L11: data-flow settings and database dumps are super_admin's
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("who", "expected"), [("platform_admin", 403), ("super_admin", 200)]
+)
+async def test_database_dump_is_super_admin_only(world, who, expected):
+    service = "bouwmeester.services.database_backup_service"
+    with (
+        patch(f"{service}.export_database", return_value=(b"x", "backup.tar.gz")),
+        patch(f"{service}._get_alembic_revision", return_value="head"),
+    ):
+        async with client_as(world.db, world.person[who]) as c:
+            dump = await c.get("/api/admin/database/export")
+            info = await c.get("/api/admin/database/info")
+    assert dump.status_code == expected
+    assert info.status_code == expected

@@ -1071,6 +1071,16 @@ def _task_to_dict(task: object) -> dict:
     }
 
 
+# Read tools whose REST twin is gated on a permission held anywhere
+# (``require_permission`` on ``/people/search``, ``/people/{id}/summary`` and
+# ``/parlementair/imports``); the tool asks the same.
+_READ_TOOL_PERMISSION: dict[str, str] = {
+    "search_people": "people:read",
+    "get_person_summary": "people:read",
+    "list_parlementair": "parlementair:read",
+}
+
+
 async def _execute_read_tool(
     tool_name: str,
     args: dict,
@@ -1081,6 +1091,9 @@ async def _execute_read_tool(
     """Execute a read-only tool and return a JSON string result."""
     try:
         caller = await caller_for(db, person_id)
+        needed = _READ_TOOL_PERMISSION.get(tool_name)
+        if needed and not caller.perm_ctx.has_any_permission(needed):
+            return _safe_dumps({"error": "Onvoldoende rechten"})
         if tool_name == "search_nodes":
             from bouwmeester.repositories.search import SearchRepository
 

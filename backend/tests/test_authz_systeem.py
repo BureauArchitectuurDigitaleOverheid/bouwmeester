@@ -137,8 +137,9 @@ async def test_tenant_wide_needs_system_role(
     }
 
 
-# Settings the app trusts with credentials or data (secrets and addresses)
-# are super_admin's; ordinary settings are platform_admin's too.
+# Settings the app trusts with credentials or data (secrets, addresses, and
+# the switches that decide where data goes or which external system is
+# called) are super_admin's; ordinary settings are platform_admin's too.
 CONFIG_KEYS = [
     ("MATTERMOST_WEBHOOK_TOKEN", False),  # would let one act as any user
     ("MATTERMOST_BOT_TOKEN", False),
@@ -146,8 +147,13 @@ CONFIG_KEYS = [
     ("ANTHROPIC_API_KEY", False),
     ("VLAM_API_URL", False),  # prompts with corpus data go there
     ("FCC_ODATA_URL", False),
+    ("LLM_PROVIDER", False),  # which provider receives corpus content
+    ("MATTERMOST_ENABLED", False),  # starts sending to Mattermost
+    ("FCC_SYNC_ENABLED", False),
+    ("FCC_PUSH_ENABLED", False),  # writes our data into FCC
+    ("FCC_USE_MOCK", False),
+    ("FCC_PROJECT_ENTITY", False),
     ("LLM_MODEL", True),
-    ("MATTERMOST_ENABLED", True),
 ]
 
 

@@ -31,7 +31,8 @@ type Tab =
 
 export function AdminPage() {
   const { person, oidcConfigured, loading } = useAuth();
-  const { hasPermission, hasAnyPermission, hasSystemPermission } = usePermissions();
+  const { hasPermission, hasAnyPermission, hasSystemPermission, isSuperAdmin } =
+    usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab') as Tab | null;
 
@@ -129,7 +130,9 @@ export function AdminPage() {
   if (hasSystemPermission('config:manage')) {
     tabs.push({ id: 'schema', label: 'Relatieschema' });
   }
-  if (hasPermission('database:backup')) {
+  // A dump holds everything past every visibility rule: super_admin only,
+  // like the backend (GET /api/admin/database/export).
+  if (isSuperAdmin) {
     tabs.push({ id: 'database', label: 'Database' });
   }
   if (hasPermission('config:manage')) {
