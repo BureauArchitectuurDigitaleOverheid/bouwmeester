@@ -242,8 +242,9 @@ _WRITE_ALLOWLIST: dict[str, str] = {
     "POST /api/llm/kompas-guidance": "no mutation: reads a dossier the caller can see",
     "POST /api/llm/suggest-tags": "no mutation: advice on text in the request",
     "POST /api/leads/parse-intake": (
-        "no mutation: LLM parse of text in the request; creating the lead is "
-        "decided on POST /api/leads"
+        "no mutation: LLM parse of text in the request, for whoever may create "
+        "a lead (lead:create on the initiatief sent, else can_anywhere; "
+        "test_lead_llm pins that); creating it is decided on POST /api/leads"
     ),
     "POST /api/initiatieven": (
         "personal initiatief: the creator becomes its eigenaar, the payload "

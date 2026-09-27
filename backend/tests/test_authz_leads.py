@@ -6,7 +6,7 @@ directie above holds unit_manager.  Added here: a person who may only read
 the initiatief, a lead opdrachtgever, and sub-records of the lead.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import select
@@ -295,8 +295,8 @@ ROUTES = [
         lambda lw: {"stage": "verkennen"},
         200,
     ),
-    # a lead without initiatief moves with lead:update where it is and
-    # lead:create where it goes
+    # every move needs lead:delete where the lead is and lead:create where
+    # it goes: moving must not turn lead:update into deleting it there
     (
         "team_editor",  # updates lead_free, may not create in the initiatief
         "PUT",
@@ -305,10 +305,24 @@ ROUTES = [
         403,
     ),
     (
-        "afd_editor",  # updates lead_free and creates in the initiatief
+        "afd_editor",  # creates in the initiatief, but deletes no lead
         "PUT",
         "/api/leads/{lead_free}",
         lambda lw: {"initiatief_id": str(lw.id("initiatief")), "stage": "verkennen"},
+        403,
+    ),
+    (
+        "afd_editor",  # updates lead_team and creates in the afdeling
+        "PUT",
+        "/api/leads/{lead_team}",
+        lambda lw: {"organisatie_eenheid_id": str(lw.id("afdeling"))},
+        403,
+    ),
+    (
+        "manager",
+        "PUT",
+        "/api/leads/{lead_team}",
+        lambda lw: {"organisatie_eenheid_id": str(lw.id("afdeling"))},
         200,
     ),
     (
@@ -597,3 +611,138 @@ async def test_remove_contact_is_a_grant_change(lw, who, expected):
     async with client_as(lw.db, lw.person[who]) as c:
         resp = await c.delete(url)
     assert resp.status_code == expected, resp.text
+
+
+@pytest.mark.parametrize(
+    ("who", "expected"),
+    [
+        ("opdrachtgever", 403),  # writes the lead, not the initiatief's page
+        ("role_only", None),  # a contributor updates the initiatief
+    ],
+)
+async def test_only_the_initiatief_puts_a_lead_on_its_public_page(lw, who, expected):
+    """Public fields and public post texts need initiatief:update."""
+    lead = lw.id("lead")
+    db = lw.db
+    public_post = LeadUpdatePost(lead_id=lead, titel="Openbaar", body_public="Tekst")
+    published = LeadUpdatePost(
+        lead_id=lead,
+        titel="Al gepubliceerd",
+        body_public="Oud",
+        published_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    db.add_all([public_post, published])
+    await db.flush()
+    base = f"/api/leads/{lead}"
+    async with client_as(db, lw.person[who]) as c:
+        got = {
+            "visible": await c.put(base, json={"public_visible": True}),
+            "title": await c.put(base, json={"public_title": "Casus"}),
+            "summary": await c.put(base, json={"public_summary": "Kort"}),
+            "new post": await c.post(
+                f"{base}/updates",
+                json={"titel": "Nieuw", "body_public": "Publiek", "publish": True},
+            ),
+            "publish": await c.post(f"{base}/updates/{public_post.id}/publish"),
+            "edit": await c.put(
+                f"{base}/updates/{published.id}", json={"body_public": "Nieuw"}
+            ),
+        }
+        # the same values again, an internal post, internal edits: lead:update
+        allowed = {
+            "unchanged": await c.put(
+                base, json={"title": "Ander", "public_visible": False}
+            ),
+            "internal post": await c.post(
+                f"{base}/updates", json={"titel": "Intern", "publish": True}
+            ),
+            "internal edit": await c.put(
+                f"{base}/updates/{published.id}", json={"mail_subject": "Mail"}
+            ),
+        }
+    for name, resp in got.items():
+        want = expected or (201 if name == "new post" else 200)
+        assert resp.status_code == want, (name, resp.text)
+    for name, resp in allowed.items():
+        assert resp.status_code in (200, 201), (name, resp.text)
+
+
+async def test_moving_a_lead_into_own_new_initiatief_needs_lead_delete(lw):
+    """An editor of the team may update its lead, not take it away.
+
+    Starting a personal initiatief makes you its eigenaar (lead:create
+    there), but moving the team's lead into it removes it from the team,
+    which is deleting it there: lead:delete, which an editor lacks.
+    """
+    async with client_as(lw.db, lw.person["team_editor"]) as c:
+        created = await c.post("/api/initiatieven", json={"naam": "Eigen initiatief"})
+        assert created.status_code == 201, created.text
+        moved = await c.put(
+            f"/api/leads/{lw.id('lead_team')}",
+            json={"initiatief_id": created.json()["id"], "stage": "verkennen"},
+        )
+    assert moved.status_code == 403, moved.text
+    lead = await lw.db.get(Lead, lw.id("lead_team"))
+    await lw.db.refresh(lead)
+    assert lead.initiatief_id is None
+
+
+def _merge(lw) -> dict:
+    return {"source_id": str(lw.id("lead_other")), "target_id": str(lw.id("lead"))}
+
+
+@pytest.mark.parametrize(("who", "expected"), [("manager", 403), ("super_admin", 200)])
+async def test_merge_moves_a_grant_to_an_agent_only_for_super_admin(lw, who, expected):
+    """An agent acts on what it holds: a moved grant hands it the target."""
+    agent = await make_person(lw.db, "Agent")
+    agent.is_agent = True
+    lw.db.add(
+        ResourcePermission(
+            person_id=agent.id,
+            resource_type="lead",
+            resource_id=lw.id("lead_other"),
+            rol="opdrachtgever",
+        )
+    )
+    await lw.db.flush()
+    async with client_as(lw.db, lw.person[who]) as c:
+        resp = await c.post("/api/leads/merge", json=_merge(lw))
+    assert resp.status_code == expected, resp.text
+
+
+async def test_merge_keeps_an_eenheid_grant_next_to_other_grants(lw):
+    """Only the same holder with the same rol is a duplicate."""
+    db = lw.db
+    db.add_all(
+        [
+            ResourcePermission(
+                organisatie_eenheid_id=lw.org["team"].id,
+                resource_type="lead",
+                resource_id=lw.id("lead_other"),
+                rol="betrokken",
+            ),
+            # the target has a betrokken eenheid, but another one
+            ResourcePermission(
+                organisatie_eenheid_id=lw.org["elders"].id,
+                resource_type="lead",
+                resource_id=lw.id("lead"),
+                rol="betrokken",
+            ),
+        ]
+    )
+    await db.flush()
+    async with client_as(db, lw.person["manager"]) as c:
+        resp = await c.post("/api/leads/merge", json=_merge(lw))
+    assert resp.status_code == 200, resp.text
+    holders = set(
+        (
+            await db.scalars(
+                select(ResourcePermission.organisatie_eenheid_id).where(
+                    ResourcePermission.resource_type == "lead",
+                    ResourcePermission.resource_id == lw.id("lead"),
+                    ResourcePermission.organisatie_eenheid_id.isnot(None),
+                )
+            )
+        ).all()
+    )
+    assert holders == {lw.org["team"].id, lw.org["elders"].id}

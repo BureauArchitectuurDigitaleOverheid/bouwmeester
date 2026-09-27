@@ -13,6 +13,7 @@ from bouwmeester.core.initiatief_context import (
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_column import LeadColumn
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.tag import LeadTag, Tag
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.lead import LeadCreate, LeadUpdate
@@ -279,7 +280,6 @@ class LeadRepository(BaseRepository[Lead]):
     ) -> dict[UUID, list[str]]:
         """Get contact person names for multiple leads in one query."""
         from bouwmeester.models.person import Person
-        from bouwmeester.models.resource_permission import ResourcePermission
 
         if not lead_ids:
             return {}
@@ -332,11 +332,38 @@ class LeadRepository(BaseRepository[Lead]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def grants_to_move(
+        self, source_id: UUID, target_id: UUID
+    ) -> tuple[list[ResourcePermission], list[ResourcePermission]]:
+        """The source's resource roles a merge moves, and those it drops.
+
+        A grant is dropped when the target already has the same one: the
+        same holder (a person, or an eenheid) with the same rol.  The
+        route checks the moved person grants before merging (an agent may
+        only be handed power by super_admin).
+        """
+        rows = await self.session.execute(
+            select(ResourcePermission)
+            .where(
+                ResourcePermission.resource_type == "lead",
+                ResourcePermission.resource_id.in_([source_id, target_id]),
+            )
+            .options(selectinload(ResourcePermission.person))
+        )
+        grants = rows.scalars().all()
+
+        def holder(g: ResourcePermission) -> tuple:
+            return (g.person_id, g.organisatie_eenheid_id, g.rol)
+
+        existing = {holder(g) for g in grants if g.resource_id == target_id}
+        source = [g for g in grants if g.resource_id == source_id]
+        moving = [g for g in source if holder(g) not in existing]
+        return moving, [g for g in source if holder(g) in existing]
+
     async def merge(self, source_id: UUID, target_id: UUID) -> Lead | None:
         """Merge source lead into target lead, then delete source."""
         from bouwmeester.models.lead_attachment import LeadAttachment
         from bouwmeester.models.lead_node import LeadNode
-        from bouwmeester.models.resource_permission import ResourcePermission
 
         source = await self.get_detail(source_id)
         target = await self.get_detail(target_id)
@@ -350,25 +377,11 @@ class LeadRepository(BaseRepository[Lead]):
             activity.lead_id = target_id
 
         # Move contacts from source to target (skip duplicates)
-        stmt = select(ResourcePermission).where(
-            ResourcePermission.resource_type == "lead",
-            ResourcePermission.resource_id == source_id,
-        )
-        result = await self.session.execute(stmt)
-        # Get existing target contacts
-        target_stmt = select(ResourcePermission).where(
-            ResourcePermission.resource_type == "lead",
-            ResourcePermission.resource_id == target_id,
-        )
-        target_result = await self.session.execute(target_stmt)
-        existing_contacts = {
-            (c.person_id, c.rol) for c in target_result.scalars().all()
-        }
-        for contact in result.scalars().all():
-            if (contact.person_id, contact.rol) not in existing_contacts:
-                contact.resource_id = target_id
-            else:
-                await self.session.delete(contact)
+        moving, duplicate = await self.grants_to_move(source_id, target_id)
+        for contact in moving:
+            contact.resource_id = target_id
+        for contact in duplicate:
+            await self.session.delete(contact)
 
         # Move attachments from source to target
         stmt = select(LeadAttachment).where(LeadAttachment.lead_id == source_id)

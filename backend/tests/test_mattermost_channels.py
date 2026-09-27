@@ -150,6 +150,38 @@ async def test_update_channel_settings(client, sample_initiatief):
     assert resp.json()["auto_note_enabled"] is True
 
 
+@pytest.mark.parametrize(
+    ("change", "checked"),
+    [
+        ({"auto_note_enabled": True}, True),
+        ({"suggest_leads_enabled": True}, True),
+        ({"auto_note_enabled": False}, False),  # switching off reads nothing
+        ({"parlementaire_alerts_enabled": True}, False),  # posts into it only
+    ],
+)
+async def test_switching_on_ingest_asks_the_link_check(
+    client, db_session, sample_initiatief, open_channels, change, checked
+):
+    """Someone else's link: switching on reading its posts is linking it."""
+    link = MattermostChannelLink(
+        channel_id=_channel_id(),
+        channel_name="prive",
+        channel_display_name="Prive",
+        scope_type=SCOPE_INITIATIEF,
+        scope_id=sample_initiatief.id,
+        auto_note_enabled=False,
+        suggest_leads_enabled=False,
+    )
+    db_session.add(link)
+    await db_session.flush()
+    open_channels.return_value = "Je bent geen lid van dit kanaal"
+
+    resp = await client.patch(f"/api/mattermost-channels/{link.id}", json=change)
+
+    assert resp.status_code == (403 if checked else 200), resp.text
+    assert open_channels.await_count == (1 if checked else 0)
+
+
 async def test_delete_channel_link(client, sample_initiatief):
     cid = _channel_id()
     create = await client.post(

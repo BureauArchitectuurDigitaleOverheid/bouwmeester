@@ -347,3 +347,21 @@ async def test_casus_updates_skip_those_without_body_public(client, db_session):
     resp = await client.get("/api/public/initiatieven/by-slug/no-body")
     casus = resp.json()["casussen"][0]
     assert casus["updates"] == []
+
+
+async def test_slug_is_set_once(client, db_session):
+    """The slug is the public page's address: set once, then fixed."""
+    init = await _create_initiatief(db_session, naam="Vast", slug=None, public=True)
+    url = f"/api/initiatieven/{init.id}/settings"
+
+    first = await client.put(url, json={"slug": "vaste-plek"})
+    again = await client.put(url, json={"slug": "vaste-plek", "funnel_enabled": True})
+    changed = await client.put(url, json={"slug": "andere-plek"})
+    cleared = await client.put(url, json={"slug": None})
+
+    assert first.status_code == 200, first.text
+    assert again.status_code == 200, again.text
+    assert changed.status_code == 409, changed.text
+    assert cleared.status_code == 409, cleared.text
+    page = await client.get("/api/public/initiatieven/by-slug/vaste-plek")
+    assert page.status_code == 200

@@ -1461,13 +1461,16 @@ async def require_move(
     update (only those sent), of which the placing fields count.  Moving is
     taking it away where it is and adding it where it goes:
 
-    - lead in an initiatief: another initiatief needs ``lead:delete`` on the
-      lead and ``lead:create`` in the new initiatief; back to no initiatief
-      is refused (422).  Its ``organisatie_eenheid_id`` is only a label
-      there (the initiatief decides), so changing it is a plain update.
-    - lead without initiatief: ``lead:update`` on the lead and
-      ``lead:create`` at the new place; clearing its eenheid makes it
-      tenant-wide, which only system roles may do.
+    - lead: every move takes it away from its old home, so it needs
+      ``lead:delete`` on the lead and ``lead:create`` at the new place
+      (another initiatief, another eenheid, or from an eenheid into an
+      initiatief, one's own new initiatief included).  Otherwise moving
+      would turn ``lead:update`` into deleting it where it was.  A lead in
+      an initiatief never goes back to no initiatief (422); its
+      ``organisatie_eenheid_id`` is only a label there (the initiatief
+      decides), so changing it is a plain update.  Clearing the eenheid of
+      a lead without initiatief makes it tenant-wide, which only system
+      roles may do.
     - task: ``task:update`` on the task and ``task:create`` at the new place.
     - opdracht: ``opdracht:update`` on every eenheid that changes, the one it
       leaves and the one it lands in; taking all its eenheden away makes it
@@ -1490,9 +1493,7 @@ async def require_move(
             )
         if new["initiatief_id"] == old_initiatief:
             return
-        take_away = "lead:delete"
-    else:
-        take_away = f"{resource_type}:update"
+    take_away = "lead:delete" if resource_type == "lead" else f"{resource_type}:update"
     if (
         resource_type == "lead"
         and new["initiatief_id"] is None

@@ -275,7 +275,7 @@ MOVES = [
         {"organisatie_eenheid_id": "elders"},
         403,
     ),
-    # a lead without initiatief: lead:update where it is, lead:create where
+    # a lead without initiatief: lead:delete where it is, lead:create where
     # it goes; making it tenant-wide again is for system roles only
     (
         "elders_editor",

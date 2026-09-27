@@ -1,7 +1,6 @@
 """API routes for LeadUpdatePost — per-lead update posts (mail + community)."""
 
 import asyncio
-import base64
 import logging
 from datetime import UTC, datetime
 from uuid import UUID
@@ -13,11 +12,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import get_child_or_404, require_found
-from bouwmeester.api.routes.leads import _robust_parse_json
+from bouwmeester.api.routes.initiatief_update import apply_post_edit
+from bouwmeester.api.routes.leads import (
+    MAX_LLM_UPLOAD_BYTES,
+    MAX_LLM_UPLOADS,
+    _robust_parse_json,
+    complete_lead_prompt,
+    image_part,
+    llm_for_lead_content,
+    read_llm_uploads,
+)
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import requires
+from bouwmeester.core.authz import can, requires
 from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
 from bouwmeester.core.database import get_db
+from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
@@ -33,6 +43,7 @@ from bouwmeester.schema.lead_update import (
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.document_extract import extract_text_from_bytes
 from bouwmeester.services.eml_builder import build_outlook_draft_eml
+from bouwmeester.services.lead_rules import require_may_publish
 from bouwmeester.services.markdown_min import markdown_to_html
 
 logger = logging.getLogger(__name__)
@@ -42,8 +53,8 @@ router = APIRouter(prefix="/leads", tags=["lead-updates"])
 # Cap how many existing attachments we drop into a single LLM call. The /parse
 # endpoint already accepts ad-hoc uploads; bulk-feeding 30 historical files
 # would blow past the model's vision-image budget and balloon token cost.
-_MAX_ATTACHMENTS_FOR_PARSE = 6
-_MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024  # per file
+_MAX_ATTACHMENTS_FOR_PARSE = MAX_LLM_UPLOADS
+_MAX_ATTACHMENT_BYTES = MAX_LLM_UPLOAD_BYTES  # per file
 
 
 # Update posts are sub-records of the lead in the path (``core.authz``).
@@ -71,6 +82,15 @@ def _to_response(post: LeadUpdatePost) -> LeadUpdatePostResponse:
     )
 
 
+# What the public page of the initiatief shows of a published post (the
+# public text, under its titel); see ``lead_rules.require_may_publish``.
+_PUBLIC = ("titel", "body_public")
+
+
+async def _initiatief_of(db: AsyncSession, lead_id: UUID) -> UUID | None:
+    return await db.scalar(select(Lead.initiatief_id).where(Lead.id == lead_id))
+
+
 async def _load_post(db: AsyncSession, lead_id: UUID, post_id: UUID) -> LeadUpdatePost:
     """The post *post_id* of this lead, or 404."""
     return await get_child_or_404(
@@ -83,16 +103,25 @@ async def _load_post(db: AsyncSession, lead_id: UUID, post_id: UUID) -> LeadUpda
     )
 
 
-async def _build_lead_context(db: AsyncSession, lead: Lead) -> str:
+async def _build_lead_context(
+    db: AsyncSession,
+    lead: Lead,
+    *,
+    initiatief: Initiatief | None,
+    with_emails: bool,
+) -> str:
     """Compose a short paragraph the LLM uses to ground the update.
 
     Pulls in initiatief metadata, lead title/organisatie/description, recent
     activity bodies and the contact name list so the model has enough to
     write a coherent update even when the user pastes only a one-liner.
+    *initiatief* is the lead's initiatief only when the caller may read it,
+    and contact emails only go in *with_emails* (``people:read``): the
+    draft comes back to the caller, so the prompt holds what they may see.
     """
     parts: list[str] = []
-    if lead.initiatief is not None:
-        init = lead.initiatief
+    if initiatief is not None:
+        init = initiatief
         parts.append(f"Initiatief: {init.naam}")
         if init.beschrijving:
             parts.append(f"Initiatief-beschrijving: {init.beschrijving[:800]}")
@@ -126,7 +155,7 @@ async def _build_lead_context(db: AsyncSession, lead: Lead) -> str:
     contacts = await _list_contacts_with_email(db, lead.id)
     if contacts:
         names = ", ".join(
-            f"{c['naam']}" + (f" <{c['email']}>" if c["email"] else "")
+            f"{c['naam']}" + (f" <{c['email']}>" if with_emails and c["email"] else "")
             for c in contacts
         )
         parts.append(f"\nContacten: {names}")
@@ -218,13 +247,7 @@ async def _load_lead_attachments_for_llm(
 
         ct = att.content_type or ""
         if ct.startswith("image/"):
-            b64 = base64.b64encode(content_bytes).decode("ascii")
-            image_parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:{ct};base64,{b64}"},
-                }
-            )
+            image_parts.append(image_part(content_bytes, ct))
             continue
 
         extracted = await asyncio.to_thread(extract_text_from_bytes, content_bytes, ct)
@@ -252,14 +275,23 @@ async def parse_lead_update(
     include_attachments: bool = Form(False),
     files: list[UploadFile] | None = None,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_CREATE_POST),
+    perm_ctx: PermissionContext = Depends(_CREATE_POST),
 ) -> LeadUpdateExtractResult:
     """Parse raw text/uploaded docs (or just the lead history) into an update draft."""
-    from bouwmeester.services.llm.factory import get_llm_service
     from bouwmeester.services.llm.prompts import build_lead_update_prompt
 
     repo = LeadRepository(db)
     lead = require_found(await repo.get_detail(lead_id), "Lead")
+    uploads = await read_llm_uploads(files)
+    # Writing the lead does not mean reading its initiatief or the people
+    # directory (a lead-level opdrachtgever): leave out what they may not see.
+    initiatief = (
+        lead.initiatief
+        if lead.initiatief_id is not None
+        and await can(db, perm_ctx, "initiatief:read", "initiatief", lead.initiatief_id)
+        else None
+    )
+    with_emails = perm_ctx.has_permission("people:read")
 
     text_parts: list[str] = []
     image_parts: list[dict] = []
@@ -280,24 +312,13 @@ async def parse_lead_update(
     if raw_text:
         text_parts.append(raw_text)
 
-    if files:
-        for f in files:
-            content_bytes = await f.read()
-            ct = f.content_type or ""
-            if ct.startswith("image/"):
-                b64 = base64.b64encode(content_bytes).decode("ascii")
-                image_parts.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{ct};base64,{b64}"},
-                    }
-                )
-                continue
-            extracted = await asyncio.to_thread(
-                extract_text_from_bytes, content_bytes, ct
-            )
-            if extracted:
-                text_parts.append(extracted)
+    for content_bytes, ct in uploads:
+        if ct.startswith("image/"):
+            image_parts.append(image_part(content_bytes, ct))
+            continue
+        extracted = await asyncio.to_thread(extract_text_from_bytes, content_bytes, ct)
+        if extracted:
+            text_parts.append(extracted)
 
     if not text_parts and not image_parts and not use_lead_history:
         raise HTTPException(
@@ -309,7 +330,9 @@ async def parse_lead_update(
             ),
         )
 
-    lead_context = await _build_lead_context(db, lead)
+    lead_context = await _build_lead_context(
+        db, lead, initiatief=initiatief, with_emails=with_emails
+    )
     combined_text = "\n\n".join(text_parts).strip()
     if not combined_text and not image_parts:
         # Fallback: only history. Tell the LLM that's intentional.
@@ -319,28 +342,16 @@ async def parse_lead_update(
             " is en wat de huidige stand is.)"
         )
 
-    llm = await get_llm_service(db)
-    if llm is None:
-        raise HTTPException(status_code=503, detail="Geen LLM-service beschikbaar.")
+    llm = await llm_for_lead_content(db)
 
     prompt = build_lead_update_prompt(
         raw_text=combined_text or "(zie afbeelding)",
         lead_context=lead_context,
-        initiatief_naam=lead.initiatief.naam if lead.initiatief else None,
+        initiatief_naam=initiatief.naam if initiatief else None,
     )
 
     try:
-        if image_parts:
-            content: list[dict] = [{"type": "text", "text": prompt}]
-            content.extend(image_parts)
-            response = await llm._client.chat.completions.create(
-                model=llm._model,
-                max_tokens=2048,
-                messages=[{"role": "user", "content": content}],
-            )
-            response_text = response.choices[0].message.content or ""
-        else:
-            response_text = await llm._complete(prompt)
+        response_text = await complete_lead_prompt(llm, prompt, image_parts, 2048)
         parsed = _robust_parse_json(response_text)
     except Exception:
         logger.exception("Failed to parse lead-update with LLM")
@@ -349,7 +360,7 @@ async def parse_lead_update(
             detail="Fout bij het verwerken van de update.",
         )
 
-    suggested_to = await _suggested_recipients(db, lead_id)
+    suggested_to = await _suggested_recipients(db, lead_id) if with_emails else []
     return LeadUpdateExtractResult(
         titel=parsed.get("titel"),
         body_internal=parsed.get("body_internal"),
@@ -395,9 +406,11 @@ async def create_update(
     data: LeadUpdatePostCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_CREATE_POST),
+    perm_ctx: PermissionContext = Depends(_CREATE_POST),
 ) -> LeadUpdatePostResponse:
     lead = require_found(await db.get(Lead, lead_id), "Lead")
+    if data.publish and data.body_public:
+        await require_may_publish(db, perm_ctx, lead.initiatief_id)
 
     actor_id = current_user.id if current_user else None
     post = LeadUpdatePost(
@@ -445,14 +458,18 @@ async def edit_update(
     data: LeadUpdatePostEdit,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_POST),
+    perm_ctx: PermissionContext = Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = await _load_post(db, lead_id, post_id)
     payload = data.model_dump(exclude_unset=True)
-    for key, value in payload.items():
-        if key in {"mail_to", "mail_cc"} and value is not None:
-            value = list(value)
-        setattr(post, key, value)
+    body_public = payload.get("body_public", post.body_public)
+    if (
+        post.published_at is not None
+        and body_public
+        and any(f in payload and payload[f] != getattr(post, f) for f in _PUBLIC)
+    ):
+        await require_may_publish(db, perm_ctx, await _initiatief_of(db, lead_id))
+    apply_post_edit(post, payload, current_user.id if current_user else None)
     await db.flush()
     await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])
@@ -468,9 +485,11 @@ async def publish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_POST),
+    perm_ctx: PermissionContext = Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = await _load_post(db, lead_id, post_id)
+    if post.body_public:
+        await require_may_publish(db, perm_ctx, await _initiatief_of(db, lead_id))
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
     await db.flush()

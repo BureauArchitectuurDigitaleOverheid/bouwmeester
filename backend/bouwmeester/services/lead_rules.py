@@ -1,14 +1,18 @@
-"""The rule for where a new lead goes and whether the caller may put it there.
+"""The rules for where a new lead goes and whether the caller may put it there.
 
 One place for ``POST /leads`` and the chat's ``create_lead`` tool, so they
 cannot drift apart.  ``core.authz.can_anywhere("lead:create", "lead")``
-answers the same question for a create button.
+answers the same question for a create button.  Also the rule for what a
+lead puts on the public page of its initiatief (``require_may_publish``).
 """
+
+from typing import Any
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import own_eenheid_where, require
+from bouwmeester.core.authz import can, own_eenheid_where, require
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.schema.lead import LeadCreate
 from bouwmeester.services.agent_rules import require_may_assign
@@ -17,6 +21,60 @@ NO_EENHEID_FOR_LEAD = (
     "Kies een initiatief of eenheid voor de lead: je mag in geen van je eigen "
     "organisatie-eenheden leads aanmaken."
 )
+
+MAY_NOT_PUBLISH = (
+    "Wat een lead op de publieke pagina van het initiatief zet, beslist wie "
+    "het initiatief mag bewerken."
+)
+
+# The fields of a lead the public page of its initiatief shows, with their
+# value on a new lead.
+PUBLIC_LEAD_FIELDS: dict[str, Any] = {
+    "public_visible": False,
+    "public_title": None,
+    "public_summary": None,
+}
+
+
+async def require_may_publish(
+    db: AsyncSession, perm_ctx: PermissionContext, initiatief_id: UUID | None
+) -> None:
+    """Guard putting lead content on the initiatief's public page; 403.
+
+    The public page is the initiatief's (its eigenaar switches it on), so
+    what a lead shows there, its public fields and its published posts with
+    a public text, is ``initiatief:update`` on that initiatief.
+    ``lead:update`` alone (an opdrachtgever on the lead) does not reach it.
+    A lead without initiatief shows on no page.
+    """
+    if initiatief_id is not None and not await can(
+        db, perm_ctx, "initiatief:update", "initiatief", initiatief_id
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, MAY_NOT_PUBLISH)
+
+
+async def require_may_publish_lead(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    changes: dict[str, Any],
+    before: Any = None,
+) -> None:
+    """``require_may_publish`` for a new lead or a change to one.
+
+    *changes* holds the fields sent, *before* the lead as it is (None for a
+    new one).  Asked when a public field changes, or when a lead that is on
+    the public page moves to another initiatief (it lands on that page).
+    """
+    now = {
+        field: getattr(before, field) if before is not None else default
+        for field, default in PUBLIC_LEAD_FIELDS.items()
+    }
+    changed = any(f in changes and changes[f] != now[f] for f in now)
+    old_initiatief = before.initiatief_id if before is not None else None
+    initiatief_id = changes.get("initiatief_id", old_initiatief)
+    moved = before is not None and initiatief_id != old_initiatief
+    if changed or (moved and changes.get("public_visible", now["public_visible"])):
+        await require_may_publish(db, perm_ctx, initiatief_id)
 
 
 async def require_lead_create(
@@ -43,4 +101,5 @@ async def require_lead_create(
         elif not perm_ctx.has_system_permission("lead:create"):
             raise HTTPException(status.HTTP_403_FORBIDDEN, NO_EENHEID_FOR_LEAD)
     await require(db, perm_ctx, "lead:create", "lead", place=data)
+    await require_may_publish_lead(db, perm_ctx, data.model_dump(exclude_unset=True))
     await require_may_assign(db, perm_ctx, data)
