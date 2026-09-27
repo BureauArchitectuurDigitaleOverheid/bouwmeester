@@ -317,7 +317,7 @@ async def update_task(
             if old_assignee_id:
                 # Reassignment: notify both
                 await notif_svc.notify_task_reassigned(
-                    task, old_assignee_id, new_assignee
+                    task, old_assignee_id, new_assignee, actor_id=resolved_id
                 )
             else:
                 # First assignment

@@ -19,6 +19,7 @@ from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.notification import NotificationRepository
 from bouwmeester.schema.notification import NotificationCreate
+from bouwmeester.services.agent_rules import sender_may_instruct
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ class NotificationService:
     the same ``<type>:read`` decision as the item's own REST route
     (``core.authz.can``).  Recipients who may not read it get nothing.
     Direct messages and replies carry the sender's own words and are not
-    gated.
+    gated.  An agent only receives what a super_admin caused (``send``).
     """
 
     def __init__(self, session: AsyncSession) -> None:
@@ -120,7 +121,11 @@ class NotificationService:
         return await can(self.session, ctx, permission, resource_type, resource_id)
 
     async def send(
-        self, data: NotificationCreate, *, about: About | None = None
+        self,
+        data: NotificationCreate,
+        *,
+        about: About | None = None,
+        actor_id: UUID | None = None,
     ) -> Notification | None:
         """Create a notification and schedule Mattermost forwarding.
 
@@ -128,9 +133,20 @@ class NotificationService:
         the item the text names; by default it is read off the related ids.
         Returns ``None`` (and sends nothing) when the recipient may not read
         that item.
+
+        A notification hands an agent work, so an agent only receives one
+        caused by a super_admin (``agent_rules``): *actor_id*, or else the
+        sender.  Without either the system sends it, and the system does
+        not instruct agents.
         """
         about = about or _about_related(data)
         if about is not None and not await self.may_read(data.person_id, about):
+            return None
+        if not await sender_may_instruct(
+            self.session,
+            actor_id or data.sender_id,
+            await self.session.get(Person, data.person_id),
+        ):
             return None
         return await self._create(data)
 
@@ -141,9 +157,13 @@ class NotificationService:
         return notification
 
     async def _send_all(
-        self, items: list[NotificationCreate], *, about: About | None = None
+        self,
+        items: list[NotificationCreate],
+        *,
+        about: About | None = None,
+        actor_id: UUID | None = None,
     ) -> list[Notification]:
-        sent = [await self.send(data, about=about) for data in items]
+        sent = [await self.send(data, about=about, actor_id=actor_id) for data in items]
         return [n for n in sent if n is not None]
 
     async def _stakeholder_ids(
@@ -203,7 +223,8 @@ class NotificationService:
                 message=f"De taak '{task.title}' is aan je toegewezen.",
                 related_node_id=task.node_id,
                 related_task_id=task.id,
-            )
+            ),
+            actor_id=actor_id,
         )
 
     async def notify_task_overdue(self, task: Task) -> Notification | None:
@@ -235,7 +256,8 @@ class NotificationService:
                     related_node_id=node.id,
                 )
                 for person_id in by_node.get(node.id, [])
-            ]
+            ],
+            actor_id=actor.id,
         )
 
     async def notify_coverage_needed(
@@ -335,11 +357,16 @@ class NotificationService:
                 )
                 for person_id in dict.fromkeys(recipients)
                 if person_id != actor_id
-            ]
+            ],
+            actor_id=actor_id,
         )
 
     async def notify_task_reassigned(
-        self, task: Task, old_assignee_id: UUID, new_assignee: Person
+        self,
+        task: Task,
+        old_assignee_id: UUID,
+        new_assignee: Person,
+        actor_id: UUID | None = None,
     ) -> list[Notification]:
         """Notify old assignee (reassigned) and new assignee (assigned)."""
         return await self._send_all(
@@ -363,7 +390,8 @@ class NotificationService:
                     related_node_id=task.node_id,
                     related_task_id=task.id,
                 ),
-            ]
+            ],
+            actor_id=actor_id,
         )
 
     async def notify_edge_created(
@@ -410,7 +438,8 @@ class NotificationService:
                     title=title,
                     message=message,
                     related_node_id=related,
-                )
+                ),
+                actor_id=actor_id,
             )
             if notification is not None:
                 notifications.append(notification)
@@ -434,7 +463,8 @@ class NotificationService:
                 title=f"Toegevoegd als {rol}: {node.title}",
                 message=f"Je bent toegevoegd als {rol} aan '{node.title}'.",
                 related_node_id=node.id,
-            )
+            ),
+            actor_id=actor_id,
         )
 
     async def notify_stakeholder_role_changed(
@@ -663,7 +693,7 @@ class NotificationService:
                 )
             )
         return await self._send_all(
-            items, about=("opdracht:read", "opdracht", opdracht.id)
+            items, about=("opdracht:read", "opdracht", opdracht.id), actor_id=actor_id
         )
 
     async def notify_opdracht_status_changed(
@@ -688,6 +718,7 @@ class NotificationService:
                 for person_id in await self._opdracht_recipients(opdracht, actor_id)
             ],
             about=("opdracht:read", "opdracht", opdracht.id),
+            actor_id=actor_id,
         )
 
     async def get_notifications(

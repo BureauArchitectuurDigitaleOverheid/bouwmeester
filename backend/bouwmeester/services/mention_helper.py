@@ -18,7 +18,7 @@ async def sync_and_notify_mentions(
     content: str | None,
     entity_title: str,
     *,
-    sender_id: UUID | None = None,
+    sender_id: UUID | None,
     source_node_id: UUID | None = None,
     source_task_id: UUID | None = None,
     source_lead_id: UUID | None = None,
@@ -35,7 +35,9 @@ async def sync_and_notify_mentions(
         source_id: ID of the source entity.
         content: Text content to scan for mentions. No-op if None/empty.
         entity_title: Title shown in the notification.
-        sender_id: Person who created the mention (optional).
+        sender_id: Person who wrote the mention (None: the system).  Required,
+            so no caller forgets it: an agent is only reached by a mention
+            of a super_admin (``agent_rules``).
         source_node_id: Related node ID for notification linking (optional).
         source_task_id: Related task ID for notification linking (optional).
         exclude_person_id: Person ID to skip notifying (e.g. the direct recipient).
@@ -51,10 +53,9 @@ async def sync_and_notify_mentions(
             )
 
             notif_svc = NotificationService(db)
-            for person_id in await mention_svc.notifiable_persons(
-                new_mentions, sender_id
-            ):
-                if exclude_person_id and person_id == exclude_person_id:
+            for mention in new_mentions:
+                person_id = mention.target_id
+                if mention.mention_type != "person" or person_id == exclude_person_id:
                     continue
                 await notif_svc.notify_mention(
                     person_id,

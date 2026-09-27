@@ -315,6 +315,7 @@ async def create_organisatie(
         eenheid.id,
         data.beschrijving,
         eenheid.naam,
+        sender_id=perm_ctx.person_id,
     )
 
     await log_activity(
@@ -374,6 +375,7 @@ async def update_organisatie(
         eenheid.id,
         eenheid.beschrijving,
         eenheid.naam,
+        sender_id=perm_ctx.person_id,
     )
 
     await log_activity(

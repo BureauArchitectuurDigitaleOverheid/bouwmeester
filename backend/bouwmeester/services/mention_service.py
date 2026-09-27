@@ -10,7 +10,6 @@ from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.core.tiptap_markdown import extract_markdown_mentions
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.mention import Mention
-from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.mention import MentionRepository
 from bouwmeester.schema.mention import (
@@ -107,35 +106,6 @@ class MentionService:
             for m in all_mentions
             if (m.mention_type, str(m.target_id)) not in existing_keys
         ]
-
-    async def notifiable_persons(
-        self, mentions: list[Mention], sender_id: UUID | None
-    ) -> list[UUID]:
-        """The mentioned persons *sender_id* may notify.
-
-        A mention of an agent instructs it, so only a super_admin's mention
-        reaches one (``agent_rules``); the mention itself stays recorded.
-        """
-        targets = [m.target_id for m in mentions if m.mention_type == "person"]
-        if not targets:
-            return []
-        agents = set(
-            (
-                await self.session.execute(
-                    select(Person.id).where(
-                        Person.id.in_(targets), Person.is_agent.is_(True)
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if agents:
-            from bouwmeester.core.authz import perm_ctx_for
-
-            if (await perm_ctx_for(self.session, sender_id)).is_super_admin:
-                agents = set()
-        return [t for t in targets if t not in agents]
 
     # Only these source types should appear as public back-references.
     # DMs, org descriptions, and any future private source types are excluded.

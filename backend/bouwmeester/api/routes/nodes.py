@@ -160,6 +160,7 @@ async def create_node(
         node.id,
         data.description,
         node.title,
+        sender_id=perm_ctx.person_id,
         source_node_id=node.id,
     )
 
@@ -223,7 +224,7 @@ async def update_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_NODE),
+    perm_ctx: PermissionContext = Depends(_UPDATE_NODE),
 ) -> CorpusNodeResponse:
     """Update a corpus node. Notifies stakeholders of changes."""
     service = NodeService(db)
@@ -235,6 +236,7 @@ async def update_node(
         node.id,
         data.description,
         node.title,
+        sender_id=perm_ctx.person_id,
         source_node_id=node.id,
     )
 
