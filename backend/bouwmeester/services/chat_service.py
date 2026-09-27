@@ -1052,6 +1052,90 @@ def _describe_action(tool_name: str, args: dict) -> str:
     return fn(args) if fn else f"{tool_name} uitvoeren"
 
 
+# Arguments of a write tool that name an item: (label, resource type, read
+# permission).  The confirm card names the item by title, when the caller
+# may read it.
+_ITEM_ARGS: dict[str, tuple[str, str, str]] = {
+    "node_id": ("item", "corpus_node", "node:read"),
+    "from_node_id": ("van", "corpus_node", "node:read"),
+    "to_node_id": ("naar", "corpus_node", "node:read"),
+    "task_id": ("taak", "task", "task:read"),
+    "parent_task_id": ("hoofdtaak", "task", "task:read"),
+    "lead_id": ("lead", "lead", "lead:read"),
+}
+# Arguments that name a person, with their label on the confirm card.
+_PERSON_ARGS = {"person_id": "persoon", "assignee_id": "toegewezen aan"}
+_FIELD_LABELS = {
+    "title": "titel",
+    "description": "beschrijving",
+    "status": "status",
+    "priority": "prioriteit",
+    "organization": "organisatie",
+    "assignee_id": "toegewezen aan",
+    "next_action": "volgende actie",
+    "next_action_date": "datum volgende actie",
+}
+
+
+async def _item_title(
+    db: AsyncSession, caller: Caller, resource_type: str, permission: str, raw: object
+) -> str:
+    """The item's title in quotes, or a placeholder when the caller cannot read it."""
+    from bouwmeester.core.authz import can
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.lead import Lead
+    from bouwmeester.models.task import Task
+
+    try:
+        item_id = UUID(str(raw))
+    except ValueError:
+        return "onbekend item"
+    model = {"corpus_node": CorpusNode, "task": Task, "lead": Lead}[resource_type]
+    item = await db.get(model, item_id)
+    if item is None:
+        return "onbekend item"
+    if not await can(db, caller.perm_ctx, permission, resource_type, item_id):
+        return "een item dat je niet mag zien"
+    return f'"{item.title}"'
+
+
+async def _person_label(db: AsyncSession, raw: object) -> str:
+    """A person's name and short id (two people can share a name)."""
+    from bouwmeester.models.person import Person
+
+    try:
+        person = await db.get(Person, UUID(str(raw)))
+    except ValueError:
+        person = None
+    if person is None:
+        return "onbekende persoon"
+    return f"{person.naam} ({str(person.id)[:8]})"
+
+
+async def _describe_pending(
+    tool_name: str, args: dict, db: AsyncSession, caller: Caller
+) -> str:
+    """The confirm card of a write: what, on which item, for whom, which fields.
+
+    The model proposes the write, so a prompt-injected instruction would hide
+    in its arguments; the card spells them out before the user confirms:
+    the item by the title the caller may read, every person the write names,
+    and for an update the fields it changes.
+    """
+    parts = [_describe_action(tool_name, args)]
+    for arg, (label, resource_type, permission) in _ITEM_ARGS.items():
+        if args.get(arg):
+            title = await _item_title(db, caller, resource_type, permission, args[arg])
+            parts.append(f"{label}: {title}")
+    for arg, label in _PERSON_ARGS.items():
+        if args.get(arg):
+            parts.append(f"{label}: {await _person_label(db, args[arg])}")
+    if tool_name.startswith("update_"):
+        fields = [_FIELD_LABELS.get(k, k) for k in args if k not in _ITEM_ARGS]
+        parts.append("wijzigt: " + (", ".join(fields) or "niets"))
+    return " · ".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # Tool execution helpers
 # ---------------------------------------------------------------------------
@@ -2287,12 +2371,21 @@ class ChatService:
 
     # -- DB helpers ----------------------------------------------------------
 
-    async def _load_conversation(self, conversation_id: str) -> ChatConversation | None:
-        """Load a conversation owned by the current user."""
+    async def _load_conversation(
+        self, conversation_id: str, *, for_update: bool = False
+    ) -> ChatConversation | None:
+        """Load a conversation owned by the current user.
+
+        ``for_update`` locks the row until the transaction ends, so a second
+        request on the same conversation waits and then reads what the first
+        one saved.
+        """
         stmt = select(ChatConversation).where(
             ChatConversation.id == UUID(conversation_id),
             ChatConversation.person_id == self._person_id,
         )
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
         result = await self._db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -2496,7 +2589,8 @@ class ChatService:
                         action_id=action_id,
                         tool_name=info["tool_name"],
                         arguments=info.get("arguments", {}),
-                        description=_describe_action(
+                        description=info.get("description")
+                        or _describe_action(
                             info["tool_name"], info.get("arguments", {})
                         ),
                     )
@@ -2679,17 +2773,24 @@ class ChatService:
                 if tool_name in _WRITE_TOOL_NAMES:
                     # Queue for confirmation
                     action_id = str(uuid.uuid4())
+                    description = await _describe_pending(
+                        tool_name,
+                        args,
+                        self._db,
+                        await caller_for(self._db, self._person_id),
+                    )
                     pending = PendingAction(
                         action_id=action_id,
                         tool_name=tool_name,
                         arguments=args,
-                        description=_describe_action(tool_name, args),
+                        description=description,
                     )
                     pending_actions.append(pending)
                     pending_map[action_id] = {
                         "tool_name": tool_name,
                         "arguments": args,
                         "tool_call_id": tc.id,
+                        "description": description,
                     }
                     messages.append(
                         {
@@ -2772,9 +2873,14 @@ class ChatService:
         action_id: str,
         approved: bool,
     ) -> ChatMessage:
-        """Confirm or reject a pending write action."""
+        """Confirm or reject a pending write action.
+
+        The conversation row stays locked until the answer is saved: a second
+        confirm of the same action (a double click, two tabs) waits, then
+        finds the action gone, so it runs once.
+        """
         try:
-            conv = await self._load_conversation(conversation_id)
+            conv = await self._load_conversation(conversation_id, for_update=True)
         except ValueError:
             conv = None
 

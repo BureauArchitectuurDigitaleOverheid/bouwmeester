@@ -3,14 +3,17 @@
 Uses ``world`` from ``tests/authz_world.py``.
 """
 
+import asyncio
 import json
 import uuid
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import can
+from bouwmeester.models.chat_conversation import ChatConversation
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.initiatief import Initiatief
@@ -26,6 +29,8 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
+from bouwmeester.services.caller import caller_for
+from bouwmeester.services.chat_service import ChatService, _describe_pending
 from bouwmeester.services.llm.base import KamerstukAlertResult
 from bouwmeester.services.mattermost_ingest_service import MattermostIngestService
 from bouwmeester.services.mattermost_service import MattermostService
@@ -351,3 +356,89 @@ async def test_auto_note_on_an_agent_lead_needs_a_lead_writer(world, author, not
         )
     ).all()
     assert bool(notes) is noted
+
+
+# ---------------------------------------------------------------------------
+# Chat: the confirm card says what a write touches; a confirm runs once
+# ---------------------------------------------------------------------------
+
+
+async def test_confirm_card_names_the_item_the_person_and_the_fields(world):
+    caller = await caller_for(world.db, world.person["team_editor"].id)
+    manager = world.person["manager"]
+
+    seen = await _describe_pending(
+        "add_stakeholder",
+        {"node_id": str(world.res["node_team"]), "person_id": str(manager.id)},
+        world.db,
+        caller,
+    )
+    hidden = await _describe_pending(
+        "add_stakeholder",
+        {"node_id": str(world.res["node_elders"]), "person_id": str(manager.id)},
+        world.db,
+        caller,
+    )
+
+    assert '"Teamdossier"' in seen and "Directeur" in seen
+    assert "Dossier elders" not in hidden and "niet mag zien" in hidden
+
+
+async def test_confirm_card_of_a_lead_update_names_the_new_assignee(world):
+    caller = await caller_for(world.db, world.person["role_only"].id)
+    manager = world.person["manager"]
+
+    card = await _describe_pending(
+        "update_lead",
+        {"lead_id": str(world.res["lead"]), "assignee_id": str(manager.id)},
+        world.db,
+        caller,
+    )
+
+    assert '"Lead"' in card
+    assert f"toegewezen aan: Directeur ({str(manager.id)[:8]})" in card
+    assert "wijzigt: toegewezen aan" in card
+
+
+class _SilentLLM:
+    async def chat_with_tools(self, **_kwargs):
+        raise RuntimeError("no model in tests")
+
+
+async def test_confirming_twice_at_once_runs_the_action_once(_test_engine, monkeypatch):
+    """Two real sessions, as two requests: the second waits, then finds nothing."""
+    runs: list[str] = []
+
+    async def _write(tool_name, _args, _db, **_kwargs):
+        runs.append(tool_name)
+        await asyncio.sleep(0.2)
+        return {"success": True, "summary": "gedaan"}
+
+    monkeypatch.setattr("bouwmeester.services.chat_service._execute_write_tool", _write)
+    async with AsyncSession(_test_engine, expire_on_commit=False) as setup:
+        conv = ChatConversation(
+            messages=[{"role": "system", "content": "x"}],
+            pending_actions={"a1": {"tool_name": "update_lead", "arguments": {}}},
+        )
+        setup.add(conv)
+        await setup.commit()
+    try:
+
+        async def _confirm() -> str:
+            async with AsyncSession(_test_engine) as db:
+                reply = await ChatService(_SilentLLM(), db).confirm_action(
+                    str(conv.id), "a1", approved=True
+                )
+                await db.commit()
+                return reply.content
+
+        replies = await asyncio.gather(_confirm(), _confirm())
+    finally:
+        async with AsyncSession(_test_engine) as cleanup:
+            await cleanup.execute(
+                delete(ChatConversation).where(ChatConversation.id == conv.id)
+            )
+            await cleanup.commit()
+
+    assert runs == ["update_lead"]
+    assert any("al verwerkt" in reply for reply in replies)
