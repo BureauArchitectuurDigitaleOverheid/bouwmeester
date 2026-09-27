@@ -2,6 +2,8 @@
 
 import uuid
 
+from bouwmeester.repositories.task import REORDER_MISMATCH
+
 
 async def test_list_tasks_returns_ok(client):
     """GET /api/tasks returns 200 with a list."""
@@ -274,7 +276,7 @@ async def test_reorder_subtasks_rejects_partial_list(
         json={"task_ids": [str(sub_a.id)]},
     )
     assert resp.status_code == 400
-    assert "Expected 2" in resp.json()["detail"]
+    assert resp.json()["detail"] == REORDER_MISMATCH
 
 
 async def test_reorder_subtasks_rejects_foreign_ids(

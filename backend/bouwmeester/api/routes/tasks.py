@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found, validate_list
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.authz import require, require_move, requires
 from bouwmeester.core.database import get_db
@@ -32,6 +32,7 @@ from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.task_rules import require_task_create, require_task_links
+from bouwmeester.services.visibility_filters import task_response, task_responses
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -51,6 +52,7 @@ async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks with optional filters."""
@@ -80,7 +82,7 @@ async def list_tasks(
             status=status_filter,
             org_ctx=org_ctx,
         )
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -102,7 +104,7 @@ async def create_task(
         task.id,
         data.description,
         task.title,
-        sender_id=data.assignee_id,
+        sender_id=perm_ctx.person_id,
         source_task_id=task.id,
         source_node_id=task.node_id,
     )
@@ -137,7 +139,7 @@ async def create_task(
         },
     )
 
-    return TaskResponse.model_validate(task)
+    return await task_response(db, perm_ctx, task)
 
 
 @router.get("/my", response_model=list[TaskResponse])
@@ -147,6 +149,7 @@ async def get_my_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[TaskResponse]:
     """Get tasks assigned to the current user (or person_id in dev mode).
 
@@ -156,7 +159,7 @@ async def get_my_tasks(
     pid = effective_person_id(current_user, person_id)
     repo = TaskRepository(db)
     tasks = await repo.get_by_assignee(pid, skip=skip, limit=limit)
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.get("/inbox", response_model=InboxResponse)
@@ -189,7 +192,7 @@ async def get_unassigned_tasks(
         )
     repo = TaskRepository(db)
     tasks = await repo.get_unassigned(organisatie_eenheid_id, org_ctx=org_ctx)
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.get("/work-types", response_model=list[str])
@@ -209,10 +212,11 @@ async def get_eenheid_overview(
     organisatie_eenheid_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> EenheidOverviewResponse:
-    """Overview of tasks for an organisatie-eenheid."""
+    """Overview of the tasks of an organisatie-eenheid the caller sees."""
     await require(db, perm_ctx, "task:read", "task", eenheid_id=organisatie_eenheid_id)
-    service = EenheidOverviewService(db)
+    service = EenheidOverviewService(db, perm_ctx, org_ctx)
     return await service.get_overview(organisatie_eenheid_id)
 
 
@@ -221,12 +225,12 @@ async def get_task(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_READ_TASK),
+    perm_ctx: PermissionContext = Depends(_READ_TASK),
 ) -> TaskResponse:
     """Get a single task by ID, including assignee and node summaries."""
     repo = TaskRepository(db)
     task = require_found(await repo.get(id), "Task")
-    return TaskResponse.model_validate(task)
+    return await task_response(db, perm_ctx, task)
 
 
 @router.get("/{id}/subtasks", response_model=list[TaskResponse])
@@ -234,13 +238,13 @@ async def get_task_subtasks(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_READ_TASK),
+    perm_ctx: PermissionContext = Depends(_READ_TASK),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List subtasks of a parent task."""
     repo = TaskRepository(db)
     subtasks = await repo.get_subtasks(id, org_ctx=org_ctx)
-    return [TaskResponse.model_validate(t) for t in subtasks]
+    return await task_responses(db, perm_ctx, subtasks)
 
 
 @router.put("/{id}/subtasks/reorder", response_model=list[TaskResponse])
@@ -249,16 +253,17 @@ async def reorder_subtasks(
     data: ReorderRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_TASK),
+    perm_ctx: PermissionContext = Depends(_UPDATE_TASK),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
-    """Reorder subtasks of a parent task."""
+    """Reorder the subtasks of a parent task the caller sees."""
     repo = TaskRepository(db)
     require_found(await repo.get(id), "Task")
     try:
-        subtasks = await repo.reorder_subtasks(id, data.task_ids)
+        subtasks = await repo.reorder_subtasks(id, data.task_ids, org_ctx=org_ctx)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return [TaskResponse.model_validate(t) for t in subtasks]
+    return await task_responses(db, perm_ctx, subtasks)
 
 
 @router.put("/{id}", response_model=TaskResponse)
@@ -292,7 +297,7 @@ async def update_task(
         task.id,
         data.description,
         task.title,
-        sender_id=data.assignee_id,
+        sender_id=perm_ctx.person_id,
         source_task_id=task.id,
         source_node_id=task.node_id,
     )
@@ -350,7 +355,7 @@ async def update_task(
         details={"title": task.title, **changes},
     )
 
-    return TaskResponse.model_validate(task)
+    return await task_response(db, perm_ctx, task)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
