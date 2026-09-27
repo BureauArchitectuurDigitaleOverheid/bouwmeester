@@ -1,7 +1,9 @@
 """Who sees which eenheden, nodes, tasks and opdrachten: lists and details.
 
-Visibility of an eenheid comes from the org chart: your own eenheden and
-those above them (members read up the line), the subtrees where a role lets
+Visibility of an eenheid comes from the org chart: your own eenheden, the
+eenheden above your own internal ones (members of the organisation read up
+its line; a member of an external eenheid, a gemeente or a stichting, sees
+that eenheid and not what it hangs below), the subtrees where a role lets
 you write (rights inherit downward, and what you may write you see), and
 eenheden shared with one of yours.  Nodes, tasks and opdrachten add what
 you see through them directly: a resource role that lets you read (every
@@ -27,9 +29,7 @@ from bouwmeester.core.authz import write_eenheid_ids
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
-from bouwmeester.repositories.org_tree import (
-    get_subtree_ids,
-)
+from bouwmeester.repositories.org_tree import get_internal_ids, get_subtree_ids
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +63,8 @@ async def build_org_context(
     """Build an OrgContext for the given person.
 
     Queries the org hierarchy to determine visibility:
-    - Own memberships (active plaatsingen)
-    - Parent chain (walking up from each own eenheid)
+    - Own memberships (active, trusted plaatsingen)
+    - Parent chain (walking up from each own internal eenheid)
     - Managed sub-trees (walking down from eenheden where person is manager)
     - Writable sub-trees (walking down from eenheden where a scoped role
       grants a write permission, see ``core.authz.write_eenheid_ids``)
@@ -101,9 +101,11 @@ async def build_org_context(
         )
 
     # The same memberships and ancestor chains core.authz decides with,
-    # loaded once per request.
+    # loaded once per request.  Only the organisation reads up its line.
     own_ids = list(await memberships(db, perm_ctx))
-    parent_ids = await self_and_ancestor_ids(db, perm_ctx, own_ids)
+    parent_ids = await self_and_ancestor_ids(
+        db, perm_ctx, await get_internal_ids(db, own_ids)
+    )
     managed_ids = managed_eenheid_ids(perm_ctx)
     # Rights inherit downward (core.authz), so what you can write you see.
     # Managers write in what they manage, so this also covers their subtree.
@@ -201,17 +203,20 @@ def apply_task_filter(stmt, ctx: OrgContext | None, task=None):
 
     A task with an eenheid is visible with that eenheid; a task without one
     is read through its node (``core.authz``), so the node must be visible.
-    Your own tasks (as assignee) are always visible.  The tasks module must
-    be readable somewhere (a module toggle can take it away).
+    Your own tasks (as assignee) are always visible, also where the tasks
+    module is off.  Otherwise the tasks module must be readable somewhere
+    (a module toggle can take it away).
     """
     from bouwmeester.models.corpus_node import CorpusNode
     from bouwmeester.models.task import Task
 
     if ctx is None or ctx.is_admin:
         return stmt
-    if "task" not in ctx.readable_modules:
-        return stmt.where(false())
     task = task if task is not None else Task
+    if "task" not in ctx.readable_modules:
+        if ctx.person_id is None:
+            return stmt.where(false())
+        return stmt.where(task.assignee_id == ctx.person_id)
     node = aliased(CorpusNode)
     node_visible = (
         select(node.id).where(node.id == task.node_id, _node_clause(node, ctx)).exists()
@@ -288,7 +293,8 @@ def sees_task(
 
     True or False for a task with an eenheid or one assigned to the caller;
     None for a task without eenheid, which is read through its node.  The
-    module gate is ``core.authz``'s.  :func:`apply_task_filter` for one row.
+    module gate is ``core.authz``'s (the assignee passes it).
+    :func:`apply_task_filter` for one row.
     """
     if org_ctx.is_admin:
         return True

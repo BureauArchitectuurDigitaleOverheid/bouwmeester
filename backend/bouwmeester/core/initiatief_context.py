@@ -6,8 +6,9 @@ An initiatief is visible to a person when
 - they hold a resource role on it, directly or through an eenheid they are
   placed in (every initiatief role includes ``initiatief:read``), or
 - an eenheid that owns it (linked as ``eigenaar``) is visible to them in the
-  org chart (``core.org_context``): their own eenheden and those above them
-  (members read up the line), plus the subtrees they manage or may write in.
+  org chart (``core.org_context``, the same visible set): their own eenheden
+  and those above their own internal ones (members of the organisation read
+  up its line), plus the subtrees they manage or may write in.
 
 The last rule is the org visibility of nodes, applied to the owning eenheid,
 so nodes and initiatieven follow one rule.  It covers everyone who may write

@@ -128,9 +128,9 @@ async def get_subtree_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set
 async def touches_organisation(session: AsyncSession, eenheid_id: UUID) -> bool:
     """True if *eenheid_id* or an eenheid above it is internal.
 
-    Members see their eenheid and everything above it, so an external
-    organisation that hangs below a ministerie reaches inside: its members
-    and its creation are matters of the internal organisation.
+    An external organisation that hangs below a ministerie is a matter of
+    the internal organisation: its managers decide about its members and
+    about taking it out again (``core.authority``).
     """
     cte = (
         select(
@@ -150,19 +150,17 @@ async def touches_organisation(session: AsyncSession, eenheid_id: UUID) -> bool:
     return hit is not None
 
 
-async def get_organisation_ids(session: AsyncSession) -> set[UUID]:
-    """Every eenheid that touches the organisation: internal ones and below them.
-
-    The bulk form of :func:`touches_organisation`.
-    """
-    internal = (
-        await session.scalars(
-            select(OrganisatieEenheid.id).where(
-                OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES)
-            )
+async def get_internal_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
+    """The eenheden of *eenheid_ids* that are internal (ministerie down to team)."""
+    if not eenheid_ids:
+        return set()
+    result = await session.scalars(
+        select(OrganisatieEenheid.id).where(
+            OrganisatieEenheid.id.in_(eenheid_ids),
+            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
         )
-    ).all()
-    return await get_subtree_ids(session, list(internal))
+    )
+    return set(result.all())
 
 
 def placement_not_ended(today: date | None = None):
@@ -191,16 +189,17 @@ def placement_trusted():
     return PersonOrganisatieEenheid.bron.in_(TRUSTED_PLACEMENT_BRONNEN)
 
 
-def membership_ids_select(person_id: UUID) -> Select:
-    """SELECT the eenheden *person_id* is a member of today, for access.
+def membership_ids_select(*person_ids: UUID) -> Select:
+    """SELECT the eenheden the persons are members of today, for access.
 
     The one definition of membership: an active, trusted placement.
     Visibility (own eenheden, read up the line), the implicit viewer role,
     edit shares and resource roles held by an eenheid all resolve through
-    it; use it as a subquery where a join is needed.
+    it; use it as a subquery where a join is needed.  One row per
+    placement, so several persons can be counted per eenheid.
     """
     return select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
-        PersonOrganisatieEenheid.person_id == person_id,
+        PersonOrganisatieEenheid.person_id.in_(person_ids),
         placement_active(),
         placement_trusted(),
     )
