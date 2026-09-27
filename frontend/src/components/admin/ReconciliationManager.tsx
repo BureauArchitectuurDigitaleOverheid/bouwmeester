@@ -7,6 +7,7 @@ import {
   ignoreReconciliation,
   scanOrphanHandmatig,
   manualMerge,
+  mergeResultMessage,
   type OrphanScanResult,
 } from '@/api/reconciliation';
 import { getOrganisatieFlatMetHistorisch } from '@/api/organisatie';
@@ -214,8 +215,8 @@ function ManualMergePanel() {
               : 'onbekende fout'}
           </nldd-text>
         )}
-        {mergeMutation.isSuccess && (
-          <nldd-text size="sm" color="success">Merge voltooid.</nldd-text>
+        {mergeMutation.data && (
+          <nldd-text size="sm" color="success">{mergeResultMessage(mergeMutation.data)}</nldd-text>
         )}
       </nldd-container>
     </Card>
@@ -307,6 +308,10 @@ export function ReconciliationManager() {
           />
         ))}
       </nldd-toggle-button-group>
+
+      {mergeMutation.data && (
+        <nldd-text size="sm" color="success">{mergeResultMessage(mergeMutation.data)}</nldd-text>
+      )}
 
       {isLoading && <LoadingSpinner />}
 
