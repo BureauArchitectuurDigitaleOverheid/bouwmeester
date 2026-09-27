@@ -9,7 +9,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.org_context import OrgContext, apply_opdracht_filter
+from bouwmeester.core.org_context import (
+    OrgContext,
+    apply_node_filter,
+    apply_opdracht_filter,
+)
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
@@ -41,7 +45,9 @@ class FinancieelService:
                 node_type="",
             )
 
-        instrument_ids = await self._collect_instrument_ids(node_id, node.node_type)
+        instrument_ids = await self._collect_instrument_ids(
+            node_id, node.node_type, org_ctx=org_ctx
+        )
 
         if not instrument_ids:
             return FinancieelOverzicht(
@@ -110,6 +116,8 @@ class FinancieelService:
         self,
         node_id: UUID,
         node_type: str,
+        *,
+        org_ctx: OrgContext | None = None,
         max_depth: int = 5,
         max_nodes: int = 1000,
     ) -> list[UUID]:
@@ -120,6 +128,10 @@ class FinancieelService:
         edges and find connected instruments, preventing cycles.
         Stops early if the visited set exceeds max_nodes to prevent
         runaway traversal on pathologically wide graphs.
+
+        The walk only steps onto nodes the caller sees (*org_ctx*, the
+        ``node:read`` rule): a path through a hidden node adds none of its
+        instruments, so the overview does not reveal that the path exists.
         """
         if node_type == "instrument":
             return [node_id]
@@ -135,16 +147,20 @@ class FinancieelService:
                 break
 
             # Forward edges
-            fwd_stmt = (
+            fwd_stmt = apply_node_filter(
                 select(Edge.to_node_id)
+                .join(CorpusNode, CorpusNode.id == Edge.to_node_id)
                 .where(Edge.from_node_id.in_(frontier))
-                .where(Edge.to_node_id.notin_(visited))
+                .where(Edge.to_node_id.notin_(visited)),
+                org_ctx,
             )
             # Reverse edges
-            rev_stmt = (
+            rev_stmt = apply_node_filter(
                 select(Edge.from_node_id)
+                .join(CorpusNode, CorpusNode.id == Edge.from_node_id)
                 .where(Edge.to_node_id.in_(frontier))
-                .where(Edge.from_node_id.notin_(visited))
+                .where(Edge.from_node_id.notin_(visited)),
+                org_ctx,
             )
             combined = fwd_stmt.union(rev_stmt)
             result = await self.session.execute(combined)

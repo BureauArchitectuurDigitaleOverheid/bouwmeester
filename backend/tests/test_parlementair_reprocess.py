@@ -125,7 +125,7 @@ async def test_reprocess_picks_up_pending_items(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -140,7 +140,7 @@ async def test_reprocess_no_llm_provider(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=None),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -162,7 +162,7 @@ async def test_reprocess_no_matches_moves_to_out_of_scope(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -197,7 +197,7 @@ async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -216,7 +216,7 @@ async def test_reprocess_no_matches_deletes_politieke_input(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -255,7 +255,7 @@ async def test_reprocess_with_matches_creates_edges(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[tag.name])),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -297,7 +297,7 @@ async def test_reprocess_with_matches_tags_corpus_node(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[tag.name])),
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -320,7 +320,7 @@ async def test_reprocess_updates_llm_fields(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(
             return_value=_mock_llm(
                 matched_tags=["test_tag"],
@@ -349,7 +349,7 @@ async def test_reprocess_llm_failure_skips_item(db_session):
     failing_llm.extract_tags.side_effect = Exception("LLM timeout")
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=failing_llm),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -439,7 +439,7 @@ async def test_process_item_llm_failure_creates_pending(db_session):
     failing_llm.extract_tags.side_effect = Exception("LLM down")
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=failing_llm),
     ):
         result = await service._process_item(fetched, strategy)
@@ -472,7 +472,7 @@ async def test_process_item_no_llm_provider_creates_pending(db_session):
     strategy = get_strategy("toezegging")
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=None),
     ):
         result = await service._process_item(fetched, strategy)
@@ -495,7 +495,7 @@ async def test_reprocess_endpoint_returns_result(client, db_session):
     await _make_item(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         resp = await client.post(

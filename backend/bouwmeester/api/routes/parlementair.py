@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import require_can_name_owner
-from bouwmeester.core.authz import require, requires
+from bouwmeester.core.authz import can, require, requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, get_org_context, sees_node
 from bouwmeester.core.permissions import (
@@ -41,6 +41,7 @@ from bouwmeester.schema.parlementair_item import (
 from bouwmeester.schema.task import TaskCreate
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.edge_schema_service import EdgeSchemaService
+from bouwmeester.services.parlementair_import_service import REVIEW_WORK_TYPE
 from bouwmeester.services.task_rules import require_task_create
 
 logger = logging.getLogger(__name__)
@@ -94,11 +95,28 @@ def _sees_target(edge: SuggestedEdge, org_ctx: OrgContext) -> bool:
     )
 
 
+# A scope's judgement of an item (see ``ParlementairImportService._beoordeel``)
+# belongs to that scope.  Items imported before it stopped being stored on
+# the item still carry one in ``extra_data``; it is never returned.
+_SCOPE_JUDGEMENT_KEYS = frozenset({"relevantie_score", "relevantie_reden", "actie"})
+
+
+def _is_review_task(task: Task, item: ParlementairItem) -> bool:
+    """The review task the import created on the item's node."""
+    return task.work_type == REVIEW_WORK_TYPE and task.node_id == item.corpus_node_id
+
+
 def _item_response(
     item: ParlementairItem, org_ctx: OrgContext
 ) -> ParlementairItemResponse:
     """The item with only the suggestions whose target node the caller sees."""
     response = ParlementairItemResponse.model_validate(item)
+    if response.extra_data:
+        response.extra_data = {
+            k: v
+            for k, v in response.extra_data.items()
+            if k not in _SCOPE_JUDGEMENT_KEYS
+        }
     visible = {edge.id for edge in item.suggested_edges if _sees_target(edge, org_ctx)}
     response.suggested_edges = [
         edge for edge in response.suggested_edges if edge.id in visible
@@ -399,14 +417,17 @@ async def complete_review(
 
     await _make_sole_person_owner(db, perm_ctx, item.corpus_node_id, body.eigenaar_id)
 
-    # Auto-complete existing review tasks before creating new ones
+    # Close the open review tasks.  Anyone who reads the item may link their
+    # own tasks to it: those close only when the reviewer may change them.
     stmt = select(Task).where(
         Task.parlementair_item_id == import_id,
         Task.status.notin_(["done", "cancelled"]),
     )
-    result = await db.execute(stmt)
-    for task in result.scalars().all():
-        task.status = "done"
+    for task in (await db.execute(stmt)).scalars().all():
+        if _is_review_task(task, item) or await can(
+            db, perm_ctx, "task:update", "task", task.id
+        ):
+            task.status = "done"
     await db.flush()
 
     task_repo = TaskRepository(db)

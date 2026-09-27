@@ -1,4 +1,13 @@
-"""Handlers for Mattermost slash commands and interactive button actions."""
+"""Handlers for Mattermost slash commands and interactive button actions.
+
+Identity: a slash command arrives on a webhook authenticated by the
+command's token, which Mattermost shares for every user; the ``user_id``
+in the payload is Mattermost's word for who typed it.  So that token acts
+as every linked user's identity.  That is how Mattermost slash commands
+work, not a gap here: keep the token secret and rotate it when it leaks.
+Every command and reaction still resolves the linked person and refuses
+one who is deactivated or off the whitelist (``caller.may_still_act``).
+"""
 
 import logging
 from dataclasses import dataclass
@@ -34,7 +43,7 @@ from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
 from bouwmeester.repositories.search import SearchRepository
-from bouwmeester.services.caller import Caller, caller_for
+from bouwmeester.services.caller import Caller, caller_for, linked_person_id
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
 from bouwmeester.services.visibility_filters import readable_ids
 
@@ -106,12 +115,14 @@ class _ChannelCtx:
 class MattermostSlashService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-        self.repo = MattermostUserRepository(session)
 
     async def _resolve_person_id(self, mattermost_user_id: str) -> UUID | None:
-        """Resolve a Mattermost user ID to a Bouwmeester person ID."""
-        mapping = await self.repo.get_by_mattermost_user_id(mattermost_user_id)
-        return mapping.person_id if mapping else None
+        """The linked person, or ``None`` when unlinked or no longer allowed in.
+
+        A deactivated person or one taken off the whitelist is refused like
+        an unlinked account (``caller.may_still_act``).
+        """
+        return await linked_person_id(self.session, mattermost_user_id)
 
     async def _caller(self, person_id: UUID) -> Caller | None:
         """Rights and visibility of *person_id*; ``None`` for an unknown person.

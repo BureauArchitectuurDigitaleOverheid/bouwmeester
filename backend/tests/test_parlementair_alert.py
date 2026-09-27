@@ -52,6 +52,13 @@ def _item(**extra) -> SimpleNamespace:
     )
 
 
+def _oordeel(score, actie: str = "") -> SimpleNamespace:
+    """One scope's judgement of an item (see ``KamerstukAlertResult``)."""
+    return SimpleNamespace(
+        samenvatting="", relevantie_score=score, reden="", actie=actie
+    )
+
+
 def _svc() -> ParlementairAlertService:
     return ParlementairAlertService.__new__(ParlementairAlertService)
 
@@ -83,19 +90,19 @@ def _maak_execute(rijen: list):
 
 class TestRelevantie:
     def test_leest_de_score(self):
-        assert _relevantie({"relevantie_score": 85}) == 85
+        assert _relevantie(_oordeel(85)) == 85
 
     def test_ontbrekende_score_is_middenmoot(self):
         # Een ontbrekende score mag nooit stilte betekenen: dan zou een
         # mislukte LLM-call het stuk onzichtbaar maken.
-        assert _relevantie({}) == 40
+        assert _relevantie(None) == 40
 
     def test_score_buiten_bereik_wordt_begrensd(self):
-        assert _relevantie({"relevantie_score": 999}) == 100
-        assert _relevantie({"relevantie_score": -5}) == 0
+        assert _relevantie(_oordeel(999)) == 100
+        assert _relevantie(_oordeel(-5)) == 0
 
     def test_onzin_is_middenmoot(self):
-        assert _relevantie({"relevantie_score": "hoog"}) == 40
+        assert _relevantie(_oordeel("hoog")) == 40
 
 
 class TestKopregel:
@@ -187,13 +194,13 @@ class TestFormatAlert:
     def test_lage_score_dempt_de_kleur(self):
         """Zichtbaar maar stil: niets valt weg, niet alles schreeuwt."""
         _, props = _svc().format_alert(
-            _item(categorie=CAT_EXTERN, relevantie_score=18), ['"Digitale Dienst"']
+            _item(categorie=CAT_EXTERN), ['"Digitale Dienst"'], _oordeel(18)
         )
         assert props["attachments"][0]["color"] == "#CBD5E1"
 
     def test_hoge_score_krijgt_de_kleur_van_het_soort(self):
         _, props = _svc().format_alert(
-            _item(categorie=CAT_BIJLAGE, relevantie_score=85), ['"RegelRecht"']
+            _item(categorie=CAT_BIJLAGE), ['"RegelRecht"'], _oordeel(85)
         )
         assert props["attachments"][0]["color"] == "#1E3A8A"
 
@@ -207,8 +214,7 @@ class TestFormatAlert:
 
     def test_actie_verschijnt_als_die_er_is(self):
         _, props = _svc().format_alert(
-            _item(relevantie_score=70, actie="Vergadering op 24 september"),
-            ['"NLDD"'],
+            _item(), ['"NLDD"'], _oordeel(70, actie="Vergadering op 24 september")
         )
         assert "24 september" in props["attachments"][0]["text"]
 
@@ -226,11 +232,11 @@ class TestDrempel:
     def test_procedurestuk_zonder_inhoud_valt_af(self):
         """Score 0: een verslag van een lijst van vragen, geen inhoud."""
         abonnement = _abonnement()
-        assert _relevantie({"relevantie_score": 0}) < abonnement.minimum_relevantie
+        assert _relevantie(_oordeel(0)) < abonnement.minimum_relevantie
 
     def test_op_de_drempel_telt_mee(self):
         abonnement = _abonnement(minimum_relevantie=10)
-        assert _relevantie({"relevantie_score": 10}) >= abonnement.minimum_relevantie
+        assert _relevantie(_oordeel(10)) >= abonnement.minimum_relevantie
 
     def test_naamgenoot_blijft_zichtbaar(self):
         """Een term die als gewoon woord valt blijft een grijze regel.
@@ -346,7 +352,7 @@ class TestInhaalslagWeegtDeDrempel:
     `_beoordeel` in de importservice.
     """
 
-    async def _post(self, abonnementen, items) -> tuple[int, list]:
+    async def _post(self, abonnementen, items, scores=None) -> tuple[int, list]:
         """Draai `post_inhaalslag` met alles eromheen uitgeschakeld."""
         verstuurd: list = []
         svc = _svc()
@@ -357,17 +363,20 @@ class TestInhaalslagWeegtDeDrempel:
         svc.session = SimpleNamespace(
             execute=_maak_execute([SimpleNamespace(channel_id="kanaal-1")])
         )
-        gepost = await svc.post_inhaalslag(abonnementen, items)
+        beoordelingen = {
+            item.id: _oordeel(score) for item, score in zip(items, scores or [])
+        }
+        gepost = await svc.post_inhaalslag(abonnementen, items, beoordelingen)
         return gepost, verstuurd
 
     async def test_laag_scorend_stuk_blijft_uit_het_bericht(self):
         abo = _abonnement(minimum_relevantie=10)
         items = [
-            _item(titel="Gaat er echt over", relevantie_score=85),
-            _item(titel="Metafoor", zaak_nummer="2026D00002", relevantie_score=5),
+            _item(titel="Gaat er echt over"),
+            _item(titel="Metafoor", zaak_nummer="2026D00002"),
         ]
 
-        gepost, verstuurd = await self._post([abo], items)
+        gepost, verstuurd = await self._post([abo], items, [85, 5])
 
         assert gepost == 1
         tekst = verstuurd[0]["props"]["attachments"][0]["text"]
@@ -377,9 +386,9 @@ class TestInhaalslagWeegtDeDrempel:
     async def test_niets_boven_de_drempel_geeft_geen_bericht(self):
         """Stil blijven is beter dan een bericht met een lege lijst."""
         abo = _abonnement(minimum_relevantie=40)
-        items = [_item(relevantie_score=5), _item(zaak_nummer="X", relevantie_score=0)]
+        items = [_item(), _item(zaak_nummer="X")]
 
-        gepost, verstuurd = await self._post([abo], items)
+        gepost, verstuurd = await self._post([abo], items, [5, 0])
 
         assert gepost == 0
         assert verstuurd == []
@@ -392,9 +401,9 @@ class TestInhaalslagWeegtDeDrempel:
         """
         streng = _abonnement(term="streng", minimum_relevantie=80)
         ruim = _abonnement(term="ruim", minimum_relevantie=10)
-        items = [_item(titel="Middenmoot", relevantie_score=50)]
+        items = [_item(titel="Middenmoot")]
 
-        gepost, verstuurd = await self._post([streng, ruim], items)
+        gepost, verstuurd = await self._post([streng, ruim], items, [50])
 
         assert gepost == 1
         assert "Middenmoot" in verstuurd[0]["props"]["attachments"][0]["text"]
