@@ -126,6 +126,37 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def _listed(
+        stmt,
+        node_type: str | None = None,
+        *,
+        search: str | None = None,
+        active_only: bool = True,
+        include_unconnected_pi: bool = False,
+        org_ctx: OrgContext | None = None,
+    ):
+        """*stmt* restricted to the nodes the node list shows.
+
+        The one filter of the list (``GET /api/nodes``) and of every count
+        that claims to count it (the dashboard), defaults included: active
+        nodes, no unconnected politieke_input, only what *org_ctx* sees.
+        """
+        if node_type is not None:
+            stmt = stmt.where(CorpusNode.node_type == node_type)
+        if search:
+            escaped = escape_like(search)
+            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%", escape="\\"))
+        if active_only:
+            stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
+        # Exclude unconnected politieke_input nodes at the SQL level so
+        # pagination (offset/limit) remains correct.
+        if not include_unconnected_pi and (
+            node_type is None or node_type == "politieke_input"
+        ):
+            stmt = stmt.where(exclude_unconnected_pi())
+        return apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+
     async def get_all(
         self,
         skip: int = 0,
@@ -137,23 +168,14 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         include_unconnected_pi: bool = False,
         org_ctx: OrgContext | None = None,
     ) -> list[CorpusNode]:
-        stmt = select(CorpusNode)
-        if node_type is not None:
-            stmt = stmt.where(CorpusNode.node_type == node_type)
-        if search:
-            escaped = escape_like(search)
-            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%", escape="\\"))
-        if active_only:
-            stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
-
-        # Exclude unconnected politieke_input nodes at the SQL level so
-        # pagination (offset/limit) remains correct.
-        if not include_unconnected_pi and (
-            node_type is None or node_type == "politieke_input"
-        ):
-            stmt = stmt.where(exclude_unconnected_pi())
-
-        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        stmt = self._listed(
+            select(CorpusNode),
+            node_type,
+            search=search,
+            active_only=active_only,
+            include_unconnected_pi=include_unconnected_pi,
+            org_ctx=org_ctx,
+        )
         # Alphabetical by title: this is the generic node list used by
         # selection dropdowns (e.g. the Opdracht instrument picker), where
         # alphabetical order is what users expect, not creation order.
@@ -231,10 +253,10 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         node_type: str | None = None,
         org_ctx: OrgContext | None = None,
     ) -> int:
-        stmt = select(func.count()).select_from(CorpusNode)
-        if node_type is not None:
-            stmt = stmt.where(CorpusNode.node_type == node_type)
-        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        """How many nodes the node list shows with its default filter."""
+        stmt = self._listed(
+            select(func.count()).select_from(CorpusNode), node_type, org_ctx=org_ctx
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
