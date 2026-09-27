@@ -812,12 +812,17 @@ class MattermostSlashService:
         suggested.approved_lead_id = lead.id
         await self.session.flush()
 
+        # The channel hears only that a lead was made: its title is the
+        # model's free text, and not everyone there may read the lead.  The
+        # title goes to the clicker alone (ephemeral), who created it.
         await self._update_thread_post(
             suggested,
-            text=f":white_check_mark: Lead aangemaakt: **{_escape_md(lead.title)}**",
+            text=":white_check_mark: Lead aangemaakt in Bouwmeester.",
             color="#22C55E",
         )
-        return _action_msg("Lead aangemaakt in Bouwmeester.")
+        return _action_msg(
+            f"Lead aangemaakt in Bouwmeester: **{_escape_md(lead.title)}**"
+        )
 
     async def _action_link_lead_to_suggestion(
         self, mattermost_user_id: str, context: dict

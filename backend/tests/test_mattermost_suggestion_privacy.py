@@ -224,3 +224,56 @@ async def test_existing_lead_is_matched_without_the_llm(db_session, channel):
     assert suggested.match_existing_lead_id is not None
     assert "bestaande lead" in repr(stub.reply_to_post.await_args).lower()
     assert SECRET_TITLE not in repr(stub.reply_to_post.await_args)
+
+
+async def test_approving_posts_no_model_title_in_the_channel(
+    db_session, initiatief, create_person
+):
+    """Approving from Mattermost: neutral text in the channel, title to the clicker."""
+    from bouwmeester.models.mattermost_user import MattermostUser
+    from bouwmeester.services.mattermost_slash_service import MattermostSlashService
+
+    reviewer = await create_person(naam="Beoordelaar", prefix="beoordelaar")
+    mm_uid = _id()
+    db_session.add_all(
+        [
+            MattermostUser(
+                person_id=reviewer.id,
+                mattermost_user_id=mm_uid,
+                mattermost_username="beoordelaar",
+            ),
+            ResourcePermission(
+                person_id=reviewer.id,
+                resource_type="initiatief",
+                resource_id=initiatief.id,
+                rol="eigenaar",
+            ),
+        ]
+    )
+    suggested = SuggestedLead(
+        source_post_id=_id(),
+        source_channel_id=_id(),
+        initiatief_id=initiatief.id,
+        proposed_title=MODEL_TITLE,
+        raw_text="x",
+        status="pending",
+        mm_thread_post_id="thread-post",
+    )
+    db_session.add(suggested)
+    await db_session.flush()
+
+    stub = _mm_stub()
+    stub.update_post = AsyncMock(return_value=True)
+    with patch(
+        "bouwmeester.services.mattermost_service.MattermostService",
+        return_value=stub,
+    ):
+        result = await MattermostSlashService(db_session).handle_action(
+            mattermost_user_id=mm_uid,
+            action="create_lead_from_suggestion",
+            context={"suggested_lead_id": str(suggested.id)},
+        )
+
+    stub.update_post.assert_awaited_once()
+    assert MODEL_TITLE not in repr(stub.update_post.await_args)
+    assert MODEL_TITLE in result["ephemeral_text"]
