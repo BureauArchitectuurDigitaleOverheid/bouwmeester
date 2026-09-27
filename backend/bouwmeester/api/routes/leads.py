@@ -560,6 +560,8 @@ async def move_lead(
 ) -> LeadResponse:
     """Move a lead to a new stage."""
     author_id = current_user.id if current_user else None
+    before = require_found(await db.get(Lead, lead_id), "Lead")
+    await require_may_publish_lead(db, perm_ctx, {"stage": data.stage}, before)
     repo = LeadRepository(db)
     try:
         lead = require_found(

@@ -10,10 +10,12 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import can, own_eenheid_where, require
 from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.models.lead_column import LeadColumn
 from bouwmeester.schema.lead import LeadCreate
 from bouwmeester.services.agent_rules import require_may_assign
 
@@ -62,8 +64,11 @@ async def require_may_publish_lead(
     """``require_may_publish`` for a new lead or a change to one.
 
     *changes* holds the fields sent, *before* the lead as it is (None for a
-    new one).  Asked when a public field changes, or when a lead that is on
-    the public page moves to another initiatief (it lands on that page).
+    new one).  Asked when a public field changes, when a lead that is on
+    the public page moves to another initiatief (it lands on that page), or
+    when a lead with public fields moves into or out of a public column
+    (``LeadColumn.is_public_visible``): that puts it on or takes it off
+    the page.
     """
     now = {
         field: getattr(before, field) if before is not None else default
@@ -73,8 +78,34 @@ async def require_may_publish_lead(
     old_initiatief = before.initiatief_id if before is not None else None
     initiatief_id = changes.get("initiatief_id", old_initiatief)
     moved = before is not None and initiatief_id != old_initiatief
-    if changed or (moved and changes.get("public_visible", now["public_visible"])):
+    public = changes.get("public_visible", now["public_visible"])
+    if changed or (moved and public):
         await require_may_publish(db, perm_ctx, initiatief_id)
+    elif (
+        public
+        and before is not None
+        and changes.get("stage", before.stage) != before.stage
+        and await _public_stage(db, initiatief_id, before.stage)
+        != await _public_stage(db, initiatief_id, changes["stage"])
+    ):
+        await require_may_publish(db, perm_ctx, initiatief_id)
+
+
+async def _public_stage(
+    db: AsyncSession, initiatief_id: UUID | None, stage: str | None
+) -> bool:
+    """Does the public page of *initiatief_id* show leads in *stage*?"""
+    if initiatief_id is None or stage is None:
+        return False
+    return bool(
+        await db.scalar(
+            select(LeadColumn.id).where(
+                LeadColumn.initiatief_id == initiatief_id,
+                LeadColumn.slug == stage,
+                LeadColumn.is_public_visible.is_(True),
+            )
+        )
+    )
 
 
 async def require_lead_create(

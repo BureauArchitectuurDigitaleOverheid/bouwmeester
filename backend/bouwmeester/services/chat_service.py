@@ -2240,8 +2240,11 @@ async def _execute_write_tool(
             }
 
         elif tool_name == "move_lead":
+            from fastapi import HTTPException
+
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadStage
+            from bouwmeester.services.lead_rules import require_may_publish_lead
 
             # Visibility, as in the lead routes (the write was authorized above)
             repo = LeadRepository(db)
@@ -2256,6 +2259,12 @@ async def _execute_write_tool(
                     "success": False,
                     "summary": f"Onbekende stage: {args['stage']}",
                 }
+            try:
+                await require_may_publish_lead(
+                    db, caller.perm_ctx, {"stage": stage}, existing
+                )
+            except HTTPException as exc:
+                return {"success": False, "summary": str(exc.detail)}
             lead = await repo.move(
                 UUID(args["lead_id"]),
                 stage,

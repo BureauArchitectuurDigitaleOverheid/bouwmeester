@@ -402,6 +402,34 @@ async def test_only_the_initiatief_puts_a_lead_on_its_public_page(
     await assert_route_case(ww, who, method, path, body, expected)
 
 
+# (stage before, stage after, public fields set, on or off the page); the
+# default columns eerste_gesprek and follow_up are public, the others not
+STAGE_MOVES = [
+    ("verkennen", "eerste_gesprek", True, True),
+    ("eerste_gesprek", "verkennen", True, True),
+    ("eerste_gesprek", "follow_up", True, False),
+    ("verkennen", "koelkast", True, False),
+    ("verkennen", "eerste_gesprek", False, False),
+]
+
+
+@pytest.mark.parametrize("who", ["opdrachtgever", "role_only", "afd_editor"])
+@pytest.mark.parametrize("via", ["move", "put"])
+@pytest.mark.parametrize(("before", "after", "public", "publishes"), STAGE_MOVES)
+async def test_moving_a_lead_onto_the_public_page_is_publishing(
+    ww, who, via, before, after, public, publishes
+):
+    """Only the initiatief (contributor, eigenaar) moves a lead with public
+    fields into or out of a public column; lead:update alone may not."""
+    lead = await ww.db.get(Lead, ww.res["lead"])
+    lead.stage = before
+    lead.public_visible, lead.public_title = public, "Casus"
+    await ww.db.flush()
+    path, method = (L + "/move", "POST") if via == "move" else (L, "PUT")
+    expected = 403 if publishes and who == "opdrachtgever" else 200
+    await assert_route_case(ww, who, method, path, {"stage": after}, expected)
+
+
 # Records linked from a task body must be usable: (extra fields, status)
 TASK_LINKS = [
     ({}, 201),
