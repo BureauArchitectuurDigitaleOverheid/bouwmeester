@@ -80,7 +80,7 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
-from bouwmeester.services.agent_rules import require_may_assign
+from bouwmeester.services.agent_rules import require_may_assign, require_may_instruct
 from bouwmeester.services.lead_rules import (
     require_lead_create,
     require_may_publish_lead,
@@ -396,6 +396,9 @@ async def merge_leads(
     # held on the source, and the caller holds lead:update on the target, so
     # nobody, the caller included, gets a right the caller could not use
     # already.  The guard would wrongly refuse moving the caller's own grant.
+    # One exception: an agent acts with its own rights on what it holds, so
+    # a grant moved to an agent hands it the target: only super_admin
+    # (``agent_rules``), as when granting it directly.
     source = require_found(await db.get(Lead, data.source_id), "Lead")
     target = require_found(await db.get(Lead, data.target_id), "Lead")
     if source.initiatief_id != target.initiatief_id:
@@ -405,6 +408,9 @@ async def merge_leads(
             " worden samengevoegd",
         )
     repo = LeadRepository(db)
+    moving, _ = await repo.grants_to_move(data.source_id, data.target_id)
+    for grant in moving:
+        require_may_instruct(perm_ctx, grant.person)
     result = require_found(await repo.merge(data.source_id, data.target_id), "Lead")
 
     await log_activity(

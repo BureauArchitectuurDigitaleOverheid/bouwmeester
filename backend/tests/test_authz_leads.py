@@ -685,3 +685,64 @@ async def test_moving_a_lead_into_own_new_initiatief_needs_lead_delete(lw):
     lead = await lw.db.get(Lead, lw.id("lead_team"))
     await lw.db.refresh(lead)
     assert lead.initiatief_id is None
+
+
+def _merge(lw) -> dict:
+    return {"source_id": str(lw.id("lead_other")), "target_id": str(lw.id("lead"))}
+
+
+@pytest.mark.parametrize(("who", "expected"), [("manager", 403), ("super_admin", 200)])
+async def test_merge_moves_a_grant_to_an_agent_only_for_super_admin(lw, who, expected):
+    """An agent acts on what it holds: a moved grant hands it the target."""
+    agent = await make_person(lw.db, "Agent")
+    agent.is_agent = True
+    lw.db.add(
+        ResourcePermission(
+            person_id=agent.id,
+            resource_type="lead",
+            resource_id=lw.id("lead_other"),
+            rol="opdrachtgever",
+        )
+    )
+    await lw.db.flush()
+    async with client_as(lw.db, lw.person[who]) as c:
+        resp = await c.post("/api/leads/merge", json=_merge(lw))
+    assert resp.status_code == expected, resp.text
+
+
+async def test_merge_keeps_an_eenheid_grant_next_to_other_grants(lw):
+    """Only the same holder with the same rol is a duplicate."""
+    db = lw.db
+    db.add_all(
+        [
+            ResourcePermission(
+                organisatie_eenheid_id=lw.org["team"].id,
+                resource_type="lead",
+                resource_id=lw.id("lead_other"),
+                rol="betrokken",
+            ),
+            # the target has a betrokken eenheid, but another one
+            ResourcePermission(
+                organisatie_eenheid_id=lw.org["elders"].id,
+                resource_type="lead",
+                resource_id=lw.id("lead"),
+                rol="betrokken",
+            ),
+        ]
+    )
+    await db.flush()
+    async with client_as(db, lw.person["manager"]) as c:
+        resp = await c.post("/api/leads/merge", json=_merge(lw))
+    assert resp.status_code == 200, resp.text
+    holders = set(
+        (
+            await db.scalars(
+                select(ResourcePermission.organisatie_eenheid_id).where(
+                    ResourcePermission.resource_type == "lead",
+                    ResourcePermission.resource_id == lw.id("lead"),
+                    ResourcePermission.organisatie_eenheid_id.isnot(None),
+                )
+            )
+        ).all()
+    )
+    assert holders == {lw.org["team"].id, lw.org["elders"].id}
