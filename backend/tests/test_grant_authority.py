@@ -1265,15 +1265,17 @@ def _migration(name: str):
 
 
 async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
-    """Placements from before the fix keep their access; ended ones aside."""
+    """Accounts keep their access at deploy; contacts and ended ones do not."""
     from sqlalchemy import text
 
     below_team = await make_org(tree.db, "Stichting", "stichting", tree.team)
-    ended = await make_person(tree.db, "Vertrokken", account=False)
+    colleague = await make_person(tree.db, "Collega")
+    ended = await make_person(tree.db, "Vertrokken")
     for person, org in (
+        (colleague, tree.team),
+        (colleague, below_team),
+        (colleague, tree.gemeente),
         (tree.contact, tree.team),
-        (tree.contact, below_team),
-        (tree.contact, tree.gemeente),
         (ended, tree.team),
     ):
         await place(tree.db, person, org, bron="handmatig")
@@ -1295,15 +1297,15 @@ async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
             )
         )
 
-    assert await bron(tree.contact, tree.team) == "leidinggevende"
-    assert await bron(tree.contact, below_team) == "leidinggevende"
+    assert await bron(colleague, tree.team) == "leidinggevende"
+    assert await bron(colleague, below_team) == "leidinggevende"
     # External organisations too: partners keep their access at deploy.
-    assert await bron(tree.contact, tree.gemeente) == "leidinggevende"
+    assert await bron(colleague, tree.gemeente) == "leidinggevende"
     assert await bron(ended, tree.team) == "handmatig"
-
+    # A contact's placement was anyone's to make: a manager confirms it.
+    assert await bron(tree.contact, tree.team) == "handmatig"
     await _first_login(tree, tree.contact)
-    assert await _placement_of(tree.db, tree.contact, tree.team) is not None
-    assert await _pending_requests(tree, tree.contact) == set()
+    assert await _pending_requests(tree, tree.contact) == {tree.team.id}
 
 
 async def test_reopened_contact_placement_is_no_longer_confirmed(tree: Tree):
@@ -1519,12 +1521,20 @@ async def test_external_eenheid_cannot_smuggle_staff_into_another_ministry(
 
 
 async def test_external_eenheid_outside_the_organisation_stays_free(tree: Tree):
-    """At the top or under another external eenheid, creating is free."""
+    """At the top creating is free; below an own root too, not elsewhere."""
     async with client_as(tree.db, tree.directie_manager) as c:
         top = await c.post(
             "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
         )
         below = await c.post(
+            "/api/organisatie",
+            json={
+                "naam": "Werkgroep",
+                "type": "stichting",
+                "parent_id": top.json()["id"],
+            },
+        )
+        foreign = await c.post(
             "/api/organisatie",
             json={
                 "naam": "Wijkteam",
@@ -1539,11 +1549,12 @@ async def test_external_eenheid_outside_the_organisation_stays_free(tree: Tree):
         )
     assert top.status_code == 201, top.text
     assert below.status_code == 201, below.text
+    assert foreign.status_code == 403, foreign.text
     assert placed.status_code == 201, placed.text
 
 
 async def test_external_eenheid_moves_like_it_is_created(tree: Tree):
-    """Moving into the organisation needs org:create on the new parent."""
+    """Moving needs org:create on the new parent, inside the organisation or not."""
     foreign_dg = await _other_ministry_dg(tree)
     async with client_as(tree.db, tree.directie_manager) as c:
         created = await c.post(
@@ -1555,7 +1566,7 @@ async def test_external_eenheid_moves_like_it_is_created(tree: Tree):
         under_external = await c.put(url, json={"parent_id": str(tree.gemeente.id)})
         into_own = await c.put(url, json={"parent_id": str(tree.directie.id)})
     assert into_foreign.status_code == 403, into_foreign.text
-    assert under_external.status_code == 200, under_external.text
+    assert under_external.status_code == 403, under_external.text
     assert into_own.status_code == 200, into_own.text
 
 
@@ -1611,7 +1622,7 @@ async def test_external_create_list_agrees_with_each_evaluation(tree: Tree):
         "Directie": True,
         "Team": True,
         "DG": False,
-        "Gemeente": True,
+        "Gemeente": False,
         "Ander DG": False,
     }
 
@@ -1683,7 +1694,10 @@ async def test_contact_in_eenheid_moved_inside_does_not_read_up_the_line(tree: T
     assert not visible & {tree.team.id, tree.directie.id, tree.ministerie.id}
 
 
-async def test_owner_placed_contact_blocks_moving_the_eenheid_inside(tree: Tree):
+async def test_owner_placed_contact_does_not_read_up_after_moving_inside(
+    tree: Tree,
+):
+    """Members of an external eenheid see that eenheid only, wherever it hangs."""
     async with client_as(tree.db, tree.editor) as c:
         created = await c.post(
             "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
@@ -1700,13 +1714,15 @@ async def test_owner_placed_contact_blocks_moving_the_eenheid_inside(tree: Tree)
         moved = await c.put(
             f"/api/organisatie/{stichting_id}", json={"parent_id": str(tree.team.id)}
         )
-    assert moved.status_code == 403, moved.text
+    assert moved.status_code == 200, moved.text
+    await _first_login(tree, tree.contact)
+    visible = await _visible_eenheden(tree, tree.contact)
+    assert uuid.UUID(stichting_id) in visible
+    assert not visible & {tree.team.id, tree.directie.id, tree.ministerie.id}
 
 
-async def test_moving_trusted_members_inside_needs_a_manager_of_the_new_parent(
-    tree: Tree,
-):
-    """Members of a moved eenheid read up the new line: a manager decides."""
+async def test_moving_trusted_members_inside_needs_create_rights_only(tree: Tree):
+    """Moved members do not read up the new line, so no manager is needed."""
 
     async def move_fractie_under_team(who: Person):
         async with client_as(tree.db, who) as c:
@@ -1724,11 +1740,8 @@ async def test_moving_trusted_members_inside_needs_a_manager_of_the_new_parent(
             )
         return moved
 
-    refused = await move_fractie_under_team(tree.editor)
-    assert refused.status_code == 403, refused.text
-    assert "bevestigde leden" in refused.json()["detail"]
-    allowed = await move_fractie_under_team(tree.directie_manager)
-    assert allowed.status_code == 200, allowed.text
+    by_editor = await move_fractie_under_team(tree.editor)
+    assert by_editor.status_code == 200, by_editor.text
 
 
 async def test_detachering_gives_no_share_of_a_partner_grant(tree: Tree):

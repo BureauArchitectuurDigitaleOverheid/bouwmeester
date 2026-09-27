@@ -96,8 +96,8 @@ async def test_editor_creates_top_level_eenheid(editor_setup):
     assert body["parent_id"] is None
 
 
-async def test_editor_creates_eenheid_under_foreign_external_parent(editor_setup):
-    """Editor can hang a new external eenheid under another external one."""
+async def test_editor_cannot_create_below_foreign_external_parent(editor_setup):
+    """Below a parent the parent decides, also outside the organisation."""
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
@@ -107,8 +107,7 @@ async def test_editor_creates_eenheid_under_foreign_external_parent(editor_setup
             "parent_id": str(s["org_external"].id),
         },
     )
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["parent_id"] == str(s["org_external"].id)
+    assert resp.status_code == 403, resp.text
 
 
 async def test_editor_cannot_hang_external_eenheid_in_foreign_organisation(
