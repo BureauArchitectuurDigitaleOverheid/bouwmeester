@@ -165,15 +165,19 @@ async def test_security_config_is_super_admin_only(
 
     monkeypatch.setattr(admin_routes, "_defaults_seeded", False)
     got = {}
+    offered = {}
     for who in ("platform_admin", "super_admin"):
         async with client_as(world.db, world.person[who]) as c:
-            await c.get("/api/admin/config")
+            listing = await c.get("/api/admin/config")
             resp = await c.patch(f"/api/admin/config/{key}", json={"value": "x"})
         got[who] = resp.status_code
+        offered[who] = next(e for e in listing.json() if e["key"] == key)["editable"]
     assert got == {
         "platform_admin": 200 if platform_admin_may else 403,
         "super_admin": 200,
     }
+    # The listing offers editing exactly where the PATCH route allows it.
+    assert offered == {who: status == 200 for who, status in got.items()}
 
 
 # ---------------------------------------------------------------------------
