@@ -51,19 +51,20 @@ async def sync_and_notify_mentions(
             )
 
             notif_svc = NotificationService(db)
-            for m in new_mentions:
-                if m.mention_type == "person":
-                    if exclude_person_id and m.target_id == exclude_person_id:
-                        continue
-                    await notif_svc.notify_mention(
-                        m.target_id,
-                        source_type,
-                        entity_title,
-                        source_node_id=source_node_id,
-                        source_task_id=source_task_id,
-                        source_lead_id=source_lead_id,
-                        sender_id=sender_id,
-                    )
+            for person_id in await mention_svc.notifiable_persons(
+                new_mentions, sender_id
+            ):
+                if exclude_person_id and person_id == exclude_person_id:
+                    continue
+                await notif_svc.notify_mention(
+                    person_id,
+                    source_type,
+                    entity_title,
+                    source_node_id=source_node_id,
+                    source_task_id=source_task_id,
+                    source_lead_id=source_lead_id,
+                    sender_id=sender_id,
+                )
     except Exception:
         logger.exception(
             "Failed to sync mentions for %s %s; parent entity preserved",

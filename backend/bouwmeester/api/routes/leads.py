@@ -73,10 +73,15 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.agent_rules import require_may_assign
 from bouwmeester.services.lead_rules import require_lead_create
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
-from bouwmeester.services.visibility_filters import redact_lead_detail
+from bouwmeester.services.visibility_filters import (
+    lead_response,
+    redact_lead_detail,
+    redact_leads,
+)
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -147,6 +152,7 @@ async def list_leads(
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[LeadResponse]:
     """List leads with optional filters."""
     repo = LeadRepository(db)
@@ -163,7 +169,7 @@ async def list_leads(
         sort_by=sort_by,
         initiatief_id=initiatief_id,
     )
-    responses = validate_list(LeadResponse, leads)
+    responses = await redact_leads(db, perm_ctx, validate_list(LeadResponse, leads))
 
     # Batch-load contact names for all leads
     if responses:
@@ -214,7 +220,7 @@ async def create_lead(
         details={"lead_id": str(lead.id), "title": lead.title},
     )
 
-    return LeadResponse.model_validate(lead)
+    return await lead_response(db, perm_ctx, lead)
 
 
 @router.get("/metrics", response_model=LeadMetricsResponse)
@@ -277,11 +283,12 @@ async def check_duplicates(
     current_user: OptionalUser = None,
     db: AsyncSession = Depends(get_db),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[LeadResponse]:
     """Find leads with similar title or organization (trigram similarity)."""
     repo = LeadRepository(db)
     similar = await repo.find_similar(title, organization, init_ctx=init_ctx)
-    return validate_list(LeadResponse, similar)
+    return await redact_leads(db, perm_ctx, validate_list(LeadResponse, similar))
 
 
 @router.post("/merge", response_model=LeadResponse)
@@ -326,7 +333,7 @@ async def merge_leads(
         },
     )
 
-    return LeadResponse.model_validate(result)
+    return await lead_response(db, perm_ctx, result)
 
 
 @router.get("/{lead_id}", response_model=LeadDetailResponse)
@@ -400,6 +407,7 @@ async def update_lead(
     await require_move(
         db, perm_ctx, "lead", old_lead, data.model_dump(exclude_unset=True)
     )
+    await require_may_assign(db, perm_ctx, data, current=old_lead.assignee_id)
     old_assignee_id = old_lead.assignee_id
     old_stage = old_lead.stage
 
@@ -449,7 +457,7 @@ async def update_lead(
         details={"lead_id": str(lead.id), "title": lead.title},
     )
 
-    return LeadResponse.model_validate(lead)
+    return await lead_response(db, perm_ctx, lead)
 
 
 @router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -497,7 +505,7 @@ async def move_lead(
     data: LeadMove,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_LEAD),
+    perm_ctx: PermissionContext = Depends(_UPDATE_LEAD),
 ) -> LeadResponse:
     """Move a lead to a new stage."""
     author_id = current_user.id if current_user else None
@@ -532,7 +540,7 @@ async def move_lead(
         details={"lead_id": str(lead.id), "title": lead.title, "stage": lead.stage},
     )
 
-    return LeadResponse.model_validate(lead)
+    return await lead_response(db, perm_ctx, lead)
 
 
 @router.post("/reorder", response_model=list[LeadResponse])
@@ -551,7 +559,7 @@ async def reorder_leads(
         await require(db, perm_ctx, "lead:update", "lead", lead_id)
     repo = LeadRepository(db)
     leads = await repo.reorder(data.lead_ids, data.stage)
-    return validate_list(LeadResponse, leads)
+    return await redact_leads(db, perm_ctx, validate_list(LeadResponse, leads))
 
 
 # ---------------------------------------------------------------------------

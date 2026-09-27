@@ -169,23 +169,39 @@ async def test_request_access_email_normalized(client, db_session, login_denied)
     assert result.scalar_one() is not None
 
 
-async def test_request_access_rate_limit(client, login_denied):
-    """After exceeding the rate limit, returns 429."""
-    for i in range(5):
-        await login_denied(f"rate{i}@example.com")
-        resp = await client.post(
-            "/api/auth/request-access",
-            json={"email": f"rate{i}@example.com", "naam": f"Rate {i}"},
-        )
-        assert resp.status_code == 200
-
-    # 6th request should be rate limited
-    await login_denied("rate5@example.com")
-    resp = await client.post(
-        "/api/auth/request-access",
-        json={"email": "rate5@example.com", "naam": "Rate 5"},
+async def _request(client, email: str):
+    return await client.post(
+        "/api/auth/request-access", json={"email": email, "naam": "Iemand"}
     )
-    assert resp.status_code == 429
+
+
+async def test_request_access_rate_limit(client, login_denied):
+    """After exceeding the rate limit for one login, returns 429."""
+    await login_denied("rate@example.com")
+    for _ in range(5):
+        assert (await _request(client, "rate@example.com")).status_code == 200
+
+    assert (await _request(client, "rate@example.com")).status_code == 429
+
+
+async def test_request_access_rate_limit_is_per_login(client, login_denied):
+    """Behind the ingress everyone shares an address: one login's budget is
+    not another's."""
+    await login_denied("eerste@example.com")
+    for _ in range(5):
+        await _request(client, "eerste@example.com")
+
+    await login_denied("tweede@example.com")
+    assert (await _request(client, "tweede@example.com")).status_code == 200
+
+
+async def test_request_access_without_login_spends_no_budget(client, login_denied):
+    """Requests without a refused login are turned away before the limiter."""
+    for _ in range(10):
+        assert (await _request(client, "x@example.com")).status_code == 401
+
+    await login_denied("echt@example.com")
+    assert (await _request(client, "echt@example.com")).status_code == 200
 
 
 async def test_request_access_only_for_the_refused_login(client, login_denied):

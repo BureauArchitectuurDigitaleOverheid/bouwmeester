@@ -243,6 +243,7 @@ class GraphRepository:
         initiatief_id: UUID | None = None,
         *,
         include_people: bool = True,
+        include_samenwerkingsverbanden: bool = True,
     ) -> CommunityGraphResponse:
         """Build a unified graph of leads, persons, organisations and corpus nodes.
 
@@ -251,7 +252,8 @@ class GraphRepository:
         It then transitively collects every person, external organisation,
         samenwerkingsverband and corpus node connected to those leads.
         People (and what only they connect) are left out unless
-        *include_people*.  A role held by an eenheid instead of a person
+        *include_people*, samenwerkingsverbanden unless
+        *include_samenwerkingsverbanden*.  A role held by an eenheid instead of a person
         connects to that eenheid.
 
         Returns a ``CommunityGraphResponse`` with deduplicated nodes and edges.
@@ -572,7 +574,7 @@ class GraphRepository:
             )
 
         # -- 10. Person → Samenwerkingsverband (active lidmaatschappen) --
-        if person_ids:
+        if person_ids and include_samenwerkingsverbanden:
             today = date.today()
             swv_lid_stmt = select(PersoonSamenwerkingsverband).where(
                 PersoonSamenwerkingsverband.person_id.in_(person_ids),

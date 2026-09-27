@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import require
 from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.services.agent_rules import require_may_assign
 
 # (body field, permission, resource type): each record a task links to must
 # be one the caller may use.  The node, the opdracht and the parlementair
@@ -52,9 +53,10 @@ async def require_task_links(
 async def require_task_create(
     db: AsyncSession, perm_ctx: PermissionContext, data: BaseModel
 ) -> None:
-    """May the caller create this task: its links, then its place.
+    """May the caller create this task: its links, its place, its assignee.
 
     A task belongs to its eenheid, or to its node when it has none.
     """
     await require_task_links(db, perm_ctx, data)
     await require(db, perm_ctx, "task:create", "task", place=data)
+    await require_may_assign(db, perm_ctx, data)

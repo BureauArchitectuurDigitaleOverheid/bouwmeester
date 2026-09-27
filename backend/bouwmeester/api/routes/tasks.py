@@ -27,6 +27,7 @@ from bouwmeester.services.activity_service import (
     log_activity,
     resolve_actor,
 )
+from bouwmeester.services.agent_rules import require_may_assign
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
@@ -285,6 +286,7 @@ async def update_task(
     await require_move(
         db, perm_ctx, "task", old_task, data.model_dump(exclude_unset=True)
     )
+    await require_may_assign(db, perm_ctx, data, current=old_task.assignee_id)
     old_assignee_id = old_task.assignee_id
     old_status = old_task.status
     old_org_unit_id = old_task.organisatie_eenheid_id

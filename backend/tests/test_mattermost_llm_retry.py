@@ -69,7 +69,6 @@ class FakeLLM:
                 confidence=0.0,
                 proposed_title="",
                 proposed_description="",
-                match_existing_lead_id=None,
                 reasoning="LLM-call mislukt",
                 failed=True,
             )
@@ -78,7 +77,6 @@ class FakeLLM:
             confidence=0.9,
             proposed_title="Wetgevingsproces JenV",
             proposed_description="Hoofd wetgevingsbeleid wil capaciteit vrijmaken",
-            match_existing_lead_id=None,
             reasoning="Concrete toezegging van capaciteit",
             failed=False,
         )

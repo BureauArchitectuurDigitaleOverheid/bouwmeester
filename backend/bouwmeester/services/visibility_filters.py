@@ -2,11 +2,11 @@
 
 A response about something the caller reads often names other things: the
 subtasks and opdracht of a task, the nodes an opdracht or a lead is linked
-to, the resources a person holds a role on.  Those references are filtered
-here, with the same ``<type>:read`` decision ``core.authz`` takes for the
-thing itself.  :func:`readable_ids` locates all references of one type with
-``prefetch`` and then decides each from the request cache, so a list costs a
-constant number of queries.
+to, the initiatief of a lead, the resources a person holds a role on.
+Those references are filtered here, with the same ``<type>:read`` decision
+``core.authz`` takes for the thing itself.  :func:`readable_ids` locates
+all references of one type with ``prefetch`` and then decides each from the
+request cache, so a list costs a constant number of queries.
 
 What the caller cannot read is left out of a list of references, and an
 embedded summary of it (a task's node, an opdracht's instrument) becomes
@@ -21,9 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import can, prefetch
 from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.models.lead import Lead
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.task import Task
-from bouwmeester.schema.lead import LeadDetailResponse
+from bouwmeester.schema.lead import LeadDetailResponse, LeadResponse
 from bouwmeester.schema.opdracht import OpdrachtResponse
 from bouwmeester.schema.task import TaskResponse
 
@@ -114,12 +115,35 @@ async def opdracht_response(
     return (await opdracht_responses(db, perm_ctx, [opdracht]))[0]
 
 
+async def redact_leads[R: LeadResponse](
+    db: AsyncSession, perm_ctx: PermissionContext, responses: list[R]
+) -> list[R]:
+    """Leads the caller reads, without the initiatief summary they cannot read.
+
+    A role on one lead reads that lead, not its initiatief.
+    """
+    initiatieven = await readable_ids(
+        db, perm_ctx, "initiatief", (r.initiatief_id for r in responses)
+    )
+    for response in responses:
+        if response.initiatief_id not in initiatieven:
+            response.initiatief = None
+    return responses
+
+
+async def lead_response(
+    db: AsyncSession, perm_ctx: PermissionContext, lead: Lead
+) -> LeadResponse:
+    """One lead the caller reads, redacted like :func:`redact_leads`."""
+    return (await redact_leads(db, perm_ctx, [LeadResponse.model_validate(lead)]))[0]
+
+
 async def redact_lead_detail(
     db: AsyncSession, perm_ctx: PermissionContext, response: LeadDetailResponse
 ) -> LeadDetailResponse:
-    """A lead the caller reads, with only the linked nodes they read."""
+    """A lead the caller reads, with only the initiatief and nodes they read."""
     nodes = await readable_ids(
         db, perm_ctx, "corpus_node", (ln.node_id for ln in response.linked_nodes)
     )
     response.linked_nodes = [ln for ln in response.linked_nodes if ln.node_id in nodes]
-    return response
+    return (await redact_leads(db, perm_ctx, [response]))[0]

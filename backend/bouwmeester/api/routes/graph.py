@@ -83,7 +83,8 @@ async def get_community_graph(
     initiatief context for visibility, and optionally narrowed to a single
     ``initiatief_id``) and transitively includes all related persons,
     external organisations, samenwerkingsverbanden and corpus nodes.  People
-    only for whoever holds ``people:read``, as ``GET /people`` asks.
+    only for whoever holds ``people:read``, as ``GET /people`` asks, and
+    samenwerkingsverbanden only with ``samenwerkingsverband:read``.
     """
     repo = GraphRepository(db)
     return await repo.get_community_graph(
@@ -91,4 +92,7 @@ async def get_community_graph(
         init_ctx=init_ctx,
         initiatief_id=initiatief_id,
         include_people=perm_ctx.has_permission("people:read"),
+        include_samenwerkingsverbanden=perm_ctx.has_permission(
+            "samenwerkingsverband:read"
+        ),
     )

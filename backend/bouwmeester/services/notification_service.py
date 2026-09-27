@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.notification import Notification
@@ -709,11 +710,18 @@ class NotificationService:
     async def count_unread(self, person_id: UUID) -> int:
         return await self.repo.count_unread(person_id)
 
-    async def get_dashboard_stats(self, person_id: UUID) -> dict[str, int]:
-        """Return dashboard statistics for a person."""
-        # Total corpus nodes
-        node_result = await self.session.execute(select(func.count(CorpusNode.id)))
-        corpus_node_count = node_result.scalar_one()
+    async def get_dashboard_stats(
+        self, person_id: UUID, org_ctx: OrgContext | None
+    ) -> dict[str, int]:
+        """Return dashboard statistics for a person.
+
+        The corpus count is of the nodes *org_ctx* (the caller) sees.
+        """
+        from bouwmeester.repositories.corpus_node import CorpusNodeRepository
+
+        corpus_node_count = await CorpusNodeRepository(self.session).count(
+            org_ctx=org_ctx
+        )
 
         # Open tasks assigned to this person
         open_result = await self.session.execute(

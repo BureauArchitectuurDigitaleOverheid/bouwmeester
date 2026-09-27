@@ -627,7 +627,7 @@ async def dismiss_onboarding_feature(
 # POST /request-access -- submit an access request (public, rate-limited)
 # ---------------------------------------------------------------------------
 
-# Stricter rate limiter for access requests.
+# Stricter rate limiter for access requests, keyed per refused login.
 _access_request_rate_limiter = InMemoryRateLimiter(window=300, max_requests=5)
 # The status check is polled (every 5 s) while a request is pending; keyed
 # per address, since behind the ingress everyone shares one IP.
@@ -661,10 +661,14 @@ async def request_access(
     Public (the requester has no access yet) but bound to the refused login:
     a request for any other address is refused.
     """
-    _access_request_rate_limiter.check(request)
+    # The session first: a request without a refused login spends nobody's
+    # budget.  Keyed per login, since behind the ingress everyone shares one
+    # IP and an IP limit lets one visitor lock out all others.
+    denied = _denied_email(request)
+    _access_request_rate_limiter.check_key(denied)
 
     email = normalize_email(body.email)
-    if email != _denied_email(request):
+    if email != denied:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Je kunt alleen toegang aanvragen voor je eigen e-mailadres",
