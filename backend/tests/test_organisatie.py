@@ -260,6 +260,63 @@ async def test_delete_organisatie_with_personen_fails(
     assert "personen" in resp.json()["detail"]
 
 
+async def test_delete_organisatie_with_resources_fails(
+    client, db_session, sample_organisatie
+):
+    """Deleting would empty the eenheid of its node and task: tenant-wide."""
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.task import Task
+
+    node = CorpusNode(
+        title="Dossier",
+        node_type="dossier",
+        status="actief",
+        organisatie_eenheid_id=sample_organisatie.id,
+    )
+    db_session.add(node)
+    await db_session.flush()
+    db_session.add(
+        Task(
+            title="Taak",
+            node_id=node.id,
+            organisatie_eenheid_id=sample_organisatie.id,
+            status="open",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.delete(f"/api/organisatie/{sample_organisatie.id}")
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert "1 nodes" in detail and "1 taken" in detail
+    await db_session.refresh(node)
+    assert node.organisatie_eenheid_id == sample_organisatie.id
+
+
+async def test_delete_organisatie_holding_a_grant_fails(
+    client, db_session, sample_organisatie
+):
+    from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    initiatief = Initiatief(id=uuid.uuid4(), naam=f"Init {uuid.uuid4().hex[:6]}")
+    db_session.add(initiatief)
+    await db_session.flush()
+    db_session.add(
+        ResourcePermission(
+            organisatie_eenheid_id=sample_organisatie.id,
+            resource_type="initiatief",
+            resource_id=initiatief.id,
+            rol="contributor",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.delete(f"/api/organisatie/{sample_organisatie.id}")
+    assert resp.status_code == 409, resp.text
+    assert "toegangsrechten" in resp.json()["detail"]
+
+
 # ---------------------------------------------------------------------------
 # Managed-by
 # ---------------------------------------------------------------------------

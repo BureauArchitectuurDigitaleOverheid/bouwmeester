@@ -23,7 +23,7 @@ from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
     OrganisatieEenheid,
 )
-from bouwmeester.repositories.org_tree import get_subtree_ids
+from bouwmeester.repositories.org_tree import eenheid_references, get_subtree_ids
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -397,20 +397,24 @@ async def delete_organisatie(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(_UPDATE_EENHEID),
 ) -> None:
-    """Delete an org unit. Fails if it has children or members."""
+    """Delete an org unit.
+
+    Refused (409) while anything still hangs on it: deleting would cascade
+    placements and grants away and set the eenheid of nodes, leads, tasks
+    and opdrachten to empty, which makes them tenant-wide.  Move or end
+    those first.
+    """
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     # Deleting is never laxer than ending the eenheid (``geldig_tot``).
     await require_can_end_eenheid(db, perm_ctx, eenheid)
-    if await repo.has_children(id):
+    blocking = await eenheid_references(db, id, structure=True)
+    if blocking:
         raise HTTPException(
             status_code=409,
-            detail="Kan niet verwijderen: eenheid heeft subeenheden",
-        )
-    if await repo.has_personen(id):
-        raise HTTPException(
-            status_code=409,
-            detail="Kan niet verwijderen: eenheid heeft personen",
+            detail="Kan niet verwijderen: aan deze eenheid hangen nog "
+            + ", ".join(blocking)
+            + ". Verplaats of beëindig die eerst.",
         )
     eenheid_naam = eenheid.naam
     await repo.delete(id)

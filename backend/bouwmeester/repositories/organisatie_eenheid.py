@@ -238,30 +238,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def has_children(self, id: UUID) -> bool:
-        stmt = (
-            select(func.count())
-            .select_from(OrganisatieEenheidParent)
-            .where(
-                OrganisatieEenheidParent.parent_id == id,
-                OrganisatieEenheidParent.geldig_tot.is_(None),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one() > 0
-
-    async def has_personen(self, id: UUID) -> bool:
-        stmt = (
-            select(func.count())
-            .select_from(PersonOrganisatieEenheid)
-            .where(
-                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
-                PersonOrganisatieEenheid.eind_datum.is_(None),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one() > 0
-
     async def get_personen(self, id: UUID) -> list[Person]:
         stmt = (
             select(Person)
