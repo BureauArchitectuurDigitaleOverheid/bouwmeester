@@ -177,7 +177,22 @@ class InitiatiefRepository(BaseRepository[Initiatief]):
         if initiatief is None:
             return None
         payload = data.model_dump(exclude_unset=True)
-        # If a slug is being assigned/changed, validate uniqueness.
+        # The slug is set once: it is the public page's address, and a
+        # changed or cleared one breaks every link to it (or hands it to
+        # another initiatief).  Sending the same value again is a no-op.
+        if initiatief.slug is not None and payload.get("slug", initiatief.slug) != (
+            initiatief.slug
+        ):
+            from fastapi import HTTPException, status
+
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "De slug ligt vast zodra hij is opgeslagen: het is het adres "
+                    "van de publieke pagina."
+                ),
+            )
+        # If a slug is being assigned, validate it and its uniqueness.
         if "slug" in payload and payload["slug"] is not None:
             new_slug = payload["slug"]
             if not is_valid_slug(new_slug):
