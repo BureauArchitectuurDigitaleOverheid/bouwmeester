@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.notification import Notification
 from bouwmeester.models.person import Person
@@ -227,11 +228,12 @@ async def get_dashboard_stats(
     current_user: OptionalUser,
     person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> DashboardStatsResponse:
-    """Return dashboard statistics for a person."""
+    """Return dashboard statistics for a person (corpus: what the caller sees)."""
     pid = effective_person_id(current_user, person_id)
     service = NotificationService(db)
-    stats = await service.get_dashboard_stats(pid)
+    stats = await service.get_dashboard_stats(pid, org_ctx)
     return DashboardStatsResponse(**stats)
 
 
