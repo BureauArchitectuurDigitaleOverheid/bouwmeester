@@ -7,11 +7,13 @@ asks.  Uses ``world`` from ``tests/authz_world.py``.
 
 import json
 import uuid
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from sqlalchemy import select
 
+from bouwmeester.models.activity import Activity
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
@@ -336,6 +338,99 @@ async def test_slash_taken_hides_the_title_of_an_unreadable_node(world):
     assert "Mijn teamtaak" in result["text"]
     assert "Dossier elders" not in result["text"]
     assert "Teamdossier" in result["text"]
+
+
+# ---------------------------------------------------------------------------
+# The inbox and a person summary name only what the caller may read
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("path", ["/api/tasks/inbox", "/api/activity/inbox"])
+async def test_inbox_names_only_readable_nodes(world, path):
+    """An own task on a foreign node, own activity on a foreign node.
+
+    The task stays in the inbox without its node; the activity, whose text
+    names the node, is left out.
+    """
+    db = world.db
+    viewer = world.person["viewer"]
+    task = Task(
+        title="Mijn verlopen taak",
+        node_id=world.res["node_elders"],
+        organisatie_eenheid_id=world.org["team"].id,
+        assignee_id=viewer.id,
+        status="open",
+        deadline=date.today() - timedelta(days=3),
+    )
+    db.add_all(
+        [
+            task,
+            Activity(
+                event_type="node.updated",
+                actor_id=viewer.id,
+                node_id=world.res["node_elders"],
+                details={"title": "Dossier elders"},
+            ),
+            Activity(
+                event_type="node.updated",
+                actor_id=viewer.id,
+                node_id=world.res["node_team"],
+                details={"title": "Teamdossier"},
+            ),
+        ]
+    )
+    await db.flush()
+
+    async with client_as(db, viewer) as c:
+        resp = await c.get(path)
+
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert "Dossier elders" not in resp.text
+    assert str(world.res["node_elders"]) not in resp.text
+    overdue = [i for i in items if i["type"] == "overdue_task"]
+    assert [(i["related_task_id"], i["related_node_id"]) for i in overdue] == [
+        (str(task.id), None)
+    ]
+    changes = [i["related_node_id"] for i in items if i["type"] == "node_change"]
+    assert changes == [str(world.res["node_team"])]
+
+
+async def test_person_summary_names_only_readable_tasks_and_nodes(world):
+    db = world.db
+    other = await make_person(db, "Collega elders")
+    await place(db, other, world.org["elders"])
+    world.person["collega"] = other
+    db.add_all(
+        [
+            Task(
+                title="Taak elders van collega",
+                node_id=world.res["node_elders"],
+                organisatie_eenheid_id=world.org["elders"].id,
+                assignee_id=other.id,
+                status="open",
+            ),
+            Task(
+                title="Teamtaak van collega",
+                node_id=world.res["node_team"],
+                organisatie_eenheid_id=world.org["team"].id,
+                assignee_id=other.id,
+                status="open",
+            ),
+            _stakeholder(world, "collega", "node_elders"),
+            _stakeholder(world, "collega", "node_team"),
+        ]
+    )
+    await db.flush()
+
+    async with client_as(db, world.person["viewer"]) as c:
+        resp = await c.get(f"/api/people/{other.id}/summary")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [t["title"] for t in body["open_tasks"]] == ["Teamtaak van collega"]
+    assert body["open_task_count"] == 1
+    assert [n["node_title"] for n in body["stakeholder_nodes"]] == ["Teamdossier"]
 
 
 # ---------------------------------------------------------------------------

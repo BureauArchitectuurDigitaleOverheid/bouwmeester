@@ -23,6 +23,7 @@ from bouwmeester.core.authz import can, prefetch
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.task import Task
+from bouwmeester.schema.inbox import InboxItem
 from bouwmeester.schema.lead import LeadDetailResponse
 from bouwmeester.schema.opdracht import OpdrachtResponse
 from bouwmeester.schema.task import TaskResponse
@@ -123,3 +124,39 @@ async def redact_lead_detail(
     )
     response.linked_nodes = [ln for ln in response.linked_nodes if ln.node_id in nodes]
     return response
+
+
+async def inbox_items(
+    db: AsyncSession, perm_ctx: PermissionContext, items: Sequence[InboxItem]
+) -> list[InboxItem]:
+    """Inbox items about what the caller reads, other references cleared.
+
+    An item is about its task, or for a ``node_change`` about its node; its
+    title and description name that subject, so an item whose subject the
+    caller cannot read is left out.  A further reference they cannot read
+    becomes ``None``.
+    """
+    tasks = await readable_ids(db, perm_ctx, "task", (i.related_task_id for i in items))
+    nodes = await readable_ids(
+        db, perm_ctx, "corpus_node", (i.related_node_id for i in items)
+    )
+    kept = []
+    for item in items:
+        if item.type == "node_change":
+            if item.related_node_id not in nodes:
+                continue
+        elif item.related_task_id not in tasks:
+            continue
+        kept.append(
+            item.model_copy(
+                update={
+                    "related_node_id": item.related_node_id
+                    if item.related_node_id in nodes
+                    else None,
+                    "related_task_id": item.related_task_id
+                    if item.related_task_id in tasks
+                    else None,
+                }
+            )
+        )
+    return kept

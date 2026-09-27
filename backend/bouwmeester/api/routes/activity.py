@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_system_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_system_permission,
+)
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.services.activity_service import ActivityService
@@ -47,8 +51,9 @@ async def get_inbox(
     current_user: OptionalUser,
     person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InboxResponse:
     """Get aggregated inbox for a person (tasks, notifications, deadlines)."""
     pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
-    return await service.get_inbox(pid)
+    return await service.get_inbox(pid, perm_ctx)
