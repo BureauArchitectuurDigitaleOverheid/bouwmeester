@@ -69,7 +69,8 @@ async def build_permission_context(
 
     Members of an eenheid (a trusted placement, ``get_membership_ids``) who have no
     explicit PersonRole on that eenheid receive an implicit ``viewer``
-    role so they can see modules enabled for their team.
+    role so they can see modules enabled for their team, but only in an
+    eenheid that touches the organisation (``get_touching_ids``).
     """
     pr_repo = PersonRoleRepository(db)
     system_roles, scoped_roles = await pr_repo.get_active_role_ids_for_person(person.id)
@@ -90,11 +91,16 @@ async def build_permission_context(
             is_super_admin=True,
         )
 
-    # Grant implicit viewer role for eenheden the person is a member of
-    # but has no explicit PersonRole on.
-    from bouwmeester.repositories.org_tree import get_membership_ids
+    # Grant the implicit viewer role for eenheden the person is a member of
+    # but has no explicit PersonRole on.  Only inside the organisation: an
+    # external organisation is anyone's to create and to staff (its
+    # eigenaar confirms its members), so membership there gives nothing
+    # implicit, only what is granted or shared to it.
+    from bouwmeester.repositories.org_tree import get_membership_ids, get_touching_ids
 
-    member_eenheid_ids = await get_membership_ids(db, person.id)
+    member_eenheid_ids = await get_touching_ids(
+        db, await get_membership_ids(db, person.id)
+    )
     for eid in member_eenheid_ids:
         if eid not in scoped_roles:
             scoped_roles[eid] = ["viewer"]

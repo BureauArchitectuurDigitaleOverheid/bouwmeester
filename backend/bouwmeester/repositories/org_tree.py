@@ -132,22 +132,18 @@ async def touches_organisation(session: AsyncSession, eenheid_id: UUID) -> bool:
     the internal organisation: its managers decide about its members and
     about taking it out again (``core.authority``).
     """
-    cte = (
-        select(
-            OrganisatieEenheid.id, OrganisatieEenheid.parent_id, OrganisatieEenheid.type
-        )
-        .where(OrganisatieEenheid.id == eenheid_id)
-        .cte(name="chain_types", recursive=True)
-    )
-    cte = cte.union(
-        select(
-            OrganisatieEenheid.id, OrganisatieEenheid.parent_id, OrganisatieEenheid.type
-        ).where(OrganisatieEenheid.id == cte.c.parent_id)
-    )
-    hit = await session.scalar(
-        select(cte.c.id).where(cte.c.type.in_(INTERNAL_EENHEID_TYPES)).limit(1)
-    )
-    return hit is not None
+    return bool(await get_touching_ids(session, [eenheid_id]))
+
+
+async def get_touching_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
+    """The eenheden of *eenheid_ids* that touch the organisation.
+
+    The one definition, for many at once: the eenheid itself or an eenheid
+    above it is internal (see :func:`touches_organisation`).
+    """
+    chains = await get_chains(session, list(eenheid_ids))
+    internal = await get_internal_ids(session, list(set().union(*chains.values())))
+    return {eid for eid, chain in chains.items() if chain & internal}
 
 
 async def get_internal_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
