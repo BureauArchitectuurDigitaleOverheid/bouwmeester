@@ -30,11 +30,11 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
 from bouwmeester.services.sync_matching import (
-    escape_like,
     find_official_eenheid,
     person_for_sync,
 )
@@ -368,7 +368,6 @@ async def sync_abd(
     """
     sync_run_id = uuid.uuid4()
     stats = AbdSyncStats(sync_run_id=sync_run_id)
-    date.today()
 
     benoemingen = await fetcher()
     if not benoemingen:

@@ -453,43 +453,6 @@ def build_gap_analysis_prompt(
     )
 
 
-def build_kompas_relevance_prompt(
-    dossier_title: str,
-    step_description: str,
-    candidate_title: str,
-    candidate_description: str | None,
-) -> str:
-    candidate = f"TITEL: {candidate_title}"
-    if candidate_description:
-        candidate += (
-            f"\nBESCHRIJVING: {candidate_description[:MAX_DESCRIPTION_IN_PROMPT]}"
-        )
-
-    return (
-        "Je bent een beleidsanalist van het ministerie van BZK."
-        " Beoordeel of de volgende node relevant is om te koppelen"
-        " aan een beleidsdossier voor een specifieke"
-        " Beleidskompas-stap.\n\n"
-        f"DOSSIER: {dossier_title}\n"
-        f"BELEIDSKOMPAS-STAP: {step_description}\n\n"
-        f"KANDIDAAT-NODE:\n{candidate}\n\n"
-        "Instructies:\n"
-        "- Geef een score van 0.0 (niet relevant) tot"
-        " 1.0 (zeer relevant)\n"
-        "- Stel een relatietype voor uit:"
-        " implementeert, draagt_bij_aan, vloeit_voort_uit,"
-        " verwijst_naar, onderdeel_van, adresseert, meet\n"
-        "- Geef een korte reden in het Nederlands\n\n"
-        "Geef je analyse als JSON"
-        " (en ALLEEN JSON, geen andere tekst):\n"
-        "{\n"
-        '  "score": 0.8,\n'
-        '  "suggested_edge_type": "onderdeel_van",\n'
-        '  "reason": "Deze node is relevant omdat..."\n'
-        "}"
-    )
-
-
 def build_lead_intake_prompt(
     raw_text: str, existing_tags: list[str] | None = None
 ) -> str:

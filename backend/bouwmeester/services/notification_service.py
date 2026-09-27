@@ -23,10 +23,7 @@ from bouwmeester.services.agent_rules import sender_may_instruct
 
 logger = logging.getLogger(__name__)
 
-# Strong references to in-flight background tasks. asyncio.create_task only
-# holds a weak reference to its task, so without this set the GC can collect
-# the task before it has a chance to run, which silently drops the Mattermost
-# DM with no exception and no log line.
+# asyncio only holds weak references to tasks; keep them alive until done.
 _BACKGROUND_TASKS: set[asyncio.Task] = set()
 
 
@@ -76,11 +73,9 @@ About = tuple[str, str, UUID]
 
 
 def _about_related(data: NotificationCreate) -> About | None:
-    """The item a notification names, read off its related ids.
+    """The item a notification names: the most specific related id.
 
-    The most specific one wins: a task notification also links the task's
-    node, but it names the task, and a task can be readable while its node
-    is not.
+    A task notification also links the task's node, but names the task.
     """
     if data.related_task_id is not None:
         return ("task:read", "task", data.related_task_id)
@@ -94,19 +89,15 @@ def _about_related(data: NotificationCreate) -> About | None:
 class NotificationService:
     """Creates notifications and forwards them to Mattermost.
 
-    A notification names the item it is about (a task, node, lead or
-    opdracht title), so it only reaches recipients who may read that item:
-    the same ``<type>:read`` decision as the item's own REST route
-    (``core.authz.can``).  Recipients who may not read it get nothing.
-    Direct messages and replies carry the sender's own words and are not
-    gated.  An agent only receives what a super_admin caused (``send``).
+    A notification names an item, so it only reaches recipients who may read
+    it (``core.authz.can``).  Direct messages and replies carry the sender's
+    own words and are not gated.
     """
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = NotificationRepository(session)
-        # One permission context per recipient for the life of this service,
-        # so notifying N stakeholders about one item builds each context once.
+        # One permission context per recipient for the life of this service.
         self._contexts: dict[UUID, PermissionContext] = {}
 
     async def may_read(self, person_id: UUID, about: About) -> bool:
@@ -127,17 +118,12 @@ class NotificationService:
         about: About | None = None,
         actor_id: UUID | None = None,
     ) -> Notification | None:
-        """Create a notification and schedule Mattermost forwarding.
+        """Create a notification about an item and schedule Mattermost forwarding.
 
-        The single entry point for notifications about an item.  *about* is
-        the item the text names; by default it is read off the related ids.
-        Returns ``None`` (and sends nothing) when the recipient may not read
-        that item.
-
-        A notification hands an agent work, so an agent only receives one
-        caused by a super_admin (``agent_rules``): *actor_id*, or else the
-        sender.  Without either the system sends it, and the system does
-        not instruct agents.
+        *about* is the item the text names (default: read off the related
+        ids).  Returns ``None`` when the recipient may not read it, or is an
+        agent that *actor_id* (else the sender) may not instruct
+        (``agent_rules``).
         """
         about = about or _about_related(data)
         if about is not None and not await self.may_read(data.person_id, about):
@@ -227,20 +213,6 @@ class NotificationService:
             actor_id=actor_id,
         )
 
-    async def notify_task_overdue(self, task: Task) -> Notification | None:
-        if task.assignee_id is None:
-            return None
-        return await self.send(
-            NotificationCreate(
-                person_id=task.assignee_id,
-                type="task_overdue",
-                title=f"Taak te laat: {task.title}",
-                message=f"De deadline voor taak '{task.title}' is verstreken.",
-                related_node_id=task.node_id,
-                related_task_id=task.id,
-            )
-        )
-
     async def notify_node_updated(
         self, node: CorpusNode, actor: Person
     ) -> list[Notification]:
@@ -258,33 +230,6 @@ class NotificationService:
                 for person_id in by_node.get(node.id, [])
             ],
             actor_id=actor.id,
-        )
-
-    async def notify_coverage_needed(
-        self, absent_person: Person, nodes: list[CorpusNode]
-    ) -> list[Notification]:
-        """Notify relevant people that coverage is needed because someone is absent."""
-        if not nodes:
-            return []
-        node_map = {node.id: node for node in nodes}
-        by_node = await self._stakeholder_ids(
-            list(node_map), exclude={absent_person.id}
-        )
-        return await self._send_all(
-            [
-                NotificationCreate(
-                    person_id=person_id,
-                    type="coverage_needed",
-                    title=f"Vervanging nodig: {node_map[node_id].title}",
-                    message=(
-                        f"{absent_person.naam} is afwezig. "
-                        f"Vervanging is nodig voor '{node_map[node_id].title}'."
-                    ),
-                    related_node_id=node_id,
-                )
-                for node_id, person_ids in by_node.items()
-                for person_id in person_ids
-            ]
         )
 
     async def notify_parlementair_item_imported(

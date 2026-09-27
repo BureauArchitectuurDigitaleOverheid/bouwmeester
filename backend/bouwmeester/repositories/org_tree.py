@@ -61,8 +61,7 @@ async def get_chains(
 ) -> dict[UUID, set[UUID]]:
     """``{eenheid: itself plus every eenheid above it}`` for many, in one query.
 
-    The bulk form of :func:`get_self_and_ancestor_ids`.  An id that does not
-    exist maps to just itself, like the single form.
+    An id that does not exist maps to just itself.
     """
     if not eenheid_ids:
         return {}
@@ -88,28 +87,6 @@ async def get_chains(
     return chains
 
 
-async def get_ancestor_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
-    """Return every eenheid above any of *eenheid_ids* (not the ids themselves)."""
-    if not eenheid_ids:
-        return set()
-    cte = (
-        select(OrganisatieEenheid.parent_id.label("id"))
-        .where(
-            OrganisatieEenheid.id.in_(eenheid_ids),
-            OrganisatieEenheid.parent_id.isnot(None),
-        )
-        .cte(name="parents", recursive=True)
-    )
-    cte = cte.union(
-        select(OrganisatieEenheid.parent_id).where(
-            OrganisatieEenheid.id == cte.c.id,
-            OrganisatieEenheid.parent_id.isnot(None),
-        )
-    )
-    result = await session.execute(select(cte.c.id))
-    return set(result.scalars().all())
-
-
 async def get_subtree_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
     """Return *eenheid_ids* plus every eenheid below any of them."""
     if not eenheid_ids:
@@ -127,21 +104,12 @@ async def get_subtree_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set
 
 
 async def touches_organisation(session: AsyncSession, eenheid_id: UUID) -> bool:
-    """True if *eenheid_id* or an eenheid above it is internal.
-
-    An external organisation that hangs below a ministerie is a matter of
-    the internal organisation: its managers decide about its members and
-    about taking it out again (``core.authority``).
-    """
+    """True if *eenheid_id* or an eenheid above it is internal."""
     return bool(await get_touching_ids(session, [eenheid_id]))
 
 
 async def get_touching_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
-    """The eenheden of *eenheid_ids* that touch the organisation.
-
-    The one definition, for many at once: the eenheid itself or an eenheid
-    above it is internal (see :func:`touches_organisation`).
-    """
+    """The eenheden of *eenheid_ids* that are internal or hang below one."""
     chains = await get_chains(session, list(eenheid_ids))
     internal = await get_internal_ids(session, list(set().union(*chains.values())))
     return {eid for eid, chain in chains.items() if chain & internal}
@@ -178,22 +146,15 @@ def placement_active(today: date | None = None):
 
 
 def placement_trusted():
-    """SQL: the placement gives access (``TRUSTED_PLACEMENT_BRONNEN``).
-
-    Every other placement is informational: it shows who works where, but
-    gives neither visibility nor the grants held by the eenheid.
-    """
+    """SQL: the placement gives access (``TRUSTED_PLACEMENT_BRONNEN``)."""
     return PersonOrganisatieEenheid.bron.in_(TRUSTED_PLACEMENT_BRONNEN)
 
 
 def membership_ids_select(*person_ids: UUID) -> Select:
     """SELECT the eenheden the persons are members of today, for access.
 
-    The one definition of membership: an active, trusted placement.
-    Visibility (own eenheden, read up the line), the implicit viewer role,
-    edit shares and resource roles held by an eenheid all resolve through
-    it; use it as a subquery where a join is needed.  One row per
-    placement, so several persons can be counted per eenheid.
+    The one definition of membership: an active, trusted placement.  One
+    row per placement, so several persons can be counted per eenheid.
     """
     return select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
         PersonOrganisatieEenheid.person_id.in_(person_ids),
@@ -205,10 +166,8 @@ def membership_ids_select(*person_ids: UUID) -> Select:
 async def get_membership_ids(session: AsyncSession, person_id: UUID) -> list[UUID]:
     """The eenheden *person_id* is a member of today (see ``membership_ids_select``).
 
-    Ordered longest-running first: earliest ``start_datum`` of a trusted,
-    active placement, then eenheid naam, then id.  Whoever needs "the"
-    own eenheid of someone with several placements takes the first one,
-    so REST and chat pick the same eenheid.
+    Longest-running first (then naam, id), so whoever needs "the" own
+    eenheid takes the first one and REST and chat agree.
     """
     eenheid_id = PersonOrganisatieEenheid.organisatie_eenheid_id
     stmt = (
@@ -333,11 +292,9 @@ async def eenheid_references(
 ) -> list[str]:
     """What refers to *eenheid_id*, as ``"<n> <label>"`` parts (empty: nothing).
 
-    Without *structure*: what its members reach through it (resources in
-    it, grants it holds, shares from or to it).  With *structure* also the
-    eenheden below it, its placements and the roles held on it: everything
-    that deleting it would cascade away or leave without an eenheid (which
-    makes it tenant-wide).
+    Without *structure*: what its members reach through it (resources,
+    grants, shares).  With *structure* also what deleting it would cascade
+    away: eenheden below it, its placements and roles.
     """
     parts = []
     for label, stmt in _reference_queries(eenheid_id, structure=structure):

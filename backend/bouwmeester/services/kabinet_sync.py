@@ -22,6 +22,7 @@ import yaml
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
@@ -29,7 +30,6 @@ from bouwmeester.models.tooi_sync_log import TooiSyncLog
 from bouwmeester.services.sync_matching import (
     PersonMatch,
     create_sync_person,
-    escape_like,
     match_sync_person,
 )
 

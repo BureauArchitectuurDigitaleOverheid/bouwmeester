@@ -251,18 +251,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def count_personen(self, id: UUID) -> int:
-        stmt = (
-            select(func.count())
-            .select_from(PersonOrganisatieEenheid)
-            .where(
-                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
-                PersonOrganisatieEenheid.eind_datum.is_(None),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one()
-
     async def count_personen_batch(
         self,
         ids: list[UUID],

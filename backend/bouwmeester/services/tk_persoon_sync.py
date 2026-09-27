@@ -96,32 +96,6 @@ async def fetch_fractiezetel_personen(*, alleen_actief: bool = True) -> list[dic
     return out
 
 
-async def fetch_oud_kamerleden() -> list[dict]:
-    """Persoon-records waar Functie='Oud Kamerlid' (voor naam-fuzzy-match).
-
-    Wordt door kabinet_sync gebruikt om bewindspersonen-met-TK-historie
-    aan een tk_persoon_id te koppelen (bv. Pieter Heerma was Tweede
-    Kamerlid en is nu minister BZK).
-
-    LET OP: dit kunnen er ~3000 zijn. Alleen ophalen wanneer expliciet
-    nodig (kabinet-sync), niet als reguliere sync — anders DB-bloat.
-    """
-    out: list[dict] = []
-    url: str | None = (
-        f"{ODATA_BASE}/Persoon"
-        f"?$filter=Verwijderd eq false and Functie eq 'Oud Kamerlid'"
-        f"&$top={PAGE_SIZE}"
-    )
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        while url:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            payload = resp.json()
-            out.extend(payload.get("value", []))
-            url = payload.get("@odata.nextLink")
-    return out
-
-
 async def fetch_eerste_kamerleden() -> list[dict]:
     """Persoon-records waar Functie='Eerste Kamerlid' en niet-verwijderd."""
     out: list[dict] = []
@@ -149,11 +123,8 @@ async def _get_eenheid(session: AsyncSession, naam: str) -> OrganisatieEenheid |
 class _TkPersons:
     """TK persons by their stable ``tk_persoon_id``.
 
-    Only persons the sync may place (``sync_matching``): never an account or
-    a person with an email address, even when it carries the key (after a
-    merge, say).  The key then moves to a new person of the sync, logged as
-    a conflict for reconciliation, so the trusted placement never lands on
-    the account.
+    Only persons the sync may place (``sync_matching``).  A key held by
+    anyone else (an account after a merge) moves to a new sync person.
     """
 
     usable: dict[str, Person]
