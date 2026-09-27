@@ -12,6 +12,8 @@ from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    approve_placement_requests,
+    bron_after_change,
     placement_bron,
     require_can_delete_person,
     require_can_edit_person,
@@ -32,7 +34,6 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import (
-    PLACEMENT_BRON_LEIDINGGEVENDE,
     TRUSTED_PLACEMENT_BRONNEN,
     PersonOrganisatieEenheid,
 )
@@ -613,7 +614,8 @@ async def add_person_organisatie(
     """Place a person in an org unit. Returns 409 if already active in that unit.
 
     A manager placing someone who already has an informational placement
-    there (contact administration) confirms that placement instead.
+    there (contact administration) confirms that placement instead.  A
+    trusted placement also settles a pending placement request for it.
     """
     person, eenheid = await _require_can_place(
         db, perm_ctx, id, data.organisatie_eenheid_id
@@ -653,6 +655,13 @@ async def add_person_organisatie(
         db.add(placement)
     await db.flush()
     await db.refresh(placement)
+    if bron in TRUSTED_PLACEMENT_BRONNEN:
+        await approve_placement_requests(
+            db,
+            person_id=id,
+            eenheid_id=data.organisatie_eenheid_id,
+            decided_by=perm_ctx.person_id,
+        )
 
     await log_activity(
         db,
@@ -691,7 +700,11 @@ async def update_person_organisatie(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonOrganisatieResponse:
-    """Update an org placement (e.g. set eind_datum to end placement)."""
+    """Update an org placement (e.g. set eind_datum to end placement).
+
+    Changing or reopening a trusted placement keeps it trusted only for who
+    decides about the members (``bron_after_change``).
+    """
     stmt = select(PersonOrganisatieEenheid).where(
         PersonOrganisatieEenheid.id == placement_id,
         PersonOrganisatieEenheid.person_id == id,
@@ -709,12 +722,12 @@ async def update_person_organisatie(
         db, perm_ctx, id, placement.organisatie_eenheid_id, ending=ending
     )
 
+    if not ending:
+        placement.bron = await bron_after_change(
+            db, perm_ctx, person, eenheid, placement.bron
+        )
     for key, value in update_data.items():
         setattr(placement, key, value)
-    if not ending and placement.bron == PLACEMENT_BRON_LEIDINGGEVENDE:
-        # Changed or reopened by someone else than a manager: no longer
-        # trusted (see ``placement_bron``).
-        placement.bron = await placement_bron(db, perm_ctx, person, eenheid)
     await db.flush()
     await db.refresh(placement)
 

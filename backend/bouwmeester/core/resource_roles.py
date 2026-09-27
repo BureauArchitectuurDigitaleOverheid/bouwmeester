@@ -42,8 +42,14 @@ RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
         # Informational: the person is the client's contact, no access.
         "contactpersoon": set(),
     },
+    # A role on an eenheid: it applies below the eenheid too (``core.authz``).
     "organisatie_eenheid": {
-        "eigenaar": {"org:manage", "org:update", "resource_permission:manage"},
+        "eigenaar": {
+            "org:create",
+            "org:manage",
+            "org:update",
+            "resource_permission:manage",
+        },
     },
 }
 

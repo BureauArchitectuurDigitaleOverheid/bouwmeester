@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    approve_placement_requests,
     can_confirm_members,
     confirmable_eenheid_ids,
     require_can_decide_placement_request,
@@ -251,10 +252,6 @@ async def approve_placement(
             status_code=409, detail="Deze persoon is al ingedeeld bij deze eenheid"
         )
 
-    req.status = "approved"
-    req.decided_at = datetime.now(UTC)
-    req.decided_by = current_user.id if current_user else None
-
     if already:
         # An informational placement (contact administration): approving
         # confirms it.
@@ -270,17 +267,12 @@ async def approve_placement(
             )
         )
     await db.flush()
-
-    # Notify the requester
-    eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
-    notif_svc = NotificationService(db)
-    await notif_svc.send(
-        NotificationCreate(
-            person_id=req.person_id,
-            type="placement_approved",
-            title=f"Toegevoegd aan: {eenheid_naam}",
-            message=f"Je bent toegevoegd aan '{eenheid_naam}'.",
-        )
+    # Settles this request (and any duplicate) and notifies the requester.
+    await approve_placement_requests(
+        db,
+        person_id=req.person_id,
+        eenheid_id=req.organisatie_eenheid_id,
+        decided_by=current_user.id if current_user else None,
     )
 
     return _to_response(req)

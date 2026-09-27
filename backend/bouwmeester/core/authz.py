@@ -36,17 +36,20 @@ permission can also be asked on its parent
 (``require(db, ctx, "edge:create", "corpus_node", node_id)``): it is
 decided as write access on that parent.  A new opdracht lands in every
 eenheid it names, so creating one needs the permission in each of them.
-A new internal eenheid is placed below its parent (``org:create`` there);
-so is an external one (a stakeholder) whose parent touches the internal
-organisation.  Outside the organisation an external one goes anywhere for
-whoever holds ``org:create`` somewhere.  Moving an existing lead, task or opdracht is
-:func:`require_move`: taking it away where it is and adding it where it
-goes.
+A new eenheid below a parent is decided on that parent: ``org:create``
+held there (a role on it or above it, or the eigenaar role of an external
+organisation on it or above it).  A new root is free for an external type
+(a gemeente, a stichting) for whoever holds ``org:create`` somewhere, and
+for system roles only when internal.  Moving an existing lead, task or
+opdracht is :func:`require_move`: taking it away where it is and adding it
+where it goes; moving an eenheid is ``core.authority``.
 
 Rules of the model: seeing never implies writing, writing always implies
 seeing, and a permission only counts where it holds.  ``core.org_context``
-and ``core.initiatief_context`` build the visibility (read up the line,
-shares, resource roles); this module asks them for reads.
+and ``core.initiatief_context`` build the visibility (members of the
+internal organisation read up its line, members of an external eenheid see
+that eenheid only; shares, resource roles); this module asks them for
+reads.
 ``core.authority`` builds on it for decisions about grants.
 
 One deliberate exception to read visibility: exporting the corpus and its
@@ -91,15 +94,18 @@ Resolution order (first match wins; every step can only allow):
    The modules that can be switched off per eenheid and are gated as a
    whole (``_MODULE_GATED``: tasks, opdrachten) also need their
    ``<type>:read`` somewhere, for reading and writing alike (only a
-   resource role on the resource itself still counts without it); the
-   list filters apply the same gate.  Nodes, initiatieven and leads have no
+   resource role on the resource itself still counts without it, and the
+   assignee still reads their own task); the list filters apply the same
+   gate.  Nodes, initiatieven and leads have no
    such gate: their readers include people who only hold a resource role.
 1. super_admin, or *permission* from a system-level role.  Synced eenheden
    (``bron`` other than ``handmatig``: TOOI, scrapes) are read-only for
    everyone but super_admin.
 2. A resource role on the resource itself (``ResourcePermission``, direct or
    through an eenheid the person is placed in), mapped through
-   ``RESOURCE_ROLE_PERMISSIONS``.
+   ``RESOURCE_ROLE_PERMISSIONS``.  An eenheid's eigenaar role is a role on
+   an eenheid and applies below it like any other: it counts on the
+   eenheid, on everything below it, and for a new eenheid below them.
 3. Parent delegation (``_DELEGATIONS`` below): the resource's rights come
    from its parent.  The permission is translated to the parent's domain:
    ``read`` stays ``read``, ``create``/``update`` become ``update``,
@@ -111,10 +117,9 @@ Resolution order (first match wins; every step can only allow):
    hold there.  Read shares only give visibility.
 5. Tenant-wide fallback, only for the types in ``_TENANT_WIDE_WHEN_UNSCOPED``
    and only when the resource has no eenheid and no parent: *permission*
-   held through any role, anywhere.  Creating an external
-   organisatie_eenheid outside the internal organisation is free in the
-   same way (stakeholder eenheden live anywhere outside it; naming a
-   manager is a grant decided by ``core.authority``).
+   held through any role, anywhere.  Creating a new external root
+   organisatie_eenheid is free in the same way (a stakeholder at the top;
+   naming a manager is a grant decided by ``core.authority``).
 
 Delegation table (child -> parent; any parent suffices):
 
@@ -221,10 +226,8 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
     get_chains,
     get_membership_ids,
-    get_organisation_ids,
     get_self_and_ancestor_ids,
     get_subtree_ids,
-    touches_organisation,
 )
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.shared_access import share_active_today
@@ -338,7 +341,7 @@ class _Location:
     read_only: bool = False  # a synced eenheid: only super_admin writes
     assignee_id: UUID | None = None  # a task's assignee, who always reads it
     # A new resource that may go anywhere: the permission anywhere decides
-    # (an external organisatie_eenheid).
+    # (a new external root organisatie_eenheid).
     free_create: bool = False
 
 
@@ -406,21 +409,24 @@ def _task_location(
 
 
 async def _place_eenheid(db: AsyncSession, cache: dict, place: Any) -> _Location:
-    """Where a new eenheid goes: inside the organisation under its parent.
+    """Where a new eenheid goes: below its parent, or at the top.
 
-    An internal eenheid (ministerie down to team) becomes part of the
-    organisation below its parent, so ``org:create`` on the parent decides
-    (no parent: system roles only).  So does an external one (a gemeente, a
-    stakeholder) whose parent touches the organisation: its members would
-    see up that line.  Elsewhere an external eenheid is free:
-    ``org:create`` held anywhere suffices.
+    Below a parent it lives in that parent, whatever its type, so
+    ``org:create`` held on the parent decides (a role there or above it,
+    or an eenheid's eigenaar role there or above it).  A new root: an
+    external one (a gemeente, a stichting) is free, ``org:create`` held
+    anywhere suffices; an internal one is for system roles only.
     """
     parent_id = _field(place, "parent_id")
-    if _field(place, "type") in INTERNAL_EENHEID_TYPES or (
-        parent_id is not None and await touches_organisation(db, parent_id)
-    ):
-        return _Location(eenheid_ids=_eenheden(parent_id))
+    if parent_id is not None:
+        return _Location(eenheid_ids=(parent_id,))
+    if _field(place, "type") in INTERNAL_EENHEID_TYPES:
+        return _Location()
     return _Location(free_create=True)
+
+
+def _is_assignee(perm_ctx: PermissionContext, loc: _Location) -> bool:
+    return loc.assignee_id is not None and loc.assignee_id == perm_ctx.person_id
 
 
 def _synced(bron: str | None) -> bool:
@@ -983,6 +989,34 @@ async def _holds_resource_role(
     return any(permission in role_perms.get(r, ()) for r in held.get(resource_id, ()))
 
 
+async def _holds_eenheid_role(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    permission: str,
+    eenheid_ids: Iterable[UUID],
+) -> bool:
+    """Step 2 for eenheden: an eenheid role (eigenaar) on it or above it.
+
+    A role on an eenheid applies below it, so the eigenaar of an external
+    organisation maintains what hangs below it and creates there.
+    """
+    if perm_ctx.person_id is None:
+        return False
+    role_perms = RESOURCE_ROLE_PERMISSIONS["organisatie_eenheid"]
+    held = await _resource_roles(db, perm_ctx, "organisatie_eenheid")
+    granted = {
+        eid
+        for eid, rols in held.items()
+        if any(permission in role_perms.get(rol, ()) for rol in rols)
+    }
+    if not granted:
+        return False
+    for eid in eenheid_ids:
+        if await _chain(db, perm_ctx, eid) & granted:
+            return True
+    return False
+
+
 async def _holds_on_eenheden(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -1074,12 +1108,15 @@ async def _resolve(
 
     # A switched-off module is off for reading and writing alike, so what
     # you may write you can also see.  Only a resource role on the resource
-    # itself (an opdracht eigenaar) still counts, for both.
+    # itself (an opdracht eigenaar) still counts, for both, and the assignee
+    # still reads their own task (``sees_task``).
     if (
         own_domain
         and resource_type in _MODULE_GATED
         and resource_type not in readable_modules(perm_ctx)
     ):
+        if verb == "read" and _is_assignee(perm_ctx, loc):
+            return True
         return await _holds_resource_role(
             db, perm_ctx, permission, resource_type, resource_id
         )
@@ -1109,8 +1146,13 @@ async def _resolve(
             await _decide(db, perm_ctx, parent_perm, resource_type, resource_id, place)
         )
 
-    # 2. A resource role on the resource itself.
-    if await _holds_resource_role(db, perm_ctx, permission, resource_type, resource_id):
+    # 2. A resource role on the resource itself (an eenheid role: or above it).
+    if resource_type == "organisatie_eenheid":
+        if await _holds_eenheid_role(db, perm_ctx, permission, loc.eenheid_ids):
+            return True
+    elif await _holds_resource_role(
+        db, perm_ctx, permission, resource_type, resource_id
+    ):
         return True
 
     # 3. Parent delegation.
@@ -1271,47 +1313,35 @@ async def eenheid_ids_where(
     """The eenheden where ``can`` allows an ``org:*`` *permission*; None: all.
 
     ``org:update`` / ``org:manage`` are asked on the eenheid itself,
-    ``org:create`` as creating an eenheid below it (of *eenheid_type*;
-    none: an internal one).  Candidates are the subtrees of the eenheden
-    where a scoped role grants the permission (it applies below them) and
-    the eenheden a resource role covers; each is then decided by
-    :func:`can`, so this list and the decisions agree.  An external type
-    may also go below every eenheid outside the internal organisation, for
-    whoever holds ``org:create`` anywhere (``_place_eenheid``).
+    ``org:create`` as creating an eenheid (of *eenheid_type*) below it.
+    Candidates are the subtrees of the eenheden where a scoped role or an
+    eenheid role (eigenaar) grants the permission (both apply below them);
+    each is then decided by :func:`can`, so this list and the decisions
+    agree.  A new root is no eenheid and is asked through ``can``.
     """
     if perm_ctx.is_super_admin or perm_ctx.has_system_permission(permission):
         return None
-    roots = [
+    roots = {
         eid for eid, perms in perm_ctx.scoped_permissions.items() if permission in perms
-    ]
-    candidates = await get_subtree_ids(db, roots)
-    creating = permission.endswith(":create")
-    if not creating and perm_ctx.person_id is not None:
+    }
+    if perm_ctx.person_id is not None:
         granting = RESOURCE_ROLE_PERMISSIONS["organisatie_eenheid"]
         for eid, rols in (
             await _resource_roles(db, perm_ctx, "organisatie_eenheid")
         ).items():
             if any(permission in granting.get(rol, ()) for rol in rols):
-                candidates.add(eid)
+                roots.add(eid)
+    candidates = await get_subtree_ids(db, list(roots))
     await prefetch(db, perm_ctx, "organisatie_eenheid", candidates)
     allowed = set()
     for eid in candidates:
-        if creating:
-            ok = await can(
-                db, perm_ctx, permission, "organisatie_eenheid", eenheid_id=eid
-            )
+        if permission.endswith(":create"):
+            place = {"parent_id": eid, "type": eenheid_type}
+            ok = await can(db, perm_ctx, permission, "organisatie_eenheid", place=place)
         else:
             ok = await can(db, perm_ctx, permission, "organisatie_eenheid", eid)
         if ok:
             allowed.add(eid)
-    if (
-        creating
-        and eenheid_type is not None
-        and eenheid_type not in INTERNAL_EENHEID_TYPES
-        and perm_ctx.has_permission(permission)
-    ):
-        everything = set((await db.scalars(select(OrganisatieEenheid.id))).all())
-        allowed |= everything - await get_organisation_ids(db)
     return allowed
 
 

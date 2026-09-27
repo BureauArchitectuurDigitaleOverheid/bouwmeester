@@ -32,8 +32,9 @@ class AuthzResourceProperties(BaseModel):
     # Grant actions on a resource: the eenheid a rol goes to, instead of a
     # person.
     target_eenheid_id: UUID | None = None
-    # ``org:create``: the type of the new eenheid (an internal type needs the
-    # permission on the parent in ``eenheid_id``).
+    # ``org:create``: the type of the new eenheid (below a parent in
+    # ``eenheid_id`` the permission on it decides; at the top an internal
+    # type is system-only).
     eenheid_type: str | None = Field(default=None, max_length=100)
 
 

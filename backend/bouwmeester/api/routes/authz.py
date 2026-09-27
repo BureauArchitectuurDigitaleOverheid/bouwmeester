@@ -308,11 +308,11 @@ async def evaluate(
       ``corpus_node``, ``lead:create`` on an ``initiatief``.
     - A new eenheid: ``org:create`` on ``organisatie_eenheid`` with
       ``properties.eenheid_type`` and optional ``properties.eenheid_id``
-      (the parent).  An internal type needs ``org:create`` on the parent
-      (no parent: system roles only), and so does an external type below a
-      parent that touches the internal organisation; elsewhere an external
-      type is free for anyone holding ``org:create`` somewhere.  Without
-      ``eenheid_type`` and with ``eenheid_id``: an internal eenheid below it.
+      (the parent).  Below a parent ``org:create`` on that parent decides,
+      for any type; without a parent an external type is free for anyone
+      holding ``org:create`` somewhere and an internal type is for system
+      roles only.  Without ``eenheid_type`` and with ``eenheid_id``: an
+      eenheid below it.
     - ``properties.anywhere: true`` (no id): is there any eenheid where the
       caller may create this?  For generic create buttons (a task, a lead
       without initiatief).  For ``lead:create`` on ``lead`` this is exactly
@@ -433,11 +433,9 @@ async def eenheden_allowed(
 
     - ``org:update``, ``org:manage``: on the eenheid itself (synced eenheden
       are read-only, so they are left out);
-    - ``org:create``: creating an eenheid of ``eenheid_type`` below it (no
-      type: an internal one).  Inside the internal organisation that needs
-      ``org:create`` on the parent, for an external type too; an external
-      type may go below any eenheid outside it.  Creating one at the top
-      is asked through the evaluation endpoint;
+    - ``org:create``: creating an eenheid of ``eenheid_type`` below it,
+      which needs ``org:create`` on it whatever the type.  Creating one at
+      the top is asked through the evaluation endpoint;
     - ``people:assign_role``: some role may be assigned there;
     - ``person:place``: another person's account may be placed there.
 

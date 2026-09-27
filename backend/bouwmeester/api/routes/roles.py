@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_assign_role,
+    require_can_assign_roles_in,
     require_can_revoke_role,
 )
 from bouwmeester.core.database import get_db
@@ -131,10 +132,11 @@ async def list_person_roles(
 )
 async def list_eenheid_roles(
     eenheid_id: UUID,
-    _perm=Depends(require_permission("people:assign_role")),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
-    """List role assignments scoped to an eenheid."""
+    """List role assignments scoped to an eenheid, for who assigns roles there."""
+    await require_can_assign_roles_in(db, perm, eenheid_id)
     repo = PersonRoleRepository(db)
     assignments = await repo.list_for_eenheid(eenheid_id)
     return [_assignment_to_response(a) for a in assignments]

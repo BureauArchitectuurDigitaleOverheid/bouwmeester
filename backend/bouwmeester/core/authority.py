@@ -19,7 +19,7 @@ on E or on any ancestor of E.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from fastapi import HTTPException, status
@@ -27,6 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import (
+    EenheidRights,
     can,
     eenheid_ids_where,
     get_eenheid_ids,
@@ -47,6 +48,7 @@ from bouwmeester.models.person_organisatie import (
     PLACEMENT_BRON_DETACHERING,
     PLACEMENT_BRON_HANDMATIG,
     PLACEMENT_BRON_LEIDINGGEVENDE,
+    TRUSTED_PLACEMENT_BRONNEN,
     PersonOrganisatieEenheid,
 )
 from bouwmeester.models.resource_permission import ResourcePermission
@@ -54,6 +56,7 @@ from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
     eenheid_references,
+    get_internal_ids,
     get_membership_ids,
     get_self_and_ancestor_ids,
     get_subtree_ids,
@@ -97,8 +100,9 @@ async def can_confirm_members(
     (``can_manage_members``).  An external organisation outside it (a
     gemeente, a stichting) usually has no manager, so there whoever holds
     ``org:manage`` on it decides as well: typically the eigenaar who
-    created it.  Placing, confirming a placement and deciding a placement
-    request all ask this.
+    created it (or created an eenheid above it: the role applies below).
+    Placing, confirming a placement and deciding a placement request all
+    ask this.
     """
     if await can_manage_members(db, perm_ctx, eenheid_id):
         return True
@@ -122,9 +126,9 @@ async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
     """People who may decide about the members of *eenheid_id*.
 
     Everyone holding a manager role on the eenheid or on any eenheid above
-    it, and for an external organisation outside the internal one its
-    eigenaren: the people ``can_confirm_members`` lets through (a system
-    role aside).
+    it, and for an external organisation outside the internal one the
+    eigenaren of it or of an eenheid above it: the people
+    ``can_confirm_members`` lets through (a system role aside).
     """
     chain = await get_self_and_ancestor_ids(db, eenheid_id)
     today = date.today()
@@ -141,7 +145,7 @@ async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
         owners = await db.scalars(
             select(ResourcePermission.person_id).where(
                 ResourcePermission.resource_type == "organisatie_eenheid",
-                ResourcePermission.resource_id == eenheid_id,
+                ResourcePermission.resource_id.in_(chain),
                 ResourcePermission.rol == "eigenaar",
                 ResourcePermission.person_id.isnot(None),
             )
@@ -283,6 +287,86 @@ async def placement_bron(
     return PLACEMENT_BRON_HANDMATIG
 
 
+async def bron_after_change(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    person: Person,
+    eenheid: OrganisatieEenheid,
+    bron: str,
+) -> str:
+    """The bron of a placement after the caller changes or reopens it.
+
+    An informational placement keeps its bron.  A trusted one stays trusted
+    only when the caller decides about the members (``can_confirm_members``);
+    otherwise a manager's placement becomes what the caller would record
+    (``placement_bron``: contact administration or a detachering), and a
+    placement an official sync brought is refused (403): the sync owns it.
+    Ending a placement only takes access away and is not a change here.
+    """
+    if bron not in TRUSTED_PLACEMENT_BRONNEN:
+        return bron
+    if await can_confirm_members(db, perm_ctx, eenheid.id):
+        return bron
+    if bron != PLACEMENT_BRON_LEIDINGGEVENDE:
+        raise _forbidden(
+            "Deze plaatsing komt uit een officiële bron. Alleen wie over de "
+            f"leden van {eenheid.naam} beslist, wijzigt of heropent hem."
+        )
+    return await placement_bron(db, perm_ctx, person, eenheid)
+
+
+async def approve_placement_requests(
+    db: AsyncSession,
+    *,
+    person_id: UUID,
+    eenheid_id: UUID,
+    decided_by: UUID | None,
+) -> list[OrgPlacementRequest]:
+    """Mark every pending request of *person_id* for *eenheid_id* approved.
+
+    Called once the placement is trusted, by approving a request or by
+    confirming the placement directly, so no request stays in the queue for
+    a membership that already exists.  The requester is notified once.
+    """
+    from bouwmeester.schema.notification import NotificationCreate
+    from bouwmeester.services.notification_service import NotificationService
+
+    requests = list(
+        (
+            await db.scalars(
+                select(OrgPlacementRequest).where(
+                    OrgPlacementRequest.person_id == person_id,
+                    OrgPlacementRequest.organisatie_eenheid_id == eenheid_id,
+                    OrgPlacementRequest.status == "pending",
+                )
+            )
+        ).all()
+    )
+    if not requests:
+        return []
+    now = datetime.now(UTC)
+    for req in requests:
+        req.status = "approved"
+        req.decided_at = now
+        req.decided_by = decided_by
+    await db.flush()
+    eenheid_naam = (
+        await db.scalar(
+            select(OrganisatieEenheid.naam).where(OrganisatieEenheid.id == eenheid_id)
+        )
+        or ""
+    )
+    await NotificationService(db).send(
+        NotificationCreate(
+            person_id=person_id,
+            type="placement_approved",
+            title=f"Toegevoegd aan: {eenheid_naam}",
+            message=f"Je bent toegevoegd aan '{eenheid_naam}'.",
+        )
+    )
+    return requests
+
+
 async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
     """Turn contact placements into requests when a contact becomes an account.
 
@@ -391,22 +475,6 @@ async def _has_internal_descendant(db: AsyncSession, eenheid_id: UUID) -> bool:
     return hit is not None
 
 
-async def _has_trusted_members(db: AsyncSession, eenheid_id: UUID) -> bool:
-    """True if *eenheid_id* or an eenheid below it has a trusted placement."""
-    hit = await db.scalar(
-        select(PersonOrganisatieEenheid.id)
-        .where(
-            PersonOrganisatieEenheid.organisatie_eenheid_id.in_(
-                await get_subtree_ids(db, [eenheid_id])
-            ),
-            placement_trusted(),
-            placement_not_ended(),
-        )
-        .limit(1)
-    )
-    return hit is not None
-
-
 async def require_can_move_eenheid(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -417,47 +485,63 @@ async def require_can_move_eenheid(
 ) -> None:
     """Guard moving an eenheid or changing it between internal and external.
 
-    Whoever manages a parent manages everything below it, and members see
-    all their ancestors.  So when an internal eenheid is involved (before or
-    after, the eenheid itself or anything below it), the caller must manage
-    the eenheid itself and the new parent.  Detaching into a new root is
-    super_admin-only.
+    Moving is taking the eenheid away below its old parent and creating it
+    below the new one, so the caller needs authority on both.
+
+    When an internal eenheid is involved (before or after, the eenheid
+    itself or anything below it), managers decide: whoever manages a parent
+    manages everything below it.  The caller must manage the eenheid, the
+    parent it leaves and the parent it goes to.  Detaching into a new root
+    is super_admin-only.
 
     An external eenheid (without internal parts) moves like it is created
-    (``core.authz``): freely outside the internal organisation, and inside
-    it only with ``org:create`` on the parent, both the one it leaves and
-    the one it goes to.  Its members would then see up the new line, so
-    when anything in it holds a trusted placement, hanging it inside the
-    organisation also needs a manager of the new parent.  Contact
-    placements in it stay informational: moving never confirms them.
+    (``core.authz``): ``org:create`` on the parent it leaves and on the one
+    it goes to; a new root is free.  Taking it out of the organisation (its
+    old parent touches the organisation, its new one does not) hands the
+    decision about its members from the organisation's managers to its
+    eigenaar, so that also needs a manager of the parent it leaves.
+    Contact placements in it stay informational: moving never confirms them.
     """
     if perm_ctx.is_super_admin:
         return
     if new_parent_id == eenheid.parent_id and new_type == eenheid.type:
         return
     internal = {eenheid.type, new_type} & INTERNAL_EENHEID_TYPES
-    if not internal and not await _has_internal_descendant(db, eenheid.id):
-        if new_parent_id == eenheid.parent_id:
-            return
-        for parent_id in (eenheid.parent_id, new_parent_id):
-            await require(
-                db,
-                perm_ctx,
-                "org:create",
-                "organisatie_eenheid",
-                place={"parent_id": parent_id, "type": new_type},
-            )
-        if (
-            new_parent_id is not None
-            and await touches_organisation(db, new_parent_id)
-            and await _has_trusted_members(db, eenheid.id)
-            and not await can_manage_members(db, perm_ctx, new_parent_id)
-        ):
-            raise _forbidden(
-                "Deze eenheid heeft bevestigde leden. Alleen een leidinggevende "
-                "van de nieuwe bovenliggende eenheid kan hem hier onder hangen"
-            )
+    if internal or await _has_internal_descendant(db, eenheid.id):
+        await _require_internal_move(db, perm_ctx, eenheid, new_parent_id)
         return
+    if new_parent_id == eenheid.parent_id:
+        return
+    for parent_id in (eenheid.parent_id, new_parent_id):
+        await require(
+            db,
+            perm_ctx,
+            "org:create",
+            "organisatie_eenheid",
+            place={"parent_id": parent_id, "type": new_type},
+        )
+    leaves = eenheid.parent_id is not None and await touches_organisation(
+        db, eenheid.parent_id
+    )
+    stays = new_parent_id is not None and await touches_organisation(db, new_parent_id)
+    if (
+        leaves
+        and not stays
+        and not await can_manage_members(db, perm_ctx, eenheid.parent_id)
+    ):
+        raise _forbidden(
+            "Alleen een leidinggevende van de bovenliggende eenheid haalt deze "
+            "eenheid uit de organisatie"
+        )
+
+
+async def _require_internal_move(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    eenheid: OrganisatieEenheid,
+    new_parent_id: UUID | None,
+) -> None:
+    """``require_can_move_eenheid`` when an internal eenheid is involved."""
     if not await can_manage_members(db, perm_ctx, eenheid.id):
         raise _forbidden(
             "Alleen een leidinggevende van deze eenheid kan hem verplaatsen "
@@ -467,6 +551,13 @@ async def require_can_move_eenheid(
         return
     if new_parent_id is None:
         raise _forbidden("Alleen systeembeheerders maken een losse eenheid")
+    if eenheid.parent_id is not None and not await can_manage_members(
+        db, perm_ctx, eenheid.parent_id
+    ):
+        raise _forbidden(
+            "Alleen een leidinggevende van de huidige bovenliggende eenheid kan "
+            "deze eenheid daar weghalen"
+        )
     if not await can_manage_members(db, perm_ctx, new_parent_id):
         raise _forbidden(
             "Alleen een leidinggevende van de nieuwe bovenliggende eenheid kan "
@@ -511,6 +602,34 @@ async def _role_rank(db: AsyncSession, role_ids: set[str]) -> int:
     return max(ranks, default=0)
 
 
+async def _assign_role_rights(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
+) -> EenheidRights:
+    """The caller's organisational rights on *eenheid_id*, if they assign roles.
+
+    ``people:assign_role`` must be effective on the eenheid through an
+    organisational role (platform_admin operates the platform, it does not
+    staff the organisation); otherwise 403.
+    """
+    rights = await rights_on_eenheid(
+        db, perm_ctx, eenheid_id, include_system_roles=False
+    )
+    if not rights.has("people:assign_role"):
+        raise _forbidden("Geen bevoegdheid om rollen toe te kennen in deze eenheid")
+    return rights
+
+
+async def require_can_assign_roles_in(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
+) -> None:
+    """Guard seeing and handling the role assignments of *eenheid_id*.
+
+    Who assigns roles in an eenheid (or above it) sees who holds which role
+    there; the ranks each assignment needs are ``require_can_assign_role``.
+    """
+    await _assign_role_rights(db, perm_ctx, eenheid_id)
+
+
 async def _require_role_authority(
     db: AsyncSession,
     perm_ctx: PermissionContext,
@@ -530,11 +649,7 @@ async def _require_role_authority(
         return
     if eenheid_id is None:
         raise _forbidden("Alleen systeembeheerders kennen systeemrollen toe")
-    rights = await rights_on_eenheid(
-        db, perm_ctx, eenheid_id, include_system_roles=False
-    )
-    if not rights.has("people:assign_role"):
-        raise _forbidden("Geen bevoegdheid om rollen toe te kennen in deze eenheid")
+    rights = await _assign_role_rights(db, perm_ctx, eenheid_id)
     if role.rank >= await _role_rank(db, set(rights.roles)):
         raise _forbidden("Je kunt geen rol toekennen op of boven je eigen niveau")
 
@@ -621,11 +736,10 @@ async def require_can_create_eenheid(
 ) -> None:
     """Guard naming a manager when creating an eenheid.
 
-    Where the eenheid may go is ``core.authz`` (``org:create``): inside the
-    internal organisation on its parent, outside it anywhere.  A new
-    eenheid has no members, so it grants nobody anything.  Naming a manager
-    does, and the new eenheid inherits its parent's rights, so the parent
-    decides.
+    Where the eenheid may go is ``core.authz`` (``org:create``): below a
+    parent on that parent, a new external root anywhere.  A new eenheid
+    has no members, so it grants nobody anything.  Naming a manager does,
+    and the new eenheid inherits its parent's rights, so the parent decides.
     """
     if manager_id is None or perm_ctx.is_super_admin:
         return
@@ -654,10 +768,12 @@ async def _manages_person(
 async def _trusted_placement_eenheid_ids(
     db: AsyncSession, person_id: UUID
 ) -> set[UUID]:
-    """Eenheden where *person_id* holds a trusted placement, now or later.
+    """Eenheden where *person_id* holds a trusted placement, ever.
 
-    Current and future ones: a manager's placement of a new hire gives
-    access from its start date.
+    Current and future ones (a manager's placement of a new hire gives
+    access from its start date) and ended ones: only who may confirm the
+    members reopens one and keeps it trusted, but whoever takes over the
+    record is who it is reopened for.
     """
     return set(
         (
@@ -665,7 +781,6 @@ async def _trusted_placement_eenheid_ids(
                 select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
                     PersonOrganisatieEenheid.person_id == person_id,
                     placement_trusted(),
-                    placement_not_ended(),
                 )
             )
         ).all()
@@ -675,11 +790,12 @@ async def _trusted_placement_eenheid_ids(
 async def _membership_reaches(db: AsyncSession, eenheid_id: UUID) -> bool:
     """True if membership of *eenheid_id* gives access to anything.
 
-    Inside the organisation it always does (members read up the line).  An
-    external organisation (a Kamerfractie, a gemeente) only when something
-    hangs on it: resources in it, grants it holds, shares.
+    An internal eenheid always does (its members read up the line).  An
+    external organisation (a Kamerfractie, a gemeente), inside the
+    organisation or not, only when something hangs on it: resources in it,
+    grants it holds, shares.
     """
-    if await touches_organisation(db, eenheid_id):
+    if await get_internal_ids(db, [eenheid_id]):
         return True
     return bool(await eenheid_references(db, eenheid_id))
 

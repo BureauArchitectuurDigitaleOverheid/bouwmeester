@@ -44,7 +44,7 @@ router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
 # Editing or deleting an eenheid: org:update there (held there or above it,
-# or as eigenaar of an external stakeholder eenheid one created).  Synced eenheden
+# or as eigenaar of an external organisation there or above it).  Synced eenheden
 # (TOOI, scrapes) are read-only except for super_admin (``core.authz``).
 # Structural changes are checked by ``core.authority`` on top.
 _UPDATE_EENHEID = requires("org:update", "organisatie_eenheid")
@@ -271,20 +271,19 @@ async def create_organisatie(
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
-    An internal eenheid becomes part of the organisation and needs
-    org:create on its parent; so does an external one (a stakeholder) whose
-    parent touches the internal organisation.  Elsewhere an external one
-    may go under any parent (or none) for anyone with org:create somewhere:
-    stakeholder eenheden often live outside the caller's own ministry.  The
-    aanmaker of an external eenheid becomes its eigenaar so they can
-    maintain it later, even outside their org scope.  An internal eenheid is
-    maintained by the rights on its parent, which it inherits.
+    Below a parent it needs org:create on that parent (a role there or
+    above it, or the eigenaar role of an external organisation there or
+    above it), internal or external alike.  A new external root (a
+    stakeholder at the top) is free for anyone with org:create somewhere;
+    its aanmaker becomes its eigenaar so they can maintain it (and what
+    they later hang below it).  Everything below a parent is maintained
+    through the rights on that parent, which it inherits.
     """
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
-    # Inside the organisation org:create on the parent decides; outside it
-    # an external eenheid (a stakeholder) can go anywhere (``core.authz``).
+    # Below a parent org:create on the parent decides; a new external root
+    # is free (``core.authz``).
     await require(
         db,
         perm_ctx,
@@ -300,6 +299,7 @@ async def create_organisatie(
     if (
         perm_ctx.person_id is not None
         and not perm_ctx.is_super_admin
+        and eenheid.parent_id is None
         and eenheid.type not in INTERNAL_EENHEID_TYPES
     ):
         await ResourcePermissionRepository(db).create_permission(
