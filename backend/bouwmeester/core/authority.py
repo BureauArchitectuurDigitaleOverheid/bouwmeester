@@ -506,6 +506,10 @@ async def require_can_move_eenheid(
     Moving is taking the eenheid away below its old parent and creating it
     below the new one, so the caller needs authority on both.
 
+    Ending up internal is placing an internal eenheid: only below an
+    internal parent where the caller holds ``org:create``; a ministerie
+    (before or after) only by super_admin (``core.authz``).
+
     When an internal eenheid is involved (before or after, the eenheid
     itself or anything below it), managers decide: whoever manages a parent
     manages everything below it.  The caller must manage the eenheid, the
@@ -524,6 +528,18 @@ async def require_can_move_eenheid(
         return
     if new_parent_id == eenheid.parent_id and new_type == eenheid.type:
         return
+    # Where it ends up internal, it is placed like a new internal eenheid
+    # (``core.authz``: only below an internal parent, with org:create there);
+    # a ministerie, before or after, is super_admin's.
+    kind = "ministerie" if "ministerie" in {eenheid.type, new_type} else new_type
+    if kind in INTERNAL_EENHEID_TYPES:
+        await require(
+            db,
+            perm_ctx,
+            "org:create",
+            "organisatie_eenheid",
+            place={"parent_id": new_parent_id, "type": kind},
+        )
     internal = {eenheid.type, new_type} & INTERNAL_EENHEID_TYPES
     if internal or await _has_internal_descendant(db, eenheid.id):
         await _require_internal_move(db, perm_ctx, eenheid, new_parent_id)

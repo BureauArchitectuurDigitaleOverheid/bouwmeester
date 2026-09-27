@@ -39,8 +39,11 @@ eenheid it names, so creating one needs the permission in each of them.
 A new eenheid below a parent is decided on that parent: ``org:create``
 held there (a role on it or above it, or the eigenaar role of an external
 organisation on it or above it).  A new root is free for an external type
-(a gemeente, a stichting) for whoever holds ``org:create`` somewhere, and
-for system roles only when internal.  Moving an existing lead, task or
+(a gemeente, a stichting) for whoever holds ``org:create`` somewhere.  The
+internal organisation only grows inside itself: an internal type only below
+an internal parent; a ministerie, an internal root and an internal eenheid
+below an external one only by super_admin (retyping and moving alike).
+Moving an existing lead, task or
 opdracht is :func:`require_move`: taking it away where it is and adding it
 where it goes; moving an eenheid is ``core.authority``.
 
@@ -68,7 +71,11 @@ external organisation (bron ``detachering``) are informational: they show
 who works where, but give no visibility, no implicit viewer role and no
 share of a resource role or share held by the eenheid.  Moving an eenheid
 never confirms the placements in it.  Roles (``PersonRole``) are separate
-grants and are not affected.
+grants and are not affected.  The implicit viewer role (people directory,
+samenwerkingsverbanden, parlementair items) only comes with membership of
+an eenheid that touches the internal organisation
+(``org_tree.get_touching_ids``): an external root is anyone's to create and
+staff, so its members only get what is granted or shared to it.
 
 Resolution order (first match wins; every step can only allow):
 
@@ -225,6 +232,7 @@ from bouwmeester.models.tag import Tag
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import (
     get_chains,
+    get_internal_ids,
     get_membership_ids,
     get_self_and_ancestor_ids,
     get_subtree_ids,
@@ -338,7 +346,9 @@ class _Location:
     # is decided like creating that parent without an eenheid.
     parents: tuple[tuple[str, UUID | None], ...] = ()
     node_id: UUID | None = None  # the node itself, for node shares
-    read_only: bool = False  # a synced eenheid: only super_admin writes
+    # Only super_admin writes: a synced eenheid, or a new eenheid only
+    # super_admin may create (a ministerie, see ``_place_eenheid``).
+    read_only: bool = False
     assignee_id: UUID | None = None  # a task's assignee, who always reads it
     # A new resource that may go anywhere: the permission anywhere decides
     # (a new external root organisatie_eenheid).
@@ -411,17 +421,27 @@ def _task_location(
 async def _place_eenheid(db: AsyncSession, cache: dict, place: Any) -> _Location:
     """Where a new eenheid goes: below its parent, or at the top.
 
-    Below a parent it lives in that parent, whatever its type, so
-    ``org:create`` held on the parent decides (a role there or above it,
-    or an eenheid's eigenaar role there or above it).  A new root: an
-    external one (a gemeente, a stichting) is free, ``org:create`` held
-    anywhere suffices; an internal one is for system roles only.
+    Below a parent it lives in that parent, so ``org:create`` held on the
+    parent decides (a role there or above it, or an eenheid's eigenaar role
+    there or above it).  A new external root (a gemeente, a stichting) is
+    free: ``org:create`` held anywhere suffices.
+
+    The internal organisation only grows inside itself: an internal type
+    goes below an internal parent, where ``org:create`` decides as above.
+    A ministerie (its top), an internal root and an internal eenheid below
+    an external one are super_admin's (``read_only``).  Retyping or moving
+    an eenheid asks the same (``core.authority.require_can_move_eenheid``).
     """
     parent_id = _field(place, "parent_id")
+    eenheid_type = _field(place, "type")
+    if eenheid_type in INTERNAL_EENHEID_TYPES and (
+        eenheid_type == "ministerie"
+        or parent_id is None
+        or not await get_internal_ids(db, [parent_id])
+    ):
+        return _Location(read_only=True)
     if parent_id is not None:
         return _Location(eenheid_ids=(parent_id,))
-    if _field(place, "type") in INTERNAL_EENHEID_TYPES:
-        return _Location()
     return _Location(free_create=True)
 
 
@@ -1318,13 +1338,30 @@ async def eenheid_ids_where(
     Candidates are the subtrees of the eenheden where a scoped role or an
     eenheid role (eigenaar) grants the permission (both apply below them);
     each is then decided by :func:`can`, so this list and the decisions
-    agree.  A new root is no eenheid and is asked through ``can``.
+    agree.  A new root is no eenheid and is asked through ``can``.  A
+    system role holds everywhere (None), except for creating an internal
+    type, which only goes below an internal eenheid (``_place_eenheid``).
     """
-    if perm_ctx.is_super_admin or perm_ctx.has_system_permission(permission):
+    internal_create = (
+        permission.endswith(":create") and eenheid_type in INTERNAL_EENHEID_TYPES
+    )
+    if perm_ctx.is_super_admin or (
+        perm_ctx.has_system_permission(permission) and not internal_create
+    ):
         return None
     roots = {
         eid for eid, perms in perm_ctx.scoped_permissions.items() if permission in perms
     }
+    if perm_ctx.has_system_permission(permission):
+        roots |= set(
+            (
+                await db.scalars(
+                    select(OrganisatieEenheid.id).where(
+                        OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES)
+                    )
+                )
+            ).all()
+        )
     if perm_ctx.person_id is not None:
         granting = RESOURCE_ROLE_PERMISSIONS["organisatie_eenheid"]
         for eid, rols in (

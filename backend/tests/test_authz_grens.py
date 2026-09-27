@@ -23,6 +23,7 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.services.organogram_scrape import DgInfo, sync_organogram
 from tests.authz_world import World, ask, make_node
 from tests.factories import client_as, grant_role, make_org, make_person, place
 
@@ -511,3 +512,191 @@ async def test_assignee_without_role_reads_own_task(world: World):
     assert other.status_code == 404, other.text
     assert [t["id"] for t in listed.json()] == [str(task.id)]
     assert [t["id"] for t in everything.json()] == [str(task.id)]
+
+
+# ---------------------------------------------------------------------------
+# 4. External members get nothing implicit (round 6, M1)
+# ---------------------------------------------------------------------------
+
+_VIEWER_PERMISSIONS = (
+    "people:read",
+    "people:update",
+    "samenwerkingsverband:read",
+    "parlementair:read",
+)
+
+
+async def _own_root_with_member(world: World) -> tuple[str, Person]:
+    """An editor's own stichting at the top, with a member they confirmed."""
+    member = await make_person(world.db, "Stichtingslid")
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        created = await c.post(
+            "/api/organisatie", json={"naam": "Eigen stichting", "type": "stichting"}
+        )
+        assert created.status_code == 201, created.text
+        root_id = created.json()["id"]
+        placed = await c.post(
+            f"/api/people/{member.id}/organisaties",
+            json={"organisatie_eenheid_id": root_id, "start_datum": str(date.today())},
+        )
+        assert placed.status_code == 201, placed.text
+    return root_id, member
+
+
+async def test_member_of_an_own_external_root_gets_no_implicit_viewer(world: World):
+    _, member = await _own_root_with_member(world)
+    ctx = await perm_ctx_for(world.db, member.id)
+    for perm in _VIEWER_PERMISSIONS:
+        assert not ctx.has_permission(perm), perm
+    async with client_as(world.db, member) as c:
+        people = await c.get("/api/people")
+        edit = await c.put(
+            f"/api/people/{world.person['viewer'].id}", json={"functie": "x"}
+        )
+    assert people.status_code == 403, people.text
+    assert edit.status_code == 403, edit.text
+
+
+async def test_member_of_external_eenheid_inside_keeps_implicit_viewer(world: World):
+    stichting = await make_org(world.db, "Stichting", "stichting", world.org["team"])
+    partner = await make_person(world.db, "Partner")
+    await place(world.db, partner, stichting)
+    ctx = await perm_ctx_for(world.db, partner.id)
+    for perm in _VIEWER_PERMISSIONS:
+        assert ctx.has_permission(perm), perm
+
+
+# ---------------------------------------------------------------------------
+# 5. The internal organisation only grows inside itself (round 6, M3)
+# ---------------------------------------------------------------------------
+
+
+async def _create(world: World, who: str, naam: str, type_: str, parent_id=None):
+    body = {"naam": naam, "type": type_}
+    if parent_id is not None:
+        body["parent_id"] = str(parent_id)
+    async with client_as(world.db, world.person[who]) as c:
+        return await c.post("/api/organisatie", json=body)
+
+
+async def test_no_ministerie_below_an_own_root(world: World):
+    """The attack: an own root, then a ministerie (or a directie) below it."""
+    root_id, _ = await _own_root_with_member(world)
+    for type_ in ("ministerie", "directie", "team"):
+        resp = await _create(world, "team_editor", "Nep", type_, root_id)
+        assert resp.status_code == 403, (type_, resp.text)
+
+
+async def test_no_internal_team_below_a_partner_root(world: World):
+    gemeente, owner, _ = await _gemeente(world)
+    await grant_role(world.db, owner, "editor", world.org["elders"])
+    world.person["gemeente_owner"] = owner
+    resp = await _create(world, "gemeente_owner", "Team", "team", gemeente.id)
+    assert resp.status_code == 403, resp.text
+    external = await _create(world, "gemeente_owner", "Wijk", "gemeente", gemeente.id)
+    assert external.status_code == 201, external.text
+
+
+async def test_ministerie_only_by_super_admin(world: World):
+    below = await _create(
+        world, "manager", "Ministerie", "ministerie", world.org["directie"].id
+    )
+    root = await _create(world, "manager", "Ministerie", "ministerie")
+    assert below.status_code == 403, below.text
+    assert root.status_code == 403, root.text
+    allowed = await _create(world, "super_admin", "Ministerie van Tests", "ministerie")
+    assert allowed.status_code == 201, allowed.text
+
+
+async def test_internal_below_internal_still_works(world: World):
+    resp = await _create(
+        world, "manager", "Nieuw team", "team", world.org["afdeling"].id
+    )
+    assert resp.status_code == 201, resp.text
+
+
+async def test_retyping_an_own_root_into_the_organisation_is_refused(world: World):
+    root_id, _ = await _own_root_with_member(world)
+    async with client_as(world.db, world.person["team_editor"]) as c:
+        for type_ in ("ministerie", "directie"):
+            resp = await c.put(f"/api/organisatie/{root_id}", json={"type": type_})
+            assert resp.status_code == 403, (type_, resp.text)
+
+
+async def test_a_manager_cannot_retype_an_eenheid_into_a_ministerie(world: World):
+    stichting = await make_org(world.db, "Partner", "stichting", world.org["afdeling"])
+    async with client_as(world.db, world.person["manager"]) as c:
+        resp = await c.put(
+            f"/api/organisatie/{stichting.id}", json={"type": "ministerie"}
+        )
+        team = await c.put(f"/api/organisatie/{stichting.id}", json={"type": "team"})
+    assert resp.status_code == 403, resp.text
+    assert team.status_code == 200, team.text
+
+
+async def test_retyping_a_ministerie_is_super_admins(world: World):
+    url = f"/api/organisatie/{world.org['ministerie'].id}"
+    await grant_role(
+        world.db, world.person["manager"], "ministry_admin", world.org["ministerie"]
+    )
+    async with client_as(world.db, world.person["manager"]) as c:
+        resp = await c.put(url, json={"type": "stichting"})
+    assert resp.status_code == 403, resp.text
+
+
+async def test_create_list_and_evaluation_agree_for_internal_types(world: World):
+    gemeente, _, _ = await _gemeente(world)
+    own = await make_org(world.db, "Eigen stichting", "stichting")
+    editor = world.person["team_editor"]
+    world.db.add(_owned_by(editor, own))
+    await world.db.flush()
+    parents = [world.org["team"], gemeente, own]
+    expected = {
+        "team": {"Team": True, "Gemeente": False, "Eigen stichting": False},
+        "ministerie": {"Team": False, "Gemeente": False, "Eigen stichting": False},
+    }
+    async with client_as(world.db, editor) as c:
+        for eenheid_type, want in expected.items():
+            listed = (
+                await c.get(
+                    "/api/authz/eenheden",
+                    params={"action": "org:create", "eenheid_type": eenheid_type},
+                )
+            ).json()
+            evaluations = [
+                ask(
+                    "org:create",
+                    "organisatie_eenheid",
+                    eenheid_type=eenheid_type,
+                    eenheid_id=p.id,
+                )
+                for p in parents
+            ]
+            decisions = (
+                await c.post(
+                    "/api/authz/evaluations", json={"evaluations": evaluations}
+                )
+            ).json()["evaluations"]
+            got = {p.naam: str(p.id) in listed["ids"] for p in parents}
+            assert got == {p.naam: d["decision"] for p, d in zip(parents, decisions)}
+            assert got == want, eenheid_type
+
+
+async def test_organogram_scrape_ignores_user_ministeries(world: World):
+    """Only official top-level ministeries receive (trusted) DGs."""
+    root = await make_org(world.db, "Eigen stichting", "stichting")
+    naam = "ministerie van Binnenlandse Zaken en Koninkrijksrelaties"
+    below_root = await make_org(world.db, naam, "ministerie", root)
+    manual_top = await make_org(world.db, naam, "ministerie")
+
+    async def fake_fetch(slug: str):
+        return [DgInfo(naam="DG Overname", detail_url="x")], {}
+
+    await sync_organogram(world.db, fetcher=fake_fetch)
+    for ministerie in (below_root, manual_top):
+        child = await world.db.scalar(
+            select(OrganisatieEenheid.id).where(
+                OrganisatieEenheid.parent_id == ministerie.id
+            )
+        )
+        assert child is None
