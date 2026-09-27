@@ -24,8 +24,9 @@ async def require_lead_create(
     """Place a new lead and guard creating it there; raises like ``require``.
 
     A lead in an initiatief or an eenheid is decided there.  Without either
-    it lands in the caller's own eenheid (``own_eenheid_where``: the first
-    active placement where ``lead:create`` holds), filled into *data*.
+    it lands in the caller's own eenheid (``own_eenheid_where``: the
+    longest-running trusted placement where ``lead:create`` holds), filled
+    into *data*.
     Without such an eenheid only system roles create a lead that lives
     nowhere in particular (tenant-wide).
     """

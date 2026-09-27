@@ -6,6 +6,8 @@ directie above holds unit_manager.  Added here: a person who may only read
 the initiatief, a lead opdrachtgever, and sub-records of the lead.
 """
 
+from datetime import date
+
 import pytest
 from sqlalchemy import select
 
@@ -17,6 +19,8 @@ from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.lead_update import LeadUpdatePost
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.schema.lead import LeadCreate
+from bouwmeester.services.lead_rules import require_lead_create
 from tests.authz_world import (
     World,
     ask,
@@ -26,7 +30,7 @@ from tests.authz_world import (
     perm_ctx,
     route_case_id,
 )
-from tests.factories import client_as, make_person
+from tests.factories import client_as, grant_role, make_person, place
 
 
 @pytest.fixture
@@ -197,6 +201,41 @@ async def test_new_lead_without_place_lands_in_own_eenheid(lw, who, lands_in):
     assert created.status_code == 201, created.text
     expected = None if lands_in == "tenant-wide" else str(lw.org[lands_in].id)
     assert created.json()["organisatie_eenheid_id"] == expected
+
+
+# (start_datum of the placement in "Team", in "Ander team", where the lead lands)
+SEVERAL_PLACEMENTS = [
+    (date(2020, 1, 1), date(2024, 1, 1), "team"),  # longest-running first
+    (date(2024, 1, 1), date(2020, 1, 1), "sibling_team"),
+    (date(2022, 1, 1), date(2022, 1, 1), "sibling_team"),  # tie: by naam
+]
+
+
+@pytest.mark.parametrize(
+    ("team_start", "sibling_start", "lands_in"), SEVERAL_PLACEMENTS
+)
+async def test_new_lead_lands_in_longest_running_placement(
+    lw, team_start, sibling_start, lands_in
+):
+    """Several placements: the oldest one wins, over REST and in chat alike."""
+    person = await make_person(lw.db, "Dubbel geplaatst")
+    for key, start in (("team", team_start), ("sibling_team", sibling_start)):
+        placement = await place(lw.db, person, lw.org[key])
+        placement.start_datum = start
+        await grant_role(lw.db, person, "editor", lw.org[key])
+    await lw.db.flush()
+    lw.person["dubbel"] = person
+    expected = lw.org[lands_in].id
+
+    async with client_as(lw.db, person) as c:
+        created = await c.post("/api/leads", json=_lead_body(stage="inbox"))
+    assert created.status_code == 201, created.text
+    assert created.json()["organisatie_eenheid_id"] == str(expected)
+
+    # The chat's create_lead places a lead through the same rule.
+    data = LeadCreate(title="Via chat")
+    await require_lead_create(lw.db, await perm_ctx(lw, "dubbel"), data)
+    assert data.organisatie_eenheid_id == expected
 
 
 def _lead_body(**extra) -> dict:

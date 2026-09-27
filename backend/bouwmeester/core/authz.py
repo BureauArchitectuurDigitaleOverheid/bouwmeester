@@ -1252,10 +1252,11 @@ async def own_eenheid_where(
 ) -> UUID | None:
     """The first of the caller's own eenheden where a new resource may go.
 
-    Own eenheden are the active placements, in a fixed order, so asking
-    and creating pick the same one.  ``None`` when there is none.
+    Own eenheden are the trusted, active placements, longest-running first
+    (``get_membership_ids``), so asking and creating, over REST or chat,
+    pick the same one.  ``None`` when there is none.
     """
-    for eenheid_id in sorted(await memberships(db, perm_ctx), key=str):
+    for eenheid_id in await memberships(db, perm_ctx):
         if await can(db, perm_ctx, permission, resource_type, eenheid_id=eenheid_id):
             return eenheid_id
     return None

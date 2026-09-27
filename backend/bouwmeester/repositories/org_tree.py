@@ -207,8 +207,25 @@ def membership_ids_select(person_id: UUID) -> Select:
 
 
 async def get_membership_ids(session: AsyncSession, person_id: UUID) -> list[UUID]:
-    """The eenheden *person_id* is a member of today (see ``membership_ids_select``)."""
-    result = await session.execute(membership_ids_select(person_id).distinct())
+    """The eenheden *person_id* is a member of today (see ``membership_ids_select``).
+
+    Ordered longest-running first: earliest ``start_datum`` of a trusted,
+    active placement, then eenheid naam, then id.  Whoever needs "the"
+    own eenheid of someone with several placements takes the first one,
+    so REST and chat pick the same eenheid.
+    """
+    eenheid_id = PersonOrganisatieEenheid.organisatie_eenheid_id
+    stmt = (
+        membership_ids_select(person_id)
+        .join(OrganisatieEenheid, OrganisatieEenheid.id == eenheid_id)
+        .group_by(eenheid_id, OrganisatieEenheid.naam)
+        .order_by(
+            func.min(PersonOrganisatieEenheid.start_datum),
+            OrganisatieEenheid.naam,
+            eenheid_id,
+        )
+    )
+    result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
