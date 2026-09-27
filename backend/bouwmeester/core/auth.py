@@ -319,8 +319,7 @@ async def get_or_create_person(
         )
     elif email_owner is not None and email_verified:
         if email_owner.oidc_subject is None:
-            # Local import: core.authority builds on core.permissions, which
-            # imports this module.
+            # Local import: core.authority imports this module indirectly.
             from bouwmeester.core.authority import (
                 hold_access_of_unproven_login,
                 hold_unconfirmed_placements,
@@ -331,16 +330,14 @@ async def get_or_create_person(
             if name and not email_owner.naam:
                 email_owner.naam = name
             await db.flush()
-            # The contact becomes an account: placements anyone with
-            # people:update made while it was a contact grant nothing until a
-            # manager confirms them, and neither does what the record holds
-            # when the address was added by someone without that say.
+            # The contact becomes an account: what it holds without a
+            # manager's confirmation is held for one.
             await hold_unconfirmed_placements(db, email_owner)
             if await hold_access_of_unproven_login(db, email_owner, email):
                 logger.warning(
                     "First login of person %s through an address added by "
-                    "someone who does not decide about its placements; "
-                    "placements and roles held for confirmation",
+                    "someone who could not hand out its access; held for "
+                    "confirmation",
                     email_owner.id,
                 )
             await db.refresh(email_owner)

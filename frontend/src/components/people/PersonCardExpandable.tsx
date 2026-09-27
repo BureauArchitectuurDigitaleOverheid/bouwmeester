@@ -478,11 +478,9 @@ export function PersonCardExpandable({ person, onEditPerson, onDragStartPerson, 
   );
 }
 
-/** Small icon-only action button local to placement rows: neutral, xs, stops
- *  its own click before it reaches the card's expand handler. */
 /**
  * End or delete one placement. Asked per placement: the backend decides by
- * the person and the eenheid (`person:place`, ending: your own is fine).
+ * the person, the eenheid and the placement's bron (`person:place`, ending).
  */
 function PlacementActions({ personId, placement }: { personId: string; placement: PersonOrganisatie }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -493,6 +491,7 @@ function PlacementActions({ personId, placement }: { personId: string; placement
     id: personId,
     eenheidId: placement.organisatie_eenheid_id,
     ending: true,
+    placementId: placement.id,
   });
   if (!allowed) return null;
   return (
@@ -553,6 +552,7 @@ function PlacementActions({ personId, placement }: { personId: string; placement
   );
 }
 
+/** Icon-only action button for placement rows; stops its click before the card's expand handler. */
 function NlddIconButtonInline({
   icon,
   accessibleLabel,

@@ -1,25 +1,10 @@
 """Authority over grants: who may change who has access to what.
 
-Every decision about handing out or changing access lives here: placing
-people in an eenheid, naming a manager, moving an eenheid, assigning roles,
-editing someone's identity, granting roles on a resource, and sharing an
-eenheid or node with another eenheid.  Routes and services call these
-guards instead of composing their own checks.
-
-Three layers sit below this module: ``core.permissions`` resolves what a
-person holds (roles and permissions per eenheid), ``core.authz`` decides
-whether a person may do an action on a resource, and ``core.org_context``
-decides what a person can see.  Seeing an eenheid never implies authority
-over it.
-
-Inheritance rule: a role held on an eenheid also applies to every eenheid
-below it.  "Effective on E" therefore means: held as a system role, or held
-on E or on any ancestor of E.
-
-Agents: a role, a resource role or a placement handed to an agent is power
-it then acts with on its own, so only who may instruct it
-(``services.agent_rules``: super_admin) hands it any (``_require_may_empower``).
-Taking power away from an agent (ending, revoking) is not restricted.
+Placements, managers, moving an eenheid, roles, identity, resource roles
+and shares are decided by the guards here, built on ``core.authz`` (see
+its module docstring for the model).  Seeing an eenheid never implies
+authority over it.  Handing an agent power is super_admin's
+(``services.agent_rules``); taking it away is not restricted.
 """
 
 from __future__ import annotations
@@ -120,13 +105,8 @@ async def can_confirm_members(
 ) -> bool:
     """True if the person decides who is a (trusted) member of *eenheid_id*.
 
-    Inside the organisation only a manager of the eenheid or one above it
-    (``can_manage_members``).  An external organisation outside it (a
-    gemeente, a stichting) usually has no manager, so there whoever holds
-    ``org:manage`` on it decides as well: typically the eigenaar who
-    created it (or created an eenheid above it: the role applies below).
-    Placing, confirming a placement and deciding a placement request all
-    ask this.
+    A manager of it or above it; outside the organisation (usually without
+    a manager) also whoever holds ``org:manage`` there, typically its eigenaar.
     """
     if await can_manage_members(db, perm_ctx, eenheid_id):
         return True
@@ -147,13 +127,7 @@ async def confirmable_eenheid_ids(
 
 
 async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
-    """People who may decide about the members of *eenheid_id*.
-
-    Everyone holding a manager role on the eenheid or on any eenheid above
-    it, and for an external organisation outside the internal one the
-    eigenaren of it or of an eenheid above it: the people
-    ``can_confirm_members`` lets through (a system role aside).
-    """
+    """The people ``can_confirm_members`` lets through, system roles aside."""
     chain = await get_self_and_ancestor_ids(db, eenheid_id)
     today = date.today()
     result = await db.execute(
@@ -197,11 +171,7 @@ async def managed_subtree_ids(
 
 
 async def is_account(db: AsyncSession, person: Person) -> bool:
-    """True if *person* can act in Bouwmeester (as opposed to a contact).
-
-    Accounts are people who have logged in, agents, and anyone holding a
-    role.  Contacts are records that others maintain about external people.
-    """
+    """True for a login, an agent or a role holder; False for a contact."""
     if person.oidc_subject is not None or person.is_agent:
         return True
     has_role = await db.scalar(
@@ -222,29 +192,15 @@ async def require_can_place(
 ) -> None:
     """Guard creating, changing or ending a placement of *person* in *eenheid*.
 
-    Every placement change needs ``people:update``.  A placement of an
-    account grants access (implicit viewer, visibility of the eenheid and
-    its ancestors), so only who decides about its members
-    (``can_confirm_members``: a manager of the eenheid or of an ancestor,
-    or the eigenaar of an external organisation) may create or change it;
-    everyone else files a placement request.  Nobody
-    places themselves, managers included (a manager would otherwise join any
-    eenheid below them); ending your own placement only gives access up, so
-    that is always allowed.
+    Needs ``people:update``.  An account's placement grants access, so only
+    ``can_confirm_members`` places one (everyone else files a request);
+    nobody places themselves, ending your own is always allowed.  Placing a
+    contact is contact administration (informational, see ``core.authz``).
+    Ending someone else's trusted placement (*bron*) needs
+    ``can_confirm_members`` too.
 
-    Placing a contact is ordinary contact administration (a counterpart at
-    another ministry or a gemeente) and stays open to ``people:update``.
-    Such a placement is informational: only a trusted placement gives
-    access (``org_tree.membership_ids_select``), and at first login
-    ``hold_unconfirmed_placements`` turns it into a placement request.
-    Ending (or deleting) a trusted placement (*bron*: a manager's, a
-    sync's) of someone else is not contact administration: that takes
-    access away that only who decides about the members hands out, the
-    same line ``bron_after_change`` draws for changing one.
-
-    Without a concrete person (the evaluation endpoint), ``person=None``
-    asks about someone else: another account (strictest), or a contact
-    with ``contact=True``.  ``contact`` is ignored when *person* is given.
+    ``person=None`` asks about someone else: another account, or a contact
+    with ``contact=True``.
     """
     if not perm_ctx.is_authenticated:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Niet ingelogd")
@@ -283,18 +239,37 @@ async def require_can_place(
     )
 
 
+async def require_can_change_placement(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    placement: PersonOrganisatieEenheid,
+    *,
+    ending: bool,
+) -> tuple[Person, OrganisatieEenheid]:
+    """``require_can_place`` for an existing placement, knowing its bron; 404.
+
+    The one guard for changing, ending and deleting a placement, and for the
+    evaluation ``person:place`` with ``placement_id``.
+    """
+    person = await db.get(Person, placement.person_id)
+    eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
+    if person is None or eenheid is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Plaatsing niet gevonden")
+    await require_can_place(
+        db, perm_ctx, person, eenheid, ending=ending, bron=placement.bron
+    )
+    return person, eenheid
+
+
 async def _is_detachering(
     db: AsyncSession,
     perm_ctx: PermissionContext,
     person: Person,
     eenheid: OrganisatieEenheid,
 ) -> bool:
-    """True if the caller links their own staff to an external organisation.
+    """True if the caller links own staff to an external organisation.
 
-    A detachering is the person's manager's call.  It records who works
-    where and grants nothing (bron ``detachering`` is never trusted).  An
-    external eenheid that hangs inside the organisation is decided by its
-    managers like anywhere else in the organisation.
+    Informational only: bron ``detachering`` is never trusted.
     """
     return (
         eenheid.type not in INTERNAL_EENHEID_TYPES
@@ -311,11 +286,8 @@ async def placement_bron(
 ) -> str:
     """The bron to record for a placement the caller makes (or changes).
 
-    Only who decides about its members (``can_confirm_members``) makes a
-    trusted placement.
-    A manager placing own staff in an external organisation records a
-    detachering; anyone else does contact administration.  Neither of those
-    gives access.
+    Trusted only from ``can_confirm_members``; otherwise a detachering or
+    contact administration, neither of which gives access.
     """
     if await can_confirm_members(db, perm_ctx, eenheid.id):
         return PLACEMENT_BRON_LEIDINGGEVENDE
@@ -333,12 +305,8 @@ async def bron_after_change(
 ) -> str:
     """The bron of a placement after the caller changes or reopens it.
 
-    An informational placement keeps its bron.  A trusted one stays trusted
-    only when the caller decides about the members (``can_confirm_members``);
-    otherwise a manager's placement becomes what the caller would record
-    (``placement_bron``: contact administration or a detachering), and a
-    placement an official sync brought is refused (403): the sync owns it.
-    Ending a placement only takes access away and is not a change here.
+    A trusted one stays trusted only for ``can_confirm_members``; otherwise
+    a manager's becomes ``placement_bron`` and a sync's is refused (403).
     """
     if bron not in TRUSTED_PLACEMENT_BRONNEN:
         return bron
@@ -359,11 +327,9 @@ async def approve_placement_requests(
     eenheid_id: UUID,
     decided_by: UUID | None,
 ) -> list[OrgPlacementRequest]:
-    """Mark every pending request of *person_id* for *eenheid_id* approved.
+    """Approve every pending request of *person_id* for *eenheid_id*.
 
-    Called once the placement is trusted, by approving a request or by
-    confirming the placement directly, so no request stays in the queue for
-    a membership that already exists.  The requester is notified once.
+    Called once the placement is trusted; the requester is notified once.
     """
     from bouwmeester.schema.notification import NotificationCreate
     from bouwmeester.services.notification_service import NotificationService
@@ -407,14 +373,8 @@ async def approve_placement_requests(
 async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
     """Turn contact placements into requests when a contact becomes an account.
 
-    Anyone with ``people:update`` may place a contact anywhere (contact
-    administration).  Such a placement is not trusted, so it gives no
-    access.  When that contact's first login links to the record, every
-    active ``handmatig`` placement in or below the internal organisation
-    becomes a pending placement request, so a manager of that eenheid can
-    confirm it.  Trusted placements (a manager's, a sync's), detacheringen
-    (informational only) and contact placements in external organisations
-    are kept as they are.
+    Its active ``handmatig`` placements that touch the organisation become
+    pending requests a manager confirms; everything else is kept.
     """
     placements = (
         await db.scalars(
@@ -436,11 +396,7 @@ async def hold_unconfirmed_placements(db: AsyncSession, person: Person) -> None:
 async def _placements_to_requests(
     db: AsyncSession, person: Person, placements: list[PersonOrganisatieEenheid]
 ) -> None:
-    """Replace *placements* of *person* by pending placement requests.
-
-    One request per eenheid (an existing pending one counts); whoever may
-    decide it is notified.
-    """
+    """Replace *placements* by pending requests, one per eenheid; notify."""
     from bouwmeester.services.notification_service import NotificationService
 
     if not placements:
@@ -484,10 +440,7 @@ async def unconfirm_placements(
 ) -> int:
     """Take the trust away from *placements*; returns how many.
 
-    An account's placement becomes a pending placement request, so whoever
-    decides about the members of the eenheid decides again.  A contact's
-    becomes contact administration (``handmatig``), which its first login
-    turns into a request (``hold_unconfirmed_placements``).
+    An account's become pending requests, a contact's become ``handmatig``.
     """
     by_person: dict[UUID, list[PersonOrganisatieEenheid]] = {}
     for placement in placements:
@@ -523,17 +476,16 @@ async def hold_access_of_unproven_login(
 ) -> bool:
     """Hold what a contact holds when its first login uses an unproven address.
 
-    Adding an address to a contact that already holds access needs the
-    authority to hand that access out (``_require_identity_authority``),
-    but an address added *before* a manager placed the contact slips
-    through: anyone with ``people:update`` can create a contact with a new
-    hire's address and one of their own.  So at the first login the
-    address counts as proven only when nobody recorded who added it (older
-    rows, syncs, the admin seed) or when whoever added it decides about the
-    members of every eenheid where the record holds a trusted placement or
-    a role.  Otherwise the trusted placements become pending requests and
-    the roles end: a manager confirms them again for this login.  Returns
-    True when something was held.
+    ``_require_identity_authority`` guards adding an address to a contact
+    that holds access, but not one added before that access was handed
+    out.  So at the first login the address counts as proven only when
+    nobody recorded who added it (older rows, syncs, the admin seed) or
+    whoever added it could hand out everything the record holds: decide
+    about the members of every eenheid with a trusted placement or a role,
+    and grant every person-level resource role.  Otherwise the trusted
+    placements become pending requests, the roles end and the resource
+    grants are removed, for whoever decides to hand them out again.
+    Returns True when something was held.
     """
     added_by = await db.scalar(
         select(PersonEmail.added_by_id).where(
@@ -554,35 +506,57 @@ async def hold_access_of_unproven_login(
             )
         ).all()
     )
-    today = date.today()
     roles = list(
         (
             await db.scalars(
                 select(PersonRole).where(
-                    PersonRole.person_id == person.id,
-                    _role_not_ended(),
+                    PersonRole.person_id == person.id, _role_not_ended()
                 )
             )
         ).all()
     )
-    if not placements and not roles:
+    grants = list(
+        (
+            await db.scalars(
+                select(ResourcePermission).where(
+                    ResourcePermission.person_id == person.id
+                )
+            )
+        ).all()
+    )
+    if not placements and not roles and not grants:
         return False
     adder = await perm_ctx_for(db, added_by)
     if adder.is_super_admin:
         return False
     eenheid_ids = {p.organisatie_eenheid_id for p in placements}
     eenheid_ids |= {r.organisatie_eenheid_id for r in roles}
-    proven = None not in eenheid_ids
-    for eenheid_id in eenheid_ids - {None}:
-        if not proven:
-            break
-        proven = await can_confirm_members(db, adder, eenheid_id)
-    if proven:
+    if await _may_hand_out(db, adder, eenheid_ids, grants):
         return False
     await _placements_to_requests(db, person, placements)
     for role in roles:
-        role.eind_datum = today - timedelta(days=1)
+        role.eind_datum = date.today() - timedelta(days=1)
+    for grant in grants:
+        await db.delete(grant)
     await db.flush()
+    return True
+
+
+async def _may_hand_out(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    eenheid_ids: set[UUID | None],
+    grants: list[ResourcePermission],
+) -> bool:
+    """Could *perm_ctx* confirm members of every eenheid and make every grant?"""
+    if None in eenheid_ids:
+        return False
+    for eenheid_id in eenheid_ids:
+        if not await can_confirm_members(db, perm_ctx, eenheid_id):
+            return False
+    for grant in grants:
+        if not await _may_grant(db, perm_ctx, grant):
+            return False
     return True
 
 
@@ -595,10 +569,8 @@ async def hold_access_of_unproven_login(
 class TrustSnapshot:
     """Who decided about the members of a subtree, before it changes.
 
-    Per eenheid with open manager placements (bron ``leidinggevende``):
-    those placements, the people who could confirm its members
-    (``member_manager_ids``, one of whom made each placement) and whether
-    it touched the organisation.
+    Per eenheid with open manager placements: those placements, who could
+    confirm them and whether it touched the organisation.
     """
 
     placement_ids: dict[UUID, frozenset[UUID]]
@@ -639,18 +611,10 @@ async def distrust_lost_confirmations(
 ) -> int:
     """Unconfirm manager placements made by who no longer decides there.
 
-    After a move, a retype or a merge (``moved_into`` maps a merged eenheid
-    to the one it went into), per eenheid of the *snapshot*:
-
-    - it did not touch the organisation and now does: every placement of
-      the snapshot, since outside the organisation an eigenaar (anyone who
-      creates an external root) confirmed members, inside only managers do;
-    - otherwise, when one of its confirmers no longer is one: every
-      placement of the snapshot too, since placements do not record who
-      confirmed them and it may have been that one.
-
-    Those placements are unconfirmed (``unconfirm_placements``); returns how
-    many.
+    Per eenheid of *snapshot* (``moved_into`` maps a merged eenheid to its
+    target): when it newly touches the organisation or lost one of its
+    confirmers (placements do not record who confirmed them), all its
+    placements are unconfirmed.  Returns how many.
     """
     moved_into = moved_into or {}
     now = {eid: moved_into.get(eid, eid) for eid in snapshot.placement_ids}
@@ -730,16 +694,11 @@ async def joins_organisation(
 async def bring_into_organisation(
     db: AsyncSession, eenheid_id: UUID, snapshot: TrustSnapshot
 ) -> tuple[int, int]:
-    """Settle trust once *eenheid_id* became internal or touches the organisation.
+    """After a change that ``joins_organisation``: managers decide now.
 
-    The one follow-up of a move and a retype that ``joins_organisation``.
-    Inside the organisation managers decide about members, not an eigenaar
-    (``can_confirm_members``).  So the eigenaar grants on the eenheid and
-    everything below it end (internal eenheden are managed by managers), and
-    the manager placements an eigenaar may have confirmed become requests a
-    manager decides (``distrust_lost_confirmations``).  Call with the
-    ``snapshot_trust`` taken before the change.  Returns (eigenaar grants
-    removed, placements unconfirmed).
+    Drops the eigenaar grants in the subtree and unconfirms what an
+    eigenaar may have confirmed (*snapshot* taken before the change).
+    Returns (eigenaar grants removed, placements unconfirmed).
     """
     owners = await drop_eenheid_owner_grants(
         db, await get_subtree_ids(db, [eenheid_id])
@@ -807,44 +766,19 @@ async def require_can_move_eenheid(
 ) -> None:
     """Guard moving an eenheid or changing it between internal and external.
 
-    Moving is taking the eenheid away below its old parent and creating it
-    below the new one, so the caller needs authority on both.
-
-    Ending up internal is placing an internal eenheid: only below an
-    internal parent where the caller holds ``org:create``; a ministerie
-    (before or after) only by super_admin (``core.authz``).
-
-    When an internal eenheid is involved (before or after, the eenheid
-    itself or anything below it), managers decide: whoever manages a parent
-    manages everything below it.  The caller must manage the eenheid, the
-    parent it leaves and the parent it goes to.  Detaching into a new root
-    is super_admin-only.
-
-    An external eenheid (without internal parts) moves like it is created
-    (``core.authz``): ``org:create`` on the parent it leaves and on the one
-    it goes to; a new root is free.  Taking it out of the organisation (its
-    old parent touches the organisation, its new one does not) hands the
-    decision about its members from the organisation's managers to its
-    eigenaar, so that also needs a manager of the parent it leaves.  Bringing
-    it into the organisation (the reverse) hands that decision to the
-    organisation's managers and gives its members the implicit viewer role,
-    so it needs a manager of the parent it goes to; afterwards its eigenaar
-    grants end and its confirmed placements become requests
-    (``bring_into_organisation``).  Retyping an eenheid with internal
-    eenheden below it to external is super_admin's.  Contact placements in
-    it stay informational: moving never confirms them.
-
-    Editing the eenheid at all needs ``org:update`` on it, as the update
-    route asks; checked here too so the evaluation ``eenheid:move`` is this
-    guard alone.
+    Needs ``org:update`` on it.  Ending up internal is placed like a new
+    internal eenheid (``core.authz``).  With an internal eenheid involved
+    (before, after or below), the caller manages the eenheid, the parent
+    it leaves and the one it goes to; a new root is super_admin's.  An
+    external eenheid moves like it is created (``org:create`` on both
+    parents); taking it out of or into the organisation also needs a
+    manager of the parent on the organisation's side.
     """
     if perm_ctx.is_super_admin:
         return
     await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
     if new_parent_id == eenheid.parent_id and new_type == eenheid.type:
         return
-    # An internal eenheid below an external one is super_admin's (``core.authz``),
-    # so retyping an eenheid with internal eenheden below it to external is too.
     if (
         new_type != eenheid.type
         and new_type not in INTERNAL_EENHEID_TYPES
@@ -854,9 +788,7 @@ async def require_can_move_eenheid(
             "Onder deze eenheid hangen interne eenheden. Alleen systeembeheerders "
             "maken er een externe organisatie van."
         )
-    # Where it ends up internal, it is placed like a new internal eenheid
-    # (``core.authz``: only below an internal parent, with org:create there);
-    # a ministerie, before or after, is super_admin's.
+    # A ministerie, before or after, is super_admin's (``core.authz``).
     kind = "ministerie" if "ministerie" in {eenheid.type, new_type} else new_type
     if kind in INTERNAL_EENHEID_TYPES:
         await require(
@@ -939,15 +871,12 @@ async def require_can_dissolve_eenheid(
     perm_ctx: PermissionContext,
     eenheid: OrganisatieEenheid,
 ) -> None:
-    """Guard dissolving an eenheid (``geldig_tot``).
+    """Guard dissolving an eenheid (``geldig_tot``), which ends its roles
+    and placements.
 
-    Dissolving ends every role held on the eenheid (the manager's too) and
-    every placement in it.  So while someone else holds a trusted placement
-    or a role there, it needs the say over its members
-    (``can_confirm_members``); a role ranked at or above the caller's own
-    there (the manager's, for a manager of the parent) needs the authority
-    to revoke it (``require_can_revoke_role``).  An internal eenheid is only
-    dissolved by someone who manages it.
+    An internal one only by who manages it.  While someone else holds a
+    trusted placement or a role there: ``can_confirm_members``, plus
+    ``require_can_revoke_role`` for each role ranked at or above the caller's.
     """
     if perm_ctx.is_super_admin:
         return
@@ -1005,11 +934,8 @@ async def _role_rank(db: AsyncSession, role_ids: set[str]) -> int:
 async def _assign_role_rights(
     db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
 ) -> EenheidRights:
-    """The caller's organisational rights on *eenheid_id*, if they assign roles.
-
-    ``people:assign_role`` must be effective on the eenheid through an
-    organisational role (platform_admin operates the platform, it does not
-    staff the organisation); otherwise 403.
+    """The caller's organisational rights on *eenheid_id* if they include
+    ``people:assign_role`` (platform_admin does not staff the organisation); 403.
     """
     rights = await rights_on_eenheid(
         db, perm_ctx, eenheid_id, include_system_roles=False
@@ -1022,11 +948,7 @@ async def _assign_role_rights(
 async def require_can_assign_roles_in(
     db: AsyncSession, perm_ctx: PermissionContext, eenheid_id: UUID
 ) -> None:
-    """Guard seeing and handling the role assignments of *eenheid_id*.
-
-    Who assigns roles in an eenheid (or above it) sees who holds which role
-    there; the ranks each assignment needs are ``require_can_assign_role``.
-    """
+    """Guard seeing and handling the role assignments of *eenheid_id*."""
     await _assign_role_rights(db, perm_ctx, eenheid_id)
 
 
@@ -1039,11 +961,8 @@ async def _require_role_authority(
 ) -> None:
     """Guard granting or revoking *role* on *eenheid_id*, whoever it is for.
 
-    System roles are super_admin-only.  Otherwise ``people:assign_role``
-    must be effective on the eenheid through an organisational role
-    (platform_admin operates the platform, it does not staff the
-    organisation), and *role* must rank below the caller's highest role
-    there.
+    System roles are super_admin's; otherwise ``_assign_role_rights`` and
+    *role* must rank below the caller's highest role there.
     """
     if perm_ctx.is_super_admin:
         return
@@ -1108,11 +1027,7 @@ async def require_can_set_manager(
     eenheid_id: UUID,
     new_manager_id: UUID | None,
 ) -> None:
-    """Guard naming or clearing the manager of an eenheid.
-
-    Setting ``manager_id`` ends the current ``unit_manager`` role and writes
-    a new one, so it follows the same rules as assigning that role directly.
-    """
+    """Guard naming or clearing the manager: assigning ``unit_manager``."""
     role = await db.get(Role, "unit_manager")
     if role is None:  # pragma: no cover - seeded by migrations
         raise _forbidden("Rol unit_manager ontbreekt")
@@ -1135,12 +1050,8 @@ async def require_can_create_eenheid(
     parent_id: UUID | None,
     manager_id: UUID | None,
 ) -> None:
-    """Guard naming a manager when creating an eenheid.
-
-    Where the eenheid may go is ``core.authz`` (``org:create``): below a
-    parent on that parent, a new external root anywhere.  A new eenheid
-    has no members, so it grants nobody anything.  Naming a manager does,
-    and the new eenheid inherits its parent's rights, so the parent decides.
+    """Guard naming a manager when creating an eenheid (where it goes is
+    ``core.authz``): decided on the parent, whose rights it inherits.
     """
     if manager_id is None or perm_ctx.is_super_admin:
         return
@@ -1169,12 +1080,8 @@ async def _manages_person(
 async def _trusted_placement_eenheid_ids(
     db: AsyncSession, person_id: UUID
 ) -> set[UUID]:
-    """Eenheden where *person_id* holds a trusted placement, ever.
-
-    Current and future ones (a manager's placement of a new hire gives
-    access from its start date) and ended ones: only who may confirm the
-    members reopens one and keeps it trusted, but whoever takes over the
-    record is who it is reopened for.
+    """Eenheden where *person_id* holds a trusted placement: past, current or
+    future (an ended one can be reopened for whoever takes over the record).
     """
     return set(
         (
@@ -1189,12 +1096,8 @@ async def _trusted_placement_eenheid_ids(
 
 
 async def _membership_reaches(db: AsyncSession, eenheid_id: UUID) -> bool:
-    """True if membership of *eenheid_id* gives access to anything.
-
-    An internal eenheid always does (its members read up the line).  An
-    external organisation (a Kamerfractie, a gemeente), inside the
-    organisation or not, only when something hangs on it: resources in it,
-    grants it holds, shares.
+    """True if membership of *eenheid_id* gives access to anything: always
+    for an internal eenheid, else only when something hangs on it.
     """
     if await get_internal_ids(db, [eenheid_id]):
         return True
@@ -1212,17 +1115,10 @@ async def _require_identity_authority(
 ) -> None:
     """Guard the emails of a contact that already holds access.
 
-    The first login with a verified email links to the record and takes
-    over everything ``core.authz`` gives the person: trusted placements (a
-    new hire placed by a manager; in an external organisation only when that
-    membership reaches something), resource grants, and the tasks assigned
-    to them (an assignee always reads their task).  Adding an email is
-    therefore handing all of that to whoever controls the address, so the
-    caller must be able to hand it out themselves: decide about the members
-    of every such eenheid (``can_confirm_members``), hold the grant
-    authority over every grant, and be able to reassign every such task
-    (``task:update``).  A contact holding
-    nothing (a counterpart at a gemeente) stays open to ``people:update``.
+    A first login takes over the record's trusted placements, resource
+    grants and assigned tasks, so adding an address hands those out: the
+    caller must confirm the members of every such eenheid, hold the grant
+    authority over every grant and ``task:update`` on every task.
     """
     for eenheid_id in await _trusted_placement_eenheid_ids(db, person.id):
         if await _membership_reaches(db, eenheid_id) and not await can_confirm_members(
@@ -1235,23 +1131,8 @@ async def _require_identity_authority(
         )
     ).all()
     for grant in grants:
-        try:
-            await _require_grant_authority(
-                db,
-                perm_ctx,
-                resource_type=grant.resource_type,
-                resource_id=grant.resource_id,
-                rols=frozenset({grant.rol}),
-                target_person_id=person.id,
-                target_eenheid_id=None,
-            )
-        except HTTPException as exc:
-            if exc.status_code not in (
-                status.HTTP_403_FORBIDDEN,
-                status.HTTP_404_NOT_FOUND,
-            ):
-                raise
-            raise _forbidden(_IDENTITY_REFUSAL) from exc
+        if not await _may_grant(db, perm_ctx, grant):
+            raise _forbidden(_IDENTITY_REFUSAL)
     task_ids = (
         await db.scalars(select(Task.id).where(Task.assignee_id == person.id))
     ).all()
@@ -1269,19 +1150,11 @@ async def require_can_edit_person(
 ) -> None:
     """Guard editing a person.
 
-    ``identity`` covers email addresses: they decide which login maps to
-    which person and who the admin seed promotes, so on an account only the
-    person themselves or a super_admin may change them.  Other fields
-    (naam, functie, phone numbers) may also be kept up to date by a manager
-    of one of the person's eenheden.  Contacts are maintained by anyone
-    with ``people:update``, except the emails of a contact that already
-    holds access (``_require_identity_authority``).
-
-    The naam is not identity: a login links to a person by verified email
-    only (``core.auth.get_or_create_person``).
-
-    An agent's identity is super_admin's, the agent itself included: who
-    may instruct an agent decides what it is (``services.agent_rules``).
+    ``identity`` (email addresses, which decide which login maps to whom):
+    on an account only the person or a super_admin, on an agent only a
+    super_admin.  Other fields also by a manager of one of the person's
+    eenheden.  Contacts: anyone with ``people:update``, except the emails of
+    one holding access (``_require_identity_authority``).
     """
     if perm_ctx.is_super_admin:
         return
@@ -1307,12 +1180,7 @@ async def require_can_edit_person(
 
 
 def require_can_read_person(perm_ctx: PermissionContext, person_id: UUID) -> None:
-    """Guard reading a full person record: yourself always, others with people:read.
-
-    ``people:read`` comes with a role or with the implicit viewer role, which
-    members of an external root do not get (``core.authz``); they still read
-    their own record.
-    """
+    """Guard reading a full person record: yourself always, others with people:read."""
     if not perm_ctx.is_authenticated:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Niet ingelogd")
     if person_id != perm_ctx.person_id and not perm_ctx.has_permission("people:read"):
@@ -1324,11 +1192,8 @@ async def require_can_delete_person(
     perm_ctx: PermissionContext,
     person: Person,
 ) -> None:
-    """Guard deleting a person.
-
-    Deleting cascades to their roles, placements and resource grants, so an
-    account is super_admin-only.  Contacts can be cleaned up by a
-    people-manager.
+    """Guard deleting a person: an account is super_admin's (it cascades to
+    roles, placements and grants), a contact needs ``people:manage``.
     """
     if perm_ctx.is_super_admin:
         return
@@ -1360,13 +1225,8 @@ async def _grant_reaches_caller(
 ) -> bool:
     """True if a grant to this person or eenheid would benefit the caller.
 
-    An eenheid grant counts for every member placed directly in that
-    eenheid, as in ``core.authz`` (resource roles, step 2), so membership of
-    a sub-eenheid does not count.  Nobody places themselves
-    (``require_can_place``), so the eenheden that can reach the caller are
-    those they are placed in now, will be placed in (a future start date),
-    or asked to join (a pending request: whoever approves it decides about
-    the membership, not about this grant).
+    An eenheid grant reaches its direct members, including future and
+    requested ones (``_joined_or_joining_ids``).
     """
     if perm_ctx.person_id is None:
         return False
@@ -1378,11 +1238,8 @@ async def _grant_reaches_caller(
 
 
 async def _joined_or_joining_ids(db: AsyncSession, person_id: UUID) -> set[UUID]:
-    """Eenheden *person_id* is placed in, will be placed in, or asked to join.
-
-    Every placement counts here, trusted or not: an informational one
-    becomes access as soon as a manager confirms it, and that manager
-    decides about the membership, not about this grant.
+    """Eenheden *person_id* is placed in (trusted or not), will be placed in,
+    or asked to join.
     """
     placed = await db.scalars(
         select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
@@ -1424,10 +1281,8 @@ async def _may_register_self(
 ) -> bool:
     """True if a grant of *rols* to yourself is a contact registration.
 
-    Never a rol that carries grant authority (eigenaar, opdrachtgever): that
-    would be taking control.  Other rols only on a lead (it has no eigenaar)
-    or on a corpus node or opdracht without an eenheid, where the rights are
-    tenant-wide anyway.  The grant never exceeds what the caller holds.
+    Never a rol with grant authority; others only on a lead or on an
+    unscoped node or opdracht, where the rights are tenant-wide anyway.
     """
     if grant_permission(resource_type) in _rol_permissions(resource_type, rols):
         return False
@@ -1451,18 +1306,9 @@ async def _require_grant_authority(
 ) -> None:
     """Authority to hand out (or change) *rols* on a resource.
 
-    ``core.authz`` decides the rights, with the same rules as any other
-    action on the resource (resource roles, rights on its eenheid, the
-    tenant-wide fallback for unscoped nodes and opdrachten):
-
-    - the caller must hold the grant permission on the resource
-      (``resource_permission:manage``, for leads ``lead:update``);
-    - a grant never exceeds what the grantor holds: every permission the
-      rols give must be the caller's on this resource too, so an editor
-      cannot make a colleague eigenaar (``node:delete``);
-    - the grant must not reach the caller (directly or through an eenheid
-      they are placed in), except a contact registration
-      (``_may_register_self``).
+    The caller holds ``grant_permission`` there and every permission the
+    rols give, and the grant does not reach the caller except as a contact
+    registration (``_may_register_self``).
     """
     if perm_ctx.is_super_admin:
         return
@@ -1482,6 +1328,27 @@ async def _require_grant_authority(
         target_eenheid_id=target_eenheid_id,
     ) and not await _may_register_self(db, resource_type, resource_id, rols):
         raise _forbidden("Je kunt jezelf geen rol op dit item geven")
+
+
+async def _may_grant(
+    db: AsyncSession, perm_ctx: PermissionContext, grant: ResourcePermission
+) -> bool:
+    """Could *perm_ctx* hand out this existing grant (``_require_grant_authority``)?"""
+    try:
+        await _require_grant_authority(
+            db,
+            perm_ctx,
+            resource_type=grant.resource_type,
+            resource_id=grant.resource_id,
+            rols=frozenset({grant.rol}),
+            target_person_id=grant.person_id,
+            target_eenheid_id=grant.organisatie_eenheid_id,
+        )
+    except HTTPException as exc:
+        if exc.status_code not in (403, 404):
+            raise
+        return False
+    return True
 
 
 async def _share_source_eenheden(
@@ -1508,14 +1375,8 @@ async def require_can_share(
 ) -> None:
     """Guard creating (``target_eenheid_id``) or revoking (``None``) a share.
 
-    A share is a grant: the members of the target see the source, and with
-    an edit share work on it with the rights they hold in the target.  So
-    it needs ``org:manage`` on every eenheid it gives away (seeing an
-    eenheid is not enough, or a team member could share its whole
-    directorate onward; without an eenheid, system roles decide).  Creating
-    one must not reach the caller: nobody shares with an eenheid they are
-    in or are joining (``_grant_reaches_caller``).  Revoking only takes
-    access away.  The evaluation endpoint asks this as ``eenheid:share``.
+    A share is a grant: ``org:manage`` on every eenheid it gives away, and
+    never to an eenheid the caller is in or joining.
     """
     for eenheid_id in await _share_source_eenheden(
         db, source_eenheid_id, source_node_id
@@ -1577,14 +1438,8 @@ async def _require_first_owner_authority(
     node_id: UUID,
     target_person_id: UUID,
 ) -> None:
-    """Naming the first eigenaar of a node that has none.
-
-    Naming who owns a freshly imported parliamentary item is the point of
-    reviewing it, so the reviewer's mandate covers it.  Only someone who
-    can already read the node qualifies: eigenaar carries ``node:delete``,
-    so handing it to an outsider would give away the node.  Naming yourself
-    is only allowed when you already edit the node (``node:update``): a
-    reviewer without it would otherwise hand themselves rights.
+    """Naming the first eigenaar of a node that has none (the reviewer's
+    mandate): someone who reads the node, yourself only with ``node:update``.
     """
     if perm_ctx.is_super_admin:
         return
@@ -1610,16 +1465,9 @@ async def require_can_name_owner(
 ) -> None:
     """Guard making *target_person_id* the sole person eigenaar of a node.
 
-    Completing the review of a parliamentary item names its eigenaar, so the
-    caller must review the node (``parlementair:review``).  Then:
-
-    - the target already is an eigenaar: nothing changes;
-    - the node has no eigenaar: the first one (``_require_first_owner_authority``);
-    - otherwise it is a grant like any other: the authority to hand out
-      eigenaar to the target and to remove every current person eigenaar
-      (eigenaar grants to an eenheid stay).
-
-    The evaluation endpoint asks this as ``parlementair:name_owner``.
+    Needs ``parlementair:review``; then nothing (already eigenaar), the first
+    eigenaar, or the authority to grant eigenaar and remove every current
+    person eigenaar.
     """
     target = await db.get(Person, target_person_id)
     if target is None:
@@ -1681,11 +1529,7 @@ async def require_can_change_grants(
     eenheid_id: UUID | None = None,
     new_rol: str | None,
 ) -> None:
-    """Guard changing or removing every grant of a person or eenheid on a resource.
-
-    For routes that address a grant by (resource, person) or (resource,
-    eenheid) rather than by its id.
-    """
+    """Guard changing or removing every grant of a person or eenheid on a resource."""
     from bouwmeester.repositories.resource_permission import (
         ResourcePermissionRepository,
     )
@@ -1706,12 +1550,9 @@ async def require_can_change_resource_role(
 ) -> None:
     """Guard changing (``new_rol``) or removing (``None``) an existing grant.
 
-    Giving up rights yourself (leaving, or stepping down to a rol that gives
-    no more) is always allowed; anything else needs the authority to hand
-    out both the current and the new rol.  Even then a resource never loses
-    its last eigenaar this way (409).  Authority is checked first, so
-    someone without it learns nothing about the owners.  The evaluation
-    endpoint asks this as ``resource_role:revoke`` on the grant.
+    Giving up your own rights is always allowed; anything else needs the
+    authority over both rols.  The last eigenaar stays (409), checked after
+    authority so outsiders learn nothing about the owners.
     """
     await _require_change_authority(db, perm_ctx, grant, new_rol=new_rol)
     await _require_keeps_an_owner(db, grant, new_rol)

@@ -15,6 +15,7 @@ from bouwmeester.core.authority import (
     approve_placement_requests,
     bron_after_change,
     placement_bron,
+    require_can_change_placement,
     require_can_delete_person,
     require_can_edit_person,
     require_can_place,
@@ -95,17 +96,23 @@ async def _require_can_place(
     perm_ctx: PermissionContext,
     person_id: UUID,
     eenheid_id: UUID,
-    *,
-    ending: bool = False,
-    bron: str | None = None,
 ) -> tuple[Person, OrganisatieEenheid]:
-    """Load person and eenheid and check the caller may change the placement."""
+    """Load person and eenheid and check the caller may place them there."""
     person = require_found(await db.get(Person, person_id), "Person")
     eenheid = require_found(
         await db.get(OrganisatieEenheid, eenheid_id), "Organisatie-eenheid"
     )
-    await require_can_place(db, perm_ctx, person, eenheid, ending=ending, bron=bron)
+    await require_can_place(db, perm_ctx, person, eenheid)
     return person, eenheid
+
+
+async def _placement(
+    db: AsyncSession, person_id: UUID, placement_id: UUID
+) -> PersonOrganisatieEenheid:
+    placement = await db.get(PersonOrganisatieEenheid, placement_id)
+    if placement is not None and placement.person_id != person_id:
+        placement = None
+    return require_found(placement, "Placement")
 
 
 async def _find_name_duplicates(
@@ -714,12 +721,7 @@ async def update_person_organisatie(
     Changing or reopening a trusted placement keeps it trusted only for who
     decides about the members (``bron_after_change``).
     """
-    stmt = select(PersonOrganisatieEenheid).where(
-        PersonOrganisatieEenheid.id == placement_id,
-        PersonOrganisatieEenheid.person_id == id,
-    )
-    result = await db.execute(stmt)
-    placement = require_found(result.scalar_one_or_none(), "Placement")
+    placement = await _placement(db, id, placement_id)
     update_data = data.model_dump(exclude_unset=True)
     # Only an earlier end date counts as ending; a later one would reopen it.
     ending = (
@@ -727,13 +729,8 @@ async def update_person_organisatie(
         and data.eind_datum is not None
         and (placement.eind_datum is None or data.eind_datum <= placement.eind_datum)
     )
-    person, eenheid = await _require_can_place(
-        db,
-        perm_ctx,
-        id,
-        placement.organisatie_eenheid_id,
-        ending=ending,
-        bron=placement.bron,
+    person, eenheid = await require_can_change_placement(
+        db, perm_ctx, placement, ending=ending
     )
 
     if not ending:
@@ -780,20 +777,8 @@ async def delete_person_organisatie(
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     """Delete an org placement permanently."""
-    stmt = select(PersonOrganisatieEenheid).where(
-        PersonOrganisatieEenheid.id == placement_id,
-        PersonOrganisatieEenheid.person_id == id,
-    )
-    result = await db.execute(stmt)
-    placement = require_found(result.scalar_one_or_none(), "Placement")
-    await _require_can_place(
-        db,
-        perm_ctx,
-        id,
-        placement.organisatie_eenheid_id,
-        ending=True,
-        bron=placement.bron,
-    )
+    placement = await _placement(db, id, placement_id)
+    await require_can_change_placement(db, perm_ctx, placement, ending=True)
     await db.delete(placement)
     await db.flush()
 

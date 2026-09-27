@@ -1,10 +1,8 @@
 import { apiGet, apiPost } from './client';
 
 /**
- * Resource types the evaluation endpoint accepts: backend `schema/authz.py`
- * `EVALUATION_RESOURCE_TYPES`. An unknown type makes the backend reject the
- * whole request, so `authz.resourceTypes.test.ts` reads the backend source
- * and fails when this list drifts from it.
+ * Backend `EVALUATION_RESOURCE_TYPES`: an unknown type fails the whole
+ * request, so `authz.resourceTypes.test.ts` checks this list against it.
  */
 export const AUTHZ_RESOURCE_TYPES = [
   'corpus_node',
@@ -35,31 +33,25 @@ export const AUTHZ_RESOURCE_TYPES = [
 
 export type AuthzResourceType = (typeof AUTHZ_RESOURCE_TYPES)[number];
 
-/**
- * What an action is about: an existing resource (`id`), or one about to be
- * created, optionally in a given eenheid (`eenheidId`).
- */
+/** An existing resource (`id`), or one about to be created (optionally in `eenheidId`). */
 export interface AuthzResource {
   type: AuthzResourceType;
   id?: string;
   eenheidId?: string;
-  /** `org:create`: the type of the new eenheid (external ones may go anywhere). */
+  /** `org:create`: the type of the new eenheid. */
   eenheidType?: string;
   /**
    * Without `id`: is there any eenheid where the caller may create this?
    * With `role:assign` and no `roleId`: may the caller assign any role.
    */
   anywhere?: boolean;
-  /** `person:place`: ending a placement, or placing a contact without account. */
+  /** `person:place`: ending a placement (`placementId`: which one, so its bron counts), or placing a contact without account. */
   ending?: boolean;
+  placementId?: string;
   contact?: boolean;
-  /** Grant actions: the rol (resource role) or role handed out ... */
+  /** Grant actions: the rol or role handed out, and to whom (neither: someone other than the caller). */
   rol?: string;
   roleId?: string;
-  /**
-   * ... and to whom: a person, or an eenheid (a grant to everyone placed
-   * there). Neither means someone other than the caller.
-   */
   targetPersonId?: string;
   targetEenheidId?: string;
 }
@@ -71,6 +63,7 @@ export function authzProperties(resource: AuthzResource): Record<string, string 
     eenheid_type: resource.eenheidType,
     anywhere: resource.anywhere || undefined,
     ending: resource.ending || undefined,
+    placement_id: resource.placementId,
     contact: resource.contact || undefined,
     rol: resource.rol,
     role_id: resource.roleId,
@@ -82,8 +75,8 @@ export function authzProperties(resource: AuthzResource): Record<string, string 
   );
 }
 
-export interface AuthzEvaluation {
-  /** A permission string such as `node:update` or `lead_column:create`. */
+interface AuthzEvaluation {
+  /** A permission string such as `node:update`. */
   action: string;
   resource: AuthzResource;
 }
@@ -108,13 +101,11 @@ function toWire({ action, resource }: AuthzEvaluation) {
 }
 
 /** One evaluation's answer, or why there is none (its chunk failed). */
-export type EvaluationOutcome = { ok: true; decision: boolean } | { ok: false; error: unknown };
+type EvaluationOutcome = { ok: true; decision: boolean } | { ok: false; error: unknown };
 
 /**
- * Ask the backend for decisions, in order; chunked to the request limit.
- *
- * Chunks settle separately, so one failed request fails only its own
- * evaluations rather than every control asked about in the same tick.
+ * Ask the backend for decisions, in order, chunked to the request limit.
+ * Chunks settle separately: one failed request fails only its own evaluations.
  */
 export async function evaluate(evaluations: AuthzEvaluation[]): Promise<EvaluationOutcome[]> {
   const chunks: AuthzEvaluation[][] = [];
@@ -141,12 +132,7 @@ interface Pending {
   reject: (error: unknown) => void;
 }
 
-/**
- * Collect every evaluation asked for in the same tick into one request.
- *
- * Components mounting together each ask their own question; this turns a
- * detail view with ten buttons into a single POST instead of ten.
- */
+/** Collect every evaluation asked for in the same tick into one request. */
 export function createAuthzBatcher(send: typeof evaluate = evaluate) {
   let queue: Pending[] = [];
 
@@ -181,10 +167,7 @@ export interface EenhedenWith {
   ids: string[];
 }
 
-/**
- * The eenheden where the caller holds `action` (such as `org:manage`), in
- * one request instead of one evaluation per eenheid.
- */
+/** The eenheden where the caller may do `action`, in one request. */
 export function getEenhedenWith(action: string, eenheidType?: string): Promise<EenhedenWith> {
   return apiGet<EenhedenWith>('/api/authz/eenheden', {
     action,

@@ -24,6 +24,8 @@ class AuthzResourceProperties(BaseModel):
     # ``person:place``: ending a placement, or placing a non-account contact.
     ending: bool = False
     contact: bool = False
+    # ``person:place`` on an existing placement: its bron decides who ends it.
+    placement_id: UUID | None = None
     # Grant actions: the rol or role handed out, and to whom (omitted: to
     # someone other than the caller).
     rol: str | None = Field(default=None, max_length=50)

@@ -1,13 +1,8 @@
 """AuthZEN-shaped evaluation endpoint: may the caller do these actions?
 
-The frontend asks here instead of re-deriving rights from roles, so buttons
-match what the API will allow.  A missing resource is ``false`` just like a
-forbidden one, so this endpoint reveals no more than the routes do.
-
-Actions on a resource (``"node:update"``, ``"lead:create"``, ...) are
-decided by ``core.authz.can``.  Grant actions are decided by calling the
-``core.authority`` guard the matching route calls; a refusal of any kind
-is ``false``.  See :func:`evaluate` for the list.
+Resource actions go to ``core.authz.can``, grant actions to the
+``core.authority`` guard the matching route calls (see :func:`evaluate`).
+A missing resource is ``false`` like a forbidden one.
 """
 
 from collections.abc import Awaitable, Callable
@@ -30,6 +25,7 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
+from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole, Role
 from bouwmeester.repositories.org_tree import get_subtree_ids
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
@@ -165,6 +161,14 @@ async def _place(
     db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
 ) -> None:
     props = ev.resource.properties or _NO_PROPERTIES
+    if props.placement_id is not None:
+        placement = await db.get(PersonOrganisatieEenheid, props.placement_id)
+        if placement is None or ev.resource.id not in (None, placement.person_id):
+            raise HTTPException(404)
+        await authority.require_can_change_placement(
+            db, perm_ctx, placement, ending=props.ending
+        )
+        return
     eenheid = (
         await db.get(OrganisatieEenheid, props.eenheid_id) if props.eenheid_id else None
     )
@@ -176,7 +180,7 @@ async def _place(
         if person is None:
             raise HTTPException(404)
     # No one in particular (person None): another account, the strictest
-    # case, or a contact with ``contact``.  The routes call the same guard.
+    # case, or a contact with ``contact``.
     await authority.require_can_place(
         db, perm_ctx, person, eenheid, ending=props.ending, contact=props.contact
     )
@@ -368,6 +372,9 @@ async def evaluate(
       ``properties.eenheid_id``, optional ``properties.ending`` (end the
       placement) and ``properties.contact`` (no id: a contact without
       account).  Without an id: place another person's account there.
+      With ``properties.placement_id`` instead of ``eenheid_id``: change
+      (or with ``ending``: end) that existing placement, deciding on its
+      bron like the placement routes.
     - ``parlementair:name_owner``, resource ``{type: "corpus_node", id}``,
       ``properties.target_person_id``: make that person the eigenaar of the
       node when completing the review of its parliamentary item
