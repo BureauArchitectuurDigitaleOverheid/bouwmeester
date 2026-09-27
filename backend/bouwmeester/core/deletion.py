@@ -300,16 +300,21 @@ async def _walk(db: AsyncSession, plan: _Plan, table: Table, ids: set[UUID]) -> 
         await _walk(db, plan, child, set(await db.scalars(stmt)))
 
 
-async def _refusals(
-    db: AsyncSession, perm_ctx: PermissionContext, plan: _Plan
-) -> dict[str, int]:
-    refused: dict[str, int] = {}
+def _pending_checks(plan: _Plan):
+    """(resource type, permission, ids) the delete still needs checked."""
     for (resource_type, permission), ids in plan.checks.items():
         # A record removed anyway through another path needs no update right.
         if permission.endswith(":update"):
             ids = ids - plan.removed.get(resource_type, set())
-        if not ids:
-            continue
+        if ids:
+            yield resource_type, permission, ids
+
+
+async def _refusals(
+    db: AsyncSession, perm_ctx: PermissionContext, plan: _Plan
+) -> dict[str, int]:
+    refused: dict[str, int] = {}
+    for resource_type, permission, ids in _pending_checks(plan):
         await prefetch(db, perm_ctx, resource_type, list(ids))
         for rid in ids:
             if not await can(db, perm_ctx, permission, resource_type, rid):
@@ -363,6 +368,34 @@ async def delete_guarded(
             + _describe(refused)
             + " waar je geen rechten op hebt. Verplaats of verwijder die eerst.",
         )
+    await _execute(db, table, resource_id, plan)
+
+
+async def delete_if_unclaimed(
+    db: AsyncSession,
+    resource_type: str,
+    resource_id: UUID,
+    own: dict[str, set[UUID]],
+) -> bool:
+    """Delete a record a system job created, unless someone built on it.
+
+    A job has no caller to check, so the delete goes ahead only when every
+    independent record it would remove or change is the job's own (*own*:
+    resource type -> ids).  Otherwise nothing is deleted and False returned.
+    """
+    table = _tables()[resource_type]
+    plan = _Plan()
+    await _walk(db, plan, table, {resource_id})
+    for resource_type_, _perm, ids in _pending_checks(plan):
+        if ids - own.get(resource_type_, set()):
+            return False
+    await _execute(db, table, resource_id, plan)
+    return True
+
+
+async def _execute(
+    db: AsyncSession, table: Table, resource_id: UUID, plan: _Plan
+) -> None:
     blob_keys = await _blob_keys(db, plan.removed)
 
     # Rows without a foreign key to what goes are removed explicitly.  The
@@ -401,6 +434,7 @@ def _model_for(table: Table) -> Any:
 
 __all__ = [
     "delete_guarded",
+    "delete_if_unclaimed",
     "reachable_tables",
     "referencing_fks",
     "remove_scoped",

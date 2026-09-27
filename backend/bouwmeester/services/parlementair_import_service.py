@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
+from bouwmeester.core.deletion import delete_if_unclaimed
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.nieuwsbron import Nieuwsbron
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
@@ -1241,15 +1242,24 @@ class ParlementairImportService:
     ) -> None:
         """Remove the corpus node created during a matchless import.
 
-        Deletes the CorpusNode (cascading to PolitiekeInput, edges,
-        tasks, stakeholders, node_tags) and clears the FK on the item.
+        Under the delete rule (``core.deletion``): the node goes, with its
+        parts, only when nothing but the item's own review task hangs on
+        it.  When someone built on it (a task, an opdracht, a lead link),
+        the node and the item's link to it stay.
         """
-        # Delete the corpus node (cascades to politieke_input, tasks, etc.)
         if item.corpus_node_id:
-            node = await self.session.get(CorpusNode, item.corpus_node_id)
-            if node:
-                await self.session.delete(node)
-            item.corpus_node_id = None
+            own_tasks = set(
+                await self.session.scalars(
+                    select(Task.id).where(
+                        Task.parlementair_item_id == item.id,
+                        Task.work_type == REVIEW_WORK_TYPE,
+                    )
+                )
+            )
+            if await delete_if_unclaimed(
+                self.session, "corpus_node", item.corpus_node_id, {"task": own_tasks}
+            ):
+                item.corpus_node_id = None
 
         await self.session.flush()
 

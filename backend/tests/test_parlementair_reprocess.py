@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlalchemy import select
 
 from bouwmeester.models.corpus_node import CorpusNode
@@ -12,7 +13,10 @@ from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.tag import NodeTag, Tag
 from bouwmeester.models.task import Task
 from bouwmeester.services.llm.base import TagExtractionResult
-from bouwmeester.services.parlementair_import_service import ParlementairImportService
+from bouwmeester.services.parlementair_import_service import (
+    REVIEW_WORK_TYPE,
+    ParlementairImportService,
+)
 
 # Tests use item_type="motie" to avoid collisions with real toezegging
 # data that may exist in the test database.
@@ -179,7 +183,7 @@ async def test_reprocess_no_matches_moves_to_out_of_scope(db_session):
 
 
 async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
-    """Tasks linked to the corpus node are cascade-deleted when node is removed."""
+    """The item's review task goes with the corpus node."""
     item, node = await _make_item(db_session)
 
     task = Task(
@@ -188,6 +192,7 @@ async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
         title="Beoordeel motie",
         status="open",
         priority="normaal",
+        work_type=REVIEW_WORK_TYPE,
         parlementair_item_id=item.id,
     )
     db_session.add(task)
@@ -377,28 +382,38 @@ async def test_detach_corpus_node_deletes_node(db_session):
     assert await db_session.get(CorpusNode, node_id) is None
 
 
-async def test_detach_corpus_node_cascade_deletes_tasks(db_session):
-    """_detach_corpus_node cascade-deletes tasks linked to the corpus node."""
+@pytest.mark.parametrize(
+    ("work_type", "linked_to_item", "deleted"),
+    [
+        (REVIEW_WORK_TYPE, True, True),  # the item's own review task
+        (None, True, False),  # a task someone linked to the item
+        (None, False, False),  # a task someone added to the node
+    ],
+    ids=["review_task", "linked_task", "other_task"],
+)
+async def test_detach_corpus_node_only_when_unclaimed(
+    db_session, work_type, linked_to_item, deleted
+):
+    """The node goes (with its review task) only when nobody built on it
+    (``core.deletion``); otherwise node, task and the item's link stay."""
     item, node = await _make_item(db_session)
-
-    open_task = Task(
+    task = Task(
         id=uuid.uuid4(),
         node_id=node.id,
         title="Open task",
         status="open",
         priority="normaal",
-        parlementair_item_id=item.id,
+        work_type=work_type,
+        parlementair_item_id=item.id if linked_to_item else None,
     )
-    db_session.add(open_task)
+    db_session.add(task)
     await db_session.flush()
 
-    service = ParlementairImportService(db_session)
-    await service._detach_corpus_node(item)
+    await ParlementairImportService(db_session)._detach_corpus_node(item)
 
-    assert item.corpus_node_id is None
-    assert await db_session.get(CorpusNode, node.id) is None
-    # Task is cascade-deleted with the corpus node
-    assert await db_session.get(Task, open_task.id) is None
+    assert (item.corpus_node_id is None) is deleted
+    assert (await db_session.get(CorpusNode, node.id) is None) is deleted
+    assert (await db_session.get(Task, task.id) is None) is deleted
 
 
 async def test_detach_corpus_node_no_node_is_noop(db_session):
