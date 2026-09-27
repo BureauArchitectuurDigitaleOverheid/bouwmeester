@@ -118,13 +118,16 @@ async def test_request_access_already_allowed(client, login_denied):
 
 
 async def test_request_access_notifies_admins(client, db_session, login_denied):
-    """Submitting an access request sends notifications to admin users."""
+    """Submitting an access request sends notifications to admin users
+    (who may still log in: active and on the whitelist)."""
     admin_id = uuid.uuid4()
     admin = Person(
         id=admin_id,
         naam="Admin User",
         email="admin@example.com",
+        oidc_email="admin@example.com",
     )
+    whitelist._allowed_emails.add("admin@example.com")
     db_session.add(admin)
     await db_session.flush()
     db_session.add(
