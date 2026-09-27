@@ -1265,7 +1265,7 @@ def _migration(name: str):
 
 
 async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
-    """A manager's placement from before the fix survives the first login."""
+    """Placements from before the fix keep their access; ended ones aside."""
     from sqlalchemy import text
 
     below_team = await make_org(tree.db, "Stichting", "stichting", tree.team)
@@ -1297,7 +1297,8 @@ async def test_migration_confirms_placements_made_before_deploy(tree: Tree):
 
     assert await bron(tree.contact, tree.team) == "leidinggevende"
     assert await bron(tree.contact, below_team) == "leidinggevende"
-    assert await bron(tree.contact, tree.gemeente) == "handmatig"
+    # External organisations too: partners keep their access at deploy.
+    assert await bron(tree.contact, tree.gemeente) == "leidinggevende"
     assert await bron(ended, tree.team) == "handmatig"
 
     await _first_login(tree, tree.contact)
@@ -1653,22 +1654,23 @@ async def _initiatief_for(tree: Tree, eenheid: OrganisatieEenheid, rol: str):
 async def test_contact_in_eenheid_moved_inside_does_not_read_up_the_line(tree: Tree):
     """A team editor cannot smuggle a contact into the organisation.
 
-    Create a stichting at the top, place a contact there, let the contact
-    log in, then hang the stichting under the own team: the contact's
-    placement is contact administration and stays informational.
+    Create a stichting at the top, have a contact placed there, let the
+    contact log in, then hang the stichting under the own team.  Placed by
+    someone else than the stichting's owner, the placement is contact
+    administration and stays informational; placed by the owner it is
+    trusted, and then only a manager may move the stichting inside.
     """
     async with client_as(tree.db, tree.editor) as c:
         created = await c.post(
             "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
         )
-        assert created.status_code == 201, created.text
-        stichting = await tree.db.get(
-            OrganisatieEenheid, uuid.UUID(created.json()["id"])
-        )
+    assert created.status_code == 201, created.text
+    stichting = await tree.db.get(OrganisatieEenheid, uuid.UUID(created.json()["id"]))
+    async with client_as(tree.db, tree.member) as c:
         placed = await c.post(
             f"/api/people/{tree.contact.id}/organisaties", json=_placement(stichting)
         )
-        assert placed.status_code == 201, placed.text
+    assert placed.status_code == 201, placed.text
     await _first_login(tree, tree.contact)
     async with client_as(tree.db, tree.editor) as c:
         moved = await c.put(
@@ -1679,6 +1681,26 @@ async def test_contact_in_eenheid_moved_inside_does_not_read_up_the_line(tree: T
     assert (await _placement_of(tree.db, tree.contact, stichting)).bron == "handmatig"
     visible = await _visible_eenheden(tree, tree.contact)
     assert not visible & {tree.team.id, tree.directie.id, tree.ministerie.id}
+
+
+async def test_owner_placed_contact_blocks_moving_the_eenheid_inside(tree: Tree):
+    async with client_as(tree.db, tree.editor) as c:
+        created = await c.post(
+            "/api/organisatie", json={"naam": "Stichting", "type": "stichting"}
+        )
+        stichting_id = created.json()["id"]
+        placed = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties",
+            json={
+                "organisatie_eenheid_id": stichting_id,
+                "start_datum": str(date.today()),
+            },
+        )
+        assert placed.status_code == 201, placed.text
+        moved = await c.put(
+            f"/api/organisatie/{stichting_id}", json={"parent_id": str(tree.team.id)}
+        )
+    assert moved.status_code == 403, moved.text
 
 
 async def test_moving_trusted_members_inside_needs_a_manager_of_the_new_parent(
@@ -1770,3 +1792,76 @@ async def test_manager_confirms_a_contact_placement(tree: Tree):
     assert twice.status_code == 409, twice.text
     placement = await _placement_of(tree.db, tree.contact, tree.team)
     assert placement.bron == "leidinggevende"
+
+
+async def _partner_of(tree: Tree, creator: Person) -> OrganisatieEenheid:
+    """A partner organisation *creator* made (and so owns)."""
+    async with client_as(tree.db, creator) as c:
+        created = await c.post(
+            "/api/organisatie", json={"naam": "Partnergemeente", "type": "gemeente"}
+        )
+    assert created.status_code == 201, created.text
+    return await tree.db.get(OrganisatieEenheid, uuid.UUID(created.json()["id"]))
+
+
+async def test_owner_of_external_organisation_confirms_its_members(tree: Tree):
+    partner = await _partner_of(tree, tree.editor)
+    initiatief = await _initiatief_for(tree, partner, "contributor")
+    async with client_as(tree.db, tree.editor) as c:
+        placed = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties", json=_placement(partner)
+        )
+    assert placed.status_code == 201, placed.text
+    placement = await _placement_of(tree.db, tree.contact, partner)
+    assert placement.bron == "leidinggevende"
+    await _first_login(tree, tree.contact)
+    assert await _may(tree, tree.contact, "initiatief:read", initiatief.id)
+
+
+async def test_others_cannot_confirm_members_of_someone_elses_partner(tree: Tree):
+    """The H2 attack stays closed: only the owner confirms."""
+    partner = await _partner_of(tree, tree.editor)
+    initiatief = await _initiatief_for(tree, partner, "contributor")
+    for who in (tree.member, tree.directie_manager):
+        async with client_as(tree.db, who) as c:
+            await c.post(
+                f"/api/people/{tree.contact.id}/organisaties", json=_placement(partner)
+            )
+        placement = await _placement_of(tree.db, tree.contact, partner)
+        assert placement.bron == "handmatig"
+    await _first_login(tree, tree.contact)
+    assert not await _may(tree, tree.contact, "initiatief:read", initiatief.id)
+
+    req = await _request(tree.db, tree.member, partner)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        refused = await c.post(f"/api/org-placements/{req.id}/approve")
+    assert refused.status_code == 403, refused.text
+
+
+async def test_owner_of_external_organisation_decides_its_requests(tree: Tree):
+    partner = await _partner_of(tree, tree.editor)
+    initiatief = await _initiatief_for(tree, partner, "contributor")
+    req = await _request(tree.db, tree.member, partner)
+    async with client_as(tree.db, tree.editor) as c:
+        pending = await c.get("/api/org-placements/pending")
+        approved = await c.post(f"/api/org-placements/{req.id}/approve")
+    assert str(req.id) in {r["id"] for r in pending.json()}
+    assert approved.status_code == 200, approved.text
+    assert await _may(tree, tree.member, "initiatief:read", initiatief.id)
+
+
+async def test_informational_placement_still_needs_onboarding(tree: Tree):
+    """Only a membership ends onboarding; a contact placement is none."""
+    newcomer = await make_person(tree.db, "Nieuwkomer")
+    await place(tree.db, newcomer, tree.team, bron="handmatig")
+    async with client_as(tree.db, newcomer) as c:
+        resp = await c.post(
+            "/api/auth/onboarding",
+            json={
+                "naam": "Nieuwkomer",
+                "functie": "Beleidsmedewerker",
+                "organisatie_eenheid_id": str(tree.team.id),
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    assert await _pending_requests(tree, newcomer) == {tree.team.id}

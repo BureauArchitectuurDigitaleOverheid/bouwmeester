@@ -10,8 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    can_manage_members,
-    managed_subtree_ids,
+    can_confirm_members,
+    confirmable_eenheid_ids,
     require_can_decide_placement_request,
 )
 from bouwmeester.core.database import get_db
@@ -137,10 +137,11 @@ async def list_pending(
         .options(*_load_options())
         .order_by(OrgPlacementRequest.requested_at.desc())
     )
-    # Managers see requests for their eenheden and everything below them
+    # Whoever decides about the members sees the requests (managers: their
+    # eenheden and everything below them; eigenaren of an external one).
     if not perm_ctx.is_authenticated:
         return []
-    managed = await managed_subtree_ids(db, perm_ctx)
+    managed = await confirmable_eenheid_ids(db, perm_ctx)
     if managed is not None:
         stmt = stmt.where(OrgPlacementRequest.organisatie_eenheid_id.in_(managed))
     if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
@@ -191,7 +192,7 @@ async def update_placement_request(
     await db.refresh(req, attribute_names=["organisatie_eenheid"])
 
     # If the changer doesn't manage the new eenheid, notify its manager
-    should_notify = not await can_manage_members(
+    should_notify = not await can_confirm_members(
         db, perm_ctx, data.organisatie_eenheid_id
     )
 

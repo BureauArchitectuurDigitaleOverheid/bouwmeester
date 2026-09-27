@@ -56,7 +56,8 @@ edges (``import_export:export``) is a platform operation for system roles
 Membership: "placed in an eenheid" below always means a *trusted*
 placement (``repositories.org_tree.membership_ids_select``, the one
 definition).  A placement is trusted when someone with authority over the
-members of the eenheid made or approved it (bron ``leidinggevende``) or an
+members of the eenheid (``core.authority.can_confirm_members``) made or
+approved it (bron ``leidinggevende``) or an
 official sync brought it (``TRUSTED_PLACEMENT_BRONNEN``: TK, kabinet, ABD,
 ROO).  Contact administration (bron ``handmatig``, anyone with
 ``people:update``) and a manager's detachering of own staff into an

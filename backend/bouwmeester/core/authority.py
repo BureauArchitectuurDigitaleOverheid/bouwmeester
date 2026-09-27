@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authz import (
     can,
+    eenheid_ids_where,
     get_eenheid_ids,
     perm_ctx_for,
     require,
@@ -85,11 +86,45 @@ async def can_manage_members(
     return rights.has_role(*MEMBER_MANAGER_ROLES)
 
 
+async def can_confirm_members(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    eenheid_id: UUID,
+) -> bool:
+    """True if the person decides who is a (trusted) member of *eenheid_id*.
+
+    Inside the organisation only a manager of the eenheid or one above it
+    (``can_manage_members``).  An external organisation outside it (a
+    gemeente, a stichting) usually has no manager, so there whoever holds
+    ``org:manage`` on it decides as well: typically the eigenaar who
+    created it.  Placing, confirming a placement and deciding a placement
+    request all ask this.
+    """
+    if await can_manage_members(db, perm_ctx, eenheid_id):
+        return True
+    return not await touches_organisation(db, eenheid_id) and await can(
+        db, perm_ctx, "org:manage", "organisatie_eenheid", eenheid_id
+    )
+
+
+async def confirmable_eenheid_ids(
+    db: AsyncSession, perm_ctx: PermissionContext
+) -> set[UUID] | None:
+    """Every eenheid where ``can_confirm_members`` holds; ``None`` means all."""
+    managed = await managed_subtree_ids(db, perm_ctx)
+    owned = await eenheid_ids_where(db, perm_ctx, "org:manage")
+    if managed is None or owned is None:
+        return None
+    return managed | {eid for eid in owned if not await touches_organisation(db, eid)}
+
+
 async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
     """People who may decide about the members of *eenheid_id*.
 
     Everyone holding a manager role on the eenheid or on any eenheid above
-    it: the same set ``can_manage_members`` lets through.
+    it, and for an external organisation outside the internal one its
+    eigenaren: the people ``can_confirm_members`` lets through (a system
+    role aside).
     """
     chain = await get_self_and_ancestor_ids(db, eenheid_id)
     today = date.today()
@@ -101,7 +136,18 @@ async def member_manager_ids(db: AsyncSession, eenheid_id: UUID) -> set[UUID]:
             (PersonRole.eind_datum.is_(None)) | (PersonRole.eind_datum >= today),
         )
     )
-    return set(result.scalars().all())
+    ids = set(result.scalars().all())
+    if not await touches_organisation(db, eenheid_id):
+        owners = await db.scalars(
+            select(ResourcePermission.person_id).where(
+                ResourcePermission.resource_type == "organisatie_eenheid",
+                ResourcePermission.resource_id == eenheid_id,
+                ResourcePermission.rol == "eigenaar",
+                ResourcePermission.person_id.isnot(None),
+            )
+        )
+        ids |= set(owners.all())
+    return ids
 
 
 def managed_eenheid_ids(perm_ctx: PermissionContext) -> list[UUID]:
@@ -149,8 +195,10 @@ async def require_can_place(
 
     Every placement change needs ``people:update``.  A placement of an
     account grants access (implicit viewer, visibility of the eenheid and
-    its ancestors), so only a manager of the eenheid or of an ancestor may
-    create or change it; everyone else files a placement request.  Nobody
+    its ancestors), so only who decides about its members
+    (``can_confirm_members``: a manager of the eenheid or of an ancestor,
+    or the eigenaar of an external organisation) may create or change it;
+    everyone else files a placement request.  Nobody
     places themselves, managers included (a manager would otherwise join any
     eenheid below them); ending your own placement only gives access up, so
     that is always allowed.
@@ -177,7 +225,7 @@ async def require_can_place(
             f"Je kunt jezelf niet in {eenheid.naam} plaatsen. Dien een "
             "plaatsingsverzoek in; een leidinggevende beslist."
         )
-    if await can_manage_members(db, perm_ctx, eenheid.id):
+    if await can_confirm_members(db, perm_ctx, eenheid.id):
         return
     if contact if person is None else not await is_account(db, person):
         return
@@ -222,12 +270,13 @@ async def placement_bron(
 ) -> str:
     """The bron to record for a placement the caller makes (or changes).
 
-    Only a manager of the eenheid (or above it) makes a trusted placement.
+    Only who decides about its members (``can_confirm_members``) makes a
+    trusted placement.
     A manager placing own staff in an external organisation records a
     detachering; anyone else does contact administration.  Neither of those
     gives access.
     """
-    if await can_manage_members(db, perm_ctx, eenheid.id):
+    if await can_confirm_members(db, perm_ctx, eenheid.id):
         return PLACEMENT_BRON_LEIDINGGEVENDE
     if await _is_detachering(db, perm_ctx, person, eenheid):
         return PLACEMENT_BRON_DETACHERING
@@ -318,7 +367,7 @@ async def require_can_decide_placement_request(
         return
     if requester_id == perm_ctx.person_id:
         raise _forbidden("Je kunt niet over je eigen verzoek beslissen")
-    if not await can_manage_members(db, perm_ctx, eenheid_id):
+    if not await can_confirm_members(db, perm_ctx, eenheid_id):
         raise _forbidden("Geen bevoegdheid")
 
 
@@ -652,13 +701,14 @@ async def _require_identity_authority(
     membership reaches something), resource grants, and the tasks assigned
     to them (an assignee always reads their task).  Adding an email is
     therefore handing all of that to whoever controls the address, so the
-    caller must be able to hand it out themselves: manage the members of
-    every such eenheid, hold the grant authority over every grant, and be
-    able to reassign every such task (``task:update``).  A contact holding
+    caller must be able to hand it out themselves: decide about the members
+    of every such eenheid (``can_confirm_members``), hold the grant
+    authority over every grant, and be able to reassign every such task
+    (``task:update``).  A contact holding
     nothing (a counterpart at a gemeente) stays open to ``people:update``.
     """
     for eenheid_id in await _trusted_placement_eenheid_ids(db, person.id):
-        if await _membership_reaches(db, eenheid_id) and not await can_manage_members(
+        if await _membership_reaches(db, eenheid_id) and not await can_confirm_members(
             db, perm_ctx, eenheid_id
         ):
             raise _forbidden(_IDENTITY_REFUSAL)

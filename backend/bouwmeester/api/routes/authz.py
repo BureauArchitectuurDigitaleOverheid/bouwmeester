@@ -404,11 +404,12 @@ async def _place_where(
 ) -> set[UUID] | None:
     """Where the caller may place another person's account (``require_can_place``).
 
-    ``people:update`` somewhere, and managing the eenheid or one above it.
+    ``people:update`` somewhere, and deciding about the members there
+    (``authority.can_confirm_members``).
     """
     if not perm_ctx.has_permission("people:update"):
         return set()
-    return await authority.managed_subtree_ids(db, perm_ctx)
+    return await authority.confirmable_eenheid_ids(db, perm_ctx)
 
 
 _EENHEDEN_WHERE: dict[str, EenhedenWhere] = {

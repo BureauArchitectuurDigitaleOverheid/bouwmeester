@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.auth import get_current_user, get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
@@ -126,6 +126,8 @@ async def client_as(db: AsyncSession, person: Person | None):
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_optional_user] = lambda: person
+    if person is not None:
+        app.dependency_overrides[get_current_user] = lambda: person
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
