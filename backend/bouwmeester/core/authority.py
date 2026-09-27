@@ -15,6 +15,11 @@ over it.
 Inheritance rule: a role held on an eenheid also applies to every eenheid
 below it.  "Effective on E" therefore means: held as a system role, or held
 on E or on any ancestor of E.
+
+Agents: a role, a resource role or a placement handed to an agent is power
+it then acts with on its own, so only who may instruct it
+(``services.agent_rules``: super_admin) hands it any (``_require_may_empower``).
+Taking power away from an agent (ending, revoking) is not restricted.
 """
 
 from __future__ import annotations
@@ -64,6 +69,7 @@ from bouwmeester.repositories.org_tree import (
     placement_trusted,
     touches_organisation,
 )
+from bouwmeester.services.agent_rules import require_may_instruct
 
 # Roles that make someone responsible for the members of an eenheid (and
 # of everything below it).
@@ -72,6 +78,15 @@ MEMBER_MANAGER_ROLES = frozenset({"unit_manager", "ministry_admin"})
 
 def _forbidden(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
+async def _require_may_empower(
+    db: AsyncSession, perm_ctx: PermissionContext, target: Person | UUID | None
+) -> None:
+    """403 unless the caller may hand *target* power (an agent: super_admin)."""
+    if isinstance(target, UUID):
+        target = await db.get(Person, target)
+    require_may_instruct(perm_ctx, target)
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +239,8 @@ async def require_can_place(
     own = person is not None and person.id == perm_ctx.person_id
     if own and ending:
         return
+    if not ending:
+        await _require_may_empower(db, perm_ctx, person)
     if own and not perm_ctx.is_super_admin:
         raise _forbidden(
             f"Je kunt jezelf niet in {eenheid.naam} plaatsen. Dien een "
@@ -447,6 +464,7 @@ async def require_can_decide_placement_request(
     eenheid_id: UUID,
 ) -> None:
     """Guard approving, denying or redirecting a placement request."""
+    await _require_may_empower(db, perm_ctx, requester_id)
     if perm_ctx.is_super_admin:
         return
     if requester_id == perm_ctx.person_id:
@@ -666,6 +684,7 @@ async def require_can_assign_role(
 
     ``target_person_id=None`` asks about someone else (for the frontend).
     """
+    await _require_may_empower(db, perm_ctx, target_person_id)
     if (
         not perm_ctx.is_super_admin
         and target_person_id is not None
@@ -1198,9 +1217,11 @@ async def require_can_name_owner(
 
     The evaluation endpoint asks this as ``parlementair:name_owner``.
     """
-    if await db.get(Person, target_person_id) is None:
+    target = await db.get(Person, target_person_id)
+    if target is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Persoon niet gevonden")
     await require(db, perm_ctx, "parlementair:review", "corpus_node", node_id)
+    await _require_may_empower(db, perm_ctx, target)
     grants = await _node_owner_grants(db, node_id)
     if any(grant.person_id == target_person_id for grant in grants):
         return
@@ -1234,6 +1255,7 @@ async def require_can_grant_resource_role(
 ) -> None:
     """Guard giving *rol* on a resource to a person or an eenheid."""
     _require_known_rol(resource_type, rol)
+    await _require_may_empower(db, perm_ctx, target_person_id)
     await _require_grant_authority(
         db,
         perm_ctx,
@@ -1301,6 +1323,7 @@ async def _require_change_authority(
     """Authority to change or remove *grant*, leaving the last-owner rule aside."""
     if new_rol is not None:
         _require_known_rol(grant.resource_type, new_rol)
+        await _require_may_empower(db, perm_ctx, grant.person_id)
     if grant.person_id is not None and grant.person_id == perm_ctx.person_id:
         kept = _rol_permissions(
             grant.resource_type, frozenset({new_rol} if new_rol else set())
