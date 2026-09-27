@@ -1052,16 +1052,14 @@ def _describe_action(tool_name: str, args: dict) -> str:
     return fn(args) if fn else f"{tool_name} uitvoeren"
 
 
-# Arguments of a write tool that name an item: (label, resource type, read
-# permission).  The confirm card names the item by title, when the caller
-# may read it.
-_ITEM_ARGS: dict[str, tuple[str, str, str]] = {
-    "node_id": ("item", "corpus_node", "node:read"),
-    "from_node_id": ("van", "corpus_node", "node:read"),
-    "to_node_id": ("naar", "corpus_node", "node:read"),
-    "task_id": ("taak", "task", "task:read"),
-    "parent_task_id": ("hoofdtaak", "task", "task:read"),
-    "lead_id": ("lead", "lead", "lead:read"),
+# Arguments of a write tool that name an item: (label, resource type).
+_ITEM_ARGS: dict[str, tuple[str, str]] = {
+    "node_id": ("item", "corpus_node"),
+    "from_node_id": ("van", "corpus_node"),
+    "to_node_id": ("naar", "corpus_node"),
+    "task_id": ("taak", "task"),
+    "parent_task_id": ("hoofdtaak", "task"),
+    "lead_id": ("lead", "lead"),
 }
 # Arguments that name a person, with their label on the confirm card.
 _PERSON_ARGS = {"person_id": "persoon", "assignee_id": "toegewezen aan"}
@@ -1078,10 +1076,10 @@ _FIELD_LABELS = {
 
 
 async def _item_title(
-    db: AsyncSession, caller: Caller, resource_type: str, permission: str, raw: object
+    db: AsyncSession, caller: Caller, resource_type: str, raw: object
 ) -> str:
     """The item's title in quotes, or a placeholder when the caller cannot read it."""
-    from bouwmeester.core.authz import can
+    from bouwmeester.core.authz import can, read_permission
     from bouwmeester.models.corpus_node import CorpusNode
     from bouwmeester.models.lead import Lead
     from bouwmeester.models.task import Task
@@ -1094,6 +1092,7 @@ async def _item_title(
     item = await db.get(model, item_id)
     if item is None:
         return "onbekend item"
+    permission = read_permission(resource_type)
     if not await can(db, caller.perm_ctx, permission, resource_type, item_id):
         return "een item dat je niet mag zien"
     return f'"{item.title}"'
@@ -1117,15 +1116,13 @@ async def _describe_pending(
 ) -> str:
     """The confirm card of a write: what, on which item, for whom, which fields.
 
-    The model proposes the write, so a prompt-injected instruction would hide
-    in its arguments; the card spells them out before the user confirms:
-    the item by the title the caller may read, every person the write names,
-    and for an update the fields it changes.
+    The model proposes the write, so the card spells out its arguments (where
+    a prompt injection would hide) before the user confirms.
     """
     parts = [_describe_action(tool_name, args)]
-    for arg, (label, resource_type, permission) in _ITEM_ARGS.items():
+    for arg, (label, resource_type) in _ITEM_ARGS.items():
         if args.get(arg):
-            title = await _item_title(db, caller, resource_type, permission, args[arg])
+            title = await _item_title(db, caller, resource_type, args[arg])
             parts.append(f"{label}: {title}")
     for arg, label in _PERSON_ARGS.items():
         if args.get(arg):
@@ -1671,16 +1668,11 @@ async def _sees_node(db: AsyncSession, caller: Caller, node_id: UUID) -> bool:
     return await can(db, caller.perm_ctx, "node:read", "corpus_node", node_id)
 
 
-# Each write tool stands in for a REST route and asks ``core.authz`` the
-# same question: ``(permission, resource type, argument with the resource
-# id)``, where ``None`` means a new resource without an eenheid.  Several
-# entries are alternatives: an edge needs write access on either end.
-# ``create_task`` and ``create_lead`` are placed in an eenheid and decided in
-# ``_authorize_write_tool``: a task like ``POST /tasks`` (its eenheid when
-# given, else its node), a lead like ``POST /leads`` without initiatief
-# (``services.lead_rules``: one of the user's own eenheden).  Linking an
-# existing tag is ``node:update`` (the chat never creates tags).  Granting a
-# stakeholder role goes through the same authority check as the REST routes.
+# Each write tool asks ``core.authz`` what its REST route asks: ``(permission,
+# resource type, argument with the resource id)``; ``None`` is a new resource
+# without an eenheid.  Several entries are alternatives (either end of an
+# edge).  Empty entries are decided in ``_authorize_write_tool`` by the same
+# rules as their routes (task_rules, lead_rules, core.authority).
 _WRITE_TOOL_POLICY: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "create_node": (("node:create", "corpus_node", None),),
     "update_node": (("node:update", "corpus_node", "node_id"),),
@@ -1709,11 +1701,7 @@ _MUST_SEE: dict[str, tuple[tuple[str, str, str], ...]] = {
 
 
 def _task_create_from_args(args: dict) -> "TaskCreate":
-    """The ``POST /tasks`` body the ``create_task`` tool stands for.
-
-    Authorizing and creating use the same body, so they cannot disagree
-    about where the task goes or what it links to.
-    """
+    """The ``POST /tasks`` body of ``create_task``, for authorizing and creating."""
     from bouwmeester.schema.task import TaskCreate
 
     optional = {

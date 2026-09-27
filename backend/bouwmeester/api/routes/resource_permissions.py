@@ -1,9 +1,4 @@
-"""Unified resource permission management routes.
-
-Provides generic CRUD for the resource_permission table, used
-by frontend components that manage stakeholders, members, and
-contacts across all resource types.
-"""
+"""Generic CRUD for resource_permission (stakeholders, members, contacts)."""
 
 from uuid import UUID
 
@@ -17,7 +12,7 @@ from bouwmeester.core.authority import (
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
-from bouwmeester.core.authz import require
+from bouwmeester.core.authz import read_permission, require
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
     PermissionContext,
@@ -36,7 +31,7 @@ from bouwmeester.schema.resource_permission import (
     ResourcePermissionUpdate,
 )
 from bouwmeester.services.activity_service import log_activity
-from bouwmeester.services.visibility_filters import read_permission, readable_ids
+from bouwmeester.services.visibility_filters import readable_ids
 
 router = APIRouter(
     prefix="/resource-permissions",
@@ -62,11 +57,7 @@ async def _require_can_list_grants(
     resource_type: str,
     resource_id: UUID,
 ) -> None:
-    """Read gate for listing who holds which rol on a resource.
-
-    Whoever may hand out roles here and can see the resource.  Changing
-    grants is decided in ``core.authority``.
-    """
+    """Listing grants: whoever may hand out roles here and sees the resource."""
     await require(db, perm, grant_permission(resource_type), resource_type, resource_id)
     await require(db, perm, read_permission(resource_type), resource_type, resource_id)
 
@@ -123,11 +114,7 @@ async def _readable_grants(
 async def _require_sees_grant(
     db: AsyncSession, perm: PermissionContext, rp: ResourcePermission
 ) -> None:
-    """404 for a grant on a resource the caller cannot read.
-
-    Decided before ``core.authority``, so an outsider learns nothing from
-    the last-owner rule (409) about a resource they cannot see.
-    """
+    """404 for a grant on an unreadable resource, before the 409 can leak it."""
     if rp.resource_type in _named_types():
         await require(
             db,

@@ -1,17 +1,9 @@
 """Responses name only what the caller may read.
 
-A response about something the caller reads often names other things: the
-subtasks and opdracht of a task, the nodes an opdracht or a lead is linked
-to, the initiatief of a lead, the resources a person holds a role on.
-Those references are filtered here, with the same ``<type>:read`` decision
-``core.authz`` takes for the thing itself.  :func:`readable_ids` locates
-all references of one type with ``prefetch`` and then decides each from the
-request cache, so a list costs a constant number of queries.
-
-What the caller cannot read is left out of a list of references, and an
-embedded summary of it (a task's node, an opdracht's instrument) becomes
-``None``; the id of the reference on the record itself stays, it is part of
-the record the caller reads.
+References a response embeds (a task's subtasks and node, a lead's
+initiatief, ...) are decided with the same ``<type>:read`` as the thing
+itself: unreadable ones are left out of lists, embedded summaries become
+``None``, and the id on the record itself stays.
 """
 
 from collections.abc import Iterable, Sequence
@@ -19,7 +11,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.authz import can, prefetch
+from bouwmeester.core.authz import can, prefetch, read_permission
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.opdracht import Opdracht
@@ -29,13 +21,6 @@ from bouwmeester.schema.lead import LeadDetailResponse, LeadResponse
 from bouwmeester.schema.opdracht import OpdrachtResponse
 from bouwmeester.schema.task import TaskResponse
 
-_READ_PERMISSION = {"corpus_node": "node:read"}
-
-
-def read_permission(resource_type: str) -> str:
-    """The permission that reads a resource of *resource_type*."""
-    return _READ_PERMISSION.get(resource_type, f"{resource_type}:read")
-
 
 async def readable_ids(
     db: AsyncSession,
@@ -43,7 +28,7 @@ async def readable_ids(
     resource_type: str,
     ids: Iterable[UUID | None],
 ) -> set[UUID]:
-    """The ids among *ids* the caller may read (missing ones are not readable)."""
+    """The ids among *ids* the caller may read, in a constant number of queries."""
     wanted = {rid for rid in ids if rid is not None}
     if not wanted:
         return set()

@@ -1,38 +1,15 @@
 """Who sees which initiatieven and leads: one definition for lists and details.
 
-An initiatief is visible to a person when
-
-- a system role grants ``initiatief:read`` (super_admin), or
-- they hold a resource role on it, directly or through an eenheid they are
-  placed in (every initiatief role includes ``initiatief:read``), or
-- an eenheid that owns it (linked as ``eigenaar``) is visible to them in the
-  org chart (``core.org_context``, the same visible set): their own eenheden
-  and those above their own internal ones (members of the organisation read
-  up its line), plus the subtrees they manage or may write in.
-
-The last rule is the org visibility of nodes, applied to the owning eenheid,
-so nodes and initiatieven follow one rule.  It covers everyone who may write
-an initiatief through a role on an eenheid (``core.authz`` step 4 needs a
-write permission on the owning eenheid or above it, and such eenheden make
-their subtree visible).  Plain members of an eenheid above the owner do not
-read down: they only see that far through a role that lets them write.
-
-A lead is visible when its initiatief is visible, when the person holds a
-resource role on the lead itself (opdrachtgever, contactpersoon,
-betrokken; directly or through an eenheid), or when it has no initiatief
-and its eenheid is visible in the org chart.  Only a lead with neither an
-initiatief nor an eenheid is tenant-wide (leads from before initiatieven
-existed).
-
-Lists filter with ``apply_initiatief_filter`` / ``apply_lead_filter``;
-single items ask ``core.authz`` (``initiatief:read`` / ``lead:read``),
-which answers from the same context, so a list and a detail can never
-disagree.  Writes are decided by ``core.authz`` too.
+An initiatief is visible through a system role, a resource role on it
+(direct or through an own eenheid), or an owning eenheid that is visible in
+the org chart (``core.org_context``).  A lead is visible through its
+initiatief, a resource role on the lead, or, without initiatief, its
+eenheid (none: tenant-wide).  ``core.authz`` answers ``*:read`` from the
+same context as the list filters here.
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -52,8 +29,6 @@ from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -111,10 +86,7 @@ async def build_initiatief_context(
     perm_ctx: PermissionContext | None = None,
     org_ctx: OrgContext | None = None,
 ) -> InitiatiefContext:
-    """Build an InitiatiefContext for the given person.
-
-    Pass the caller's *perm_ctx* and *org_ctx* to avoid building them again.
-    """
+    """Build an InitiatiefContext (pass *perm_ctx* and *org_ctx* if known)."""
     from bouwmeester.core.permissions import (
         anonymous_permission_context,
         build_permission_context,

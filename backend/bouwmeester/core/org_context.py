@@ -1,22 +1,11 @@
-"""Who sees which eenheden, nodes, tasks and opdrachten: lists and details.
-
-Visibility of an eenheid comes from the org chart: your own eenheden, the
-eenheden above your own internal ones (members of the organisation read up
-its line; a member of an external eenheid, a gemeente or a stichting, sees
-that eenheid and not what it hangs below), the subtrees where a role lets
-you write (rights inherit downward, and what you may write you see), and
-eenheden shared with one of yours.  Nodes, tasks and opdrachten add what
-you see through them directly: a resource role that lets you read (every
-node role; opdracht eigenaar and betrokken), a shared node, your own task.
+"""Who sees which eenheden, nodes, tasks and opdrachten (``core.authz`` step 0).
 
 Each rule has a SQL form for lists (``apply_*_filter``) and a row form for
-details (``sees_*``), side by side here; ``core.authz`` answers ``*:read``
-with the row forms, so a list and a detail can never disagree.
+details (``sees_*``), side by side, so a list and a detail cannot disagree.
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from uuid import UUID
 
@@ -30,8 +19,6 @@ from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.org_tree import get_internal_ids, get_subtree_ids
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,18 +47,10 @@ async def build_org_context(
     *,
     perm_ctx: PermissionContext | None = None,
 ) -> OrgContext:
-    """Build an OrgContext for the given person.
+    """Build an OrgContext for the given person (pass *perm_ctx* if known).
 
-    Queries the org hierarchy to determine visibility:
-    - Own memberships (active, trusted plaatsingen)
-    - Parent chain (walking up from each own internal eenheid)
-    - Managed sub-trees (walking down from eenheden where person is manager)
-    - Writable sub-trees (walking down from eenheden where a scoped role
-      grants a write permission, see ``core.authz.write_eenheid_ids``)
-
-    Pass an existing *perm_ctx* (a ``PermissionContext``) to avoid a
-    redundant ``build_permission_context`` call when the caller already
-    has one.
+    Visible: own memberships, the line above own internal eenheden, the
+    subtrees where a scoped role writes, and shares to own eenheden.
     """
     from bouwmeester.core.authority import managed_eenheid_ids
     from bouwmeester.core.authz import (
@@ -100,20 +79,17 @@ async def build_org_context(
             is_authenticated=True,
         )
 
-    # The same memberships and ancestor chains core.authz decides with,
-    # loaded once per request.  Only the organisation reads up its line.
+    # Only the organisation reads up its line.
     own_ids = list(await memberships(db, perm_ctx))
     parent_ids = await self_and_ancestor_ids(
         db, perm_ctx, await get_internal_ids(db, own_ids)
     )
     managed_ids = managed_eenheid_ids(perm_ctx)
-    # Rights inherit downward (core.authz), so what you can write you see.
-    # Managers write in what they manage, so this also covers their subtree.
+    # What you can write you see; this covers a manager's subtree too.
     writable_subtree = await get_subtree_ids(db, write_eenheid_ids(perm_ctx))
 
     all_visible = set(own_ids) | parent_ids | writable_subtree
 
-    # Query shared access grants targeting the user's eenheden
     from bouwmeester.repositories.shared_access import SharedAccessRepository
 
     sa_repo = SharedAccessRepository(db)
@@ -148,12 +124,8 @@ async def get_org_context(
 def apply_org_filter(stmt, column, ctx: OrgContext | None):
     """Restrict *stmt* to the rows the caller sees, by their eenheid *column*.
 
-    The column also names the rule: on a corpus node it is
-    :func:`apply_node_filter`, on a task :func:`apply_task_filter` (both
-    admit more than the eenheid: resource roles, shares, the node of a task
-    without eenheid, the assignee).  Any other column: its eenheid is
-    visible, or it has none.  Aliases work: the rule is applied to the
-    entity the column belongs to.
+    A column of a corpus node or task (or an alias) applies that type's
+    full rule (:func:`apply_node_filter`, :func:`apply_task_filter`).
     """
     from bouwmeester.models.corpus_node import CorpusNode
     from bouwmeester.models.task import Task
@@ -199,14 +171,7 @@ def apply_node_filter(stmt, ctx: OrgContext | None, node=None):
 
 
 def apply_task_filter(stmt, ctx: OrgContext | None, task=None):
-    """Restrict a select over tasks to the visible ones (:func:`sees_task`).
-
-    A task with an eenheid is visible with that eenheid; a task without one
-    is read through its node (``core.authz``), so the node must be visible.
-    Your own tasks (as assignee) are always visible, also where the tasks
-    module is off.  Otherwise the tasks module must be readable somewhere
-    (a module toggle can take it away).
-    """
+    """Restrict a select over tasks to the visible ones (:func:`sees_task`)."""
     from bouwmeester.models.corpus_node import CorpusNode
     from bouwmeester.models.task import Task
 
@@ -255,9 +220,8 @@ def apply_opdracht_filter(stmt, ctx: OrgContext | None):
 
 
 def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
-    """Whether something in *eenheid_id* is visible: ``apply_org_filter`` for one row.
-
-    Something without an eenheid is visible to every authenticated user.
+    """Whether something in *eenheid_id* (or in none) is visible: one row of
+    ``apply_org_filter``.
     """
     if org_ctx.is_admin:
         return True
@@ -273,12 +237,7 @@ def sees_eenheid(org_ctx: OrgContext, eenheid_id: UUID | None) -> bool:
 def sees_node(
     org_ctx: OrgContext, node_id: UUID | None, eenheid_id: UUID | None
 ) -> bool:
-    """Whether a corpus node is visible: :func:`apply_node_filter` for one row.
-
-    Its eenheid is visible (or it has none), or the caller holds a resource
-    role on it, or it is shared with one of their eenheden.  A role or an
-    edit share lets you write, and what you may write you see.
-    """
+    """Whether a corpus node is visible: :func:`apply_node_filter` for one row."""
     if sees_eenheid(org_ctx, eenheid_id):
         return True
     return node_id is not None and (
@@ -289,12 +248,9 @@ def sees_node(
 def sees_task(
     org_ctx: OrgContext, eenheid_id: UUID | None, assignee_id: UUID | None
 ) -> bool | None:
-    """Whether a task is visible without looking at its node.
+    """Whether a task is visible, or None when its node decides (no eenheid).
 
-    True or False for a task with an eenheid or one assigned to the caller;
-    None for a task without eenheid, which is read through its node.  The
-    module gate is ``core.authz``'s (the assignee passes it).
-    :func:`apply_task_filter` for one row.
+    :func:`apply_task_filter` for one row; the module gate is ``core.authz``'s.
     """
     if org_ctx.is_admin:
         return True
@@ -308,11 +264,7 @@ def sees_task(
 def sees_opdracht(
     org_ctx: OrgContext, opdracht_id: UUID | None, eenheid_ids: tuple[UUID, ...]
 ) -> bool:
-    """Whether an opdracht is visible: :func:`apply_opdracht_filter` for one row.
-
-    Its opdrachtgever or opdrachtnemer-eenheid is visible, it has neither,
-    or the caller holds a resource role on it that lets them read it.
-    """
+    """Whether an opdracht is visible: :func:`apply_opdracht_filter` for one row."""
     if org_ctx.is_admin:
         return True
     if not org_ctx.is_authenticated:

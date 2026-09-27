@@ -6,7 +6,7 @@ an id, or a type plus the place it will live in when it does not exist
 yet).  Routes and chat tools ask here; they do not combine
 ``require_permission`` with visibility checks themselves.
 
-Public API (keep it this small)::
+Main entry points::
 
     await can(db, perm_ctx, "node:update", "corpus_node", node_id) -> bool
     await require(db, perm_ctx, "node:update", "corpus_node", node_id)
@@ -15,9 +15,7 @@ Public API (keep it this small)::
     await require_move(db, perm_ctx, "lead", lead, changes)
     await eenheid_ids_where(db, perm_ctx, "org:manage") -> set | None
     await visibility(db, perm_ctx) -> (OrgContext, InitiatiefContext)
-    await perm_ctx_for(db, person_id) -> PermissionContext
     await prefetch(db, perm_ctx, "lead", lead_ids)  # bulk-locate, optional
-    rights_on_eenheid(...), write_eenheid_ids(...), RESOURCE_TYPES
 
 ``require`` raises 401 (not logged in), 404 or 403.  404 when the resource
 is missing and whenever the caller may not see it: a refused ``*:read``,
@@ -431,18 +429,8 @@ def _task_location(
 
 
 async def _place_eenheid(db: AsyncSession, cache: dict, place: Any) -> _Location:
-    """Where a new eenheid goes: below its parent, or at the top.
-
-    Below a parent it lives in that parent, so ``org:create`` held on the
-    parent decides (a role there or above it, or an eenheid's eigenaar role
-    there or above it).  A new external root (a gemeente, a stichting) is
-    free: ``org:create`` held anywhere suffices.
-
-    The internal organisation only grows inside itself: an internal type
-    goes below an internal parent, where ``org:create`` decides as above.
-    A ministerie (its top), an internal root and an internal eenheid below
-    an external one are super_admin's (``read_only``).  Retyping or moving
-    an eenheid asks the same (``core.authority.require_can_move_eenheid``).
+    """Where a new eenheid goes: below its parent, or at the top (see the
+    module docstring; ``read_only`` marks what only super_admin creates).
     """
     parent_id = _field(place, "parent_id")
     eenheid_type = _field(place, "type")
@@ -789,25 +777,27 @@ def _domain(resource_type: str) -> str:
     return _PERM_DOMAIN.get(resource_type, resource_type)
 
 
+def read_permission(resource_type: str) -> str:
+    """The permission that reads a resource of *resource_type*."""
+    return f"{_domain(resource_type)}:read"
+
+
 def readable_modules(perm_ctx: PermissionContext) -> frozenset[str]:
     """The switchable modules (``_MODULE_GATED``) the caller reads somewhere."""
     return frozenset(
-        t for t in _MODULE_GATED if perm_ctx.has_permission(f"{_domain(t)}:read")
+        t for t in _MODULE_GATED if perm_ctx.has_permission(read_permission(t))
     )
 
 
 async def role_read_ids(
     db: AsyncSession, perm_ctx: PermissionContext, resource_type: str
 ) -> list[UUID]:
-    """The resources of one type the caller reads through a resource role.
-
-    Step 2 for ``<type>:read``: a role held directly or through an eenheid
-    the caller is placed in, that grants reading.  ``core.org_context``
-    adds these to the visibility, so writing through a role implies seeing.
+    """The resources of one type the caller reads through a resource role
+    (step 2), for ``core.org_context``.
     """
     if perm_ctx.person_id is None:
         return []
-    read = f"{_domain(resource_type)}:read"
+    read = read_permission(resource_type)
     granting = {
         rol
         for rol, perms in RESOURCE_ROLE_PERMISSIONS.get(resource_type, {}).items()
@@ -864,11 +854,8 @@ def _is_eenheid_write(permission: str) -> bool:
 
 
 def write_eenheid_ids(perm_ctx: PermissionContext) -> list[UUID]:
-    """Eenheden where a scoped role lets the person write (and so below them).
-
-    Rights inherit downward, so whoever can write in an eenheid must also
-    see what lies below it; ``core.org_context`` makes those subtrees
-    visible.  This includes every eenheid a manager manages.
+    """Eenheden where a scoped role lets the person write; ``core.org_context``
+    makes their subtrees visible (writing implies seeing).
     """
     return [
         eid
@@ -896,18 +883,20 @@ async def perm_ctx_for(db: AsyncSession, person_id: UUID | None) -> PermissionCo
     return await build_permission_context(db, person)
 
 
+async def _person(db: AsyncSession, perm_ctx: PermissionContext):
+    from bouwmeester.models.person import Person
+
+    return await db.get(Person, perm_ctx.person_id) if perm_ctx.person_id else None
+
+
 async def org_visibility(db: AsyncSession, perm_ctx: PermissionContext) -> OrgContext:
     """The caller's org visibility, built once per request."""
     from bouwmeester.core.org_context import build_org_context
-    from bouwmeester.models.person import Person
 
     key = ("org_ctx",)
     if key not in perm_ctx.authz_cache:
-        person = (
-            await db.get(Person, perm_ctx.person_id) if perm_ctx.person_id else None
-        )
         perm_ctx.authz_cache[key] = await build_org_context(
-            db, person, perm_ctx=perm_ctx
+            db, await _person(db, perm_ctx), perm_ctx=perm_ctx
         )
     return perm_ctx.authz_cache[key]
 
@@ -917,16 +906,12 @@ async def visibility(
 ) -> tuple[OrgContext, InitiatiefContext]:
     """The caller's org and initiatief visibility, built once per request."""
     from bouwmeester.core.initiatief_context import build_initiatief_context
-    from bouwmeester.models.person import Person
 
     org_ctx = await org_visibility(db, perm_ctx)
     key = ("init_ctx",)
     if key not in perm_ctx.authz_cache:
-        person = (
-            await db.get(Person, perm_ctx.person_id) if perm_ctx.person_id else None
-        )
         perm_ctx.authz_cache[key] = await build_initiatief_context(
-            db, person, perm_ctx=perm_ctx, org_ctx=org_ctx
+            db, await _person(db, perm_ctx), perm_ctx=perm_ctx, org_ctx=org_ctx
         )
     return org_ctx, perm_ctx.authz_cache[key]
 
@@ -938,11 +923,7 @@ async def _read_decision(
     resource_id: UUID | None,
     loc: _Location,
 ) -> bool | None:
-    """The answer to ``<resource_type>:read``, or None when rights decide.
-
-    The row forms of ``core.org_context`` / ``core.initiatief_context``, the
-    same rules the list filters apply.
-    """
+    """The answer to ``<resource_type>:read`` (step 0), or None when rights decide."""
     from bouwmeester.core.org_context import sees_node, sees_opdracht, sees_task
 
     if resource_type in ("initiatief", "lead"):
@@ -968,7 +949,7 @@ async def _read_decision(
         if not loc.parents:
             return False
         reads = [
-            bool(await _decide(db, perm_ctx, f"{_domain(pt)}:read", pt, pid, None))
+            bool(await _decide(db, perm_ctx, read_permission(pt), pt, pid, None))
             for pt, pid in loc.parents
             if pid is not None
         ]
@@ -987,11 +968,8 @@ async def _read_decision(
 async def _resource_roles(
     db: AsyncSession, perm_ctx: PermissionContext, resource_type: str
 ) -> dict[UUID, set[str]]:
-    """The caller's resource roles on every resource of one type.
-
-    One query per type per request, so deciding N leads (a reorder) does not
-    cost N queries.  Like the decisions themselves, a grant made later in
-    the same request is not seen.
+    """The caller's resource roles on every resource of one type, once per
+    request (a grant made later in the same request is not seen).
     """
     key = ("resource_roles", resource_type)
     if key not in perm_ctx.authz_cache:
@@ -1027,11 +1005,7 @@ async def _holds_eenheid_role(
     permission: str,
     eenheid_ids: Iterable[UUID],
 ) -> bool:
-    """Step 2 for eenheden: an eenheid role (eigenaar) on it or above it.
-
-    A role on an eenheid applies below it, so the eigenaar of an external
-    organisation maintains what hangs below it and creates there.
-    """
+    """Step 2 for eenheden: an eenheid role (eigenaar) on it or above it."""
     if perm_ctx.person_id is None:
         return False
     role_perms = RESOURCE_ROLE_PERMISSIONS["organisatie_eenheid"]
@@ -1298,17 +1272,9 @@ async def can_anywhere(
 ) -> bool:
     """Is there any place where *perm_ctx* may create this new resource?
 
-    For generic create buttons (a task, a lead).  Asks :func:`can` for "no
-    eenheid" (system roles, tenant-wide fallback), for every eenheid the
-    person holds a scoped role on (a role applies below it, so those are
-    where it holds first), and whether a resource role on some parent (an
-    initiatief contributor, a node eigenaar) lets them create it there.
-
-    A lead is created without a place in the caller's own eenheid
-    (``_CREATED_IN_OWN_EENHEID``), so for a lead this asks exactly what
-    ``POST /api/leads`` without initiatief and eenheid allows: a system
-    role, or an own eenheid where creating holds.  Creating one in an
-    initiatief is ``lead:create`` on that initiatief.
+    For generic create buttons: no eenheid, every eenheid with a scoped
+    role, or a resource role on some parent.  A lead asks what
+    ``POST /api/leads`` without a place allows (``own_eenheid_where``).
     """
     if await can(db, perm_ctx, permission, resource_type):
         return True
@@ -1324,11 +1290,8 @@ async def can_anywhere(
 async def own_eenheid_where(
     db: AsyncSession, perm_ctx: PermissionContext, permission: str, resource_type: str
 ) -> UUID | None:
-    """The first of the caller's own eenheden where a new resource may go.
-
-    Own eenheden are the trusted, active placements, longest-running first
-    (``get_membership_ids``), so asking and creating, over REST or chat,
-    pick the same one.  ``None`` when there is none.
+    """The first own eenheid (longest-running trusted placement) where a new
+    resource may go, or ``None``.
     """
     for eenheid_id in await memberships(db, perm_ctx):
         if await can(db, perm_ctx, permission, resource_type, eenheid_id=eenheid_id):
@@ -1345,14 +1308,9 @@ async def eenheid_ids_where(
 ) -> set[UUID] | None:
     """The eenheden where ``can`` allows an ``org:*`` *permission*; None: all.
 
-    ``org:update`` / ``org:manage`` are asked on the eenheid itself,
-    ``org:create`` as creating an eenheid (of *eenheid_type*) below it.
-    Candidates are the subtrees of the eenheden where a scoped role or an
-    eenheid role (eigenaar) grants the permission (both apply below them);
-    each is then decided by :func:`can`, so this list and the decisions
-    agree.  A new root is no eenheid and is asked through ``can``.  A
-    system role holds everywhere (None), except for creating an internal
-    type, which only goes below an internal eenheid (``_place_eenheid``).
+    ``org:create`` is asked as creating an eenheid of *eenheid_type* below
+    it.  Candidates (subtrees where a scoped or eenheid role grants it) are
+    each decided by :func:`can`, so this list and the decisions agree.
     """
     internal_create = (
         permission.endswith(":create") and eenheid_type in INTERNAL_EENHEID_TYPES
@@ -1405,13 +1363,7 @@ async def require(
     eenheid_id: UUID | None = None,
     place: Any = None,
 ) -> None:
-    """Like :func:`can`, but raises 401, 404 or 403.
-
-    404 when the resource does not exist, and whenever the caller may not
-    read it: a refused ``*:read``, and a refused write on something they
-    cannot see (that something exists is information too).  403 only for
-    a refused write on something they can see.
-    """
+    """Like :func:`can`, but raises 401, 404 or 403 (see the module docstring)."""
     if not perm_ctx.is_authenticated:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, _NOT_LOGGED_IN)
     loc = await _place_location(db, perm_ctx, resource_type, eenheid_id, place)
@@ -1457,24 +1409,14 @@ async def require_move(
 ) -> None:
     """Guard changing where an existing lead, task or opdracht lives.
 
-    *record* is the resource as it is; *changes* holds the fields of the
-    update (only those sent), of which the placing fields count.  Moving is
-    taking it away where it is and adding it where it goes:
+    Moving is taking it away where it is and adding it where it goes:
 
-    - lead: every move takes it away from its old home, so it needs
-      ``lead:delete`` on the lead and ``lead:create`` at the new place
-      (another initiatief, another eenheid, or from an eenheid into an
-      initiatief, one's own new initiatief included).  Otherwise moving
-      would turn ``lead:update`` into deleting it where it was.  A lead in
-      an initiatief never goes back to no initiatief (422); its
-      ``organisatie_eenheid_id`` is only a label there (the initiatief
-      decides), so changing it is a plain update.  Clearing the eenheid of
-      a lead without initiatief makes it tenant-wide, which only system
-      roles may do.
-    - task: ``task:update`` on the task and ``task:create`` at the new place.
-    - opdracht: ``opdracht:update`` on every eenheid that changes, the one it
-      leaves and the one it lands in; taking all its eenheden away makes it
-      tenant-wide, which only system roles may do.
+    - lead: ``lead:delete`` on it and ``lead:create`` at the new place.  A
+      lead in an initiatief never leaves it (422); its eenheid is only a
+      label there.  Making it tenant-wide is for system roles.
+    - task: ``task:update`` on it and ``task:create`` at the new place.
+    - opdracht: ``opdracht:update`` on every eenheid it leaves or lands in;
+      taking all its eenheden away is for system roles.
     """
     fields = _PLACING_FIELDS[resource_type]
     old = {f: getattr(record, f) for f in fields}
@@ -1537,33 +1479,20 @@ async def _readable(
     resource_type: str,
     resource_id: UUID | None,
 ) -> bool:
-    """May the caller see that this existing resource exists?
-
-    Only for types read by visibility (step 0); the others (an eenheid, a
-    tag, a samenwerkingsverband) are known tenant-wide.  A new resource
-    (no id) has nothing to hide.
+    """May the caller see that this existing resource exists?  (Step 0 types;
+    the others are known tenant-wide.)
     """
     if resource_id is None or resource_type not in _READ_BY_VISIBILITY:
         return True
-    read = f"{_domain(resource_type)}:read"
+    read = read_permission(resource_type)
     return bool(await _decide(db, perm_ctx, read, resource_type, resource_id, None))
 
 
 def requires(permission: str, resource_type: str, *, path_param: str = "id"):
     """Dependency factory: ``require`` with the resource id from the path.
 
-    The dependency declares *path_param* as a ``UUID`` path parameter, so
-    FastAPI answers 422 for a malformed id before anything is decided.
-
-    Usage::
-
-        @router.put("/{id}")
-        async def update(
-            id: UUID,
-            perm_ctx: PermissionContext = Depends(
-                requires("node:update", "corpus_node")
-            ),
-        ): ...
+    *path_param* is declared as a ``UUID`` path parameter, so a malformed
+    id is a 422 before anything is decided.
     """
 
     async def _authz_requires(
@@ -1612,6 +1541,7 @@ __all__ = [
     "own_eenheid_where",
     "perm_ctx_for",
     "prefetch",
+    "read_permission",
     "readable_modules",
     "require",
     "require_move",

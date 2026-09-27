@@ -15,10 +15,8 @@ from bouwmeester.core.authz import require
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.services.agent_rules import require_may_assign
 
-# (body field, permission, resource type): each record a task links to must
-# be one the caller may use.  The node, the opdracht and the parlementair
-# item must be visible; a parent task is changed by adding a subtask, so it
-# needs task:update.
+# (body field, permission, resource type) per record a task links to; adding
+# a subtask changes the parent, so that needs task:update.
 _LINKS: tuple[tuple[str, str, str], ...] = (
     ("node_id", "node:read", "corpus_node"),
     ("opdracht_id", "opdracht:read", "opdracht"),

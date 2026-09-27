@@ -21,75 +21,9 @@ Usage, from a DELETE route whose own permission is already checked::
     await delete_guarded(db, perm_ctx, "corpus_node", node_id)
 
 Every foreign key into a table the walk can reach needs an entry in
-``_FK_RULES`` (``tests/test_deletion.py`` fails otherwise, and so does the
-walk at runtime).  How each one is handled:
-
-=============================================== ============================
-foreign key (child.column -> parent)            handling
-=============================================== ============================
-<node subtype>.id -> corpus_node (dossier,      part (the node's own row)
-doel, instrument, beleidskader, maatregel,
-politieke_input, probleem, effect, beleidsoptie,
-bron)
-corpus_node_title / corpus_node_status .node_id part (history)
-node_tag.node_id                                part
-edge.from_node_id / edge.to_node_id             part: an edge goes with
-                                                either end (authz: edge
-                                                delete is node:delete on
-                                                either end)
-shared_access.source_node_id                    part (shares of the node)
-suggested_edge.target_node_id                   part (a proposal towards a
-                                                node that no longer exists)
-task.node_id                                    owned: ``task:delete`` on
-                                                each task, else 409
-opdracht.instrument_id                          owned: ``opdracht:delete``
-                                                on each opdracht, else 409
-opdracht_node.node_id                           link of the opdracht:
-                                                ``opdracht:update``, else 409
-lead_node.node_id                               link of the lead:
-                                                ``lead:update``, else 409
-parlementair_item.corpus_node_id (SET NULL)     detach; the item's suggested
-                                                edges (proposals for edges
-                                                of this node) go with the
-                                                node, so nothing is left to
-                                                review under the broader
-                                                "no node yet" mandate
-activity.node_id/task_id/edge_id (SET NULL)     detach: system audit log
-notification.related_*_id (SET NULL)            detach: the recipient's own
-bron_bijlage.bron_id                            part (its stored file is
-                                                removed after the rows)
-task.parent_id                                  owned: ``task:delete`` on
-                                                each subtask, else 409
-task.opdracht_id (SET NULL)                     detach: a task lives on its
-                                                node and eenheid, not on
-                                                the opdracht
-fcc_sync_log.opdracht_id (SET NULL)             detach: sync audit log
-opdracht_node.opdracht_id                       part (the opdracht's own
-                                                koppelingen)
-lead.initiatief_id                              owned: ``lead:delete`` on
-                                                each lead, else 409 (the ORM
-                                                relationship is
-                                                ``passive_deletes="all"`` so
-                                                it never nulls the column)
-initiatief_update / lead_column / suggested_lead part
-.initiatief_id
-lead_activity / lead_attachment / lead_tag /    part
-lead_update .lead_id, lead_node.lead_id
-suggested_lead.approved_lead_id /               detach: a pointer on a
-match_existing_lead_id (SET NULL)               suggestion of the initiatief
-suggested_edge.edge_id (SET NULL)               detach: review history
-mattermost_post_link.lead_activity_id /         detach: ingest audit trail
-suggested_lead_id (SET NULL)
-parlementair_treffer.abonnement_id              part
-initiatief_member / lead_contact /              part: legacy grant tables,
-node_stakeholder                                no longer mapped
-=============================================== ============================
-
-Polymorphic references (no foreign key, ``_SCOPED``) are removed with the
-record they point at: resource roles (``resource_permission``), stakeholder
-assessments, Mattermost channel links (so alerts stop) and post links,
-parlementair abonnementen (and their treffers), GitHub links, the
-signaalcontext, and mentions of or in a removed node or task.
+``_FK_RULES`` (``tests/test_deletion.py`` and the walk itself fail
+otherwise).  Polymorphic references without a foreign key (``_SCOPED``)
+go with the record they point at.
 """
 
 from dataclasses import dataclass, field
@@ -167,6 +101,7 @@ _FK_RULES: dict[tuple[str, str], Part | Owned | Link | Detach] = {
     ("corpus_node_title", "node_id"): _PART,
     ("corpus_node_status", "node_id"): _PART,
     ("node_tag", "node_id"): _PART,
+    # An edge goes with either end (authz: deleting it is node:delete on either).
     ("edge", "from_node_id"): _PART,
     ("edge", "to_node_id"): _PART,
     ("shared_access", "source_node_id"): _PART,
@@ -175,6 +110,8 @@ _FK_RULES: dict[tuple[str, str], Part | Owned | Link | Detach] = {
     ("opdracht", "instrument_id"): Owned("opdracht:delete", "opdracht"),
     ("opdracht_node", "node_id"): Link("opdracht_id", "opdracht:update", "opdracht"),
     ("lead_node", "node_id"): Link("lead_id", "lead:update", "lead"),
+    # The item's suggested edges go with the node (``_extra_parts``), so
+    # nothing is left to review under the broader "no node yet" mandate.
     ("parlementair_item", "corpus_node_id"): _DETACH,
     ("activity", "node_id"): _DETACH,
     ("activity", "task_id"): _DETACH,
@@ -184,9 +121,11 @@ _FK_RULES: dict[tuple[str, str], Part | Owned | Link | Detach] = {
     ("notification", "related_lead_id"): _DETACH,
     ("bron_bijlage", "bron_id"): _PART,
     ("task", "parent_id"): Owned("task:delete", "task"),
+    # A task lives on its node and eenheid, not on the opdracht.
     ("task", "opdracht_id"): _DETACH,
     ("fcc_sync_log", "opdracht_id"): _DETACH,
     ("opdracht_node", "opdracht_id"): _PART,
+    # The ORM relationship is passive_deletes="all": it never nulls this.
     ("lead", "initiatief_id"): Owned("lead:delete", "lead"),
     ("initiatief_update", "initiatief_id"): _PART,
     ("lead_column", "initiatief_id"): _PART,

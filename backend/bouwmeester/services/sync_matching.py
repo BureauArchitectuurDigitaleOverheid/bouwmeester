@@ -39,11 +39,6 @@ OFFICIAL_EENHEID_BRONNEN = frozenset({"tooi", "ministeries_csv", "organogram_scr
 _TK_BRON = "tk_odata"
 
 
-def escape_like(value: str) -> str:
-    """*value* as a literal inside a LIKE pattern (``\\`` is the escape)."""
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-
 @dataclass
 class PersonMatch:
     """The outcome of :func:`match_sync_person`."""
@@ -87,21 +82,13 @@ def _is_account(person: Person) -> bool:
     )
 
 
-async def _eligible(
-    db: AsyncSession, candidates: list[Person], bronnen: Collection[str]
-) -> list[Person]:
-    usable = [
-        p for p in candidates if _brought_by_sync(p, bronnen) and not _is_account(p)
-    ]
-    emails = await _with_emails(db, [p.id for p in usable])
-    return [p for p in usable if p.id not in emails]
-
-
 async def usable_by_sync(
     db: AsyncSession, persons: list[Person], bronnen: Collection[str]
 ) -> list[Person]:
     """The persons of *persons* a sync of *bronnen* may place (see above)."""
-    return await _eligible(db, persons, bronnen)
+    usable = [p for p in persons if _brought_by_sync(p, bronnen) and not _is_account(p)]
+    emails = await _with_emails(db, [p.id for p in usable])
+    return [p for p in usable if p.id not in emails]
 
 
 async def match_sync_person(
@@ -118,7 +105,7 @@ async def match_sync_person(
         .scalars()
         .all()
     )
-    eligible = await _eligible(db, candidates, bronnen)
+    eligible = await usable_by_sync(db, candidates, bronnen)
     passed_over = len(candidates) - len(eligible)
     if len(eligible) > 1:
         return PersonMatch(ambiguous=True, passed_over=passed_over)

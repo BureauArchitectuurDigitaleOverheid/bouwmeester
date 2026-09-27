@@ -7,7 +7,6 @@ for permission checking.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Annotated
 from uuid import UUID
@@ -20,8 +19,6 @@ from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.role import PersonRoleRepository, RoleRepository
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
