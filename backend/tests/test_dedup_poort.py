@@ -73,7 +73,7 @@ def _svc(items: dict) -> ParlementairImportService:
     svc.gepost_aan = []
 
     async def _beoordeel(_item, _abos):
-        return None
+        return {}
 
     svc._beoordeel = _beoordeel
     return svc
@@ -88,7 +88,7 @@ def geposte(monkeypatch):
         def __init__(self, _session):
             pass
 
-        async def post_inhaalslag(self, _abos, items):
+        async def post_inhaalslag(self, _abos, items, _beoordelingen):
             gezien.append([i.id for i in items])
             return 1
 
@@ -189,7 +189,7 @@ class TestMarkeerIngehaaldBlijftLopen:
 
         bron = inspect.getsource(ParlementairImportService._post_inhaalslag)
         markeer = bron.index("markeer_ingehaald")
-        posten = bron.index("post_inhaalslag(abonnementen")
+        posten = bron.index("service.post_inhaalslag(")
 
         assert markeer < posten, (
             "markeer_ingehaald moet vóór het posten staan, anders herhaalt "
