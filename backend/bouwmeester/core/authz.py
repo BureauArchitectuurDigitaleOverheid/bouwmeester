@@ -188,6 +188,19 @@ person      Creating a person or contact (``people:create``, no id).  An
             existing person is not decided here: editing, placing and
             deleting go through the ``core.authority`` guards.
 =========== ==============================================================
+
+Accepted behaviour (product decisions, not gaps):
+
+- Work already assigned to an agent keeps receiving updates (comments,
+  status, a new deadline) from whoever may edit it: only *handing* an agent
+  work or power is super_admin's (``services.agent_rules``).
+- Moving an own external root into the organisation (which needs
+  authority on the internal parent) keeps its confirmed placements: its
+  members then belong to an eenheid that touches the organisation, with the
+  implicit viewer role, but still read no further up than their own
+  eenheid (only members of an internal eenheid read up its line).
+- ``GET /api/organisatie/{id}/personen`` is the tenant-wide staff
+  directory by design: every logged-in user sees who is placed where.
 """
 
 from __future__ import annotations
