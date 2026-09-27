@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.authz import own_eenheid_where, require
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.schema.lead import LeadCreate
+from bouwmeester.services.agent_rules import require_may_assign
 
 NO_EENHEID_FOR_LEAD = (
     "Kies een initiatief of eenheid voor de lead: je mag in geen van je eigen "
@@ -27,7 +28,8 @@ async def require_lead_create(
     it lands in the caller's own eenheid (``own_eenheid_where``: the first
     active placement where ``lead:create`` holds), filled into *data*.
     Without such an eenheid only system roles create a lead that lives
-    nowhere in particular (tenant-wide).
+    nowhere in particular (tenant-wide).  Its assignee must be one the
+    caller may hand work (``agent_rules``).
     """
     if (
         perm_ctx.is_authenticated
@@ -40,3 +42,4 @@ async def require_lead_create(
         elif not perm_ctx.has_system_permission("lead:create"):
             raise HTTPException(status.HTTP_403_FORBIDDEN, NO_EENHEID_FOR_LEAD)
     await require(db, perm_ctx, "lead:create", "lead", place=data)
+    await require_may_assign(db, perm_ctx, data)

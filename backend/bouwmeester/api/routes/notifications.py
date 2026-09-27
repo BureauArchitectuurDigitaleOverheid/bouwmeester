@@ -22,6 +22,7 @@ from bouwmeester.schema.notification import (
     SendMessageRequest,
     UnreadCountResponse,
 )
+from bouwmeester.services.agent_rules import require_may_instruct
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
 
@@ -60,16 +61,6 @@ def _check_thread_participant(
     if notification.sender_id == current_user_id:
         return
     raise HTTPException(403, "Geen toegang tot deze melding")
-
-
-def _check_may_prompt(recipient: Person, perm_ctx: PermissionContext) -> None:
-    """Only super_admin may prompt an agent (product decision).
-
-    An agent acts on a prompt with its own rights, not the sender's, so a
-    prompt from anyone else would let them borrow those rights.
-    """
-    if recipient.is_agent and not perm_ctx.is_super_admin:
-        raise HTTPException(403, "Alleen systeembeheerders mogen een agent aansturen")
 
 
 def _format_last_message(message: str | None, notif_type: str) -> str | None:
@@ -321,7 +312,7 @@ async def send_message(
         raise HTTPException(403, "Sender moet de ingelogde gebruiker zijn")
 
     recipient = require_found(await db.get(Person, body.person_id), "Recipient")
-    _check_may_prompt(recipient, perm_ctx)
+    require_may_instruct(perm_ctx, recipient)
     sender = require_found(await db.get(Person, body.sender_id), "Sender")
 
     service = NotificationService(db)
@@ -380,7 +371,7 @@ async def reply_to_notification(
     other_root = await service.repo.get_other_root(thread_id, body.sender_id)
     reply_recipient = other_root.person_id if other_root else root.person_id
     recipient = require_found(await db.get(Person, reply_recipient), "Recipient")
-    _check_may_prompt(recipient, perm_ctx)
+    require_may_instruct(perm_ctx, recipient)
 
     reply = await service.notify_reply(
         recipient_id=reply_recipient,

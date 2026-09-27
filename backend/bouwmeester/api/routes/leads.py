@@ -73,6 +73,7 @@ from bouwmeester.schema.lead import (
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.agent_rules import require_may_assign
 from bouwmeester.services.lead_rules import require_lead_create
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
@@ -400,6 +401,7 @@ async def update_lead(
     await require_move(
         db, perm_ctx, "lead", old_lead, data.model_dump(exclude_unset=True)
     )
+    await require_may_assign(db, perm_ctx, data, current=old_lead.assignee_id)
     old_assignee_id = old_lead.assignee_id
     old_stage = old_lead.stage
 

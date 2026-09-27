@@ -2104,8 +2104,11 @@ async def _execute_write_tool(
             }
 
         elif tool_name == "update_lead":
+            from fastapi import HTTPException
+
             from bouwmeester.repositories.lead import LeadRepository
             from bouwmeester.schema.lead import LeadUpdate
+            from bouwmeester.services.agent_rules import require_may_assign
 
             # Visibility, as in the lead routes (the write was authorized above)
             repo = LeadRepository(db)
@@ -2147,6 +2150,12 @@ async def _execute_write_tool(
                 else:
                     update_data["next_action_date"] = None
             data = LeadUpdate(**update_data)
+            try:
+                await require_may_assign(
+                    db, caller.perm_ctx, data, current=existing.assignee_id
+                )
+            except HTTPException as exc:
+                return {"success": False, "summary": str(exc.detail)}
             lead = await repo.update(UUID(args["lead_id"]), data)
             if not lead:
                 return {"success": False, "summary": "Lead niet gevonden"}
