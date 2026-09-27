@@ -311,7 +311,6 @@ class _Plan:
     removed: dict[str, set[UUID]] = field(default_factory=dict)
     # (resource type, permission) -> ids that must pass the check
     checks: dict[tuple[str, str], set[UUID]] = field(default_factory=dict)
-    blocked: dict[str, int] = field(default_factory=dict)
 
 
 async def _walk(db: AsyncSession, plan: _Plan, table: Table, ids: set[UUID]) -> None:
