@@ -47,9 +47,6 @@ from bouwmeester.services.mention_helper import sync_and_notify_mentions
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
-# Editing or deleting an eenheid: org:update there (held there or above it,
-# or as eigenaar of an external organisation there or above it).  Synced eenheden
-# (TOOI, scrapes) are read-only except for super_admin (``core.authz``).
 # Structural changes are checked by ``core.authority`` on top.
 _UPDATE_EENHEID = requires("org:update", "organisatie_eenheid")
 
@@ -61,13 +58,7 @@ async def _check_structural_changes(
     current: OrganisatieEenheid,
     data: OrganisatieEenheidUpdate,
 ) -> None:
-    """Guard the parts of an update that change who controls the eenheid.
-
-    Name and description are ordinary edits.  Moving the eenheid, changing
-    it between internal and external, naming a manager and dissolving it
-    (which ends the manager's role) all shift rights, so each goes through
-    the same checks as the equivalent direct action.
-    """
+    """Guard the parts of an update that shift rights, like their direct actions."""
     fields = data.model_fields_set
     await require_can_move_eenheid(
         db,
@@ -86,13 +77,7 @@ async def _check_structural_changes(
 
 
 def _person_entry(person: Person, perm_ctx: PermissionContext) -> PersonResponse:
-    """A person as the org chart shows them.
-
-    The org chart and its staff directory are readable by every logged-in
-    user, members of an external root included.  Contact details, profile
-    text and account facts are the people directory's (``people:read``);
-    everyone else gets who it is and what they do.
-    """
+    """A person in the org chart; the full record only with ``people:read``."""
     full = PersonResponse.model_validate(person)
     if perm_ctx.has_permission("people:read"):
         return full
@@ -301,19 +286,12 @@ async def create_organisatie(
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
-    Below a parent it needs org:create on that parent (a role there or
-    above it, or the eigenaar role of an external organisation there or
-    above it), internal or external alike.  A new external root (a
-    stakeholder at the top) is free for anyone with org:create somewhere;
-    its aanmaker becomes its eigenaar so they can maintain it (and what
-    they later hang below it).  Everything below a parent is maintained
-    through the rights on that parent, which it inherits.
+    The creator of a new external root becomes its eigenaar, so they can
+    maintain it and what they later hang below it.
     """
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
-    # Below a parent org:create on the parent decides; a new external root
-    # is free (``core.authz``).
     await require(
         db,
         perm_ctx,
@@ -442,16 +420,9 @@ async def delete_organisatie(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(_UPDATE_EENHEID),
 ) -> None:
-    """Delete an org unit.
-
-    Refused (409) while anything still hangs on it: deleting would cascade
-    placements and grants away and set the eenheid of nodes, leads, tasks
-    and opdrachten to empty, which makes them tenant-wide.  Move or end
-    those first.
-    """
+    """Delete an org unit; 409 while anything hangs on it (it would go tenant-wide)."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
-    # Deleting is never laxer than ending the eenheid (``geldig_tot``).
     await require_can_end_eenheid(db, perm_ctx, eenheid)
     blocking = await eenheid_references(db, id, structure=True)
     if blocking:
@@ -535,9 +506,7 @@ async def get_organisatie_personen(
 ) -> list[PersonResponse] | OrganisatieEenheidPersonenGroup:
     """Get people in an org unit: the tenant-wide staff directory.
 
-    Every logged-in user sees who is placed where; the full records only
-    with ``people:read`` (``_person_entry``).  Use recursive=true for
-    grouped tree of all descendants.
+    Full records only with ``people:read``.  recursive=true: grouped tree.
     """
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")

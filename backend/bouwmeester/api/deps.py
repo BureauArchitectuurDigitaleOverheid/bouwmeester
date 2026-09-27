@@ -71,8 +71,7 @@ async def get_child_or_404[T](
 ) -> T:
     """The *model* row *child_id* under ``parent = (column, parent_id)``, or 404.
 
-    For sub-records addressed through their parent in the path: the route
-    decided access on that parent, so a child of another parent is missing.
+    Access was decided on the parent, so a child of another parent is missing.
     """
     column, parent_id = parent
     stmt = (
@@ -86,13 +85,7 @@ async def get_child_or_404[T](
 async def require_can_end_eenheid(
     db: AsyncSession, perm_ctx: PermissionContext, eenheid: OrganisatieEenheid
 ) -> None:
-    """Guard ending an eenheid: dissolving it (``geldig_tot``) or deleting it.
-
-    ``org:update`` on the eenheid (``core.authz``) and the dissolve guard of
-    ``core.authority`` (ending it ends its roles and placements), so a hard
-    delete is never laxer than ending it.  The evaluation endpoint's
-    ``eenheid:dissolve`` asks this too.
-    """
+    """Guard dissolving (``geldig_tot``) or deleting an eenheid, alike."""
     await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
     await require_can_dissolve_eenheid(db, perm_ctx, eenheid)
 
@@ -137,11 +130,7 @@ async def resolve_tag_to_link(
     tag_id: UUID | None,
     tag_name: str | None,
 ) -> UUID:
-    """The tag to link, by id or by name; a new name needs ``tag:create``.
-
-    Linking an existing tag is part of editing the item; a new name adds to
-    the shared vocabulary, which is a permission of its own.
-    """
+    """The tag to link, by id or by name; a new name needs ``tag:create``."""
     if tag_id is not None:
         return tag_id
     if not tag_name:

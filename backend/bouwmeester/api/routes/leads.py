@@ -150,11 +150,7 @@ MAX_LLM_UPLOAD_BYTES = 4 * 1024 * 1024
 async def read_llm_uploads(
     files: list[UploadFile] | None,
 ) -> list[tuple[bytes, str]]:
-    """The uploaded files for a lead prompt as (content, content type).
-
-    400 when there are more than ``MAX_LLM_UPLOADS`` or one exceeds
-    ``MAX_LLM_UPLOAD_BYTES``.
-    """
+    """The uploads for a lead prompt as (content, content type); 400 if too many."""
     files = files or []
     if len(files) > MAX_LLM_UPLOADS:
         raise HTTPException(
@@ -177,12 +173,7 @@ def image_part(content: bytes, content_type: str) -> dict:
 
 
 async def llm_for_lead_content(db: AsyncSession) -> BaseLLMService:
-    """A language model cleared for lead content, or 503.
-
-    Leads carry internal content and personal data (contact names, emails,
-    phone numbers in an intake), so only a provider that may process
-    CONFIDENTIAL data gets them.
-    """
+    """A model cleared for CONFIDENTIAL data (leads hold personal data), or 503."""
     llm = await get_llm_service_for(DataSensitivity.CONFIDENTIAL, db)
     if llm is None:
         raise HTTPException(
@@ -211,10 +202,8 @@ async def complete_lead_prompt(
     return response.choices[0].message.content or ""
 
 
-# Reads and writes are decided by core.authz on the lead in the path.
-# Sub-records ask with their own permission ("lead_attachment:create") so
-# the delegation table in core.authz applies; today that is write access on
-# the lead.
+# Sub-records ask their own permission ("lead_attachment:create") so the
+# delegation table in core.authz applies.
 _READ_LEAD = requires("lead:read", "lead", path_param="lead_id")
 _UPDATE_LEAD = requires("lead:update", "lead", path_param="lead_id")
 
@@ -317,12 +306,7 @@ async def get_metrics(
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
     initiatief_id: UUID | None = Query(None),
 ) -> LeadMetricsResponse:
-    """Get funnel metrics (counts per stage, stale leads).
-
-    With `initiatief_id` the counts cover that initiatief only; the
-    visibility filter still applies, so naming one you cannot see yields
-    zeroes rather than its figures.
-    """
+    """Funnel metrics (counts per stage, stale leads), over the visible leads only."""
     repo = LeadRepository(db)
     metrics = await repo.get_metrics(init_ctx=init_ctx, initiatief_id=initiatief_id)
     return LeadMetricsResponse(**metrics)
@@ -385,21 +369,12 @@ async def merge_leads(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadResponse:
-    """Merge source lead into target lead.
-
-    The source is deleted, so it needs ``lead:delete``; its records all
-    move to the target, which needs write access.
-    """
+    """Merge source lead into target lead (``lead:delete`` / ``lead:update``)."""
     await require(db, perm_ctx, "lead:delete", "lead", data.source_id)
     await require(db, perm_ctx, "lead:update", "lead", data.target_id)
-    # The merge moves the source's contacts (opdrachtgever included) to the
-    # target without the grant guard on purpose: every moved grant already
-    # held on the source, and the caller holds lead:update on the target, so
-    # nobody, the caller included, gets a right the caller could not use
-    # already.  The guard would wrongly refuse moving the caller's own grant.
-    # One exception: an agent acts with its own rights on what it holds, so
-    # a grant moved to an agent hands it the target: only super_admin
-    # (``agent_rules``), as when granting it directly.
+    # Moved grants skip the grant guard: each already held on the source and
+    # the caller writes the target, so nobody gains a right.  Except an agent,
+    # which acts on its own rights: only super_admin hands it one.
     source = require_found(await db.get(Lead, data.source_id), "Lead")
     target = require_found(await db.get(Lead, data.target_id), "Lead")
     if source.initiatief_id != target.initiatief_id:
@@ -729,11 +704,7 @@ async def delete_activity(
         requires("lead_activity:delete", "lead", path_param="lead_id")
     ),
 ) -> None:
-    """Delete a lead activity.
-
-    The author may, while they can still write the lead.  Someone else's
-    activity needs the right to delete the lead itself.
-    """
+    """Delete a lead activity: your own, or anyone's with ``lead:delete``."""
     lead = require_found(await db.get(Lead, lead_id), "Lead")
 
     activity = await db.get(LeadActivity, activity_id)
@@ -777,11 +748,7 @@ async def add_contact(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadContactResponse:
-    """Link a person as contact to a lead.
-
-    A contact is a grant (``opdrachtgever`` gives ``lead:update``), so it
-    goes through the grant guard rather than plain write access.
-    """
+    """Link a person as contact to a lead; a contact is a grant."""
     lead = require_found(await db.get(Lead, lead_id), "Lead")
     await require_can_grant_resource_role(
         db,
@@ -1321,11 +1288,7 @@ async def parse_intake(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> LeadParseResult:
-    """Parse raw intake text/images using AI to extract lead data.
-
-    For whoever may create a lead: in *initiatief_id* when given (the intake
-    dialog), otherwise anywhere (``can_anywhere``, the share target).
-    """
+    """Extract lead data from intake text/images, for whoever may create a lead."""
     from bouwmeester.services.llm.prompts import build_lead_intake_prompt
 
     if initiatief_id is not None:

@@ -68,12 +68,7 @@ router = APIRouter(prefix="/parlementair", tags=["parlementair"])
 async def _require_can_review(
     db: AsyncSession, perm_ctx: PermissionContext, import_id: UUID
 ) -> ParlementairItem:
-    """Reviewing an item is acting on its politieke_input node.
-
-    The node decides where ``parlementair:review`` must be held.  An item
-    without a node yet (out of scope) is decided like a new node without
-    eenheid.
-    """
+    """``parlementair:review`` on the item's node (none yet: like a new node)."""
     item = require_found(await db.get(ParlementairItem, import_id), "Import")
     await require(
         db, perm_ctx, "parlementair:review", "corpus_node", item.corpus_node_id
@@ -82,22 +77,15 @@ async def _require_can_review(
 
 
 def _sees_target(edge: SuggestedEdge, org_ctx: OrgContext) -> bool:
-    """Does the caller see the suggestion's (loaded) target node?
-
-    Suggestions embed their target node; ``parlementair:read`` must not
-    reveal nodes the org filter hides.  Decided on the loaded row with the
-    ``node:read`` rule (``sees_node``: eenheid, resource roles, shares), so a
-    list costs no extra queries.
-    """
+    """Does the caller see the suggestion's loaded target node (``sees_node``)?"""
     target = edge.target_node
     return target is not None and sees_node(
         org_ctx, target.id, target.organisatie_eenheid_id
     )
 
 
-# A scope's judgement of an item (see ``ParlementairImportService._beoordeel``)
-# belongs to that scope.  Items imported before it stopped being stored on
-# the item still carry one in ``extra_data``; it is never returned.
+# A scope's judgement belongs to that scope; older items still carry one in
+# ``extra_data``, which is never returned.
 _SCOPE_JUDGEMENT_KEYS = frozenset({"relevantie_score", "relevantie_reden", "actie"})
 
 
@@ -125,11 +113,7 @@ def _item_response(
 
 
 def _edge_response(edge: SuggestedEdge, org_ctx: OrgContext) -> SuggestedEdgeResponse:
-    """One suggestion, all about its target left out when the caller cannot see it.
-
-    A reviewer acts on the item's node; the target may lie elsewhere.  Its
-    id and the reason (which describes the target) go as well.
-    """
+    """One suggestion; target, id and reason hidden when the caller cannot see it."""
     response = SuggestedEdgeResponse.model_validate(edge)
     if not _sees_target(edge, org_ctx):
         response.target_node = None
@@ -139,11 +123,7 @@ def _edge_response(edge: SuggestedEdge, org_ctx: OrgContext) -> SuggestedEdgeRes
 
 
 def _require_status(edge: SuggestedEdge, *allowed: str) -> None:
-    """409 unless the suggestion is in one of the *allowed* statuses.
-
-    Approving and rejecting are decisions on an open suggestion; to change
-    a decision, reset the suggestion first.
-    """
+    """409 unless the suggestion is in one of the *allowed* statuses."""
     if edge.status not in allowed:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -154,8 +134,6 @@ def _require_status(edge: SuggestedEdge, *allowed: str) -> None:
         )
 
 
-# Reviewing a suggestion is parlementair:review on its item's node; core.authz
-# decides that on the suggested edge itself.
 _REVIEW_EDGE = requires("suggested_edge:update", "suggested_edge", path_param="edge_id")
 _RESET_EDGE = requires("suggested_edge:delete", "suggested_edge", path_param="edge_id")
 
@@ -353,10 +331,7 @@ async def reopen_import(
 async def _make_sole_person_owner(
     db: AsyncSession, perm_ctx: PermissionContext, node_id: UUID, person_id: UUID
 ) -> None:
-    """Make *person_id* the eigenaar of the node, replacing other people.
-
-    ``require_can_name_owner`` decides; eigenaar grants to an eenheid stay.
-    """
+    """Make *person_id* the node's only person eigenaar (eenheid grants stay)."""
     await require_can_name_owner(db, perm_ctx, node_id, person_id)
     grants = (
         await db.scalars(
@@ -581,11 +556,7 @@ async def reset_suggested_edge(
     _authz=Depends(_RESET_EDGE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
-    """Reset a suggested edge back to pending, undoing approve/reject.
-
-    Resetting an approved suggestion deletes the edge it created, so it is
-    asked as deleting the suggestion.
-    """
+    """Reset a suggestion to pending; undoing an approval deletes its edge."""
     suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
     repo = SuggestedEdgeRepository(db)
 
