@@ -487,6 +487,11 @@ async def test_patch_reenable_succeeds_when_bot_is_member(client, linked_channel
             "bouwmeester.services.mattermost_service.MattermostService.is_bot_member_of_channel",
             new=AsyncMock(return_value=True),
         ),
+        # Reviving is linking anew: the caller may link this channel.
+        patch(
+            "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
+            new=AsyncMock(return_value=None),
+        ),
     ):
         resp = await client.patch(
             f"/api/mattermost-channels/{linked_channel.id}",
@@ -557,6 +562,11 @@ async def test_patch_without_reenable_does_not_check_bot(client, linked_channel)
         patch(
             "bouwmeester.services.mattermost_service.MattermostService.is_bot_member_of_channel",
             new=membership,
+        ),
+        # Switching notes on asks whether the caller may link the channel.
+        patch(
+            "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
+            new=AsyncMock(return_value=None),
         ),
     ):
         resp = await client.patch(
