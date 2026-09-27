@@ -26,9 +26,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/search", tags=["search"])
 
-# The tenant-wide result types and the permission that reads them.  Nodes,
-# tasks and leads are restricted per row by the caller's visibility (the
-# same filters as their list routes); tags are shared by everyone.
+# Tenant-wide result types and the permission that reads them; the others
+# are filtered per row like their list routes.
 _TYPE_PERMISSION: dict[str, str] = {
     "person": "people:read",
     "organisatie_eenheid": "org:read",
@@ -48,11 +47,7 @@ async def search(
     perm_ctx: PermissionContext = Depends(get_permission_context),
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> SearchResponse:
-    """Full-text search across nodes, tasks, leads, people, eenheden and more.
-
-    Every result is one the caller may read: nodes, tasks and leads by
-    their visibility, the tenant-wide types by their read permission.
-    """
+    """Full-text search, over what the caller may read only."""
     type_values = [rt.value for rt in result_types] if result_types else None
 
     allowed_types = _ROW_FILTERED_TYPES | {

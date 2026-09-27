@@ -22,9 +22,7 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 
 @router.get("/feed", response_model=ActivityFeedResponse)
 async def get_activity_feed(
-    # Tenant-wide log: the seed grants audit:read to platform_admin (system)
-    # and to ministry_admin scoped to its own eenheid, so only the system
-    # grant may read everything.
+    # Tenant-wide log: only a system grant of audit:read reads everything.
     _perm=Depends(require_system_permission("audit:read")),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),

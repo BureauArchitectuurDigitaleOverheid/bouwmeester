@@ -435,10 +435,7 @@ _DEFAULT_CONFIG = [
 ]
 
 
-# Settings that decide where data goes or which external systems are called,
-# beyond the secrets and ``*_URL`` addresses ``_super_admin_only`` already
-# covers: the LLM provider that receives corpus content, and the switches
-# that turn the Mattermost and FCC integrations on or point them elsewhere.
+# Settings that decide where data goes, besides secrets and ``*_URL``s.
 _DATA_FLOW_KEYS = frozenset(
     {
         "LLM_PROVIDER",
@@ -452,24 +449,14 @@ _DATA_FLOW_KEYS = frozenset(
 
 
 def _super_admin_only(entry: AppConfig) -> bool:
-    """Is this a setting the app trusts with credentials or data?
-
-    Secrets (API keys, the bot token, the slash-command token), the
-    addresses the app sends requests and credentials to (``*_URL``) and the
-    switches in ``_DATA_FLOW_KEYS``.  Whoever sets the slash-command token
-    can act as any linked user, and whoever sets an address or a provider
-    receives what is sent there, so only super_admin changes these;
-    platform_admin sees them (secrets masked).
+    """Credentials, addresses and data-flow switches: whoever sets one can act
+    as a linked user or receives what is sent, so only super_admin changes it.
     """
     return entry.is_secret or entry.key.endswith("_URL") or entry.key in _DATA_FLOW_KEYS
 
 
 def _can_edit_config(entry: AppConfig, perm_ctx: PermissionContext) -> bool:
-    """The one rule for who may change a config entry.
-
-    Used by the PATCH route to refuse and by the list route to tell the
-    frontend which entries to offer for editing.
-    """
+    """Who may change a config entry (PATCH refuses, the list flags it)."""
     return perm_ctx.is_super_admin or not _super_admin_only(entry)
 
 
@@ -586,11 +573,7 @@ async def export_database(
     admin: SuperAdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """Export full database as pg_dump (optionally age-encrypted).
-
-    super_admin only (product decision): a dump holds everything, past every
-    visibility rule, so it is as strong as reading the whole database.
-    """
+    """Export the database as pg_dump; super_admin only, it bypasses visibility."""
     from bouwmeester.services.database_backup_service import (
         export_database as do_export,
     )

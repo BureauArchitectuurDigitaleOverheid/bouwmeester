@@ -184,11 +184,7 @@ async def get_node(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(_READ_NODE),
 ) -> CorpusNodeWithEdges:
-    """Get a single node by ID, with its edges to nodes the caller sees.
-
-    An edge to a node the caller cannot see is left out (``edge:read``
-    needs both ends), so the page does not reveal that node's id.
-    """
+    """Get a node, with only its edges to nodes the caller sees."""
     service = NodeService(db)
     node = require_found(await service.get(id), "Node")
     edges = [*node.edges_from, *node.edges_to]
@@ -268,11 +264,7 @@ async def delete_node(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(requires("node:delete", "corpus_node")),
 ) -> None:
-    """Delete a corpus node with what hangs on it (``core.deletion``).
-
-    409 while tasks, opdrachten or links of records the caller may not
-    delete or change still hang on the node.
-    """
+    """Delete a node with what hangs on it (``core.deletion``); 409 if refused."""
     node = require_found(await NodeService(db).get(id), "Node")
     node_title = node.title
     node_type = node.node_type
