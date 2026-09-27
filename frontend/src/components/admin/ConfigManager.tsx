@@ -134,6 +134,7 @@ function ConfigRow({ entry }: { entry: AppConfigEntry }) {
             <nldd-container layout="row" gap="8" vertical-alignment="center">
               <nldd-text size="sm" weight="medium">{entry.key}</nldd-text>
               {entry.is_secret && <nldd-tag text="geheim" color="warning" size="sm" />}
+              {!entry.editable && <nldd-tag text="alleen systeembeheerder" size="sm" />}
             </nldd-container>
             {entry.description && (
               <nldd-text size="xs" color="secondary">{entry.description}</nldd-text>
@@ -168,7 +169,7 @@ function ConfigRow({ entry }: { entry: AppConfigEntry }) {
             )}
           </nldd-container>
 
-          {!editing && (
+          {!editing && entry.editable && (
             <NlddButton text="Bewerken" variant="neutral-transparent" size="xs" onClick={handleStartEdit} />
           )}
         </nldd-container>
