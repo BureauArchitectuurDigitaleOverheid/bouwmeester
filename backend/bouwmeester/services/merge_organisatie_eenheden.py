@@ -477,14 +477,46 @@ def _backfill_target_fields(
             setattr(target, field, getattr(source, field))
 
 
+@dataclass(frozen=True)
+class MergeResult:
+    """What a merge changed: rewritten references and the trust it took away."""
+
+    rewritten: dict[str, int]
+    owner_grants_removed: int
+    placements_unconfirmed: int
+
+
 async def merge_into(
     session: AsyncSession, *, source: OrganisatieEenheid, target: OrganisatieEenheid
-) -> dict[str, int]:
+) -> MergeResult:
     """Backfill *target* from *source*, then merge *source* into it.
 
     The one merge of two eenheden that the admin routes and the automatic
     ministerie merge share.  Caller commits.
+
+    Merging must not carry the say over members from the source onto the
+    target (typically a user's own external root onto an official TOOI
+    row): the eigenaar grants of the source are dropped, and manager
+    placements in the source and below it that someone who does not decide
+    about the members of the target (after the merge) may have confirmed
+    lose their trust (``core.authority.distrust_lost_confirmations``).
     """
+    from bouwmeester.core.authority import (
+        distrust_lost_confirmations,
+        drop_eenheid_owner_grants,
+        snapshot_trust,
+    )
+
     _backfill_target_fields(target=target, source=source)
     await session.flush()
-    return await merge_organisatie_eenheden(session, source.id, target.id)
+    snapshot = await snapshot_trust(session, source.id)
+    owners = await drop_eenheid_owner_grants(session, {source.id})
+    rewritten = await merge_organisatie_eenheden(session, source.id, target.id)
+    unconfirmed = await distrust_lost_confirmations(
+        session, snapshot, moved_into={source.id: target.id}
+    )
+    return MergeResult(
+        rewritten=rewritten,
+        owner_grants_removed=owners,
+        placements_unconfirmed=unconfirmed,
+    )

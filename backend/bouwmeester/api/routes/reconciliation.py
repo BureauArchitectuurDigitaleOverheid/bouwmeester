@@ -30,7 +30,7 @@ from bouwmeester.core.permissions import (
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
-from bouwmeester.services.merge_organisatie_eenheden import merge_into
+from bouwmeester.services.merge_organisatie_eenheden import MergeResult, merge_into
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +61,17 @@ class ManualMergeRequest(BaseModel):
     # van de handmatige rij verhuizen mee), maar de admin mag omkeren.
     source_id: uuid.UUID
     target_id: uuid.UUID
+
+
+def _merge_response(target: OrganisatieEenheid, result: MergeResult) -> dict:
+    """The answer to a merge, with the trust it took away from the source."""
+    return {
+        "status": "merged",
+        "doelrij_id": str(target.id),
+        "rewritten": result.rewritten,
+        "eigenaarsrechten_verwijderd": result.owner_grants_removed,
+        "plaatsingen_onbevestigd": result.placements_unconfirmed,
+    }
 
 
 @router.get("", response_model=list[ReconciliationResponse])
@@ -149,7 +160,7 @@ async def merge_reconciliation(
             detail="Een van beide rijen bestaat niet meer; reconciliation is stale",
         )
 
-    rewritten = await merge_into(db, source=handmatig, target=kandidaat)
+    result = await merge_into(db, source=handmatig, target=kandidaat)
 
     rec.status = "merged"
     rec.resolved_by = perm_ctx.person_id
@@ -160,13 +171,9 @@ async def merge_reconciliation(
         "Reconciliation %s gemerged in kandidaat %s; FK-rewrites: %s",
         rec_id,
         kandidaat.id,
-        rewritten,
+        result.rewritten,
     )
-    return {
-        "status": "merged",
-        "doelrij_id": str(kandidaat.id),
-        "rewritten": rewritten,
-    }
+    return _merge_response(kandidaat, result)
 
 
 @router.post("/{rec_id}/ignore", summary="Markeer reconciliation als no-merge")
@@ -224,7 +231,7 @@ async def manual_merge(
             detail="target is een synthetische groep, geen echte eenheid",
         )
 
-    rewritten = await merge_into(db, source=source, target=target)
+    result = await merge_into(db, source=source, target=target)
 
     # Sluit open reconciliations die nu zinloos zijn: source is verwijderd
     # en al zijn FK's (ook PendingReconciliation.handmatige_id/kandidaat_id)
@@ -258,10 +265,6 @@ async def manual_merge(
         source.naam,
         target.id,
         target.naam,
-        rewritten,
+        result.rewritten,
     )
-    return {
-        "status": "merged",
-        "doelrij_id": str(target.id),
-        "rewritten": rewritten,
-    }
+    return _merge_response(target, result)

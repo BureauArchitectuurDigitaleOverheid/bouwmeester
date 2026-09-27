@@ -18,6 +18,7 @@ from bouwmeester.core.authority import (
     require_can_delete_person,
     require_can_edit_person,
     require_can_place,
+    require_can_read_person,
 )
 from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
@@ -96,13 +97,14 @@ async def _require_can_place(
     eenheid_id: UUID,
     *,
     ending: bool = False,
+    bron: str | None = None,
 ) -> tuple[Person, OrganisatieEenheid]:
     """Load person and eenheid and check the caller may change the placement."""
     person = require_found(await db.get(Person, person_id), "Person")
     eenheid = require_found(
         await db.get(OrganisatieEenheid, eenheid_id), "Organisatie-eenheid"
     )
-    await require_can_place(db, perm_ctx, person, eenheid, ending=ending)
+    await require_can_place(db, perm_ctx, person, eenheid, ending=ending, bron=bron)
     return person, eenheid
 
 
@@ -231,7 +233,12 @@ async def create_person(
             status_code=409, detail=f"E-mailadres '{data.email}' is al in gebruik"
         )
     if data.email:
-        email_obj = PersonEmail(person_id=person.id, email=data.email, is_default=True)
+        email_obj = PersonEmail(
+            person_id=person.id,
+            email=data.email,
+            is_default=True,
+            added_by_id=perm_ctx.person_id,
+        )
         db.add(email_obj)
         await db.flush()
         await db.refresh(person, attribute_names=["emails"])
@@ -445,9 +452,10 @@ async def get_person(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:read")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonDetailResponse:
     """Get detailed person info including emails, phones, and org placements."""
+    require_can_read_person(perm_ctx, id)
     repo = PersonRepository(db)
     person = require_found(await repo.get(id), "Person")
     resp = PersonDetailResponse.model_validate(person)
@@ -568,9 +576,10 @@ async def list_person_organisaties(
     current_user: OptionalUser,
     actief: bool = Query(True),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:read")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[PersonOrganisatieResponse]:
     """List org unit placements for a person. Defaults to active placements only."""
+    require_can_read_person(perm_ctx, id)
     require_found(await db.get(Person, id), "Person")
 
     stmt = (
@@ -719,7 +728,12 @@ async def update_person_organisatie(
         and (placement.eind_datum is None or data.eind_datum <= placement.eind_datum)
     )
     person, eenheid = await _require_can_place(
-        db, perm_ctx, id, placement.organisatie_eenheid_id, ending=ending
+        db,
+        perm_ctx,
+        id,
+        placement.organisatie_eenheid_id,
+        ending=ending,
+        bron=placement.bron,
     )
 
     if not ending:
@@ -773,7 +787,12 @@ async def delete_person_organisatie(
     result = await db.execute(stmt)
     placement = require_found(result.scalar_one_or_none(), "Placement")
     await _require_can_place(
-        db, perm_ctx, id, placement.organisatie_eenheid_id, ending=True
+        db,
+        perm_ctx,
+        id,
+        placement.organisatie_eenheid_id,
+        ending=True,
+        bron=placement.bron,
     )
     await db.delete(placement)
     await db.flush()
@@ -801,6 +820,7 @@ async def add_person_email(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _person: Person = Depends(identity_editable_person),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonEmailResponse:
     """Add an email address to a person. First email auto-becomes default."""
     email = normalize_email(data.email)
@@ -823,6 +843,7 @@ async def add_person_email(
         person_id=id,
         email=email,
         is_default=data.is_default or is_first,
+        added_by_id=perm_ctx.person_id,
     )
     db.add(email_obj)
 

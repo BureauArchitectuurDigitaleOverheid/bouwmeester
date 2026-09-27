@@ -70,12 +70,15 @@ ROO).  Contact administration (bron ``handmatig``, anyone with
 external organisation (bron ``detachering``) are informational: they show
 who works where, but give no visibility, no implicit viewer role and no
 share of a resource role or share held by the eenheid.  Moving an eenheid
-never confirms the placements in it.  Roles (``PersonRole``) are separate
-grants and are not affected.  The implicit viewer role (people directory,
-samenwerkingsverbanden, parlementair items) only comes with membership of
-an eenheid that touches the internal organisation
-(``org_tree.get_touching_ids``): an external root is anyone's to create and
-staff, so its members only get what is granted or shared to it.
+never confirms the placements in it; bringing it into the organisation (a
+move or a retype) or merging it takes the trust away that an eigenaar gave
+(``core.authority.bring_into_organisation``, ``merge_into``).  Roles
+(``PersonRole``) are separate grants and are not affected.  The implicit
+viewer role (people directory, samenwerkingsverbanden, parlementair items)
+only comes with membership of an eenheid that touches the internal
+organisation (``org_tree.get_touching_ids``): an external root is anyone's
+to create and staff, so its members only get what is granted or shared to
+it.
 
 Resolution order (first match wins; every step can only allow):
 
@@ -194,13 +197,9 @@ Accepted behaviour (product decisions, not gaps):
 - Work already assigned to an agent keeps receiving updates (comments,
   status, a new deadline) from whoever may edit it: only *handing* an agent
   work or power is super_admin's (``services.agent_rules``).
-- Moving an own external root into the organisation (which needs
-  authority on the internal parent) keeps its confirmed placements: its
-  members then belong to an eenheid that touches the organisation, with the
-  implicit viewer role, but still read no further up than their own
-  eenheid (only members of an internal eenheid read up its line).
 - ``GET /api/organisatie/{id}/personen`` is the tenant-wide staff
-  directory by design: every logged-in user sees who is placed where.
+  directory by design: every logged-in user sees who is placed where
+  (naam and functie; the full records only with ``people:read``).
 """
 
 from __future__ import annotations

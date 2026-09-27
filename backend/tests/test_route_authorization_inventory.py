@@ -71,8 +71,8 @@ _AUTHZ_WHITELIST: dict[str, str] = {
     "/api/organisatie/{id}/history/namen": "org-chart history, ministerie-breed",
     "/api/organisatie/{id}/history/parents": "org-chart history, ministerie-breed",
     "/api/organisatie/{id}/personen": (
-        "team-member lijst, ministerie-breed (publiek profiel: naam, "
-        "functie, default email — geen private nummers)"
+        "team-member lijst, ministerie-breed: naam en functie; volledige "
+        "records alleen met people:read (_person_entry)"
     ),
     # Notifications: handlers filter on effective_person_id explicitly
     # in the route body (zie notifications.py — list/count/dashboard-stats

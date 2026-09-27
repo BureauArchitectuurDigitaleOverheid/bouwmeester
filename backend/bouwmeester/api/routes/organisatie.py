@@ -9,9 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.api.deps import require_can_end_eenheid, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    bring_into_organisation,
+    joins_organisation,
     require_can_create_eenheid,
     require_can_move_eenheid,
     require_can_set_manager,
+    snapshot_trust,
 )
 from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
@@ -23,6 +26,7 @@ from bouwmeester.models.organisatie_eenheid import (
     INTERNAL_EENHEID_TYPES,
     OrganisatieEenheid,
 )
+from bouwmeester.models.person import Person
 from bouwmeester.repositories.org_tree import eenheid_references, get_subtree_ids
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
@@ -81,9 +85,31 @@ async def _check_structural_changes(
         await require_can_end_eenheid(db, perm_ctx, current)
 
 
+def _person_entry(person: Person, perm_ctx: PermissionContext) -> PersonResponse:
+    """A person as the org chart shows them.
+
+    The org chart and its staff directory are readable by every logged-in
+    user, members of an external root included.  Contact details, profile
+    text and account facts are the people directory's (``people:read``);
+    everyone else gets who it is and what they do.
+    """
+    full = PersonResponse.model_validate(person)
+    if perm_ctx.has_permission("people:read"):
+        return full
+    return PersonResponse(
+        id=full.id,
+        naam=full.naam,
+        functie=full.functie,
+        is_active=full.is_active,
+        is_agent=full.is_agent,
+        created_at=full.created_at,
+    )
+
+
 async def _enrich_with_managers(
     repo: OrganisatieEenheidRepository,
     responses: list[OrganisatieEenheidResponse],
+    perm_ctx: PermissionContext,
 ) -> None:
     """Populate manager/manager_id on responses from person_role."""
     eenheid_ids = [r.id for r in responses]
@@ -91,7 +117,7 @@ async def _enrich_with_managers(
     for resp in responses:
         mgr = managers_map.get(resp.id)
         if mgr:
-            resp.manager = PersonResponse.model_validate(mgr)
+            resp.manager = _person_entry(mgr, perm_ctx)
             resp.manager_id = mgr.id
         else:
             resp.manager = None
@@ -168,6 +194,7 @@ async def list_organisatie(
     format: str = Query("flat", pattern="^(flat|tree)$"),
     include_historisch: bool = Query(False),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
     """List org units as flat list or hierarchical tree (format=flat|tree).
 
@@ -181,7 +208,7 @@ async def list_organisatie(
     # tot ~5k; bij meer schalen we naar paginated of lazy.
     items = await repo.get_all(limit=10000, active_only=not include_historisch)
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
-    await _enrich_with_managers(repo, flat)
+    await _enrich_with_managers(repo, flat, perm_ctx)
 
     if format == "tree":
         personen_counts = await repo.count_personen_batch([item.id for item in items])
@@ -198,6 +225,7 @@ async def get_tree_children(
     current_user: OptionalUser,
     parent_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidTreeNode]:
     """Geef directe children van een eenheid (of root als parent_id ontbreekt).
 
@@ -210,7 +238,7 @@ async def get_tree_children(
     repo = OrganisatieEenheidRepository(db)
     units = await repo.get_by_parent(parent_id)
     responses = [OrganisatieEenheidResponse.model_validate(u) for u in units]
-    await _enrich_with_managers(repo, responses)
+    await _enrich_with_managers(repo, responses, perm_ctx)
 
     ids = [r.id for r in responses]
     personen_counts = await repo.count_personen_batch(ids)
@@ -234,6 +262,7 @@ async def search_organisatie(
     q: str = Query("", min_length=0, max_length=500),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidResponse]:
     """Search org units by name."""
     if not q.strip():
@@ -241,7 +270,7 @@ async def search_organisatie(
     repo = OrganisatieEenheidRepository(db)
     units = await repo.search(q.strip(), limit=limit)
     results = [OrganisatieEenheidResponse.model_validate(u) for u in units]
-    await _enrich_with_managers(repo, results)
+    await _enrich_with_managers(repo, results, perm_ctx)
     return results
 
 
@@ -250,12 +279,13 @@ async def get_managed_eenheden(
     person_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidResponse]:
     """Get all eenheden where person_id is the manager."""
     repo = OrganisatieEenheidRepository(db)
     eenheden = await repo.get_by_manager(person_id)
     results = [OrganisatieEenheidResponse.model_validate(e) for e in eenheden]
-    await _enrich_with_managers(repo, results)
+    await _enrich_with_managers(repo, results, perm_ctx)
     return results
 
 
@@ -327,7 +357,7 @@ async def create_organisatie(
     )
 
     resp = OrganisatieEenheidResponse.model_validate(eenheid)
-    await _enrich_with_managers(repo, [resp])
+    await _enrich_with_managers(repo, [resp], perm_ctx)
     return resp
 
 
@@ -336,12 +366,13 @@ async def get_organisatie(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrganisatieEenheidResponse:
     """Get a single org unit by ID."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     resp = OrganisatieEenheidResponse.model_validate(eenheid)
-    await _enrich_with_managers(repo, [resp])
+    await _enrich_with_managers(repo, [resp], perm_ctx)
     return resp
 
 
@@ -358,6 +389,16 @@ async def update_organisatie(
     repo = OrganisatieEenheidRepository(db)
     current = require_found(await repo.get(id), "Eenheid")
     await _check_structural_changes(db, perm_ctx, repo, current, data)
+    fields = data.model_fields_set
+    # Becoming internal or newly touching the organisation hands the say
+    # over its members to managers; settled after the change below.
+    joining = await joins_organisation(
+        db,
+        current,
+        new_parent_id=data.parent_id if "parent_id" in fields else current.parent_id,
+        new_type=data.type if "type" in fields and data.type else current.type,
+    )
+    trust_before = await snapshot_trust(db, id) if joining else None
 
     # Cycle detection for parent_id changes
     if data.parent_id is not None:
@@ -368,6 +409,8 @@ async def update_organisatie(
             raise HTTPException(400, "Circulaire parent-relatie gedetecteerd")
 
     eenheid = require_found(await repo.update(id, data), "Eenheid")
+    if trust_before is not None:
+        await bring_into_organisation(db, eenheid.id, trust_before)
 
     await sync_and_notify_mentions(
         db,
@@ -387,7 +430,7 @@ async def update_organisatie(
     )
 
     resp = OrganisatieEenheidResponse.model_validate(eenheid)
-    await _enrich_with_managers(repo, [resp])
+    await _enrich_with_managers(repo, [resp], perm_ctx)
     return resp
 
 
@@ -461,6 +504,7 @@ async def get_manager_history(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrgManagerRecord]:
     """Get temporal history of manager changes from person_role."""
     repo = OrganisatieEenheidRepository(db)
@@ -470,7 +514,7 @@ async def get_manager_history(
         OrgManagerRecord(
             id=r.id,
             manager_id=r.person_id,
-            manager=PersonResponse.model_validate(r.person) if r.person else None,
+            manager=_person_entry(r.person, perm_ctx) if r.person else None,
             geldig_van=r.start_datum,
             geldig_tot=r.eind_datum,
         )
@@ -487,17 +531,20 @@ async def get_organisatie_personen(
     current_user: OptionalUser,
     recursive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[PersonResponse] | OrganisatieEenheidPersonenGroup:
-    """Get people in an org unit.
+    """Get people in an org unit: the tenant-wide staff directory.
 
-    Use recursive=true for grouped tree of all descendants.
+    Every logged-in user sees who is placed where; the full records only
+    with ``people:read`` (``_person_entry``).  Use recursive=true for
+    grouped tree of all descendants.
     """
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
 
     if not recursive:
         personen = await repo.get_personen(id)
-        return [PersonResponse.model_validate(p) for p in personen]
+        return [_person_entry(p, perm_ctx) for p in personen]
 
     # Recursive mode: get all descendants and build grouped tree
     descendant_ids = await repo.get_descendant_ids(id)
@@ -510,7 +557,7 @@ async def get_organisatie_personen(
     # Index people by unit ID
     personen_by_unit: dict[UUID, list[PersonResponse]] = defaultdict(list)
     for person, unit_id in personen_with_units:
-        personen_by_unit[unit_id].append(PersonResponse.model_validate(person))
+        personen_by_unit[unit_id].append(_person_entry(person, perm_ctx))
 
     # Index units by ID
     units_by_id = {u.id: u for u in all_units}
@@ -525,7 +572,7 @@ async def get_organisatie_personen(
         resp = OrganisatieEenheidResponse.model_validate(unit)
         mgr = managers_map.get(unit_id)
         if mgr:
-            resp.manager = PersonResponse.model_validate(mgr)
+            resp.manager = _person_entry(mgr, perm_ctx)
             resp.manager_id = mgr.id
         else:
             resp.manager = None

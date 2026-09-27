@@ -33,6 +33,7 @@ from bouwmeester.models.person_organisatie import (
     PersonOrganisatieEenheid,
 )
 from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.models.role import PersonRole
 from bouwmeester.models.shared_access import SharedAccess
 from bouwmeester.models.task import Task
 
@@ -312,6 +313,17 @@ def _reference_queries(
                     placement_not_ended(),
                 ),
             ),
+            (
+                "rollen",
+                count(
+                    PersonRole,
+                    PersonRole.organisatie_eenheid_id == eenheid_id,
+                    or_(
+                        PersonRole.eind_datum.is_(None),
+                        PersonRole.eind_datum >= date.today(),
+                    ),
+                ),
+            ),
         ]
     return queries
 
@@ -323,8 +335,9 @@ async def eenheid_references(
 
     Without *structure*: what its members reach through it (resources in
     it, grants it holds, shares from or to it).  With *structure* also the
-    eenheden below it and its placements: everything that deleting it would
-    cascade away or leave without an eenheid (which makes it tenant-wide).
+    eenheden below it, its placements and the roles held on it: everything
+    that deleting it would cascade away or leave without an eenheid (which
+    makes it tenant-wide).
     """
     parts = []
     for label, stmt in _reference_queries(eenheid_id, structure=structure):

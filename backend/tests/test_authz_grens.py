@@ -748,4 +748,6 @@ async def test_move_evaluation_equals_the_route(world: World):
             )
             done[name] = resp.status_code == 200
     assert asked == done
-    assert asked == {"move-in": True, "move-out": False, "under-foreign-root": False}
+    # Bringing an own root into the organisation needs a manager of the new
+    # parent (round 7): a team editor holds org:create there, not that say.
+    assert asked == {"move-in": False, "move-out": False, "under-foreign-root": False}

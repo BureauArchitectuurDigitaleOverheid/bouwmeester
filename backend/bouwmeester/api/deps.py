@@ -13,7 +13,6 @@ from bouwmeester.core.authority import require_can_dissolve_eenheid
 from bouwmeester.core.authz import require
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
 
@@ -90,15 +89,12 @@ async def require_can_end_eenheid(
     """Guard ending an eenheid: dissolving it (``geldig_tot``) or deleting it.
 
     ``org:update`` on the eenheid (``core.authz``) and the dissolve guard of
-    ``core.authority`` (ending it ends its manager's role), so a hard
+    ``core.authority`` (ending it ends its roles and placements), so a hard
     delete is never laxer than ending it.  The evaluation endpoint's
     ``eenheid:dissolve`` asks this too.
     """
     await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
-    manager = await OrganisatieEenheidRepository(db).get_current_manager_id(eenheid.id)
-    await require_can_dissolve_eenheid(
-        db, perm_ctx, eenheid, has_manager=manager is not None
-    )
+    await require_can_dissolve_eenheid(db, perm_ctx, eenheid)
 
 
 def require_deleted(deleted: bool, name: str = "Resource") -> None:
