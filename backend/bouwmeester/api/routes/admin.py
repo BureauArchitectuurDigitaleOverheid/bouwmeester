@@ -464,6 +464,27 @@ def _super_admin_only(entry: AppConfig) -> bool:
     return entry.is_secret or entry.key.endswith("_URL") or entry.key in _DATA_FLOW_KEYS
 
 
+def _can_edit_config(entry: AppConfig, perm_ctx: PermissionContext) -> bool:
+    """The one rule for who may change a config entry.
+
+    Used by the PATCH route to refuse and by the list route to tell the
+    frontend which entries to offer for editing.
+    """
+    return perm_ctx.is_super_admin or not _super_admin_only(entry)
+
+
+def _config_response(
+    entry: AppConfig, perm_ctx: PermissionContext
+) -> AppConfigResponse:
+    """Serialize a config entry: secrets masked, ``editable`` per caller."""
+    resp = AppConfigResponse.model_validate(entry)
+    if entry.is_secret:
+        # Decrypt for masking (show last 4 chars of real value)
+        resp.value = _mask_secret(decrypt_value(entry.value))
+    resp.editable = _can_edit_config(entry, perm_ctx)
+    return resp
+
+
 def _mask_secret(value: str) -> str:
     """Mask a secret value for display, showing only last 4 chars."""
     if not value or len(value) <= 4:
@@ -499,19 +520,12 @@ async def _ensure_default_config(db: AsyncSession) -> None:
 async def list_config(
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[AppConfigResponse]:
     """List all configuration entries. Secret values are masked."""
     await _ensure_default_config(db)
     result = await db.execute(select(AppConfig).order_by(AppConfig.key))
-    entries = []
-    for row in result.scalars().all():
-        resp = AppConfigResponse.model_validate(row)
-        if row.is_secret:
-            # Decrypt for masking (show last 4 chars of real value)
-            plain = decrypt_value(row.value)
-            resp.value = _mask_secret(plain)
-        entries.append(resp)
-    return entries
+    return [_config_response(row, perm_ctx) for row in result.scalars().all()]
 
 
 @router.patch(
@@ -533,7 +547,7 @@ async def update_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuratie '{key}' niet gevonden",
         )
-    if _super_admin_only(entry) and not perm_ctx.is_super_admin:
+    if not _can_edit_config(entry, perm_ctx):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Alleen systeembeheerders wijzigen sleutels en adressen",
@@ -559,10 +573,7 @@ async def update_config(
         details={"key": key},
     )
 
-    resp = AppConfigResponse.model_validate(entry)
-    if entry.is_secret:
-        resp.value = _mask_secret(decrypt_value(entry.value))
-    return resp
+    return _config_response(entry, perm_ctx)
 
 
 # ---------------------------------------------------------------------------

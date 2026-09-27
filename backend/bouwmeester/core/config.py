@@ -124,8 +124,6 @@ class Settings(BaseSettings):
     MATTERMOST_ENABLED: bool = False
     MATTERMOST_URL: str = "http://mattermost:8065"
     MATTERMOST_BOT_TOKEN: str = ""
-    # Default channel for broadcast notifications
-    MATTERMOST_NOTIFICATION_CHANNEL_ID: str = ""
     # Token to verify incoming slash commands
     MATTERMOST_WEBHOOK_TOKEN: str = ""
     # Herverwerking van posts die tijdens een LLM-storing niet beoordeeld

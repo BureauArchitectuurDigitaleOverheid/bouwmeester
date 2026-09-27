@@ -22,7 +22,7 @@ from bouwmeester.core.authz import can
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.mattermost_user import MattermostUser
-from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.models.opdracht import Opdracht, OpdrachtNode
 from bouwmeester.models.parlementair_item import SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
@@ -165,15 +165,19 @@ async def test_security_config_is_super_admin_only(
 
     monkeypatch.setattr(admin_routes, "_defaults_seeded", False)
     got = {}
+    offered = {}
     for who in ("platform_admin", "super_admin"):
         async with client_as(world.db, world.person[who]) as c:
-            await c.get("/api/admin/config")
+            listing = await c.get("/api/admin/config")
             resp = await c.patch(f"/api/admin/config/{key}", json={"value": "x"})
         got[who] = resp.status_code
+        offered[who] = next(e for e in listing.json() if e["key"] == key)["editable"]
     assert got == {
         "platform_admin": 200 if platform_admin_may else 403,
         "super_admin": 200,
     }
+    # The listing offers editing exactly where the PATCH route allows it.
+    assert offered == {who: status == 200 for who, status in got.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +279,51 @@ async def test_fcc_push_is_decided_on_the_opdracht(world):
     # beside cannot see the opdracht, so a refusal does not reveal it (404)
     assert results == {"above": 400, "beside": 404, "manager": 403, "super_admin": 400}
     assert missing.status_code == 404
+
+
+async def test_fcc_conflict_resolution_names_only_readable_nodes(world):
+    """The opdracht an FCC route returns names only nodes the caller reads.
+
+    Someone with fcc:sync on the afdeling resolves a conflict on a team
+    opdracht whose instrument and one koppeling lie in another directie.
+    """
+    opdracht = Opdracht(
+        type="opdracht",
+        titel="Conflictopdracht",
+        begrotingsjaar=2026,
+        opdrachtgever_id=world.org["team"].id,
+        instrument_id=world.res["node_elders"],
+        sync_status="conflict",
+    )
+    world.db.add(opdracht)
+    await world.db.flush()
+    world.db.add_all(
+        [
+            OpdrachtNode(opdracht_id=opdracht.id, node_id=world.res["node_elders"]),
+            OpdrachtNode(opdracht_id=opdracht.id, node_id=world.res["node_team"]),
+        ]
+    )
+    await world.db.flush()
+    ops = await _scoped_ops(world, "afdeling")
+
+    with patch(
+        "bouwmeester.services.fcc_import_service.FccImportService.pull_single",
+        new=AsyncMock(),
+    ):
+        async with client_as(world.db, ops) as c:
+            resp = await c.post(
+                f"/api/fcc/conflicts/{opdracht.id}/resolve",
+                json={"resolution": "use_theirs"},
+            )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["instrument_id"] == str(world.res["node_elders"])  # on the record
+    assert body["instrument"] is None
+    assert [k["node_id"] for k in body["node_koppelingen"]] == [
+        str(world.res["node_team"])
+    ]
+    assert "Dossier elders" not in resp.text
 
 
 # ---------------------------------------------------------------------------

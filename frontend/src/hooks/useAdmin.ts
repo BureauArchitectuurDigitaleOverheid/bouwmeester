@@ -65,6 +65,8 @@ export interface AppConfigEntry {
   updated_by: string | null;
   updated_at: string;
   created_at: string;
+  /** Whether the current user may change this entry (same rule as the save). */
+  editable: boolean;
 }
 
 export function useAppConfig() {

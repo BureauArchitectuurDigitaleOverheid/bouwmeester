@@ -9,7 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.authz import can, prefetch
+from bouwmeester.core.authz import can
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.initiatief_context import (
     apply_initiatief_filter,
@@ -36,6 +36,7 @@ from bouwmeester.repositories.parlementair_abonnement import (
 from bouwmeester.repositories.search import SearchRepository
 from bouwmeester.services.caller import Caller, caller_for
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
+from bouwmeester.services.visibility_filters import readable_ids
 
 logger = logging.getLogger(__name__)
 
@@ -201,19 +202,13 @@ class MattermostSlashService:
         result = await self.session.execute(stmt)
         ctx = caller.perm_ctx
         candidates = result.scalars().all()
-        await prefetch(self.session, ctx, "task", [t.id for t in candidates])
-        tasks = [
-            t
-            for t in candidates
-            if await can(self.session, ctx, "task:read", "task", t.id)
-        ]
-        node_ids = list({t.node_id for t in tasks if t.node_id})
-        await prefetch(self.session, ctx, "corpus_node", node_ids)
-        readable_nodes = {
-            nid
-            for nid in node_ids
-            if await can(self.session, ctx, "node:read", "corpus_node", nid)
-        }
+        readable_tasks = await readable_ids(
+            self.session, ctx, "task", (t.id for t in candidates)
+        )
+        tasks = [t for t in candidates if t.id in readable_tasks]
+        readable_nodes = await readable_ids(
+            self.session, ctx, "corpus_node", (t.node_id for t in tasks)
+        )
 
         if not tasks:
             return _ephemeral("Geen open taken gevonden.")

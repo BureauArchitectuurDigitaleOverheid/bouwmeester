@@ -168,14 +168,16 @@ async def get_task_inbox(
     current_user: OptionalUser,
     person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InboxResponse:
     """Get aggregated inbox data for a person (tasks, notifications, deadlines).
 
-    Inbox is always self-scoped (own tasks/notifications), so no org_ctx.
+    Inbox is self-scoped (own tasks and activity); what it names is
+    redacted to what the caller reads (``visibility_filters.inbox_items``).
     """
     pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
-    return await service.get_inbox(pid)
+    return await service.get_inbox(pid, perm_ctx)
 
 
 @router.get("/unassigned", response_model=list[TaskResponse])
