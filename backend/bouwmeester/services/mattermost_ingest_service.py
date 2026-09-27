@@ -53,7 +53,7 @@ from bouwmeester.models.suggested_lead import (
 from bouwmeester.repositories.mattermost_channel_link import (
     MattermostChannelLinkRepository,
 )
-from bouwmeester.repositories.mattermost_user import MattermostUserRepository
+from bouwmeester.services.caller import linked_person_id
 from bouwmeester.services.mattermost_doc_link_extractor import (
     derive_attachment_label,
     extract_doc_links,
@@ -284,13 +284,12 @@ class MattermostIngestService:
         if existing is not None and not reprocess:
             return
 
-        # Auteur-match via mattermost_user (alleen via expliciete koppeling).
-        person_id: UUID | None = None
-        if mm_user_id:
-            mm_repo = MattermostUserRepository(self.session)
-            mapping = await mm_repo.get_by_mattermost_user_id(mm_user_id)
-            if mapping is not None:
-                person_id = mapping.person_id
+        # Author match through an explicit mattermost_user link only.  A
+        # deactivated person or one off the whitelist counts as unlinked: no
+        # authorship, no DMs (``caller.may_still_act``).
+        person_id: UUID | None = (
+            await linked_person_id(self.session, mm_user_id) if mm_user_id else None
+        )
 
         if existing is not None:
             # Herverwerking: de bestaande rij blijft staan en houdt daarmee
@@ -347,7 +346,9 @@ class MattermostIngestService:
         ):
             # Een mention is een expliciet menselijk signaal: dan hoeft de
             # ruis-classificatie niet meer te raden of dit relevant is.
-            if not mentions_bot and await self._is_noise(message):
+            if not await self._may_feed_lead(channel_link.scope_id, person_id):
+                skipped_reason = "agent_lead"
+            elif not mentions_bot and await self._is_noise(message):
                 skipped_reason = "noise"
             else:
                 lead_activity_id = await self._create_auto_note(
@@ -588,6 +589,33 @@ class MattermostIngestService:
             )
         finally:
             await service.close()
+
+    async def _may_feed_lead(self, lead_id: UUID, author_id: UUID | None) -> bool:
+        """May this post become a note on the lead?
+
+        A note on a lead assigned to an agent hands that agent work, so it
+        only comes from an author who may instruct agents or who may add
+        activity to the lead anyway (``agent_rules``; editors keep updating
+        work already assigned).  Any other lead takes every post.
+        """
+        from bouwmeester.core.authz import can, perm_ctx_for
+        from bouwmeester.models.person import Person
+        from bouwmeester.services.agent_rules import may_instruct
+
+        lead = await self.session.get(Lead, lead_id)
+        assignee = (
+            await self.session.get(Person, lead.assignee_id)
+            if lead is not None and lead.assignee_id
+            else None
+        )
+        if assignee is None or not assignee.is_agent:
+            return True
+        if author_id is None:
+            return False
+        perm_ctx = await perm_ctx_for(self.session, author_id)
+        return may_instruct(perm_ctx, assignee) or await can(
+            self.session, perm_ctx, "lead_activity:create", "lead", lead_id
+        )
 
     async def _is_noise(self, message: str) -> bool:
         """Vraag VLAM of dit een triviaal/ack-bericht is.
