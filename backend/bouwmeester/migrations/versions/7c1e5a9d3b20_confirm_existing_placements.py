@@ -8,8 +8,12 @@ informational only; a manager's detachering gets bron 'detachering'.
 Placements made before this change cannot tell these apart, and today they
 all give access: a manager's placement of a new hire, a partner at a
 gemeente who works on an initiatief through that gemeente.  So that nobody
-loses access at deploy, every active 'handmatig' placement is confirmed
-here, inside the internal organisation and in external organisations alike.
+loses access at deploy, every active 'handmatig' placement of an account
+(someone who logged in, an agent, or anyone holding a role: see
+``core.authority.is_account``) is confirmed here, inside the internal
+organisation and in external organisations alike.  A contact's placement
+stays informational: anyone with people:update could make one, and a
+contact that later logs in gets a placement request for it instead.
 Only placements created after deploy need confirmation.
 
 Downgrade is exact: before this revision 'leidinggevende' and
@@ -31,10 +35,17 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 CONFIRM_SQL = """
-UPDATE person_organisatie_eenheid
+UPDATE person_organisatie_eenheid AS poe
 SET bron = 'leidinggevende'
-WHERE bron = 'handmatig'
-  AND (eind_datum IS NULL OR eind_datum >= CURRENT_DATE)
+FROM person AS p
+WHERE p.id = poe.person_id
+  AND poe.bron = 'handmatig'
+  AND (poe.eind_datum IS NULL OR poe.eind_datum >= CURRENT_DATE)
+  AND (
+    p.oidc_subject IS NOT NULL
+    OR p.is_agent
+    OR EXISTS (SELECT 1 FROM person_role AS pr WHERE pr.person_id = p.id)
+  )
 """
 
 REVERT_SQL = """

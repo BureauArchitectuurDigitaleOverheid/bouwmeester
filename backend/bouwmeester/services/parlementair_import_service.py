@@ -19,10 +19,10 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.nieuwsbron import Nieuwsbron
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
+from bouwmeester.repositories.org_tree import membership_ids_select
 from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
@@ -999,11 +999,9 @@ class ParlementairImportService:
         if not stakeholders:
             return None
 
-        person_ids = [sh.person_id for sh in stakeholders]
-        person_stmt = select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
-            PersonOrganisatieEenheid.person_id.in_(person_ids),
-        )
-        person_result = await self.session.execute(person_stmt)
+        # Their memberships (active, trusted placements), one row per person.
+        person_ids = [sh.person_id for sh in stakeholders if sh.person_id]
+        person_result = await self.session.execute(membership_ids_select(*person_ids))
         unit_ids: list[uuid.UUID] = list(person_result.scalars().all())
 
         if not unit_ids:
