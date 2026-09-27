@@ -35,6 +35,13 @@ class PersonEmail(Base):
     )
     email: Mapped[str] = mapped_column(unique=True, nullable=False)
     is_default: Mapped[bool] = mapped_column(default=False, server_default="false")
+    # Who added the address to this person: decides at the first login
+    # whether it is proven (``core.authority.hold_access_of_unproven_login``).
+    # No foreign key on purpose: when the adder is deleted the address must
+    # stay unproven, not turn into an unknown (and therefore trusted) one.
+    added_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
