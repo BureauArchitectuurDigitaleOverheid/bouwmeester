@@ -97,6 +97,13 @@ async def _eligible(
     return [p for p in usable if p.id not in emails]
 
 
+async def usable_by_sync(
+    db: AsyncSession, persons: list[Person], bronnen: Collection[str]
+) -> list[Person]:
+    """The persons of *persons* a sync of *bronnen* may place (see above)."""
+    return await _eligible(db, persons, bronnen)
+
+
 async def match_sync_person(
     db: AsyncSession, naam: str, *, bronnen: Collection[str], where=None
 ) -> PersonMatch:
