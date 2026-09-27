@@ -34,7 +34,7 @@ from bouwmeester.models.onboarding_dismissal import OnboardingDismissal
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.repositories.org_tree import get_membership_ids, membership_ids_select
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.access_request import (
     AccessRequestCreate,
@@ -318,23 +318,13 @@ async def auth_status(
             placement_denied = False
             if person_id:
                 pid = UUID(person_id)
-                # Own placements (active)
-                placement_stmt = (
-                    select(
-                        OrganisatieEenheid.id,
-                        OrganisatieEenheid.naam,
-                        OrganisatieEenheid.type,
-                    )
-                    .join(
-                        PersonOrganisatieEenheid,
-                        PersonOrganisatieEenheid.organisatie_eenheid_id
-                        == OrganisatieEenheid.id,
-                    )
-                    .where(
-                        PersonOrganisatieEenheid.person_id == pid,
-                        PersonOrganisatieEenheid.eind_datum.is_(None),
-                    )
-                )
+                # Own eenheden: memberships (trusted placements) only.  With
+                # just informational placements the user still needs one.
+                placement_stmt = select(
+                    OrganisatieEenheid.id,
+                    OrganisatieEenheid.naam,
+                    OrganisatieEenheid.type,
+                ).where(OrganisatieEenheid.id.in_(membership_ids_select(pid)))
                 placement_result = await db.execute(placement_stmt)
                 org_eenheden = [
                     {"id": str(r.id), "naam": r.naam, "type": r.type}
@@ -515,17 +505,13 @@ async def complete_onboarding(
     current_user.naam = body.naam
     current_user.functie = body.functie
 
-    # Create a placement request if the user has no active placement.
+    # Create a placement request if the user is no member anywhere yet
+    # (informational placements do not count).
     # If pending requests exist for other eenheden, withdraw them first --
     # a person can only request one team at a time, and the wizard is the
     # latest expression of intent.
-    existing_placement = await db.execute(
-        select(PersonOrganisatieEenheid.id).where(
-            PersonOrganisatieEenheid.person_id == current_user.id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
-        )
-    )
-    if existing_placement.scalar_one_or_none() is None:
+    member_of = await get_membership_ids(db, current_user.id)
+    if not member_of:
         # Idempotent: a pending request for this same eenheid means the
         # user re-submitted; do nothing. For other eenheden, drop them.
         existing_pending = await db.execute(
