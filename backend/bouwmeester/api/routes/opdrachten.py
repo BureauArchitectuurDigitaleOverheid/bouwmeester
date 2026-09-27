@@ -3,7 +3,6 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +14,7 @@ from bouwmeester.core.authority import (
 )
 from bouwmeester.core.authz import require, require_move, requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.deletion import delete_guarded
 from bouwmeester.core.org_context import (
     OrgContext,
     get_org_context,
@@ -24,7 +24,6 @@ from bouwmeester.core.permissions import (
     get_permission_context,
     require_system_permission,
 )
-from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.opdracht import OpdrachtRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.opdracht import (
@@ -341,25 +340,14 @@ async def delete_opdracht(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("opdracht:delete", "opdracht")),
+    perm_ctx: PermissionContext = Depends(requires("opdracht:delete", "opdracht")),
 ) -> None:
-    repo = OpdrachtRepository(db)
-
-    # Capture info before deletion for activity log
-    opdracht = await repo.get(id)
-    require_found(opdracht, "Opdracht")
+    """Delete an opdracht with its koppelingen and grants (``core.deletion``).
+    Its tasks stay: they live on their node and eenheid."""
+    opdracht = require_found(await OpdrachtRepository(db).get(id), "Opdracht")
     instrument_id = opdracht.instrument_id
     titel = opdracht.titel
-
-    # Clean up resource_permission rows (polymorphic FK, no CASCADE)
-    await db.execute(
-        sa_delete(ResourcePermission).where(
-            ResourcePermission.resource_type == "opdracht",
-            ResourcePermission.resource_id == id,
-        )
-    )
-
-    require_deleted(await repo.delete(id), "Opdracht")
+    await delete_guarded(db, perm_ctx, "opdracht", id)
 
     await log_activity(
         db,

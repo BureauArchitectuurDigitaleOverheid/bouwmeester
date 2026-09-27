@@ -18,6 +18,7 @@ from bouwmeester.core.authority import (
 )
 from bouwmeester.core.authz import can, prefetch, require, requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.deletion import delete_guarded
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
@@ -265,46 +266,17 @@ async def delete_node(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("node:delete", "corpus_node")),
+    perm_ctx: PermissionContext = Depends(requires("node:delete", "corpus_node")),
 ) -> None:
-    """Delete a corpus node. Cleans up bijlage files for bron nodes."""
-    service = NodeService(db)
-    node = await service.get(id)
-    node_title = node.title if node else None
-    node_type = node.node_type if node else None
+    """Delete a corpus node with what hangs on it (``core.deletion``).
 
-    # Note the bron's stored file before deleting the node, because CASCADE
-    # removes the DB row but not the file.
-    bijlage_path_to_delete: str | None = None
-    if node and node.node_type == "bron":
-        from sqlalchemy import select
-
-        from bouwmeester.models.bron_bijlage import BronBijlage
-
-        result = await db.execute(select(BronBijlage).where(BronBijlage.bron_id == id))
-        bijlage = result.scalar_one_or_none()
-        if bijlage:
-            bijlage_path_to_delete = bijlage.pad
-
-    # Clean up resource_permission rows (no FK cascade on polymorphic)
-    from sqlalchemy import delete as sa_delete
-
-    from bouwmeester.models.resource_permission import ResourcePermission
-
-    await db.execute(
-        sa_delete(ResourcePermission).where(
-            ResourcePermission.resource_type == "corpus_node",
-            ResourcePermission.resource_id == id,
-        )
-    )
-
-    require_deleted(await service.delete(id), "Node")
-
-    # Delete the file after DB deletion succeeds.
-    if bijlage_path_to_delete:
-        from bouwmeester.core.storage import delete_blob
-
-        await delete_blob(bijlage_path_to_delete)
+    409 while tasks, opdrachten or links of records the caller may not
+    delete or change still hang on the node.
+    """
+    node = require_found(await NodeService(db).get(id), "Node")
+    node_title = node.title
+    node_type = node.node_type
+    await delete_guarded(db, perm_ctx, "corpus_node", id)
 
     await log_activity(
         db,

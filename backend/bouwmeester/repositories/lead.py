@@ -412,7 +412,11 @@ class LeadRepository(BaseRepository[Lead]):
                 f"{target.description}\n\n---\nSamengevoegd:\n{source.description}"
             )
 
-        # Delete source lead
+        # Delete source lead, with the channel links, abonnementen and other
+        # rows that point at it without a foreign key.
+        from bouwmeester.core.deletion import remove_scoped
+
+        await remove_scoped(self.session, {"lead": {source_id}})
         await self.session.delete(source)
         await self.session.flush()
 

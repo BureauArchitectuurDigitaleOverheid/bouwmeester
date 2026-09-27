@@ -22,6 +22,7 @@ from bouwmeester.core.authority import (
 )
 from bouwmeester.core.authz import prefetch, require, require_move, requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.deletion import delete_guarded
 from bouwmeester.core.github_url import parse_github_url
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
@@ -36,7 +37,7 @@ from bouwmeester.core.storage import (
     store_upload,
     validate_upload,
 )
-from bouwmeester.models.github_link import SCOPE_LEAD, GitHubLink
+from bouwmeester.models.github_link import SCOPE_LEAD
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_attachment import LeadAttachment
@@ -465,30 +466,15 @@ async def delete_lead(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead:delete", "lead", path_param="lead_id")),
+    perm_ctx: PermissionContext = Depends(
+        requires("lead:delete", "lead", path_param="lead_id")
+    ),
 ) -> None:
-    """Delete a lead permanently."""
+    """Delete a lead with its activities, updates, links and grants
+    (``core.deletion``)."""
     lead = require_found(await db.get(Lead, lead_id), "Lead")
     lead_title = lead.title
-
-    # Clean up resource_permission rows (no FK cascade on polymorphic)
-    from sqlalchemy import delete as sa_delete
-
-    await db.execute(
-        sa_delete(ResourcePermission).where(
-            ResourcePermission.resource_type == "lead",
-            ResourcePermission.resource_id == lead_id,
-        )
-    )
-    await db.execute(
-        sa_delete(GitHubLink).where(
-            GitHubLink.scope_type == SCOPE_LEAD,
-            GitHubLink.scope_id == lead_id,
-        )
-    )
-
-    repo = LeadRepository(db)
-    require_deleted(await repo.delete(lead_id), "Lead")
+    await delete_guarded(db, perm_ctx, "lead", lead_id)
 
     await log_activity(
         db,

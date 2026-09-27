@@ -5,10 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.authz import require, require_move, requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.deletion import delete_guarded
 from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
@@ -368,14 +369,14 @@ async def delete_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("task:delete", "task")),
+    perm_ctx: PermissionContext = Depends(requires("task:delete", "task")),
 ) -> None:
-    """Delete a task permanently."""
-    repo = TaskRepository(db)
-    task = await repo.get(id)
-    task_title = task.title if task else None
-    task_node_id = task.node_id if task else None
-    require_deleted(await repo.delete(id), "Task")
+    """Delete a task with its subtasks; 409 when the caller may not delete
+    every subtask (``core.deletion``)."""
+    task = require_found(await TaskRepository(db).get(id), "Task")
+    task_title = task.title
+    task_node_id = task.node_id
+    await delete_guarded(db, perm_ctx, "task", id)
     await log_activity(
         db,
         current_user,

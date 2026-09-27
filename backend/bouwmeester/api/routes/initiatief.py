@@ -14,6 +14,7 @@ from bouwmeester.core.authority import (
 )
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.deletion import delete_guarded
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
@@ -195,25 +196,14 @@ async def delete_initiatief(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_DELETE_INITIATIEF),
+    perm_ctx: PermissionContext = Depends(_DELETE_INITIATIEF),
 ) -> None:
+    """Delete an initiatief with its leads, updates, columns, channel links,
+    abonnementen and grants (``core.deletion``)."""
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")
     initiatief_naam = initiatief.naam
-
-    # Clean up resource_permission rows
-    from sqlalchemy import delete as sa_delete
-
-    from bouwmeester.models.resource_permission import ResourcePermission
-
-    await db.execute(
-        sa_delete(ResourcePermission).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == id,
-        )
-    )
-
-    require_deleted(await repo.delete(id), "Initiatief")
+    await delete_guarded(db, perm_ctx, "initiatief", id)
 
     await log_activity(
         db,
