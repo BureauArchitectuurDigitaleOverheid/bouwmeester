@@ -1,10 +1,14 @@
-"""Editors can create stakeholder eenheden anywhere in the tree.
+"""Editors can create stakeholder (external) eenheden outside the organisation.
+
+An internal eenheid (ministerie down to team) is part of the organisation
+and needs org:create on its parent, and so does an external one whose
+parent touches the internal organisation; see the last tests.
 
 Covers the scenario from the lead-stakeholder flow: a Bewerker (editor
 role) without ministry_admin needs to add an org unit for a counterpart
-that does not fall under their own ministry. The aanmaker is granted
-an eigenaar resource-permission so they can edit/delete that eenheid
-later, even though it is outside their visible org scope.
+that does not fall under their own ministry. The aanmaker of an external
+eenheid is granted an eigenaar resource-permission so they can edit/delete
+it later, even though it is outside their visible org scope.
 """
 
 import uuid
@@ -47,6 +51,7 @@ async def editor_setup(db_session: AsyncSession):
     """Editor on org_own, plus a separate org_other outside their scope."""
     org_own = await make_org(db_session, "Eigen Directie")
     org_other = await make_org(db_session, "Ander Ministerie")
+    org_external = await make_org(db_session, "Provincie", "provincie")
 
     editor = await make_person(db_session, "Abram Bewerker", account=False)
     db_session.add(
@@ -73,6 +78,7 @@ async def editor_setup(db_session: AsyncSession):
             "editor": editor,
             "org_own": org_own,
             "org_other": org_other,
+            "org_external": org_external,
         }
     app.dependency_overrides.clear()
 
@@ -82,7 +88,7 @@ async def test_editor_creates_top_level_eenheid(editor_setup):
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "CJIB", "type": "ministerie"},
+        json={"naam": "CJIB", "type": "zbo"},
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
@@ -90,19 +96,34 @@ async def test_editor_creates_top_level_eenheid(editor_setup):
     assert body["parent_id"] is None
 
 
-async def test_editor_creates_eenheid_under_foreign_parent(editor_setup):
-    """Editor can hang a new eenheid under a parent outside their scope."""
+async def test_editor_cannot_create_below_foreign_external_parent(editor_setup):
+    """Below a parent the parent decides, also outside the organisation."""
+    s = editor_setup
+    resp = await s["client"].post(
+        "/api/organisatie",
+        json={
+            "naam": "Gemeente",
+            "type": "gemeente",
+            "parent_id": str(s["org_external"].id),
+        },
+    )
+    assert resp.status_code == 403, resp.text
+
+
+async def test_editor_cannot_hang_external_eenheid_in_foreign_organisation(
+    editor_setup,
+):
+    """Inside the internal organisation the parent decides, external or not."""
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
         json={
             "naam": "CJIB",
-            "type": "directie",
+            "type": "gemeente",
             "parent_id": str(s["org_other"].id),
         },
     )
-    assert resp.status_code == 201, resp.text
-    assert resp.json()["parent_id"] == str(s["org_other"].id)
+    assert resp.status_code == 403, resp.text
 
 
 async def test_aanmaker_gets_eigenaar_resource_permission(
@@ -112,7 +133,7 @@ async def test_aanmaker_gets_eigenaar_resource_permission(
     s = editor_setup
     resp = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "Stakeholder X", "type": "directie"},
+        json={"naam": "Stakeholder X", "type": "gemeente"},
     )
     assert resp.status_code == 201
     new_id = uuid.UUID(resp.json()["id"])
@@ -129,12 +150,31 @@ async def test_aanmaker_gets_eigenaar_resource_permission(
     assert rp.rol == "eigenaar"
 
 
+async def test_aanmaker_of_internal_eenheid_gets_no_eigenaar(
+    editor_setup, db_session: AsyncSession
+):
+    """An internal eenheid is maintained through the rights on its parent."""
+    s = editor_setup
+    resp = await s["client"].post(
+        "/api/organisatie",
+        json={"naam": "Team", "type": "team", "parent_id": str(s["org_own"].id)},
+    )
+    assert resp.status_code == 201, resp.text
+    grant = await db_session.scalar(
+        select(ResourcePermission.id).where(
+            ResourcePermission.resource_type == "organisatie_eenheid",
+            ResourcePermission.resource_id == uuid.UUID(resp.json()["id"]),
+        )
+    )
+    assert grant is None
+
+
 async def test_aanmaker_can_update_own_eenheid_outside_scope(editor_setup):
     """The eigenaar resource-permission unlocks update on out-of-scope eenheden."""
     s = editor_setup
     create = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "CJIB", "type": "ministerie"},
+        json={"naam": "CJIB", "type": "zbo"},
     )
     new_id = create.json()["id"]
 
@@ -161,7 +201,7 @@ async def test_aanmaker_can_delete_own_eenheid_outside_scope(editor_setup):
     s = editor_setup
     create = await s["client"].post(
         "/api/organisatie",
-        json={"naam": "Tijdelijk", "type": "directie"},
+        json={"naam": "Tijdelijk", "type": "gemeente"},
     )
     new_id = create.json()["id"]
 
@@ -183,3 +223,26 @@ async def test_editor_has_org_create_but_not_org_manage(
     perms = await RoleRepository(db_session).get_role_permission_ids("editor")
     assert "org:create" in perms
     assert "org:manage" not in perms
+
+
+async def test_editor_cannot_create_internal_eenheid_outside_scope(editor_setup):
+    """An internal eenheid under a foreign parent, or at the top, is refused."""
+    s = editor_setup
+    under_foreign = await s["client"].post(
+        "/api/organisatie",
+        json={
+            "naam": "Afdeling",
+            "type": "afdeling",
+            "parent_id": str(s["org_other"].id),
+        },
+    )
+    top_level = await s["client"].post(
+        "/api/organisatie", json={"naam": "Ministerie", "type": "ministerie"}
+    )
+    under_own = await s["client"].post(
+        "/api/organisatie",
+        json={"naam": "Team", "type": "team", "parent_id": str(s["org_own"].id)},
+    )
+    assert under_foreign.status_code == 403, under_foreign.text
+    assert top_level.status_code == 403, top_level.text
+    assert under_own.status_code == 201, under_own.text

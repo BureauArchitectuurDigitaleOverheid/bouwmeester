@@ -79,12 +79,6 @@ class NodeService:
     async def delete(self, id: UUID) -> bool:
         return await self.repo.delete(id)
 
-    async def get_neighbors(self, id: UUID) -> dict:
-        return await self.repo.get_neighbors(id)
-
-    async def get_graph(self, node_id: UUID, depth: int = 2) -> dict:
-        return await self.repo.get_graph(node_id, depth)
-
     async def count(self, node_type: str | None = None) -> int:
         return await self.repo.count(node_type)
 

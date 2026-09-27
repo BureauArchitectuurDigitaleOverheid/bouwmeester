@@ -29,6 +29,12 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
+from bouwmeester.services.sync_matching import (
+    PersonMatch,
+    create_sync_person,
+    find_official_eenheid,
+    usable_by_sync,
+)
 
 log = logging.getLogger(__name__)
 
@@ -90,32 +96,6 @@ async def fetch_fractiezetel_personen(*, alleen_actief: bool = True) -> list[dic
     return out
 
 
-async def fetch_oud_kamerleden() -> list[dict]:
-    """Persoon-records waar Functie='Oud Kamerlid' (voor naam-fuzzy-match).
-
-    Wordt door kabinet_sync gebruikt om bewindspersonen-met-TK-historie
-    aan een tk_persoon_id te koppelen (bv. Pieter Heerma was Tweede
-    Kamerlid en is nu minister BZK).
-
-    LET OP: dit kunnen er ~3000 zijn. Alleen ophalen wanneer expliciet
-    nodig (kabinet-sync), niet als reguliere sync — anders DB-bloat.
-    """
-    out: list[dict] = []
-    url: str | None = (
-        f"{ODATA_BASE}/Persoon"
-        f"?$filter=Verwijderd eq false and Functie eq 'Oud Kamerlid'"
-        f"&$top={PAGE_SIZE}"
-    )
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        while url:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            payload = resp.json()
-            out.extend(payload.get("value", []))
-            url = payload.get("@odata.nextLink")
-    return out
-
-
 async def fetch_eerste_kamerleden() -> list[dict]:
     """Persoon-records waar Functie='Eerste Kamerlid' en niet-verwijderd."""
     out: list[dict] = []
@@ -135,41 +115,72 @@ async def fetch_eerste_kamerleden() -> list[dict]:
 
 
 async def _get_eenheid(session: AsyncSession, naam: str) -> OrganisatieEenheid | None:
-    return (
-        (
-            await session.execute(
-                select(OrganisatieEenheid).where(
-                    OrganisatieEenheid.naam == naam,
-                    OrganisatieEenheid.geldig_tot.is_(None),
-                )
-            )
-        )
-        .scalars()
-        .first()
-    )
+    """The one official eenheid named *naam* (a trusted placement goes there)."""
+    return await find_official_eenheid(session, OrganisatieEenheid.naam == naam)
 
 
-async def _existing_persons_by_tk_id(
-    session: AsyncSession,
-) -> dict[str, Person]:
-    return {
-        p.tk_persoon_id: p
-        for p in (
-            await session.execute(
-                select(Person).where(Person.tk_persoon_id.is_not(None))
-            )
+@dataclass
+class _TkPersons:
+    """TK persons by their stable ``tk_persoon_id``.
+
+    Only persons the sync may place (``sync_matching``).  A key held by
+    anyone else (an account after a merge) moves to a new sync person.
+    """
+
+    usable: dict[str, Person]
+    blocked: dict[str, Person]
+
+    async def get(
+        self,
+        session: AsyncSession,
+        sync_run_id: uuid.UUID,
+        tk_id: str,
+        naam: str,
+        stats: TkSyncStats,
+    ) -> Person:
+        person = self.usable.get(tk_id)
+        if person is not None:
+            if person.naam != naam:
+                person.naam = naam
+            return person
+        holder = self.blocked.pop(tk_id, None)
+        if holder is not None:
+            holder.tk_persoon_id = None
+            await session.flush()
+        match = await create_sync_person(
+            session,
+            naam,
+            bron="tk_odata",
+            sync_run_id=sync_run_id,
+            log_bron="tk_odata",
+            match=PersonMatch(passed_over=1 if holder is not None else 0),
         )
+        person = match.person
+        person.tk_persoon_id = tk_id
+        await session.flush()
+        self.usable[tk_id] = person
+        stats.nieuwe_personen += 1
+        return person
+
+
+async def _existing_persons_by_tk_id(session: AsyncSession) -> _TkPersons:
+    persons = list(
+        (await session.execute(select(Person).where(Person.tk_persoon_id.is_not(None))))
         .scalars()
         .all()
-        if p.tk_persoon_id
-    }
+    )
+    usable = {p.id for p in await usable_by_sync(session, persons, {"tk_odata"})}
+    return _TkPersons(
+        usable={p.tk_persoon_id: p for p in persons if p.id in usable},
+        blocked={p.tk_persoon_id: p for p in persons if p.id not in usable},
+    )
 
 
 async def _sync_tk(
     session: AsyncSession,
     sync_run_id: uuid.UUID,
     fractiezetel_fetcher,
-    bestaande_personen: dict[str, Person],
+    bestaande_personen: _TkPersons,
     stats: TkSyncStats,
 ) -> None:
     eenheid = await _get_eenheid(session, TK_EENHEID_NAAM)
@@ -220,15 +231,7 @@ async def _sync_tk(
         fractielabel = fractie.get("Afkorting") or fractie.get("NaamNL") or "?"
         functietitel = f"Tweede Kamerlid ({fractielabel})"
 
-        person = bestaande_personen.get(tk_id)
-        if person is None:
-            person = Person(naam=naam, bron="tk_odata", tk_persoon_id=tk_id)
-            session.add(person)
-            await session.flush()
-            bestaande_personen[tk_id] = person
-            stats.nieuwe_personen += 1
-        elif person.naam != naam:
-            person.naam = naam
+        person = await bestaande_personen.get(session, sync_run_id, tk_id, naam, stats)
 
         key = (person.id, van)
         bestaand_plc = plc_per_key.get(key)
@@ -317,7 +320,7 @@ async def _sync_ek(
     session: AsyncSession,
     sync_run_id: uuid.UUID,
     ek_fetcher,
-    bestaande_personen: dict[str, Person],
+    bestaande_personen: _TkPersons,
     stats: TkSyncStats,
 ) -> None:
     eenheid = await _get_eenheid(session, EK_EENHEID_NAAM)
@@ -357,15 +360,7 @@ async def _sync_ek(
         fractielabel = record.get("Fractielabel") or "?"
         functietitel = f"Eerste Kamerlid ({fractielabel})"
 
-        person = bestaande_personen.get(tk_id)
-        if person is None:
-            person = Person(naam=naam, bron="tk_odata", tk_persoon_id=tk_id)
-            session.add(person)
-            await session.flush()
-            bestaande_personen[tk_id] = person
-            stats.nieuwe_personen += 1
-        elif person.naam != naam:
-            person.naam = naam
+        person = await bestaande_personen.get(session, sync_run_id, tk_id, naam, stats)
 
         feed_person_ids.add(person.id)
 

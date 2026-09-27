@@ -6,6 +6,7 @@ from datetime import date
 import pytest
 
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from tests.factories import client_as, grant_role, make_person
 
 # ---------------------------------------------------------------------------
 # List organisatie
@@ -187,96 +188,31 @@ async def test_update_organisatie(client, sample_organisatie):
     assert data["type"] == "ministerie"
 
 
-async def test_check_eenheid_write_access_blokkeert_tooi_voor_non_admin(
-    db_session, sample_organisatie
+@pytest.mark.parametrize(
+    ("bron", "expected"),
+    [("tooi", 403), ("synthetisch", 403), ("handmatig", 200)],
+)
+async def test_synced_eenheden_are_read_only_for_non_super_admin(
+    db_session, sample_organisatie, bron, expected
 ):
-    """TOOI/synthetische rijen zijn read-only voor non-super_admin.
+    """TOOI/synthetische rijen zijn read-only, ook met org:manage erop.
 
-    Direct getest via _check_eenheid_write_access (de client-tests draaien
-    als super_admin en zouden de check skippen).
+    Via een ministry_admin op de eenheid zelf: de client-fixture draait als
+    super_admin en zou de check overslaan.
     """
-    from fastapi import HTTPException
+    sample_organisatie.bron = bron
+    if bron == "tooi":
+        sample_organisatie.tooi_uri = "https://identifier.overheid.nl/tooi/id/test/x"
+    admin = await make_person(db_session, "Beheerder")
+    await grant_role(db_session, admin, "ministry_admin", sample_organisatie)
 
-    from bouwmeester.api.routes.organisatie import _check_eenheid_write_access
-    from bouwmeester.core.org_context import OrgContext
-    from bouwmeester.core.permissions import PermissionContext
-
-    sample_organisatie.bron = "tooi"
-    sample_organisatie.tooi_uri = "https://identifier.overheid.nl/tooi/id/test/x"
-    await db_session.flush()
-
-    perm_ctx = PermissionContext(person_id=None, is_super_admin=False)
-    org_ctx = OrgContext(
-        person_id=None,
-        is_admin=True,  # admin maar niet super_admin
-        own_eenheid_ids=set(),
-        managed_eenheid_ids=set(),
-        visible_eenheid_ids={sample_organisatie.id},
-        shared_eenheid_ids=set(),
-        shared_node_ids=set(),
-    )
-
-    with pytest.raises(HTTPException) as exc:
-        await _check_eenheid_write_access(
-            db_session, sample_organisatie.id, perm_ctx, org_ctx
+    async with client_as(db_session, admin) as c:
+        resp = await c.put(
+            f"/api/organisatie/{sample_organisatie.id}", json={"naam": "Nieuw"}
         )
-    assert exc.value.status_code == 403
-    assert "read-only" in exc.value.detail.lower()
-
-
-async def test_check_eenheid_write_access_synthetisch_geblokkeerd(
-    db_session, sample_organisatie
-):
-    """Synthetische groepen zijn ook read-only voor non-super_admin."""
-    from fastapi import HTTPException
-
-    from bouwmeester.api.routes.organisatie import _check_eenheid_write_access
-    from bouwmeester.core.org_context import OrgContext
-    from bouwmeester.core.permissions import PermissionContext
-
-    sample_organisatie.bron = "synthetisch"
-    await db_session.flush()
-
-    perm_ctx = PermissionContext(person_id=None, is_super_admin=False)
-    org_ctx = OrgContext(
-        person_id=None,
-        is_admin=True,
-        own_eenheid_ids=set(),
-        managed_eenheid_ids=set(),
-        visible_eenheid_ids={sample_organisatie.id},
-        shared_eenheid_ids=set(),
-        shared_node_ids=set(),
-    )
-
-    with pytest.raises(HTTPException) as exc:
-        await _check_eenheid_write_access(
-            db_session, sample_organisatie.id, perm_ctx, org_ctx
-        )
-    assert exc.value.status_code == 403
-
-
-async def test_check_eenheid_write_access_handmatig_blijft_muteerbaar(
-    db_session, sample_organisatie
-):
-    """Handmatige rijen (default) blijven muteerbaar voor in-scope users."""
-    from bouwmeester.api.routes.organisatie import _check_eenheid_write_access
-    from bouwmeester.core.org_context import OrgContext
-    from bouwmeester.core.permissions import PermissionContext
-
-    perm_ctx = PermissionContext(person_id=None, is_super_admin=False)
-    org_ctx = OrgContext(
-        person_id=None,
-        is_admin=True,
-        own_eenheid_ids=set(),
-        managed_eenheid_ids=set(),
-        visible_eenheid_ids={sample_organisatie.id},
-        shared_eenheid_ids=set(),
-        shared_node_ids=set(),
-    )
-    # Geen exception
-    await _check_eenheid_write_access(
-        db_session, sample_organisatie.id, perm_ctx, org_ctx
-    )
+    assert resp.status_code == expected, resp.text
+    if expected == 403:
+        assert "read-only" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +258,63 @@ async def test_delete_organisatie_with_personen_fails(
     resp = await client.delete(f"/api/organisatie/{sample_organisatie.id}")
     assert resp.status_code == 409
     assert "personen" in resp.json()["detail"]
+
+
+async def test_delete_organisatie_with_resources_fails(
+    client, db_session, sample_organisatie
+):
+    """Deleting would empty the eenheid of its node and task: tenant-wide."""
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.models.task import Task
+
+    node = CorpusNode(
+        title="Dossier",
+        node_type="dossier",
+        status="actief",
+        organisatie_eenheid_id=sample_organisatie.id,
+    )
+    db_session.add(node)
+    await db_session.flush()
+    db_session.add(
+        Task(
+            title="Taak",
+            node_id=node.id,
+            organisatie_eenheid_id=sample_organisatie.id,
+            status="open",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.delete(f"/api/organisatie/{sample_organisatie.id}")
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert "1 nodes" in detail and "1 taken" in detail
+    await db_session.refresh(node)
+    assert node.organisatie_eenheid_id == sample_organisatie.id
+
+
+async def test_delete_organisatie_holding_a_grant_fails(
+    client, db_session, sample_organisatie
+):
+    from bouwmeester.models.initiatief import Initiatief
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    initiatief = Initiatief(id=uuid.uuid4(), naam=f"Init {uuid.uuid4().hex[:6]}")
+    db_session.add(initiatief)
+    await db_session.flush()
+    db_session.add(
+        ResourcePermission(
+            organisatie_eenheid_id=sample_organisatie.id,
+            resource_type="initiatief",
+            resource_id=initiatief.id,
+            rol="contributor",
+        )
+    )
+    await db_session.flush()
+
+    resp = await client.delete(f"/api/organisatie/{sample_organisatie.id}")
+    assert resp.status_code == 409, resp.text
+    assert "toegangsrechten" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

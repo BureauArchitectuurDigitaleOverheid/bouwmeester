@@ -15,14 +15,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
+from bouwmeester.core.deletion import delete_if_unclaimed
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.nieuwsbron import Nieuwsbron
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
+from bouwmeester.repositories.org_tree import membership_ids_select
 from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
@@ -39,12 +40,18 @@ from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrat
 from bouwmeester.services.import_strategies.nieuws import NieuwsStrategy
 from bouwmeester.services.import_strategies.registry import get_strategy
 from bouwmeester.services.import_strategies.tkconv import TkconvSearchStrategy
-from bouwmeester.services.llm import get_llm_service
+from bouwmeester.services.llm import DataSensitivity, get_llm_service_for
+from bouwmeester.services.llm.base import KamerstukAlertResult
 from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.parlementair_alert_service import ScopeKey, per_scope
 from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerClient
 from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
+
+# Marks the review task an import creates, so completing the review closes
+# that task and not every task someone linked to the item.
+REVIEW_WORK_TYPE = "Parlementaire review"
 
 
 def _draagt_treffers(strategy: ImportStrategy) -> bool:
@@ -56,6 +63,11 @@ def _draagt_treffers(strategy: ImportStrategy) -> bool:
     bijgewerkt, en vergeten betekent dat de treffers stil wegvallen.
     """
     return isinstance(getattr(strategy, "treffers", None), dict)
+
+
+async def _internal_llm(session: AsyncSession):
+    """The LLM for prompts that carry internal data (terms, signaalcontext)."""
+    return await get_llm_service_for(DataSensitivity.INTERNAL, session)
 
 
 class ParlementairImportService:
@@ -325,8 +337,13 @@ class ParlementairImportService:
                 # Dit was de reden dat de eerste inhaalslag in productie 47
                 # stukken ongefilterd in het kanaal zette: de losse alerts
                 # laten scoren en de inhaalslag niet.
+                # Every abonnement in the group shares one scope.
+                scope = (abonnementen[0].scope_type, abonnementen[0].scope_id)
+                beoordelingen = {}
                 for item in items:
-                    await self._beoordeel(item, abonnementen)
+                    oordeel = (await self._beoordeel(item, abonnementen)).get(scope)
+                    if oordeel is not None:
+                        beoordelingen[item.id] = oordeel
 
                 # Eerst vastleggen dát de inhaalslag is gedaan, dan pas
                 # posten. Andersom zou een mislukte commit het bericht al
@@ -340,7 +357,9 @@ class ParlementairImportService:
                 await self.session.commit()
 
                 if items:
-                    gepost = await service.post_inhaalslag(abonnementen, items)
+                    gepost = await service.post_inhaalslag(
+                        abonnementen, items, beoordelingen
+                    )
                     logger.info(
                         "Inhaalslag voor %s: %d stukken, %d kanalen",
                         ", ".join(repr(a.term) for a in abonnementen),
@@ -387,98 +406,60 @@ class ParlementairImportService:
 
     async def _beoordeel(
         self, parlementair_item: ParlementairItem, abonnementen: list
-    ) -> None:
-        """Vat het stuk samen en zet er een relevantiescore op.
+    ) -> dict[ScopeKey, KamerstukAlertResult]:
+        """Judge the item for each scope that follows it.
 
-        Apart van `_alert_kamerstuk` omdat de inhaalslag dezelfde
-        beoordeling nodig heeft en hem niet had: `relevantie_score` werd
-        alleen hier gezet, en inhaalslag-stukken lopen langs deze methode
-        heen. Gevolg in productie: de eerste inhaalslag zette 47 stukken
-        ongefilterd in het kanaal, want `minimum_relevantie` kan niet
-        wegen wat nooit gewogen is.
-
-        Faalt zacht. Een mislukte LLM-call mag een stuk niet verzwijgen;
-        zonder score valt het stuk terug op de standaarddrempel, en dat is
-        de veilige kant (wél tonen).
+        One LLM call per scope, with only that scope's terms and
+        signaalcontext.  The result goes only to that scope's channels and is
+        never stored on the shared item (everyone with ``parlementair:read``
+        reads that).  Fails soft: a scope without a judgement falls back to
+        the default threshold, which shows the item.
         """
-        termen = [a.term for a in abonnementen]
-        if not termen:
-            return
+        groepen = per_scope(abonnementen)
+        if not groepen:
+            return {}
 
-        llm_service = await get_llm_service(self.session)
+        llm_service = await _internal_llm(self.session)
         if llm_service is None:
-            return
+            return {}
 
-        try:
-            bestaand = parlementair_item.extra_data or {}
-            alert = await llm_service.summarize_kamerstuk_alert(
-                titel=parlementair_item.titel,
-                onderwerp=parlementair_item.onderwerp,
-                # Niet de eerste N tekens maar de passages waar de term
-                # valt: een begroting noemt het onderwerp halverwege,
-                # en het model zag anders alleen de voorpagina.
-                document_tekst=knip_rond_termen(
-                    parlementair_item.document_tekst or "", termen
-                ),
-                zoektermen=termen,
-                # Het model moet weten wát voor stuk dit is: een agenda
-                # die nog moet komen vraagt om een ander bericht dan een
-                # besluitenlijst van een vergadering die geweest is.
-                categorie=bestaand.get("categorie") or "overig",
-                soort=bestaand.get("soort"),
-                context_regels=_context_regels(bestaand),
-                # Waar dit dossier over gaat, en vooral: wat er níét bij
-                # hoort. Een zoekterm kan het verschil tussen een
-                # projectnaam en een metafoor niet maken, een oordeel wel.
-                signaalcontext=await self._signaalcontext(abonnementen),
-            )
-            if alert.samenvatting:
-                parlementair_item.llm_samenvatting = alert.samenvatting
-            else:
-                # Geen samenvatting gekregen. Dat wordt gelogd omdat het
-                # anders onzichtbaar is: het bericht valt terug op het
-                # onderwerp van het stuk en ziet er dan gewoon uit, terwijl
-                # het model niets heeft kunnen zeggen. In productie stonden
-                # twee mislukte aanroepen op hetzelfde stuk zonder dat er
-                # ergens iets over te vinden was.
+        extra = parlementair_item.extra_data or {}
+        beoordelingen: dict[ScopeKey, KamerstukAlertResult] = {}
+        for sleutel, scope_abonnementen in groepen.items():
+            termen = [a.term for a in scope_abonnementen]
+            try:
+                alert = await llm_service.summarize_kamerstuk_alert(
+                    titel=parlementair_item.titel,
+                    onderwerp=parlementair_item.onderwerp,
+                    # The passages where the terms occur, not the first N
+                    # characters: a budget names the subject halfway.
+                    document_tekst=knip_rond_termen(
+                        parlementair_item.document_tekst or "", termen
+                    ),
+                    zoektermen=termen,
+                    # What kind of document this is: an upcoming agenda asks
+                    # for a different message than a list of decisions.
+                    categorie=extra.get("categorie") or "overig",
+                    soort=extra.get("soort"),
+                    context_regels=_context_regels(extra),
+                    signaalcontext=await self.signaalcontext_repo.tekst_voor(*sleutel),
+                )
+            except Exception:
+                logger.exception(
+                    "Beoordeling mislukt voor %s", parlementair_item.zaak_nummer
+                )
+                continue
+            if not alert.samenvatting:
+                # Logged because it is invisible otherwise: the message falls
+                # back to the item's subject and looks normal.
                 logger.warning(
                     "Geen samenvatting voor %s (%d tekens tekst, reden: %s)",
                     parlementair_item.zaak_nummer,
                     len(parlementair_item.document_tekst or ""),
                     alert.reden or "onbekend",
                 )
-            extra = dict(bestaand)
-            extra["relevantie_score"] = alert.relevantie_score
-            extra["relevantie_reden"] = alert.reden
-            extra["actie"] = alert.actie
-            parlementair_item.extra_data = extra
-            # Eigen commit: we draaien na de commit van het item, dus
-            # zonder dit blijft de samenvatting in de sessie hangen tot
-            # de volgende commit en gaat hij bij een fout verloren.
-            await self.session.commit()
-        except Exception:
-            await self.session.rollback()
-            logger.exception(
-                "Samenvatting mislukt voor %s", parlementair_item.zaak_nummer
-            )
-
-    async def _signaalcontext(self, abonnementen: list) -> str | None:
-        """De vrije tekst van de scope waar deze abonnementen bij horen.
-
-        Alle abonnementen op één stuk kunnen uit verschillende scopes
-        komen (twee initiatieven die dezelfde term volgen). Dan is er geen
-        één context; we nemen ze allemaal mee, gescheiden, zodat het model
-        ziet dat er twee dossiers meekijken.
-        """
-        scopes = {(a.scope_type, a.scope_id) for a in abonnementen}
-        if not scopes:
-            return None
-        teksten = []
-        for scope_type, scope_id in sorted(scopes, key=lambda s: str(s[1])):
-            tekst = await self.signaalcontext_repo.tekst_voor(scope_type, scope_id)
-            if tekst:
-                teksten.append(tekst)
-        return "\n\n".join(teksten) if teksten else None
+            beoordelingen[sleutel] = alert
+        return beoordelingen
 
     async def _alert_kamerstuk(self, parlementair_item_id: uuid.UUID) -> int:
         """Vat het stuk samen vanuit de zoekterm en post het in de kanalen.
@@ -513,11 +494,11 @@ class ParlementairImportService:
         abonnementen = await self.abonnement_repo.list_abonnementen_voor_item(
             parlementair_item.id
         )
-        await self._beoordeel(parlementair_item, abonnementen)
+        beoordelingen = await self._beoordeel(parlementair_item, abonnementen)
 
         try:
             service = ParlementairAlertService(self.session)
-            gepost = await service.post_alert(parlementair_item)
+            gepost = await service.post_alert(parlementair_item, beoordelingen)
             logger.info(
                 "Kamerstuk %s in %d kanaal/kanalen gepost",
                 parlementair_item.zaak_nummer,
@@ -600,7 +581,7 @@ class ParlementairImportService:
             all_tags = await self.tag_repo.get_all()
             tag_names = [t.name for t in all_tags]
 
-            llm_service = await get_llm_service(self.session)
+            llm_service = await _internal_llm(self.session)
             if not llm_service:
                 logger.warning("No LLM provider configured, skipping tag extraction")
                 extraction = None
@@ -969,6 +950,7 @@ class ParlementairImportService:
             organisatie_eenheid_id=review_unit_id,
             assignee_id=None,
             parlementair_item_id=parlementair_item.id,
+            work_type=REVIEW_WORK_TYPE,
         )
         self.session.add(task)
         await self.session.flush()
@@ -999,11 +981,9 @@ class ParlementairImportService:
         if not stakeholders:
             return None
 
-        person_ids = [sh.person_id for sh in stakeholders]
-        person_stmt = select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
-            PersonOrganisatieEenheid.person_id.in_(person_ids),
-        )
-        person_result = await self.session.execute(person_stmt)
+        # Their memberships (active, trusted placements), one row per person.
+        person_ids = [sh.person_id for sh in stakeholders if sh.person_id]
+        person_result = await self.session.execute(membership_ids_select(*person_ids))
         unit_ids: list[uuid.UUID] = list(person_result.scalars().all())
 
         if not unit_ids:
@@ -1152,7 +1132,7 @@ class ParlementairImportService:
         all_tags = await self.tag_repo.get_all()
         tag_names = [t.name for t in all_tags]
 
-        llm_service = await get_llm_service(self.session)
+        llm_service = await _internal_llm(self.session)
         if not llm_service:
             logger.warning("No LLM provider configured, cannot reprocess")
             return {
@@ -1262,15 +1242,24 @@ class ParlementairImportService:
     ) -> None:
         """Remove the corpus node created during a matchless import.
 
-        Deletes the CorpusNode (cascading to PolitiekeInput, edges,
-        tasks, stakeholders, node_tags) and clears the FK on the item.
+        Under the delete rule (``core.deletion``): the node goes, with its
+        parts, only when nothing but the item's own review task hangs on
+        it.  When someone built on it (a task, an opdracht, a lead link),
+        the node and the item's link to it stay.
         """
-        # Delete the corpus node (cascades to politieke_input, tasks, etc.)
         if item.corpus_node_id:
-            node = await self.session.get(CorpusNode, item.corpus_node_id)
-            if node:
-                await self.session.delete(node)
-            item.corpus_node_id = None
+            own_tasks = set(
+                await self.session.scalars(
+                    select(Task.id).where(
+                        Task.parlementair_item_id == item.id,
+                        Task.work_type == REVIEW_WORK_TYPE,
+                    )
+                )
+            )
+            if await delete_if_unclaimed(
+                self.session, "corpus_node", item.corpus_node_id, {"task": own_tasks}
+            ):
+                item.corpus_node_id = None
 
         await self.session.flush()
 

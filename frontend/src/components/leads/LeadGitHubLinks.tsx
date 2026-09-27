@@ -11,6 +11,7 @@ import {
 } from '@/hooks/useLeads';
 import type { LeadGitHubLink, GitHubLinkType } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 interface Props {
   leadId: string;
@@ -61,6 +62,7 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
   const addLink = useAddLeadGitHubLink();
   const updateLink = useUpdateLeadGitHubLink();
   const deleteLink = useDeleteLeadGitHubLink();
+  const { allowed: canWrite } = useCan('github_link:create', { type: 'lead', id: leadId });
 
   const submit = async () => {
     setError(null);
@@ -112,7 +114,9 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
       count={links.length}
       separated
       action={
-        <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowForm((v) => !v)} text="Link toevoegen" />
+        canWrite && (
+          <NlddButton variant="neutral-transparent" size="sm" startIcon="plus" onClick={() => setShowForm((v) => !v)} text="Link toevoegen" />
+        )
       }
     >
       {showForm && (
@@ -160,6 +164,7 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
             <GitHubLinkRow
               key={link.id}
               link={link}
+              canWrite={canWrite}
               editing={editingId === link.id}
               editingTitle={editingTitle}
               onEditingTitleChange={setEditingTitle}
@@ -184,6 +189,7 @@ export function LeadGitHubLinks({ leadId, links }: Props) {
 
 interface GitHubLinkRowProps {
   link: LeadGitHubLink;
+  canWrite: boolean;
   editing: boolean;
   editingTitle: string;
   onEditingTitleChange: (value: string) => void;
@@ -195,6 +201,7 @@ interface GitHubLinkRowProps {
 
 function GitHubLinkRow({
   link,
+  canWrite,
   editing,
   editingTitle,
   onEditingTitleChange,
@@ -232,8 +239,12 @@ function GitHubLinkRow({
         {display}
       </nldd-list-item-segment>
       <nldd-tag text={TYPE_LABELS[link.link_type]} color="neutral" size="sm" />
-      <NlddIconButton icon="pencil" accessibleLabel="Titel bewerken" variant="neutral-transparent" size="sm" onClick={onStartEdit} />
-      <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onDelete} />
+      {canWrite && (
+        <>
+          <NlddIconButton icon="pencil" accessibleLabel="Titel bewerken" variant="neutral-transparent" size="sm" onClick={onStartEdit} />
+          <NlddIconButton icon="trash" accessibleLabel="Verwijderen" variant="neutral-transparent" size="sm" onClick={onDelete} />
+        </>
+      )}
     </nldd-list-item>
   );
 }

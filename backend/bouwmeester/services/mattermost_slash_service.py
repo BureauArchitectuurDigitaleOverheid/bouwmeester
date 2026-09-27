@@ -1,4 +1,10 @@
-"""Handlers for Mattermost slash commands and interactive button actions."""
+"""Handlers for Mattermost slash commands and interactive button actions.
+
+Identity: the command token is shared by every user and the payload's
+``user_id`` is Mattermost's word for who typed it, so the token acts as every
+linked user's identity (keep it secret, rotate it when it leaks).  The linked
+person must still be allowed in (``caller.may_still_act``).
+"""
 
 import logging
 from dataclasses import dataclass
@@ -9,7 +15,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.authz import can
 from bouwmeester.core.config import get_settings
+from bouwmeester.core.initiatief_context import (
+    apply_initiatief_filter,
+    apply_lead_filter,
+)
+from bouwmeester.core.org_context import apply_org_filter
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
@@ -18,6 +30,7 @@ from bouwmeester.models.mattermost_channel_link import (
     SCOPE_INITIATIEF,
     SCOPE_LEAD,
 )
+from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.mattermost_channel_link import (
     MattermostChannelLinkRepository,
@@ -27,9 +40,62 @@ from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
 )
 from bouwmeester.repositories.search import SearchRepository
+from bouwmeester.services.caller import Caller, caller_for, linked_person_id
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
+from bouwmeester.services.visibility_filters import readable_ids
 
 logger = logging.getLogger(__name__)
+
+# Seeing an initiatief or lead is not writing to it: slash commands and
+# buttons that change something ask ``core.authz`` like the REST routes.
+_NO_WRITE = "Je hebt geen rechten om dit initiatief of deze lead te wijzigen."
+_NO_SCOPE_ACCESS = (
+    "Dit kanaal is gekoppeld aan een initiatief of lead waar je geen toegang toe hebt."
+)
+_NOT_A_MEMBER = (
+    "Dit is een besloten kanaal: alleen leden mogen het koppelen, want de "
+    "berichten erin komen daarna in Bouwmeester terecht."
+)
+_NOT_IN_TEAM = (
+    "Dit kanaal hoort bij een Mattermost-team waar je geen lid van bent: "
+    "alleen teamleden mogen het koppelen, want de berichten erin komen daarna "
+    "in Bouwmeester terecht."
+)
+_MEMBERSHIP_UNKNOWN = (
+    "Kon bij Mattermost niet nagaan of je lid bent van dit kanaal. "
+    "Probeer het later opnieuw."
+)
+
+
+async def channel_link_refusal(
+    db: AsyncSession, channel_id: str, person_id: UUID | None
+) -> str | None:
+    """Why *person_id* may not link this channel, or ``None`` when they may.
+
+    A linked channel's posts are ingested, so only someone who can read
+    them may link it (``MattermostService.may_link_channel``).  Fails closed.
+    """
+    from bouwmeester.services.mattermost_service import (
+        MattermostService,
+        MattermostUnavailableError,
+    )
+
+    service = MattermostService(db)
+    try:
+        channel = await service.get_channel(channel_id) or {"id": channel_id}
+        mapping = (
+            await MattermostUserRepository(db).get_by_person_id(person_id)
+            if person_id
+            else None
+        )
+        user_id = mapping.mattermost_user_id if mapping else None
+        if await service.may_link_channel(channel, user_id):
+            return None
+        return _NOT_IN_TEAM if channel.get("type") == "O" else _NOT_A_MEMBER
+    except (MattermostUnavailableError, ValueError):
+        return _MEMBERSHIP_UNKNOWN
+    finally:
+        await service.close()
 
 
 @dataclass
@@ -42,12 +108,26 @@ class _ChannelCtx:
 class MattermostSlashService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-        self.repo = MattermostUserRepository(session)
 
     async def _resolve_person_id(self, mattermost_user_id: str) -> UUID | None:
-        """Resolve a Mattermost user ID to a Bouwmeester person ID."""
-        mapping = await self.repo.get_by_mattermost_user_id(mattermost_user_id)
-        return mapping.person_id if mapping else None
+        """The linked person, or ``None`` when unlinked or no longer allowed in."""
+        return await linked_person_id(self.session, mattermost_user_id)
+
+    async def _caller(self, person_id: UUID) -> Caller | None:
+        """Rights and visibility of *person_id*; ``None`` for an unknown person
+        (never anonymous, which dev mode would let see everything)."""
+        if await self.session.get(Person, person_id) is None:
+            return None
+        return await caller_for(self.session, person_id)
+
+    async def _may(
+        self, person_id: UUID, permission: str, resource_type: str, resource_id: UUID
+    ) -> bool:
+        """Ask the decision point what the REST route for this action asks."""
+        caller = await self._caller(person_id)
+        return caller is not None and await can(
+            self.session, caller.perm_ctx, permission, resource_type, resource_id
+        )
 
     async def handle_command(
         self,
@@ -83,9 +163,14 @@ class MattermostSlashService:
     async def _handle_taken(
         self, mattermost_user_id: str, args: str, _ch: _ChannelCtx
     ) -> dict:
-        """List the user's open tasks, optionally filtered by deadline."""
+        """List the user's open tasks, optionally filtered by deadline.
+
+        Like ``GET /tasks``: only tasks the user may read, and a task's node
+        is only named when they may read that node too.
+        """
         person_id = await self._resolve_person_id(mattermost_user_id)
-        if not person_id:
+        caller = await self._caller(person_id) if person_id else None
+        if caller is None:
             return _ephemeral(
                 "Je Mattermost-account is niet gekoppeld aan Bouwmeester. "
                 "Ga naar Instellingen in Bouwmeester om te koppelen."
@@ -112,7 +197,15 @@ class MattermostSlashService:
         # "alles" = no deadline filter
 
         result = await self.session.execute(stmt)
-        tasks = result.scalars().all()
+        ctx = caller.perm_ctx
+        candidates = result.scalars().all()
+        readable_tasks = await readable_ids(
+            self.session, ctx, "task", (t.id for t in candidates)
+        )
+        tasks = [t for t in candidates if t.id in readable_tasks]
+        readable_nodes = await readable_ids(
+            self.session, ctx, "corpus_node", (t.node_id for t in tasks)
+        )
 
         if not tasks:
             return _ephemeral("Geen open taken gevonden.")
@@ -128,7 +221,11 @@ class MattermostSlashService:
                 if t.deadline and t.deadline < today
                 else ":large_blue_circle:"
             )
-            node_name = _escape_md(t.node.title) if t.node else ""
+            node_name = (
+                _escape_md(t.node.title)
+                if t.node and t.node_id in readable_nodes
+                else ""
+            )
             link = f"{frontend_url}/taken?task={t.id}"
             lines.append(
                 f"{status_icon} [{_escape_md(t.title)}]({link}) — {deadline_str}"
@@ -153,9 +250,13 @@ class MattermostSlashService:
                 "Je account is niet gekoppeld. Ga naar Instellingen in Bouwmeester."
             )
 
+        caller = await self._caller(person_id)
+        if caller is None:
+            return _ephemeral("Je account is niet gekoppeld.")
+        # The same node visibility as GET /nodes.
         search_repo = SearchRepository(self.session)
         results = await search_repo.full_text_search(
-            query=args, result_types=["corpus_node"], limit=10
+            query=args, result_types=["corpus_node"], limit=10, org_ctx=caller.org_ctx
         )
 
         if not results:
@@ -183,34 +284,37 @@ class MattermostSlashService:
                 "Je account is niet gekoppeld. Ga naar Instellingen in Bouwmeester."
             )
 
-        # Find dossier by title search.
+        caller = await self._caller(person_id)
+        if caller is None:
+            return _ephemeral("Je account is niet gekoppeld.")
+
+        # Find a visible dossier by title search.
         escaped_args = escape_like(args)
-        stmt = (
-            select(CorpusNode)
-            .where(
-                CorpusNode.node_type == "dossier",
-                CorpusNode.title.ilike(f"%{escaped_args}%", escape="\\"),
-            )
-            .limit(1)
+        stmt = select(CorpusNode).where(
+            CorpusNode.node_type == "dossier",
+            CorpusNode.title.ilike(f"%{escaped_args}%", escape="\\"),
         )
-        result = await self.session.execute(stmt)
-        dossier = result.scalar_one_or_none()
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, caller.org_ctx)
+        dossier = await self.session.scalar(
+            stmt.order_by(CorpusNode.title, CorpusNode.id).limit(1)
+        )
 
         if not dossier:
             return _ephemeral(f"Geen dossier gevonden met '{_escape_md(args)}'.")
 
-        # Count tasks for this dossier.
+        # Count the visible tasks of this dossier (as GET /nodes/{id}/tasks).
         from sqlalchemy import func
 
-        task_stats = await self.session.execute(
-            select(
-                func.count(Task.id).label("total"),
-                func.count(Task.id)
-                .filter(Task.status.in_(["open", "in_progress"]))
-                .label("open"),
-            ).where(Task.node_id == dossier.id)
+        task_stmt = select(
+            func.count(Task.id).label("total"),
+            func.count(Task.id)
+            .filter(Task.status.in_(["open", "in_progress"]))
+            .label("open"),
+        ).where(Task.node_id == dossier.id)
+        task_stmt = apply_org_filter(
+            task_stmt, Task.organisatie_eenheid_id, caller.org_ctx
         )
-        row = task_stats.one()
+        row = (await self.session.execute(task_stmt)).one()
 
         frontend_url = get_settings().FRONTEND_URL.rstrip("/")
         link = f"{frontend_url}/nodes/{dossier.id}"
@@ -287,6 +391,13 @@ class MattermostSlashService:
                     f"Geen initiatief gevonden voor '{_escape_md(query)}' "
                     "(of geen toegang)."
                 )
+            if not await self._may(
+                person_id, "mattermost_channel_link:create", "initiatief", target.id
+            ):
+                return _ephemeral(_NO_WRITE)
+            refusal = await channel_link_refusal(self.session, ch.channel_id, person_id)
+            if refusal:
+                return _ephemeral(refusal)
             await link_repo.create(
                 channel_id=ch.channel_id,
                 channel_name=ch.channel_name,
@@ -308,6 +419,13 @@ class MattermostSlashService:
             return _ephemeral(
                 f"Geen lead gevonden voor '{_escape_md(query)}' (of geen toegang)."
             )
+        if not await self._may(
+            person_id, "mattermost_channel_link:create", "lead", target_lead.id
+        ):
+            return _ephemeral(_NO_WRITE)
+        refusal = await channel_link_refusal(self.session, ch.channel_id, person_id)
+        if refusal:
+            return _ephemeral(refusal)
         await link_repo.create(
             channel_id=ch.channel_id,
             channel_name=ch.channel_name,
@@ -337,6 +455,13 @@ class MattermostSlashService:
         link = await link_repo.get_by_channel_id(ch.channel_id)
         if link is None:
             return _ephemeral("Dit kanaal is niet gekoppeld.")
+        if not await self._may(
+            person_id,
+            "mattermost_channel_link:delete",
+            "mattermost_channel_link",
+            link.id,
+        ):
+            return _ephemeral(_NO_WRITE)
         await link_repo.delete(link)
         return _ephemeral(":wastebasket: Koppeling verwijderd.")
 
@@ -352,18 +477,14 @@ class MattermostSlashService:
                 "Dit kanaal is niet gekoppeld. Gebruik "
                 "`/bouwmeester koppel initiatief|lead <…>` om te koppelen."
             )
-        if link.scope_type == SCOPE_INITIATIEF:
-            init = await self.session.get(Initiatief, link.scope_id)
-            naam = init.naam if init else str(link.scope_id)
-            return _ephemeral(
-                f":link: Gekoppeld aan initiatief **{_escape_md(naam)}**. "
-                f"Auto-note: {'aan' if link.auto_note_enabled else 'uit'} · "
-                f"Suggesties: {'aan' if link.suggest_leads_enabled else 'uit'}"
-            )
-        lead = await self.session.get(Lead, link.scope_id)
-        titel = lead.title if lead else str(link.scope_id)
+        # Name the initiatief or lead only to someone who may see it.
+        person_id = await self._resolve_person_id(mattermost_user_id)
+        if person_id is None or not await self._mag_scope_zien(link, person_id):
+            return _ephemeral(_NO_SCOPE_ACCESS)
+        soort = "initiatief" if link.scope_type == SCOPE_INITIATIEF else "lead"
+        naam = await self._scope_naam(link)
         return _ephemeral(
-            f":link: Gekoppeld aan lead **{_escape_md(titel)}**. "
+            f":link: Gekoppeld aan {soort} **{_escape_md(naam)}**. "
             f"Auto-note: {'aan' if link.auto_note_enabled else 'uit'} · "
             f"Suggesties: {'aan' if link.suggest_leads_enabled else 'uit'}"
         )
@@ -406,39 +527,18 @@ class MattermostSlashService:
         # van zo'n dossier prijsgeven, en `ontvolg` ze stil kunnen
         # weghalen. `koppel` doet deze check al via `_lookup_initiatief`.
         if not await self._mag_scope_zien(link, person_id):
-            return (
-                person_id,
-                None,
-                "Dit kanaal is gekoppeld aan een initiatief waar je geen "
-                "toegang toe hebt.",
-            )
+            return person_id, None, _NO_SCOPE_ACCESS
         return person_id, link, ""
 
     async def _mag_scope_zien(self, link, person_id: UUID) -> bool:
         """Mag deze persoon het initiatief/de lead achter dit kanaal zien?"""
-        from bouwmeester.core.initiatief_context import build_initiatief_context
-        from bouwmeester.models.person import Person
-
-        person = await self.session.get(Person, person_id)
-        if person is None:
+        caller = await self._caller(person_id)
+        if caller is None:
             return False
-        ctx = await build_initiatief_context(self.session, person)
-        if ctx.is_admin:
-            return True
-
         if link.scope_type == SCOPE_INITIATIEF:
-            return link.scope_id in ctx.visible_initiatief_ids
-
-        # Een lead erft de zichtbaarheid van zijn initiatief; een lead
-        # zonder initiatief is voor iedereen zichtbaar, net als in
-        # `_lookup_lead`.
+            return caller.init_ctx.sees_initiatief(link.scope_id)
         lead = await self.session.get(Lead, link.scope_id)
-        if lead is None:
-            return False
-        return (
-            lead.initiatief_id is None
-            or lead.initiatief_id in ctx.visible_initiatief_ids
-        )
+        return lead is not None and caller.init_ctx.sees_lead(lead)
 
     async def _scope_naam(self, link) -> str:
         if link.scope_type == SCOPE_INITIATIEF:
@@ -467,6 +567,10 @@ class MattermostSlashService:
             return _ephemeral(
                 "Een zoekterm van minder dan drie tekens levert te veel ruis op."
             )
+        if not await self._may(
+            person_id, "parlementair_abonnement:create", link.scope_type, link.scope_id
+        ):
+            return _ephemeral(_NO_WRITE)
 
         repo = ParlementairAbonnementRepository(self.session)
         bestaand = await repo.get_by_term(link.scope_type, link.scope_id, term)
@@ -517,6 +621,13 @@ class MattermostSlashService:
                 f"**{_escape_md(term)}** wordt niet gevolgd. "
                 "`/bouwmeester volgt` toont wat er wel staat."
             )
+        if not await self._may(
+            person_id,
+            "parlementair_abonnement:delete",
+            "parlementair_abonnement",
+            abonnement.id,
+        ):
+            return _ephemeral(_NO_WRITE)
         bewaard = abonnement.term
         await repo.delete(abonnement)
         await self.session.commit()
@@ -574,16 +685,9 @@ class MattermostSlashService:
         self, query: str, person_id: UUID
     ) -> Initiatief | None:
         """Zoek initiatief op slug of naam, gerespecteerd door visibility."""
-        from bouwmeester.core.initiatief_context import build_initiatief_context
-        from bouwmeester.models.person import Person
-
-        person = await self.session.get(Person, person_id)
-        if person is None:
+        caller = await self._caller(person_id)
+        if caller is None:
             return None
-        ctx = await build_initiatief_context(self.session, person)
-        if not ctx.is_admin and not ctx.visible_initiatief_ids:
-            return None
-
         escaped = escape_like(query)
         stmt = select(Initiatief).where(
             or_(
@@ -591,9 +695,7 @@ class MattermostSlashService:
                 Initiatief.naam.ilike(f"%{escaped}%", escape="\\"),
             )
         )
-        if not ctx.is_admin:
-            stmt = stmt.where(Initiatief.id.in_(ctx.visible_initiatief_ids))
-        stmt = stmt.limit(1)
+        stmt = apply_initiatief_filter(stmt, caller.init_ctx).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -605,39 +707,21 @@ class MattermostSlashService:
         except ValueError:
             lead_uuid = None
 
-        from bouwmeester.core.initiatief_context import build_initiatief_context
-        from bouwmeester.models.person import Person
-
-        person = await self.session.get(Person, person_id)
-        if person is None:
+        caller = await self._caller(person_id)
+        if caller is None:
             return None
-        ctx = await build_initiatief_context(self.session, person)
 
         if lead_uuid is not None:
             lead = await self.session.get(Lead, lead_uuid)
-            if lead is None:
+            if lead is None or not caller.init_ctx.sees_lead(lead):
                 return None
-            if ctx.is_admin:
-                return lead
-            if (
-                lead.initiatief_id is None
-                or lead.initiatief_id in ctx.visible_initiatief_ids
-            ):
-                return lead
-            return None
+            return lead
 
         escaped = escape_like(query)
         stmt = select(Lead).where(
             Lead.title.ilike(f"%{escaped}%", escape="\\"),
         )
-        if not ctx.is_admin:
-            stmt = stmt.where(
-                or_(
-                    Lead.initiatief_id.is_(None),
-                    Lead.initiatief_id.in_(ctx.visible_initiatief_ids),
-                )
-            )
-        stmt = stmt.limit(1)
+        stmt = apply_lead_filter(stmt, caller.init_ctx).limit(1)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -685,8 +769,10 @@ class MattermostSlashService:
             return suggested
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
-        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _action_msg("Je hebt geen toegang tot dit initiatief.")
+        if not await self._may(
+            person_id, "suggested_lead:update", "suggested_lead", suggested.id
+        ):
+            return _action_msg(_NO_WRITE)
 
         from bouwmeester.models.lead import Lead
 
@@ -723,12 +809,17 @@ class MattermostSlashService:
         suggested.approved_lead_id = lead.id
         await self.session.flush()
 
+        # The channel hears only that a lead was made: its title is the
+        # model's free text, and not everyone there may read the lead.  The
+        # title goes to the clicker alone (ephemeral), who created it.
         await self._update_thread_post(
             suggested,
-            text=f":white_check_mark: Lead aangemaakt: **{_escape_md(lead.title)}**",
+            text=":white_check_mark: Lead aangemaakt in Bouwmeester.",
             color="#22C55E",
         )
-        return _action_msg("Lead aangemaakt in Bouwmeester.")
+        return _action_msg(
+            f"Lead aangemaakt in Bouwmeester: **{_escape_md(lead.title)}**"
+        )
 
     async def _action_link_lead_to_suggestion(
         self, mattermost_user_id: str, context: dict
@@ -744,8 +835,6 @@ class MattermostSlashService:
             return suggested
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
-        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _action_msg("Je hebt geen toegang tot dit initiatief.")
         if suggested.match_existing_lead_id is None:
             return _action_msg(
                 "Geen kandidaat-lead bekend. Maak een nieuwe lead aan of negeer."
@@ -761,6 +850,10 @@ class MattermostSlashService:
         # cross-initiatief-leak via een geknoeide context of LLM-suggestie.
         if lead.initiatief_id != suggested.initiatief_id:
             return _action_msg("Lead hoort niet bij dit initiatief.")
+        if not await self._may(
+            person_id, "suggested_lead:update", "suggested_lead", suggested.id
+        ) or not await self._may(person_id, "lead_activity:create", "lead", lead.id):
+            return _action_msg(_NO_WRITE)
 
         self.session.add(
             LeadActivity(
@@ -782,7 +875,7 @@ class MattermostSlashService:
 
         await self._update_thread_post(
             suggested,
-            text=f":link: Gekoppeld aan lead **{_escape_md(lead.title)}**",
+            text=":link: Gekoppeld aan de herkende lead.",
             color="#3B82F6",
         )
         return _action_msg("Bericht gekoppeld als notitie aan de lead.")
@@ -798,8 +891,10 @@ class MattermostSlashService:
             return suggested
         if suggested.status != "pending":
             return _action_msg("Deze suggestie is al verwerkt.")
-        if not await self._has_initiatief_access(person_id, suggested.initiatief_id):
-            return _action_msg("Je hebt geen toegang tot dit initiatief.")
+        if not await self._may(
+            person_id, "suggested_lead:update", "suggested_lead", suggested.id
+        ):
+            return _action_msg(_NO_WRITE)
 
         self._mark_reviewed(suggested, person_id, status="rejected")
         await self.session.flush()
@@ -840,18 +935,6 @@ class MattermostSlashService:
         if suggested is None:
             return _action_msg("Suggestie niet gevonden.")
         return suggested
-
-    async def _has_initiatief_access(
-        self, person_id: UUID, initiatief_id: UUID
-    ) -> bool:
-        from bouwmeester.core.initiatief_context import build_initiatief_context
-        from bouwmeester.models.person import Person
-
-        person = await self.session.get(Person, person_id)
-        if person is None:
-            return False
-        ctx = await build_initiatief_context(self.session, person)
-        return ctx.is_admin or initiatief_id in ctx.visible_initiatief_ids
 
     async def _update_thread_post(self, suggested, *, text: str, color: str) -> None:
         if not suggested.mm_thread_post_id:

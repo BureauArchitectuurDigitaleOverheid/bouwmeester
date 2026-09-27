@@ -25,6 +25,9 @@ from bouwmeester.core.database import get_db  # noqa: E402
 from bouwmeester.core.session_store import SessionStore  # noqa: E402
 from bouwmeester.middleware.session import ServerSideSessionMiddleware  # noqa: E402
 
+# The shared authorization world (``world``, ``iw``), for every test module.
+from tests.authz_world import iw, world  # noqa: E402, F401
+
 settings = get_settings()
 
 

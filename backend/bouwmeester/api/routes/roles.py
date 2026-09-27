@@ -9,13 +9,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    managed_subtree_ids,
     require_can_assign_role,
+    require_can_assign_roles_in,
     require_can_revoke_role,
 )
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import (
+    PermissionContext,
     build_permission_context,
+    get_permission_context,
     require_permission,
 )
 from bouwmeester.models.person import Person
@@ -102,12 +104,10 @@ async def my_permissions(
     system: list[str] = []
     if not perm_ctx.is_super_admin:
         system = sorted(perm_ctx.system_permissions)
-    managed = await managed_subtree_ids(db, perm_ctx)
     return MyPermissionsResponse(
         roles=roles,
         permissions=sorted(perm_ctx.effective_permissions),
         system_permissions=system,
-        managed_subtree_ids=["*"] if managed is None else sorted(map(str, managed)),
     )
 
 
@@ -132,10 +132,11 @@ async def list_person_roles(
 )
 async def list_eenheid_roles(
     eenheid_id: UUID,
-    _perm=Depends(require_permission("people:assign_role")),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
-    """List role assignments scoped to an eenheid."""
+    """List role assignments scoped to an eenheid, for who assigns roles there."""
+    await require_can_assign_roles_in(db, perm, eenheid_id)
     repo = PersonRoleRepository(db)
     assignments = await repo.list_for_eenheid(eenheid_id)
     return [_assignment_to_response(a) for a in assignments]
@@ -144,15 +145,15 @@ async def list_eenheid_roles(
 @router.post("/assign", response_model=PersonRoleResponse)
 async def assign_role(
     data: PersonRoleCreate,
-    perm=Depends(require_permission("people:assign_role")),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
-    """Assign a role to a person."""
+    """Assign a role to a person (``require_can_assign_role`` decides)."""
     # Validate role exists
     role_repo = RoleRepository(db)
     role = await role_repo.get_role(data.role_id)
     if role is None:
-        raise HTTPException(404, f"Role '{data.role_id}' not found")
+        raise HTTPException(404, f"Rol '{data.role_id}' niet gevonden")
 
     # System-level roles require no eenheid
     if role.level == "system" and data.organisatie_eenheid_id:
@@ -210,24 +211,24 @@ async def assign_role(
 @router.delete("/assignments/{assignment_id}")
 async def revoke_role(
     assignment_id: UUID,
-    _perm=Depends(require_permission("people:assign_role")),
+    perm: PermissionContext = Depends(get_permission_context),
     db: AsyncSession = Depends(get_db),
 ):
-    """Revoke a role assignment."""
+    """Revoke a role assignment (``require_can_revoke_role`` decides)."""
     repo = PersonRoleRepository(db)
     # Read before delete for logging
     assignment = await repo.get_by_id(assignment_id)
     if assignment is None:
-        raise HTTPException(404, "Assignment not found")
+        raise HTTPException(404, "Roltoekenning niet gevonden")
 
-    await require_can_revoke_role(db, _perm, assignment)
+    await require_can_revoke_role(db, perm, assignment)
 
     await repo.revoke(assignment_id)
 
     await log_activity(
         db,
         None,
-        _perm.person_id,
+        perm.person_id,
         "role.revoked",
         details={
             "person_id": str(assignment.person_id),

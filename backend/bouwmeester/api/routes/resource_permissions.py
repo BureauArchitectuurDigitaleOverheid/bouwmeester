@@ -1,9 +1,4 @@
-"""Unified resource permission management routes.
-
-Provides generic CRUD for the resource_permission table, used
-by frontend components that manage stakeholders, members, and
-contacts across all resource types.
-"""
+"""Generic CRUD for resource_permission (stakeholders, members, contacts)."""
 
 from uuid import UUID
 
@@ -13,21 +8,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authority import (
+    grant_permission,
     require_can_change_resource_role,
     require_can_grant_resource_role,
 )
+from bouwmeester.core.authz import read_permission, require
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    check_resource_org_scope,
-    get_org_context,
-)
 from bouwmeester.core.permissions import (
     PermissionContext,
-    check_resource_permission,
     get_permission_context,
     require_permission,
 )
+from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.resource_permission import (
     ResourcePermissionRepository,
@@ -39,18 +31,16 @@ from bouwmeester.schema.resource_permission import (
     ResourcePermissionUpdate,
 )
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.visibility_filters import readable_ids
 
 router = APIRouter(
     prefix="/resource-permissions",
     tags=["resource-permissions"],
 )
 
-VALID_RESOURCE_TYPES = {
-    "corpus_node",
-    "initiatief",
-    "lead",
-    "opdracht",
-}
+# Every type with resource roles, except eenheden: their eigenaars are
+# managed on the eenheid itself (organisatie routes).
+VALID_RESOURCE_TYPES = frozenset(RESOURCE_ROLE_PERMISSIONS) - {"organisatie_eenheid"}
 
 
 def _validate_resource_type(resource_type: str) -> None:
@@ -66,22 +56,10 @@ async def _require_can_list_grants(
     db: AsyncSession,
     resource_type: str,
     resource_id: UUID,
-    org_ctx: OrgContext,
 ) -> None:
-    """Read gate for listing who holds which rol on a resource.
-
-    An eigenaar of the resource, or someone with ``resource_permission:manage``
-    who can see the resource.  Changing grants is decided in
-    ``core.authority``.
-    """
-    if perm.is_super_admin:
-        return
-    has_resource = perm.person_id is not None and await check_resource_permission(
-        db, perm.person_id, resource_type, resource_id, "resource_permission:manage"
-    )
-    if not has_resource and not perm.has_permission("resource_permission:manage"):
-        raise HTTPException(403, "Onvoldoende rechten")
-    await check_resource_org_scope(db, resource_type, resource_id, org_ctx)
+    """Listing grants: whoever may hand out roles here and sees the resource."""
+    await require(db, perm, grant_permission(resource_type), resource_type, resource_id)
+    await require(db, perm, read_permission(resource_type), resource_type, resource_id)
 
 
 def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:
@@ -96,22 +74,63 @@ def _to_response(rp: ResourcePermission) -> ResourcePermissionResponse:
     )
 
 
-async def _resolve_resource_names(
-    db: AsyncSession,
-    permissions: list[ResourcePermission],
-) -> dict[UUID, str]:
-    """Batch-resolve display names for polymorphic resource_ids."""
+def _named_types() -> dict[str, tuple]:
+    """The resource types whose grants name their resource, with the name column."""
     from bouwmeester.models.corpus_node import CorpusNode
     from bouwmeester.models.initiatief import Initiatief
     from bouwmeester.models.lead import Lead
     from bouwmeester.models.opdracht import Opdracht
 
-    table_map: dict[str, tuple] = {
+    return {
         "corpus_node": (CorpusNode, CorpusNode.title),
         "initiatief": (Initiatief, Initiatief.naam),
         "lead": (Lead, Lead.title),
         "opdracht": (Opdracht, Opdracht.titel),
     }
+
+
+async def _readable_grants(
+    db: AsyncSession,
+    perm: PermissionContext,
+    permissions: list[ResourcePermission],
+) -> list[ResourcePermission]:
+    """The grants on resources the caller may read (eenheden are tenant-wide)."""
+    named = _named_types()
+    readable: set[UUID] = set()
+    for rtype in named:
+        readable |= await readable_ids(
+            db,
+            perm,
+            rtype,
+            (rp.resource_id for rp in permissions if rp.resource_type == rtype),
+        )
+    return [
+        rp
+        for rp in permissions
+        if rp.resource_type not in named or rp.resource_id in readable
+    ]
+
+
+async def _require_sees_grant(
+    db: AsyncSession, perm: PermissionContext, rp: ResourcePermission
+) -> None:
+    """404 for a grant on an unreadable resource, before the 409 can leak it."""
+    if rp.resource_type in _named_types():
+        await require(
+            db,
+            perm,
+            read_permission(rp.resource_type),
+            rp.resource_type,
+            rp.resource_id,
+        )
+
+
+async def _resolve_resource_names(
+    db: AsyncSession,
+    permissions: list[ResourcePermission],
+) -> dict[UUID, str]:
+    """Batch-resolve display names for polymorphic resource_ids."""
+    table_map = _named_types()
 
     ids_by_type: dict[str, set[UUID]] = {}
     for rp in permissions:
@@ -136,12 +155,12 @@ async def _resolve_resource_names(
 )
 async def list_person_resource_permissions(
     person_id: UUID,
-    _perm=Depends(require_permission("people:read")),
+    perm: PermissionContext = Depends(require_permission("people:read")),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all resource permissions for a person, with resolved names."""
+    """List a person's resource permissions on what the caller may read."""
     repo = ResourcePermissionRepository(db)
-    perms = await repo.list_for_person(person_id)
+    perms = await _readable_grants(db, perm, await repo.list_for_person(person_id))
     names = await _resolve_resource_names(db, perms)
     return [
         PersonResourcePermissionResponse(
@@ -166,14 +185,11 @@ async def list_resource_permissions(
     resource_type: str,
     resource_id: UUID,
     perm: PermissionContext = Depends(get_permission_context),
-    org_ctx: OrgContext = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
     """List people and roles on a resource."""
     _validate_resource_type(resource_type)
-    if not perm.is_authenticated:
-        raise HTTPException(401, "Niet ingelogd")
-    await _require_can_list_grants(perm, db, resource_type, resource_id, org_ctx)
+    await _require_can_list_grants(perm, db, resource_type, resource_id)
 
     repo = ResourcePermissionRepository(db)
     perms = await repo.list_for_resource(resource_type, resource_id)
@@ -252,6 +268,7 @@ async def update_resource_permission(
     rp = await repo.get_with_person(rp_id)
     if rp is None:
         raise HTTPException(404, "Toekenning niet gevonden")
+    await _require_sees_grant(db, perm, rp)
     await require_can_change_resource_role(db, perm, rp, new_rol=data.rol)
 
     rp.rol = data.rol
@@ -274,6 +291,7 @@ async def delete_resource_permission(
     rp = await repo.get_with_person(rp_id)
     if rp is None:
         raise HTTPException(404, "Toekenning niet gevonden")
+    await _require_sees_grant(db, perm, rp)
     await require_can_change_resource_role(db, perm, rp, new_rol=None)
 
     await log_activity(

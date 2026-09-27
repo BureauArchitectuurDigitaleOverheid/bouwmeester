@@ -12,6 +12,7 @@ import { NODE_TYPE_COLORS } from '@/types';
 import { RichTextDisplay } from '@/components/common/RichTextDisplay';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 /** An `nldd-list-item-segment[button]` with its click bridged to React. */
 function ClickableSegment({
@@ -32,6 +33,23 @@ function ClickableSegment({
   );
 }
 
+/** Delete button for one edge, shown only when the backend allows it. */
+function DeleteEdgeButton({ edgeId, onDelete }: { edgeId: string; onDelete: () => void }) {
+  const { allowed } = useCan('edge:delete', { type: 'edge', id: edgeId });
+  if (!allowed) return null;
+  return (
+    <nldd-list-item-segment width="fit-content">
+      <NlddIconButton
+        icon="trash"
+        variant="critical-transparent"
+        size="sm"
+        accessibleLabel="Verbinding verwijderen"
+        onClick={onDelete}
+      />
+    </nldd-list-item-segment>
+  );
+}
+
 interface EdgeListProps {
   nodeId: string;
   nodeType?: string;
@@ -43,6 +61,7 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const { data: edges = [], isLoading } = useEdges({ node_id: nodeId });
   const deleteEdge = useDeleteEdge();
+  const { allowed: canAddEdge } = useCan('edge:create', { type: 'corpus_node', id: nodeId });
 
   if (isLoading) {
     return <LoadingSpinner padding="32" />;
@@ -53,13 +72,15 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
       <nldd-container layout="row" gap="8" vertical-alignment="center" horizontal-alignment="left">
         <nldd-title size={6}><h3>Verbindingen ({edges.length})</h3></nldd-title>
         <nldd-spacer direction="horizontal" size="flexible" />
-        <NlddButton
-          variant="secondary"
-          size="sm"
-          startIcon="plus"
-          onClick={() => setShowAddForm(true)}
-          text="Verbinding toevoegen"
-        />
+        {canAddEdge && (
+          <NlddButton
+            variant="secondary"
+            size="sm"
+            startIcon="plus"
+            onClick={() => setShowAddForm(true)}
+            text="Verbinding toevoegen"
+          />
+        )}
       </nldd-container>
 
       {edges.length > 0 ? (
@@ -98,15 +119,7 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
                     </nldd-description-cell>
                   )}
                 </ClickableSegment>
-                <nldd-list-item-segment width="fit-content">
-                  <NlddIconButton
-                    icon="trash"
-                    variant="critical-transparent"
-                    size="sm"
-                    accessibleLabel="Verbinding verwijderen"
-                    onClick={() => deleteEdge.mutate(edge.id)}
-                  />
-                </nldd-list-item-segment>
+                <DeleteEdgeButton edgeId={edge.id} onDelete={() => deleteEdge.mutate(edge.id)} />
               </nldd-list-item>
             );
           })}
@@ -116,12 +129,14 @@ export function EdgeList({ nodeId, nodeType }: EdgeListProps) {
           title="Geen verbindingen"
           description="Deze node heeft nog geen verbindingen met andere nodes."
           action={
-            <NlddButton
-              variant="secondary"
-              size="sm"
-              onClick={() => setShowAddForm(true)}
-              text="Eerste verbinding toevoegen"
-            />
+            canAddEdge && (
+              <NlddButton
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowAddForm(true)}
+                text="Eerste verbinding toevoegen"
+              />
+            )
           }
         />
       )}

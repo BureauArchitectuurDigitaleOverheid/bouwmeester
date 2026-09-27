@@ -10,14 +10,19 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
-    can_manage_members,
-    managed_subtree_ids,
+    approve_placement_requests,
+    can_confirm_members,
+    confirmable_eenheid_ids,
     require_can_decide_placement_request,
 )
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    TRUSTED_PLACEMENT_BRONNEN,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.org_placement import (
     OrgPlacementRequestCreate,
@@ -133,10 +138,11 @@ async def list_pending(
         .options(*_load_options())
         .order_by(OrgPlacementRequest.requested_at.desc())
     )
-    # Managers see requests for their eenheden and everything below them
+    # Whoever decides about the members sees the requests (managers: their
+    # eenheden and everything below them; eigenaren of an external one).
     if not perm_ctx.is_authenticated:
         return []
-    managed = await managed_subtree_ids(db, perm_ctx)
+    managed = await confirmable_eenheid_ids(db, perm_ctx)
     if managed is not None:
         stmt = stmt.where(OrgPlacementRequest.organisatie_eenheid_id.in_(managed))
     if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
@@ -187,7 +193,7 @@ async def update_placement_request(
     await db.refresh(req, attribute_names=["organisatie_eenheid"])
 
     # If the changer doesn't manage the new eenheid, notify its manager
-    should_notify = not await can_manage_members(
+    should_notify = not await can_confirm_members(
         db, perm_ctx, data.organisatie_eenheid_id
     )
 
@@ -231,43 +237,42 @@ async def approve_placement(
         eenheid_id=req.organisatie_eenheid_id,
     )
 
-    already = await db.scalar(
-        select(PersonOrganisatieEenheid.id).where(
-            PersonOrganisatieEenheid.person_id == req.person_id,
-            PersonOrganisatieEenheid.organisatie_eenheid_id
-            == req.organisatie_eenheid_id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
+    already = (
+        await db.scalars(
+            select(PersonOrganisatieEenheid).where(
+                PersonOrganisatieEenheid.person_id == req.person_id,
+                PersonOrganisatieEenheid.organisatie_eenheid_id
+                == req.organisatie_eenheid_id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
         )
-    )
-    if already is not None:
+    ).all()
+    if any(p.bron in TRUSTED_PLACEMENT_BRONNEN for p in already):
         raise HTTPException(
             status_code=409, detail="Deze persoon is al ingedeeld bij deze eenheid"
         )
 
-    req.status = "approved"
-    req.decided_at = datetime.now(UTC)
-    req.decided_by = current_user.id if current_user else None
-
-    # Create the actual placement
-    placement = PersonOrganisatieEenheid(
-        person_id=req.person_id,
-        organisatie_eenheid_id=req.organisatie_eenheid_id,
-        dienstverband=req.dienstverband,
-        start_datum=date.today(),
-    )
-    db.add(placement)
-    await db.flush()
-
-    # Notify the requester
-    eenheid_naam = req.organisatie_eenheid.naam if req.organisatie_eenheid else ""
-    notif_svc = NotificationService(db)
-    await notif_svc.send(
-        NotificationCreate(
-            person_id=req.person_id,
-            type="placement_approved",
-            title=f"Toegevoegd aan: {eenheid_naam}",
-            message=f"Je bent toegevoegd aan '{eenheid_naam}'.",
+    if already:
+        # An informational placement (contact administration): approving
+        # confirms it.
+        already[0].bron = PLACEMENT_BRON_LEIDINGGEVENDE
+    else:
+        db.add(
+            PersonOrganisatieEenheid(
+                person_id=req.person_id,
+                organisatie_eenheid_id=req.organisatie_eenheid_id,
+                dienstverband=req.dienstverband,
+                start_datum=date.today(),
+                bron=PLACEMENT_BRON_LEIDINGGEVENDE,
+            )
         )
+    await db.flush()
+    # Settles this request (and any duplicate) and notifies the requester.
+    await approve_placement_requests(
+        db,
+        person_id=req.person_id,
+        eenheid_id=req.organisatie_eenheid_id,
+        decided_by=current_user.id if current_user else None,
     )
 
     return _to_response(req)

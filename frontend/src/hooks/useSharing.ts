@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { apiGet, apiPost, apiDelete } from '@/api/client';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 
 export interface SharingGrant {
   id: string;
@@ -37,6 +38,7 @@ export function useSharing() {
 
 export function useCreateSharing() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (data: SharingGrantCreate) =>
       apiPost<SharingGrant>('/api/sharing', data),
     errorMessage: 'Fout bij aanmaken van deling',
@@ -46,6 +48,7 @@ export function useCreateSharing() {
 
 export function useDeleteSharing() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => apiDelete(`/api/sharing/${id}`),
     errorMessage: 'Fout bij verwijderen van deling',
     invalidateKeys: [queryKeys.admin.sharing()],

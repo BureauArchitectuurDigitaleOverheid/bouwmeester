@@ -4,26 +4,30 @@ from collections import defaultdict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import require_can_end_eenheid, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    bring_into_organisation,
+    joins_organisation,
     require_can_create_eenheid,
-    require_can_dissolve_eenheid,
     require_can_move_eenheid,
     require_can_set_manager,
+    snapshot_trust,
 )
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import OrgContext, get_org_context
 from bouwmeester.core.permissions import (
     PermissionContext,
-    check_resource_permission,
-    require_permission,
+    get_permission_context,
 )
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.repositories.org_tree import get_subtree_ids
+from bouwmeester.models.organisatie_eenheid import (
+    INTERNAL_EENHEID_TYPES,
+    OrganisatieEenheid,
+)
+from bouwmeester.models.person import Person
+from bouwmeester.repositories.org_tree import eenheid_references, get_subtree_ids
 from bouwmeester.repositories.organisatie_eenheid import OrganisatieEenheidRepository
 from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.schema.organisatie_eenheid import (
@@ -43,59 +47,8 @@ from bouwmeester.services.mention_helper import sync_and_notify_mentions
 router = APIRouter(prefix="/organisatie", tags=["organisatie"])
 
 
-async def _check_eenheid_write_access(
-    db: AsyncSession,
-    eenheid_id: UUID,
-    perm_ctx: PermissionContext,
-    org_ctx: OrgContext,
-) -> None:
-    """Allow editing an eenheid that is either in scope or owned.
-
-    Covers the ordinary fields (naam, beschrijving) and is the first gate
-    for delete.  Anything that shifts rights (parent, type, manager,
-    dissolving) is checked on top of this by ``core.authority`` via
-    ``_check_structural_changes``.  Editors who created a stakeholder
-    eenheid outside their scope hold an "eigenaar" resource-permission on
-    it and may edit it through that.  Raises 403 otherwise.
-
-    TOOI/synthetische rijen zijn read-only behalve voor super_admin —
-    die kennen we als bron != 'handmatig'. Mutaties op die rijen worden
-    geblokkeerd zodat een TOOI-sync ze niet vermalen worden door
-    handmatige bewerkingen.
-    """
-    if perm_ctx.is_super_admin:
-        return
-
-    # Read-only check op niet-handmatige bron
-    eenheid = (
-        await db.execute(
-            select(OrganisatieEenheid.bron).where(OrganisatieEenheid.id == eenheid_id)
-        )
-    ).scalar_one_or_none()
-    if eenheid is not None and eenheid != "handmatig":
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"Deze organisatie-eenheid is read-only (bron='{eenheid}'). "
-                "TOOI/scrape/synthetische rijen worden door de sync beheerd; "
-                "alleen super_admin kan ze handmatig wijzigen."
-            ),
-        )
-
-    all_visible = set(org_ctx.visible_eenheid_ids) | set(org_ctx.shared_eenheid_ids)
-    if eenheid_id in all_visible:
-        return
-    if perm_ctx.person_id is not None and await check_resource_permission(
-        db,
-        perm_ctx.person_id,
-        "organisatie_eenheid",
-        eenheid_id,
-        "org:manage",
-    ):
-        return
-    raise HTTPException(
-        status_code=403, detail="Geen toegang tot deze organisatie-eenheid"
-    )
+# Structural changes are checked by ``core.authority`` on top.
+_UPDATE_EENHEID = requires("org:update", "organisatie_eenheid")
 
 
 async def _check_structural_changes(
@@ -105,13 +58,7 @@ async def _check_structural_changes(
     current: OrganisatieEenheid,
     data: OrganisatieEenheidUpdate,
 ) -> None:
-    """Guard the parts of an update that change who controls the eenheid.
-
-    Name and description are ordinary edits.  Moving the eenheid, changing
-    it between internal and external, naming a manager and dissolving it
-    (which ends the manager's role) all shift rights, so each goes through
-    the same checks as the equivalent direct action.
-    """
+    """Guard the parts of an update that shift rights, like their direct actions."""
     fields = data.model_fields_set
     await require_can_move_eenheid(
         db,
@@ -126,14 +73,28 @@ async def _check_structural_changes(
             db, perm_ctx, eenheid_id=current.id, new_manager_id=data.manager_id
         )
     if "geldig_tot" in fields and data.geldig_tot != current.geldig_tot:
-        await require_can_dissolve_eenheid(
-            db, perm_ctx, current, has_manager=current_manager is not None
-        )
+        await require_can_end_eenheid(db, perm_ctx, current)
+
+
+def _person_entry(person: Person, perm_ctx: PermissionContext) -> PersonResponse:
+    """A person in the org chart; the full record only with ``people:read``."""
+    full = PersonResponse.model_validate(person)
+    if perm_ctx.has_permission("people:read"):
+        return full
+    return PersonResponse(
+        id=full.id,
+        naam=full.naam,
+        functie=full.functie,
+        is_active=full.is_active,
+        is_agent=full.is_agent,
+        created_at=full.created_at,
+    )
 
 
 async def _enrich_with_managers(
     repo: OrganisatieEenheidRepository,
     responses: list[OrganisatieEenheidResponse],
+    perm_ctx: PermissionContext,
 ) -> None:
     """Populate manager/manager_id on responses from person_role."""
     eenheid_ids = [r.id for r in responses]
@@ -141,7 +102,7 @@ async def _enrich_with_managers(
     for resp in responses:
         mgr = managers_map.get(resp.id)
         if mgr:
-            resp.manager = PersonResponse.model_validate(mgr)
+            resp.manager = _person_entry(mgr, perm_ctx)
             resp.manager_id = mgr.id
         else:
             resp.manager = None
@@ -218,6 +179,7 @@ async def list_organisatie(
     format: str = Query("flat", pattern="^(flat|tree)$"),
     include_historisch: bool = Query(False),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidResponse] | list[OrganisatieEenheidTreeNode]:
     """List org units as flat list or hierarchical tree (format=flat|tree).
 
@@ -231,7 +193,7 @@ async def list_organisatie(
     # tot ~5k; bij meer schalen we naar paginated of lazy.
     items = await repo.get_all(limit=10000, active_only=not include_historisch)
     flat = [OrganisatieEenheidResponse.model_validate(item) for item in items]
-    await _enrich_with_managers(repo, flat)
+    await _enrich_with_managers(repo, flat, perm_ctx)
 
     if format == "tree":
         personen_counts = await repo.count_personen_batch([item.id for item in items])
@@ -248,6 +210,7 @@ async def get_tree_children(
     current_user: OptionalUser,
     parent_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidTreeNode]:
     """Geef directe children van een eenheid (of root als parent_id ontbreekt).
 
@@ -260,7 +223,7 @@ async def get_tree_children(
     repo = OrganisatieEenheidRepository(db)
     units = await repo.get_by_parent(parent_id)
     responses = [OrganisatieEenheidResponse.model_validate(u) for u in units]
-    await _enrich_with_managers(repo, responses)
+    await _enrich_with_managers(repo, responses, perm_ctx)
 
     ids = [r.id for r in responses]
     personen_counts = await repo.count_personen_batch(ids)
@@ -284,6 +247,7 @@ async def search_organisatie(
     q: str = Query("", min_length=0, max_length=500),
     limit: int = Query(10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidResponse]:
     """Search org units by name."""
     if not q.strip():
@@ -291,7 +255,7 @@ async def search_organisatie(
     repo = OrganisatieEenheidRepository(db)
     units = await repo.search(q.strip(), limit=limit)
     results = [OrganisatieEenheidResponse.model_validate(u) for u in units]
-    await _enrich_with_managers(repo, results)
+    await _enrich_with_managers(repo, results, perm_ctx)
     return results
 
 
@@ -300,12 +264,13 @@ async def get_managed_eenheden(
     person_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrganisatieEenheidResponse]:
     """Get all eenheden where person_id is the manager."""
     repo = OrganisatieEenheidRepository(db)
     eenheden = await repo.get_by_manager(person_id)
     results = [OrganisatieEenheidResponse.model_validate(e) for e in eenheden]
-    await _enrich_with_managers(repo, results)
+    await _enrich_with_managers(repo, results, perm_ctx)
     return results
 
 
@@ -317,26 +282,34 @@ async def create_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("org:create", "org:manage")
-    ),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrganisatieEenheidResponse:
     """Create a new org unit, optionally under a parent.
 
-    Anyone with org:manage may pick any parent (or none) — stakeholder
-    eenheden often live outside the caller's own ministry. The aanmaker
-    is granted an eigenaar resource-permission so they can edit/delete
-    their creation later, even if it falls outside their org scope.
+    The creator of a new external root becomes its eigenaar, so they can
+    maintain it and what they later hang below it.
     """
     repo = OrganisatieEenheidRepository(db)
     if data.parent_id is not None:
         require_found(await repo.get(data.parent_id), "Parent eenheid")
+    await require(
+        db,
+        perm_ctx,
+        "org:create",
+        "organisatie_eenheid",
+        place={"parent_id": data.parent_id, "type": data.type},
+    )
     await require_can_create_eenheid(
         db, perm_ctx, parent_id=data.parent_id, manager_id=data.manager_id
     )
     eenheid = await repo.create(data)
 
-    if perm_ctx.person_id is not None and not perm_ctx.is_super_admin:
+    if (
+        perm_ctx.person_id is not None
+        and not perm_ctx.is_super_admin
+        and eenheid.parent_id is None
+        and eenheid.type not in INTERNAL_EENHEID_TYPES
+    ):
         await ResourcePermissionRepository(db).create_permission(
             person_id=perm_ctx.person_id,
             resource_type="organisatie_eenheid",
@@ -350,6 +323,7 @@ async def create_organisatie(
         eenheid.id,
         data.beschrijving,
         eenheid.naam,
+        sender_id=perm_ctx.person_id,
     )
 
     await log_activity(
@@ -361,7 +335,7 @@ async def create_organisatie(
     )
 
     resp = OrganisatieEenheidResponse.model_validate(eenheid)
-    await _enrich_with_managers(repo, [resp])
+    await _enrich_with_managers(repo, [resp], perm_ctx)
     return resp
 
 
@@ -370,12 +344,13 @@ async def get_organisatie(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OrganisatieEenheidResponse:
     """Get a single org unit by ID."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
     resp = OrganisatieEenheidResponse.model_validate(eenheid)
-    await _enrich_with_managers(repo, [resp])
+    await _enrich_with_managers(repo, [resp], perm_ctx)
     return resp
 
 
@@ -386,16 +361,22 @@ async def update_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("org:create", "org:manage")
-    ),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(_UPDATE_EENHEID),
 ) -> OrganisatieEenheidResponse:
     """Update an org unit. Detects circular parent references."""
-    await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
     repo = OrganisatieEenheidRepository(db)
     current = require_found(await repo.get(id), "Eenheid")
     await _check_structural_changes(db, perm_ctx, repo, current, data)
+    fields = data.model_fields_set
+    # Becoming internal or newly touching the organisation hands the say
+    # over its members to managers; settled after the change below.
+    joining = await joins_organisation(
+        db,
+        current,
+        new_parent_id=data.parent_id if "parent_id" in fields else current.parent_id,
+        new_type=data.type if "type" in fields and data.type else current.type,
+    )
+    trust_before = await snapshot_trust(db, id) if joining else None
 
     # Cycle detection for parent_id changes
     if data.parent_id is not None:
@@ -406,6 +387,8 @@ async def update_organisatie(
             raise HTTPException(400, "Circulaire parent-relatie gedetecteerd")
 
     eenheid = require_found(await repo.update(id, data), "Eenheid")
+    if trust_before is not None:
+        await bring_into_organisation(db, eenheid.id, trust_before)
 
     await sync_and_notify_mentions(
         db,
@@ -413,6 +396,7 @@ async def update_organisatie(
         eenheid.id,
         eenheid.beschrijving,
         eenheid.naam,
+        sender_id=perm_ctx.person_id,
     )
 
     await log_activity(
@@ -424,7 +408,7 @@ async def update_organisatie(
     )
 
     resp = OrganisatieEenheidResponse.model_validate(eenheid)
-    await _enrich_with_managers(repo, [resp])
+    await _enrich_with_managers(repo, [resp], perm_ctx)
     return resp
 
 
@@ -434,28 +418,19 @@ async def delete_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        require_permission("org:create", "org:manage")
-    ),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(_UPDATE_EENHEID),
 ) -> None:
-    """Delete an org unit. Fails if it has children or members."""
-    await _check_eenheid_write_access(db, id, perm_ctx, org_ctx)
+    """Delete an org unit; 409 while anything hangs on it (it would go tenant-wide)."""
     repo = OrganisatieEenheidRepository(db)
     eenheid = require_found(await repo.get(id), "Eenheid")
-    # Deleting needs no members and no sub-eenheden (checked below), so the
-    # only right it can take away is the manager's role.
-    if await repo.get_current_manager_id(id) is not None:
-        await require_can_set_manager(db, perm_ctx, eenheid_id=id, new_manager_id=None)
-    if await repo.has_children(id):
+    await require_can_end_eenheid(db, perm_ctx, eenheid)
+    blocking = await eenheid_references(db, id, structure=True)
+    if blocking:
         raise HTTPException(
             status_code=409,
-            detail="Kan niet verwijderen: eenheid heeft subeenheden",
-        )
-    if await repo.has_personen(id):
-        raise HTTPException(
-            status_code=409,
-            detail="Kan niet verwijderen: eenheid heeft personen",
+            detail="Kan niet verwijderen: aan deze eenheid hangen nog "
+            + ", ".join(blocking)
+            + ". Verplaats of beëindig die eerst.",
         )
     eenheid_naam = eenheid.naam
     await repo.delete(id)
@@ -500,6 +475,7 @@ async def get_manager_history(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OrgManagerRecord]:
     """Get temporal history of manager changes from person_role."""
     repo = OrganisatieEenheidRepository(db)
@@ -509,7 +485,7 @@ async def get_manager_history(
         OrgManagerRecord(
             id=r.id,
             manager_id=r.person_id,
-            manager=PersonResponse.model_validate(r.person) if r.person else None,
+            manager=_person_entry(r.person, perm_ctx) if r.person else None,
             geldig_van=r.start_datum,
             geldig_tot=r.eind_datum,
         )
@@ -526,17 +502,18 @@ async def get_organisatie_personen(
     current_user: OptionalUser,
     recursive: bool = Query(False),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[PersonResponse] | OrganisatieEenheidPersonenGroup:
-    """Get people in an org unit.
+    """Get people in an org unit: the tenant-wide staff directory.
 
-    Use recursive=true for grouped tree of all descendants.
+    Full records only with ``people:read``.  recursive=true: grouped tree.
     """
     repo = OrganisatieEenheidRepository(db)
     require_found(await repo.get(id), "Eenheid")
 
     if not recursive:
         personen = await repo.get_personen(id)
-        return [PersonResponse.model_validate(p) for p in personen]
+        return [_person_entry(p, perm_ctx) for p in personen]
 
     # Recursive mode: get all descendants and build grouped tree
     descendant_ids = await repo.get_descendant_ids(id)
@@ -549,7 +526,7 @@ async def get_organisatie_personen(
     # Index people by unit ID
     personen_by_unit: dict[UUID, list[PersonResponse]] = defaultdict(list)
     for person, unit_id in personen_with_units:
-        personen_by_unit[unit_id].append(PersonResponse.model_validate(person))
+        personen_by_unit[unit_id].append(_person_entry(person, perm_ctx))
 
     # Index units by ID
     units_by_id = {u.id: u for u in all_units}
@@ -564,7 +541,7 @@ async def get_organisatie_personen(
         resp = OrganisatieEenheidResponse.model_validate(unit)
         mgr = managers_map.get(unit_id)
         if mgr:
-            resp.manager = PersonResponse.model_validate(mgr)
+            resp.manager = _person_entry(mgr, perm_ctx)
             resp.manager_id = mgr.id
         else:
             resp.manager = None

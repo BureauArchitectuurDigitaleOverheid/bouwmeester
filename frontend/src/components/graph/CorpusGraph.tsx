@@ -41,6 +41,7 @@ import { generateBridgeEdges, type BridgeEdge } from '@/utils/bridgeEdges';
 
 import dagre from 'dagre';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useIfAllowed } from '@/hooks/useCan';
 
 /**
  * Conceptual rank for each node type. Lower rank = higher on screen.
@@ -325,13 +326,28 @@ function CorpusGraphInner({ enabledNodeTypes, searchQuery, enabledEdgeTypes, gra
   }, [rfNodes, rfEdges, setNodes, setEdges]);
 
 
-  // Handle connection drag completion
-  const handleConnect = useCallback((connection: Connection) => {
-    if (connection.source && connection.target) {
-      setPendingConnection(connection);
-      setNewEdgeType('');
-    }
-  }, []);
+  // Handle connection drag completion. The backend accepts an edge from
+  // whoever may add edges on either end; ask before offering the form.
+  const ifAllowed = useIfAllowed();
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const { source, target } = connection;
+      if (!source || !target) return;
+      void ifAllowed(
+        'edge:create',
+        [
+          { type: 'corpus_node', id: source },
+          { type: 'corpus_node', id: target },
+        ],
+        'Je mag geen relatie tussen deze nodes leggen.',
+        () => {
+          setPendingConnection(connection);
+          setNewEdgeType('');
+        },
+      );
+    },
+    [ifAllowed],
+  );
 
   const handleCreateEdge = useCallback(async () => {
     if (!pendingConnection?.source || !pendingConnection?.target || !newEdgeType) return;

@@ -19,6 +19,7 @@ import type {
   MattermostChannelSearchResult,
 } from '@/api/mattermostChannels';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 type Scope =
   | { type: 'initiatief'; id: string }
@@ -40,6 +41,8 @@ export function MattermostChannelsSection({ scope }: Props) {
 
   const updateMutation = useUpdateChannelLink(scope);
   const deleteMutation = useDeleteChannelLink(scope);
+  // Links are written with the rights on their initiatief or lead.
+  const { allowed: canWrite } = useCan('mattermost_channel_link:create', scope);
 
   return (
     <nldd-card>
@@ -64,7 +67,9 @@ export function MattermostChannelsSection({ scope }: Props) {
             </nldd-text>
           </nldd-container>
         </nldd-container>
-        <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={() => setPickerOpen(true)} text="Kanaal koppelen" />
+        {canWrite && (
+          <NlddButton variant="secondary" size="sm" startIcon="plus" onClick={() => setPickerOpen(true)} text="Kanaal koppelen" />
+        )}
       </nldd-container>
 
       {query.isLoading && (
@@ -99,6 +104,7 @@ export function MattermostChannelsSection({ scope }: Props) {
             <ChannelRow
               key={link.id}
               link={link}
+              canWrite={canWrite}
               onToggleAutoNote={(value) =>
                 updateMutation.mutate({
                   linkId: link.id,
@@ -146,6 +152,7 @@ function checkedValue(event: Event): boolean {
 
 function ChannelRow({
   link,
+  canWrite,
   onToggleAutoNote,
   onToggleSuggest,
   onToggleAlerts,
@@ -153,6 +160,7 @@ function ChannelRow({
   onDelete,
 }: {
   link: MattermostChannelLink;
+  canWrite: boolean;
   onToggleAutoNote: (value: boolean) => void;
   onToggleSuggest: (value: boolean) => void;
   onToggleAlerts: (value: boolean) => void;
@@ -189,11 +197,13 @@ function ChannelRow({
               ref={autoNoteRef}
               label="Berichten als notities"
               checked={orUndef(link.auto_note_enabled)}
+              disabled={orUndef(!canWrite)}
             />
             <nldd-checkbox-field
               ref={suggestRef}
               label="Leads voorstellen"
               checked={orUndef(link.suggest_leads_enabled)}
+              disabled={orUndef(!canWrite)}
             />
             {/* Kamerstukken die op een zoekterm van dit initiatief matchen.
                 Standaard uit: een kanaal dat voor leads is gekoppeld hoort
@@ -203,6 +213,7 @@ function ChannelRow({
               ref={alertsRef}
               label="Kamerstuk-alerts"
               checked={orUndef(link.parlementaire_alerts_enabled)}
+              disabled={orUndef(!canWrite)}
             />
             {/* Artikelen uit de vakpers op dezelfde zoektermen. Apart van
                 de kamerstukken: dat zijn andere stukken voor een ander
@@ -212,16 +223,19 @@ function ChannelRow({
               ref={nieuwsRef}
               label="Nieuws-alerts"
               checked={orUndef(link.nieuws_alerts_enabled)}
+              disabled={orUndef(!canWrite)}
             />
           </nldd-container>
         </nldd-container>
-        <NlddIconButton
-          icon="trash"
-          accessibleLabel="Ontkoppelen"
-          variant="neutral-transparent"
-          size="sm"
-          onClick={onDelete}
-        />
+        {canWrite && (
+          <NlddIconButton
+            icon="trash"
+            accessibleLabel="Ontkoppelen"
+            variant="neutral-transparent"
+            size="sm"
+            onClick={onDelete}
+          />
+        )}
       </nldd-container>
     </nldd-list-item>
   );

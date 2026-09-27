@@ -1,23 +1,18 @@
 """API routes for InitiatiefUpdatePost (publication posts on an initiatief)."""
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.api.deps import require_found
-from bouwmeester.api.routes.initiatief import _require_access
+from bouwmeester.api.deps import get_child_or_404, on_initiatief
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import (
-    PermissionContext,
-    get_permission_context,
-)
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
-from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief_update import (
     InitiatiefUpdatePostCreate,
     InitiatiefUpdatePostEdit,
@@ -25,6 +20,28 @@ from bouwmeester.schema.initiatief_update import (
 )
 
 router = APIRouter(prefix="/initiatieven", tags=["initiatief-updates"])
+
+# Posts are sub-records of the initiatief in the path; each handler loads the
+# post scoped by that initiatief (``_load_post``).
+_READ_INITIATIEF = on_initiatief("initiatief:read")
+_CREATE_POST = on_initiatief("initiatief_update:create")
+_UPDATE_POST = on_initiatief("initiatief_update:update")
+_DELETE_POST = on_initiatief("initiatief_update:delete")
+
+
+def apply_post_edit(post: Any, changes: dict[str, Any], actor_id: UUID | None) -> None:
+    """Write *changes* into an update post (initiatief or lead).
+
+    Whoever changes a published post's text becomes its publisher, since the
+    post names who put the current text there; ``published_at`` stays.
+    """
+    changed = False
+    for key, value in changes.items():
+        if getattr(post, key) != value:
+            setattr(post, key, value)
+            changed = True
+    if changed and post.published_at is not None:
+        post.published_by_id = actor_id
 
 
 def _to_response(post: InitiatiefUpdatePost) -> InitiatiefUpdatePostResponse:
@@ -43,17 +60,16 @@ def _to_response(post: InitiatiefUpdatePost) -> InitiatiefUpdatePostResponse:
 
 async def _load_post(
     db: AsyncSession, initiatief_id: UUID, post_id: UUID
-) -> InitiatiefUpdatePost | None:
-    stmt = (
-        select(InitiatiefUpdatePost)
-        .where(
-            InitiatiefUpdatePost.id == post_id,
-            InitiatiefUpdatePost.initiatief_id == initiatief_id,
-        )
-        .options(selectinload(InitiatiefUpdatePost.published_by))
+) -> InitiatiefUpdatePost:
+    """The post *post_id* of this initiatief, or 404."""
+    return await get_child_or_404(
+        db,
+        InitiatiefUpdatePost,
+        post_id,
+        (InitiatiefUpdatePost.initiatief_id, initiatief_id),
+        selectinload(InitiatiefUpdatePost.published_by),
+        name="Update",
     )
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
 
 
 @router.get(
@@ -62,15 +78,10 @@ async def _load_post(
 )
 async def list_updates(
     initiatief_id: UUID,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_READ_INITIATIEF),
 ) -> list[InitiatiefUpdatePostResponse]:
-    """All updates (drafts + published) for members; viewers see same."""
-    repo = InitiatiefRepository(db)
-    require_found(await repo.get_by_id(initiatief_id), "Initiatief")
-    await _require_access(repo, initiatief_id, current_user, perm_ctx, "viewer")
-
+    """All updates (drafts + published) for anyone who may read the initiatief."""
     stmt = (
         select(InitiatiefUpdatePost)
         .where(InitiatiefUpdatePost.initiatief_id == initiatief_id)
@@ -91,12 +102,8 @@ async def create_update(
     data: InitiatiefUpdatePostCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_CREATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    repo = InitiatiefRepository(db)
-    require_found(await repo.get_by_id(initiatief_id), "Initiatief")
-    await _require_access(repo, initiatief_id, current_user, perm_ctx, "contributor")
-
     post = InitiatiefUpdatePost(
         initiatief_id=initiatief_id,
         titel=data.titel,
@@ -123,14 +130,14 @@ async def edit_update(
     data: InitiatiefUpdatePostEdit,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    repo = InitiatiefRepository(db)
-    await _require_access(repo, initiatief_id, current_user, perm_ctx, "contributor")
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
-    payload = data.model_dump(exclude_unset=True)
-    for key, value in payload.items():
-        setattr(post, key, value)
+    post = await _load_post(db, initiatief_id, post_id)
+    apply_post_edit(
+        post,
+        data.model_dump(exclude_unset=True),
+        current_user.id if current_user else None,
+    )
     await db.flush()
     await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])
@@ -146,11 +153,9 @@ async def publish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    repo = InitiatiefRepository(db)
-    await _require_access(repo, initiatief_id, current_user, perm_ctx, "contributor")
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    post = await _load_post(db, initiatief_id, post_id)
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
     await db.flush()
@@ -166,13 +171,10 @@ async def publish_update(
 async def unpublish_update(
     initiatief_id: UUID,
     post_id: UUID,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
-    repo = InitiatiefRepository(db)
-    await _require_access(repo, initiatief_id, current_user, perm_ctx, "contributor")
-    post = require_found(await _load_post(db, initiatief_id, post_id), "Update")
+    post = await _load_post(db, initiatief_id, post_id)
     # Keep published_by_id as audit trail of last publisher; republishing
     # overwrites it again.
     post.published_at = None
@@ -189,16 +191,9 @@ async def unpublish_update(
 async def delete_update(
     initiatief_id: UUID,
     post_id: UUID,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_DELETE_POST),
 ) -> None:
-    repo = InitiatiefRepository(db)
-    await _require_access(repo, initiatief_id, current_user, perm_ctx, "contributor")
     post = await _load_post(db, initiatief_id, post_id)
-    if post is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Update niet gevonden"
-        )
     await db.delete(post)
     await db.flush()

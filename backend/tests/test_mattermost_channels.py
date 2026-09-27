@@ -1,6 +1,7 @@
 """Tests voor MattermostChannelLink routes en skeleton-ingest."""
 
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -12,6 +13,16 @@ from bouwmeester.models.mattermost_channel_link import (
     MattermostChannelLink,
 )
 from bouwmeester.models.mattermost_post_link import MattermostPostLink
+
+
+@pytest.fixture(autouse=True)
+def open_channels():
+    """Mattermost is not running: treat every channel as linkable."""
+    with patch(
+        "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
+        AsyncMock(return_value=None),
+    ) as refusal:
+        yield refusal
 
 
 def _channel_id() -> str:
@@ -137,6 +148,38 @@ async def test_update_channel_settings(client, sample_initiatief):
     )
     assert resp.status_code == 200
     assert resp.json()["auto_note_enabled"] is True
+
+
+@pytest.mark.parametrize(
+    ("change", "checked"),
+    [
+        ({"auto_note_enabled": True}, True),
+        ({"suggest_leads_enabled": True}, True),
+        ({"auto_note_enabled": False}, False),  # switching off reads nothing
+        ({"parlementaire_alerts_enabled": True}, False),  # posts into it only
+    ],
+)
+async def test_switching_on_ingest_asks_the_link_check(
+    client, db_session, sample_initiatief, open_channels, change, checked
+):
+    """Someone else's link: switching on reading its posts is linking it."""
+    link = MattermostChannelLink(
+        channel_id=_channel_id(),
+        channel_name="prive",
+        channel_display_name="Prive",
+        scope_type=SCOPE_INITIATIEF,
+        scope_id=sample_initiatief.id,
+        auto_note_enabled=False,
+        suggest_leads_enabled=False,
+    )
+    db_session.add(link)
+    await db_session.flush()
+    open_channels.return_value = "Je bent geen lid van dit kanaal"
+
+    resp = await client.patch(f"/api/mattermost-channels/{link.id}", json=change)
+
+    assert resp.status_code == (403 if checked else 200), resp.text
+    assert open_channels.await_count == (1 if checked else 0)
 
 
 async def test_delete_channel_link(client, sample_initiatief):
@@ -307,3 +350,69 @@ async def test_record_post_skips_bot_self(db_session, sample_initiatief):
         select(MattermostPostLink).where(MattermostPostLink.post_id == post["id"])
     )
     assert result.scalar_one_or_none() is None
+
+
+async def test_private_channel_of_others_is_refused(
+    client, sample_initiatief, sample_lead, open_channels
+):
+    """A private channel the caller is not in may not be linked (its posts
+    would be ingested); the refusal comes from ``channel_link_refusal``."""
+    open_channels.return_value = "Je bent geen lid van dit kanaal"
+    body = {
+        "channel_id": _channel_id(),
+        "channel_name": "p",
+        "channel_display_name": "P",
+    }
+    init = await client.post(
+        f"/api/initiatieven/{sample_initiatief.id}/mattermost-channels", json=body
+    )
+    lead = await client.post(
+        f"/api/leads/{sample_lead.id}/mattermost-channels", json=body
+    )
+    assert init.status_code == 403, init.text
+    assert lead.status_code == 403, lead.text
+    assert "geen lid" in init.json()["detail"]
+
+
+async def test_search_lists_channels_only_to_who_may_link_them(db_session):
+    """A channel is listed only to someone who may link it: a member of an
+    open channel's team, a confirmed member of a private channel."""
+    import httpx
+
+    from bouwmeester.services.mattermost_service import MattermostService
+
+    channels = [
+        {"id": "open", "type": "O", "name": "proj-open", "team_id": "t"},
+        {"id": "elsewhere", "type": "O", "name": "proj-elsewhere", "team_id": "t2"},
+        {"id": "mine", "type": "P", "name": "proj-mine", "team_id": "t"},
+        {"id": "other", "type": "P", "name": "proj-other", "team_id": "t"},
+        {"id": "unknown", "type": "P", "name": "proj-unknown", "team_id": "t"},
+    ]
+    membership = {"mine": 200, "other": 404, "unknown": 500, "elsewhere": 404}
+    team_membership = {"t": 200, "t2": 404}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/api/v4/users/me":
+            return httpx.Response(200, json={"id": "bot"})
+        if path == "/api/v4/users/bot/channels":
+            return httpx.Response(200, json=channels)
+        if path.startswith("/api/v4/teams/"):
+            return httpx.Response(team_membership[path.split("/")[4]], json={})
+        if path.startswith("/api/v4/channels/"):
+            return httpx.Response(membership[path.split("/")[4]], json={})
+        return httpx.Response(200, json=[])
+
+    service = MattermostService(db_session)
+    service._config = {}
+    service._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://mm"
+    )
+
+    def names(results: list[dict]) -> set[str]:
+        return {r["channel_name"] for r in results}
+
+    member = await service.search_channels("proj", member_user_id="me")
+    unlinked = await service.search_channels("proj", member_user_id=None)
+    assert names(member) == {"proj-open", "proj-mine"}
+    assert names(unlinked) == set()  # no Mattermost account: fail closed

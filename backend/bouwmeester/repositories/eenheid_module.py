@@ -7,52 +7,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.eenheid_module import EenheidModule
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.repositories.org_tree import get_chains
 from bouwmeester.schema.eenheid_module import VALID_MODULES
 
 
 async def _walk_ancestors(
     db: AsyncSession, eenheid_ids: list[UUID]
 ) -> dict[UUID, list[UUID]]:
-    """For each eenheid, return its ordered ancestor chain (parent, grandparent, ...).
+    """For each eenheid, its ordered ancestor chain (parent, grandparent, ...).
 
-    Uses batched queries — O(depth) queries regardless of eenheid count.
+    Two queries regardless of depth: the chains (``org_tree.get_chains``,
+    the walk access decisions use too) and the parents to order them.
     """
-    # First pass: batch-collect the full parent mapping for all reachable nodes
-    parent_map: dict[UUID, UUID | None] = {}
-    to_visit = set(eenheid_ids)
-
-    while to_visit:
-        # Only fetch nodes we haven't seen yet
-        unknown = to_visit - parent_map.keys()
-        if not unknown:
-            break
-        stmt = select(OrganisatieEenheid.id, OrganisatieEenheid.parent_id).where(
-            OrganisatieEenheid.id.in_(unknown)
+    chains = await get_chains(db, eenheid_ids)
+    involved = set().union(*chains.values()) if chains else set()
+    parent_of: dict[UUID, UUID | None] = {}
+    if involved:
+        rows = await db.execute(
+            select(OrganisatieEenheid.id, OrganisatieEenheid.parent_id).where(
+                OrganisatieEenheid.id.in_(involved)
+            )
         )
-        result = await db.execute(stmt)
-        next_visit: set[UUID] = set()
-        for eid, pid in result.all():
-            parent_map[eid] = pid
-            if pid is not None and pid not in parent_map:
-                next_visit.add(pid)
-        to_visit = next_visit
-
-    # Second pass: walk the cached parent_map to build per-eenheid chains
-    chains: dict[UUID, list[UUID]] = {}
+        parent_of = dict(rows.all())
+    ordered: dict[UUID, list[UUID]] = {}
     for eid in eenheid_ids:
         chain: list[UUID] = []
-        current = eid
-        visited: set[UUID] = set()
-        while True:
-            pid = parent_map.get(current)
-            if pid is None or pid in visited:
-                break
-            chain.append(pid)
-            visited.add(pid)
-            current = pid
-        chains[eid] = chain
-
-    return chains
+        current = parent_of.get(eid)
+        while current is not None and current not in chain and current != eid:
+            chain.append(current)
+            current = parent_of.get(current)
+        ordered[eid] = chain
+    return ordered
 
 
 class EenheidModuleRepository:

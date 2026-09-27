@@ -8,7 +8,7 @@ from person_role (role_id='unit_manager').
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.orm import joinedload
 
 from bouwmeester.core.query_utils import escape_like
@@ -238,30 +238,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def has_children(self, id: UUID) -> bool:
-        stmt = (
-            select(func.count())
-            .select_from(OrganisatieEenheidParent)
-            .where(
-                OrganisatieEenheidParent.parent_id == id,
-                OrganisatieEenheidParent.geldig_tot.is_(None),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one() > 0
-
-    async def has_personen(self, id: UUID) -> bool:
-        stmt = (
-            select(func.count())
-            .select_from(PersonOrganisatieEenheid)
-            .where(
-                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
-                PersonOrganisatieEenheid.eind_datum.is_(None),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one() > 0
-
     async def get_personen(self, id: UUID) -> list[Person]:
         stmt = (
             select(Person)
@@ -274,18 +250,6 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
-
-    async def count_personen(self, id: UUID) -> int:
-        stmt = (
-            select(func.count())
-            .select_from(PersonOrganisatieEenheid)
-            .where(
-                PersonOrganisatieEenheid.organisatie_eenheid_id == id,
-                PersonOrganisatieEenheid.eind_datum.is_(None),
-            )
-        )
-        result = await self.session.execute(stmt)
-        return result.scalar_one()
 
     async def count_personen_batch(
         self,
@@ -577,12 +541,21 @@ class OrganisatieEenheidRepository(BaseRepository[OrganisatieEenheid]):
             eenheid_id,
             end_date,
         )
-        # Also close unit_manager person_role entries
-        stmt = select(PersonRole).where(
-            PersonRole.organisatie_eenheid_id == eenheid_id,
-            PersonRole.role_id == "unit_manager",
-            PersonRole.eind_datum.is_(None),
-        )
-        result = await self.session.execute(stmt)
-        for pr in result.scalars().all():
-            pr.eind_datum = end_date
+        # Every role held on it and every placement in it ends with it
+        # (``core.authority.require_can_dissolve_eenheid`` guards that).
+        for model, eenheid_col in (
+            (PersonRole, PersonRole.organisatie_eenheid_id),
+            (
+                PersonOrganisatieEenheid,
+                PersonOrganisatieEenheid.organisatie_eenheid_id,
+            ),
+        ):
+            await self.session.execute(
+                update(model)
+                .where(
+                    eenheid_col == eenheid_id,
+                    (model.eind_datum.is_(None)) | (model.eind_datum > end_date),
+                )
+                .values(eind_datum=end_date)
+                .execution_options(synchronize_session="fetch")
+            )

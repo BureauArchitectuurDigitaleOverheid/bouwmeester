@@ -278,3 +278,50 @@ async def test_opdracht_update_returns_node_koppelingen(db_session, sample_opdra
     response = OpdrachtResponse.model_validate(updated)
     assert response.titel == "Updated titel"
     assert isinstance(response.node_koppelingen, list)
+
+
+# ---------------------------------------------------------------------------
+# FinancieelService: only visible opdrachten count
+# ---------------------------------------------------------------------------
+
+
+async def test_financieel_overzicht_counts_opdrachten_visible_by_either_eenheid(
+    db_session, instrument_node, sample_opdracht, extern_org_eenheid
+):
+    """Visible through the opdrachtnemer-eenheid counts, like opdracht:read."""
+    from bouwmeester.core.org_context import OrgContext
+    from bouwmeester.services.financieel_service import FinancieelService
+
+    hidden = OrganisatieEenheid(
+        id=uuid.uuid4(), naam="Elders", type="directie", bron="handmatig"
+    )
+    db_session.add(hidden)
+    await db_session.flush()
+    # Opdrachtgever invisible, opdrachtnemer visible: counts.
+    sample_opdracht.opdrachtgever_id = hidden.id
+    # Both eenheden invisible: does not count.
+    db_session.add(
+        Opdracht(
+            titel="Verborgen",
+            type="opdracht",
+            status="actief",
+            begrotingsjaar=2025,
+            instrument_id=instrument_node.id,
+            opdrachtgever_id=hidden.id,
+            opdrachtnemer_eenheid_id=hidden.id,
+            budget=Decimal("7"),
+        )
+    )
+    await db_session.flush()
+    org_ctx = OrgContext(
+        is_authenticated=True,
+        visible_eenheid_ids=[extern_org_eenheid.id],
+        readable_modules=frozenset({"opdracht"}),
+    )
+
+    overzicht = await FinancieelService(db_session).get_financieel_overzicht(
+        instrument_node.id, org_ctx=org_ctx
+    )
+
+    assert overzicht.totaal_budget == Decimal("100000")
+    assert [j.opdracht_count for j in overzicht.per_jaar] == [1]

@@ -43,6 +43,7 @@ import { EDGE_TYPE_VOCABULARY } from '@/vocabulary';
 import { formatDateLong } from '@/utils/dates';
 import type { CompleteReviewData, NodeTagResponse, Tag } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 interface FollowUpTaskRow {
   title: string;
@@ -113,7 +114,8 @@ interface TagTokenFieldProps {
   nodeTags: NodeTagResponse[] | undefined;
   allTags: Tag[] | undefined;
   onAdd: (tagId: string) => void;
-  onAddNew: (tagName: string) => void;
+  /** Without it, only existing tags can be picked (no `tag:create`). */
+  onAddNew?: (tagName: string) => void;
   onRemove: (tagId: string) => void;
 }
 
@@ -155,7 +157,7 @@ function TagTokenField({ nodeTags, allTags, onAdd, onAddNew, onRemove }: TagToke
         // A known tag id commits as itself; free text (no matching menu item,
         // hence no id) commits as its own typed name.
         if (tagById.has(added)) onAdd(added);
-        else onAddNew(added);
+        else onAddNew?.(added);
       }
     },
     [currentIds, tagById, onAdd, onAddNew, onRemove],
@@ -165,8 +167,8 @@ function TagTokenField({ nodeTags, allTags, onAdd, onAddNew, onRemove }: TagToke
   return (
     <nldd-token-field
       ref={ref}
-      placeholder="Tag zoeken of toevoegen..."
-      allow-custom
+      placeholder={onAddNew ? 'Tag zoeken of toevoegen...' : 'Tag zoeken...'}
+      {...(onAddNew ? { 'allow-custom': true } : {})}
       accessible-label="Tags"
     >
       <nldd-menu>
@@ -220,6 +222,13 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
   const removeTag = useRemoveTagFromNode();
 
   const corpusNodeId = item.corpus_node_id;
+  // Reviewing (the item, its suggestions) is parlementair:review on the
+  // item's node; an item without node is decided like a new node.
+  const nodeResource = corpusNodeId ? ({ type: 'corpus_node', id: corpusNodeId } as const) : null;
+  const { allowed: canReview } = useCan('parlementair:review', nodeResource ?? { type: 'corpus_node' });
+  // Editing the node's tags; without it the tags show read-only.
+  const { allowed: canUpdateNode } = useCan('node:update', nodeResource);
+  const { allowed: canCreateTag } = useCan('tag:create', { type: 'tag' });
   const { data: nodeEdges } = useQuery({
     queryKey: ['edges', { node_id: corpusNodeId }],
     queryFn: () => getEdges({ node_id: corpusNodeId! }),
@@ -264,6 +273,17 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
       description: functieLabel(p.functie),
     }),
   );
+  // The chosen eigenaar is checked rather than the list filtered: one
+  // question instead of one per person.
+  const {
+    allowed: mayNameOwner,
+    isLoading: namingOwnerLoading,
+    isError: namingOwnerError,
+  } = useCan(
+    'parlementair:name_owner',
+    corpusNodeId && eigenaarId ? { type: 'corpus_node', id: corpusNodeId, targetPersonId: eigenaarId } : null,
+  );
+  const ownerRefused = !!eigenaarId && !namingOwnerLoading && !namingOwnerError && !mayNameOwner;
 
   // Edge type options
   const edgeTypeOptions: SelectOption[] = Object.keys(EDGE_TYPE_VOCABULARY).map((key) => ({
@@ -516,14 +536,28 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           )}
 
           {/* Tags on corpus node */}
-          {corpusNodeId && (
+          {corpusNodeId && !canUpdateNode && (nodeTags?.length ?? 0) > 0 && (
+            <nldd-container gap="6" max-width="320px">
+              <nldd-text size="xs" weight="medium">Tags</nldd-text>
+              <nldd-container layout="wrap" gap="4">
+                {nodeTags?.map((nt) => (
+                  <nldd-tag key={nt.tag.id} color="neutral" size="sm" text={nt.tag.name} />
+                ))}
+              </nldd-container>
+            </nldd-container>
+          )}
+          {corpusNodeId && canUpdateNode && (
             <nldd-container gap="6" max-width="320px">
               <nldd-text size="xs" weight="medium">Tags</nldd-text>
               <TagTokenField
                 nodeTags={nodeTags}
                 allTags={allTags}
                 onAdd={(tagId) => addTag.mutate({ nodeId: corpusNodeId, data: { tag_id: tagId } })}
-                onAddNew={(tagName) => addTag.mutate({ nodeId: corpusNodeId, data: { tag_name: tagName } })}
+                onAddNew={
+                  canCreateTag
+                    ? (tagName) => addTag.mutate({ nodeId: corpusNodeId, data: { tag_name: tagName } })
+                    : undefined
+                }
                 onRemove={(tagId) => removeTag.mutate({ nodeId: corpusNodeId, tagId })}
               />
             </nldd-container>
@@ -545,7 +579,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                     <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="top">
                       <nldd-container gap="2" width="full">
                         <nldd-container layout="row" gap="6" vertical-alignment="center">
-                          {edge.status === 'pending' ? (
+                          {edge.status === 'pending' && canReview ? (
                             <Select
                               value={edge.edge_type_id}
                               aria-label="Relatietype"
@@ -588,35 +622,37 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                       </nldd-container>
 
                       {/* Actions on the right */}
-                      <div className="hug hug-gap-2" style={{ paddingTop: '4px' }}>
-                        {edge.status === 'pending' && (
-                          <>
+                      {canReview && (
+                        <div className="hug hug-gap-2" style={{ paddingTop: '4px' }}>
+                          {edge.status === 'pending' && (
+                            <>
+                              <NlddIconButton
+                                icon="check-mark"
+                                accessibleLabel="Goedkeuren"
+                                variant="neutral-transparent"
+                                size="sm"
+                                onClick={() => approveEdge.mutate(edge.id)}
+                              />
+                              <NlddIconButton
+                                icon="trash"
+                                accessibleLabel="Afwijzen"
+                                variant="neutral-transparent"
+                                size="sm"
+                                onClick={() => rejectEdge.mutate(edge.id)}
+                              />
+                            </>
+                          )}
+                          {edge.status !== 'pending' && (
                             <NlddIconButton
-                              icon="check-mark"
-                              accessibleLabel="Goedkeuren"
+                              icon="undo"
+                              accessibleLabel="Ongedaan maken"
                               variant="neutral-transparent"
                               size="sm"
-                              onClick={() => approveEdge.mutate(edge.id)}
+                              onClick={() => resetEdge.mutate(edge.id)}
                             />
-                            <NlddIconButton
-                              icon="trash"
-                              accessibleLabel="Afwijzen"
-                              variant="neutral-transparent"
-                              size="sm"
-                              onClick={() => rejectEdge.mutate(edge.id)}
-                            />
-                          </>
-                        )}
-                        {edge.status !== 'pending' && (
-                          <NlddIconButton
-                            icon="undo"
-                            accessibleLabel="Ongedaan maken"
-                            variant="neutral-transparent"
-                            size="sm"
-                            onClick={() => resetEdge.mutate(edge.id)}
-                          />
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      )}
                     </nldd-container>
                   </nldd-list-item>
                 ))}
@@ -731,7 +767,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           </nldd-container>
 
           {/* Follow-up tasks (right below verbindingen) */}
-          {item.status === 'imported' && (
+          {item.status === 'imported' && canReview && (
             <nldd-container gap="8" max-width="672px">
               <nldd-text size="xs" weight="medium">Vervolgacties</nldd-text>
               {followUpTasks.length > 0 && (
@@ -775,8 +811,8 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             </nldd-container>
           )}
 
-          {/* Eigenaar — last decision before submit */}
-          {item.status === 'imported' && (
+          {/* Eigenaar: last decision before submit */}
+          {item.status === 'imported' && canReview && (
             <nldd-container max-width="320px">
               <CreatableSelect
                 label="Eigenaar"
@@ -784,17 +820,18 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
                 onChange={setEigenaarId}
                 options={sortedPeopleOptions}
                 placeholder="Selecteer eigenaar..."
+                error={ownerRefused ? 'Je mag deze persoon hier niet als eigenaar aanwijzen.' : undefined}
               />
             </nldd-container>
           )}
 
           {/* Bottom actions */}
-          {item.status === 'imported' && (
+          {item.status === 'imported' && canReview && (
             <nldd-container layout="row" gap="12" vertical-alignment="center" padding-top="8">
               <NlddButton
                 size="sm"
                 onClick={handleCompleteSubmit}
-                disabled={!eigenaarId || completeReview.isPending}
+                disabled={!eigenaarId || !mayNameOwner || completeReview.isPending}
                 loading={completeReview.isPending}
                 text="Beoordeling afronden"
               />
@@ -808,7 +845,7 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
           )}
 
           {/* Reopen action for rejected/out_of_scope items */}
-          {(item.status === 'out_of_scope' || item.status === 'rejected') && (
+          {(item.status === 'out_of_scope' || item.status === 'rejected') && canReview && (
             <nldd-container padding-top="8">
               <NlddButton
                 size="sm"

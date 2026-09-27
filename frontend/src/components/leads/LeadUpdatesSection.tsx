@@ -18,6 +18,8 @@ import {
 import { formatDateLong } from '@/utils/dates';
 import type { LeadUpdatePost } from '@/types';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
+import { useCanPublishLead } from '@/hooks/useLeads';
 
 interface Draft {
   titel: string;
@@ -39,8 +41,19 @@ const emptyDraft = (): Draft => ({
   source_raw_text: '',
 });
 
-export function LeadUpdatesSection({ leadId }: { leadId: string }) {
+export function LeadUpdatesSection({
+  leadId,
+  initiatiefId,
+}: {
+  leadId: string;
+  initiatiefId: string | null;
+}) {
   const { data: posts = [] } = useLeadUpdates(leadId);
+  // Updates are written with the rights on their lead: one decision covers them all.
+  const { allowed: canEdit } = useCan('lead_update:create', { type: 'lead', id: leadId });
+  // A public text goes out on the initiatief's page: publishing one is the
+  // initiatief's (`lead_rules.require_may_publish`).
+  const canPublishPublic = useCanPublishLead(initiatiefId);
   const createMutation = useCreateLeadUpdate();
   const editMutation = useEditLeadUpdate();
   const publishMutation = usePublishLeadUpdate();
@@ -184,7 +197,7 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
         <nldd-text size="xs" color="secondary">
           {posts.length === 0 ? 'Nog geen updates' : `${posts.length} totaal`}
         </nldd-text>
-        {!composing && (
+        {canEdit && !composing && (
           <NlddButton variant="secondary" size="sm" onClick={startCompose} text="Nieuwe update" />
         )}
       </nldd-container>
@@ -259,12 +272,14 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
               rows={6}
             />
 
-            <RichTextFormField
-              label="Publieke samenvatting (community-pagina)"
-              value={draft.body_public}
-              onChange={(v) => setDraft({ ...draft, body_public: v })}
-              rows={3}
-            />
+            {canPublishPublic && (
+              <RichTextFormField
+                label="Publieke samenvatting (community-pagina)"
+                value={draft.body_public}
+                onChange={(v) => setDraft({ ...draft, body_public: v })}
+                rows={3}
+              />
+            )}
 
             <nldd-container gap="8">
               <nldd-form-field label="Mail-onderwerp">
@@ -291,12 +306,14 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                 disabled={!draft.titel.trim() || parseMutation.isPending}
                 text="Opslaan als concept"
               />
-              <NlddButton
-                size="sm"
-                onClick={() => handleSave(true)}
-                disabled={!draft.titel.trim() || parseMutation.isPending}
-                text={editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
-              />
+              {(canPublishPublic || !draft.body_public) && (
+                <NlddButton
+                  size="sm"
+                  onClick={() => handleSave(true)}
+                  disabled={!draft.titel.trim() || parseMutation.isPending}
+                  text={editingId ? 'Opslaan + publiceren' : 'Direct publiceren'}
+                />
+              )}
             </nldd-container>
           </nldd-container>
         </nldd-card>
@@ -311,6 +328,8 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                 key={post.id}
                 leadId={leadId}
                 post={post}
+                canEdit={canEdit}
+                canPublishPublic={canPublishPublic}
                 onEdit={() => startEdit(post)}
                 onPublish={() =>
                   publishMutation.mutate({ leadId, postId: post.id })
@@ -334,6 +353,8 @@ export function LeadUpdatesSection({ leadId }: { leadId: string }) {
                 key={post.id}
                 leadId={leadId}
                 post={post}
+                canEdit={canEdit}
+                canPublishPublic={canPublishPublic}
                 onEdit={() => startEdit(post)}
                 onPublish={() =>
                   publishMutation.mutate({ leadId, postId: post.id })
@@ -369,6 +390,8 @@ function eventTargetValue(e: Event): string {
 function UpdateRow({
   leadId,
   post,
+  canEdit,
+  canPublishPublic,
   onEdit,
   onPublish,
   onUnpublish,
@@ -376,12 +399,16 @@ function UpdateRow({
 }: {
   leadId: string;
   post: LeadUpdatePost;
+  canEdit: boolean;
+  canPublishPublic: boolean;
   onEdit: () => void;
   onPublish: () => void;
   onUnpublish: () => void;
   onDelete: () => void;
 }) {
   const isPublished = !!post.published_at;
+  // Taking a post down stays with the lead; putting a public text up does not.
+  const canToggle = isPublished || !post.body_public || canPublishPublic;
 
   const editRef = useRef<HTMLElement>(null);
   const publishRef = useRef<HTMLElement>(null);
@@ -413,15 +440,21 @@ function UpdateRow({
         <Icon name="envelope" size="sm" />
         Outlook
       </nldd-list-item-segment>
-      <nldd-list-item-segment ref={editRef} button accessible-label="Bewerken">
-        <Icon name="pencil" size="sm" />
-      </nldd-list-item-segment>
-      <nldd-list-item-segment ref={publishRef} button accessible-label={isPublished ? 'Depubliceren' : 'Publiceren'}>
-        <Icon name={isPublished ? 'eye-slash' : 'globe'} size="sm" />
-      </nldd-list-item-segment>
-      <nldd-list-item-segment ref={deleteRef} button accessible-label="Verwijderen">
-        <Icon name="trash" size="sm" />
-      </nldd-list-item-segment>
+      {canEdit && (
+        <>
+          <nldd-list-item-segment ref={editRef} button accessible-label="Bewerken">
+            <Icon name="pencil" size="sm" />
+          </nldd-list-item-segment>
+          {canToggle && (
+            <nldd-list-item-segment ref={publishRef} button accessible-label={isPublished ? 'Depubliceren' : 'Publiceren'}>
+              <Icon name={isPublished ? 'eye-slash' : 'globe'} size="sm" />
+            </nldd-list-item-segment>
+          )}
+          <nldd-list-item-segment ref={deleteRef} button accessible-label="Verwijderen">
+            <Icon name="trash" size="sm" />
+          </nldd-list-item-segment>
+        </>
+      )}
     </nldd-list-item>
   );
 }

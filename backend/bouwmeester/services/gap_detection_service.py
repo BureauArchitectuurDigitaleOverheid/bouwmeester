@@ -10,6 +10,11 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import (
+    OrgContext,
+    apply_node_filter,
+    apply_org_filter,
+)
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.resource_permission import ResourcePermission
@@ -63,9 +68,11 @@ class GapDetectionService:
         self.llm_service = llm_service
 
     async def analyze_dossier(
-        self, dossier_id: str
+        self, dossier_id: str, org_ctx: OrgContext | None = None
     ) -> tuple[list[GapItem], int, int, GapAnalysisResult | None]:
         """Analyze completeness of a dossier against Beleidskompas model.
+
+        Only the children *org_ctx* sees count (``None``: all of them).
 
         Returns (gaps, completed_count, total_steps, llm_analysis).
         """
@@ -89,7 +96,9 @@ class GapDetectionService:
         # Load child nodes
         nodes_by_type: dict[str, list] = {}
         if child_ids:
-            nodes_stmt = select(CorpusNode).where(CorpusNode.id.in_(child_ids))
+            nodes_stmt = apply_node_filter(
+                select(CorpusNode).where(CorpusNode.id.in_(child_ids)), org_ctx
+            )
             nodes_result = await self.session.execute(nodes_stmt)
             for node in nodes_result.scalars().all():
                 nodes_by_type.setdefault(node.node_type, []).append(node)
@@ -142,16 +151,19 @@ class GapDetectionService:
 
         return gaps, completed_count, len(BELEIDSKOMPAS_STEPS), llm_result
 
-    async def corpus_gap_overview(self) -> list[CorpusGapSummaryItem]:
-        """Quick overview of completeness for all dossier nodes."""
+    async def corpus_gap_overview(
+        self, org_ctx: OrgContext | None = None
+    ) -> list[CorpusGapSummaryItem]:
+        """Quick overview of completeness for the dossiers *org_ctx* sees."""
         stmt = select(CorpusNode).where(CorpusNode.node_type == "dossier")
+        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
         result = await self.session.execute(stmt)
         dossiers = result.scalars().all()
 
         items = []
         for dossier in dossiers:
             dossier_id = str(dossier.id)
-            gaps, completed, total, _ = await self.analyze_dossier(dossier_id)
+            gaps, completed, total, _ = await self.analyze_dossier(dossier_id, org_ctx)
 
             # Check stakeholders
             stakeholder_stmt = select(ResourcePermission).where(

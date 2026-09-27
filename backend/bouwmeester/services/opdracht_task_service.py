@@ -8,7 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
+from bouwmeester.services.agent_rules import SYSTEM_ACTOR, may_instruct
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class OpdrachtTaskService:
         await self._create_task_if_new(
             opdracht,
             work_type="Formalisatie",
-            title=f"Opdracht formaliseren: {opdracht.titel}",
+            title="Opdracht formaliseren",
             priority="hoog",
         )
 
@@ -34,7 +36,7 @@ class OpdrachtTaskService:
             await self._create_task_if_new(
                 opdracht,
                 work_type="Beschikking",
-                title=f"Beschikkingsaanvraag indienen: {opdracht.titel}",
+                title="Beschikkingsaanvraag indienen",
                 priority="hoog",
             )
 
@@ -44,7 +46,7 @@ class OpdrachtTaskService:
             await self._create_task_if_new(
                 opdracht,
                 work_type="Verantwoording",
-                title=f"Verantwoording opstellen: {opdracht.titel}",
+                title="Verantwoording opstellen",
                 priority="hoog",
             )
 
@@ -70,7 +72,7 @@ class OpdrachtTaskService:
             created = await self._create_task_if_new(
                 opdracht,
                 work_type="Deadline",
-                title=f"Deadline nadert: {opdracht.titel}",
+                title="Deadline nadert",
                 priority="hoog",
                 deadline=opdracht.einddatum,
             )
@@ -102,7 +104,7 @@ class OpdrachtTaskService:
             created = await self._create_task_if_new(
                 opdracht,
                 work_type="Budgetvoorbereiding",
-                title=f"Budget volgend jaar voorbereiden: {opdracht.titel}",
+                title="Budget volgend jaar voorbereiden",
                 priority="hoog",
             )
             if created:
@@ -141,6 +143,12 @@ class OpdrachtTaskService:
     ) -> bool:
         """Create a task for the opdracht if no open task with this work_type exists.
 
+        The task lives where the opdracht lives: in its opdrachtgever, else
+        its opdrachtnemer-eenheid, so the instrument's readers and editors
+        do not get it.  Only then does its title name the opdracht; a task
+        of an opdracht without eenheid keeps the generic *title* and is
+        tied to the opdracht by ``opdracht_id`` alone.
+
         Returns True if a task was created.
         """
         if await self._has_open_task(opdracht.id, work_type):
@@ -162,14 +170,29 @@ class OpdrachtTaskService:
             )
             return False
 
+        # The system generates this task, and the system instructs no agent:
+        # an agent verantwoordelijke would take its orders from whoever may
+        # edit the opdracht's title or status.  Such a task stays unassigned.
+        verantwoordelijke = await self.session.get(
+            Person, opdracht.verantwoordelijke_id
+        )
+        assignee_id = (
+            opdracht.verantwoordelijke_id
+            if may_instruct(SYSTEM_ACTOR, verantwoordelijke)
+            else None
+        )
+        eenheid_id = opdracht.opdrachtgever_id or opdracht.opdrachtnemer_eenheid_id
+        if eenheid_id is not None:
+            title = f"{title}: {opdracht.titel}"
         task = Task(
             node_id=opdracht.instrument_id,
+            organisatie_eenheid_id=eenheid_id,
             opdracht_id=opdracht.id,
             title=title,
             priority=priority,
             status="open",
             work_type=work_type,
-            assignee_id=opdracht.verantwoordelijke_id,
+            assignee_id=assignee_id,
             deadline=deadline,
         )
         self.session.add(task)

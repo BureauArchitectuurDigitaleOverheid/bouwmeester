@@ -17,6 +17,9 @@ class AppConfigResponse(BaseModel):
     updated_by: str | None
     updated_at: datetime
     created_at: datetime
+    # Whether the caller may change this entry; computed per request by the
+    # same rule the PATCH route enforces.
+    editable: bool = True
 
 
 class AppConfigUpdate(BaseModel):

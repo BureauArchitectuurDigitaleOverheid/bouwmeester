@@ -12,10 +12,16 @@ from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
+    approve_placement_requests,
+    bron_after_change,
+    placement_bron,
+    require_can_change_placement,
     require_can_delete_person,
     require_can_edit_person,
     require_can_place,
+    require_can_read_person,
 )
+from bouwmeester.core.authz import require
 from bouwmeester.core.database import get_db
 from bouwmeester.core.org_context import OrgContext, apply_org_filter, get_org_context
 from bouwmeester.core.permissions import (
@@ -29,7 +35,10 @@ from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    TRUSTED_PLACEMENT_BRONNEN,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.models.person_phone import PersonPhone
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
@@ -68,7 +77,7 @@ def _editable_person(*, identity: bool):
 
     async def _load(
         id: UUID,
-        perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+        perm_ctx: PermissionContext = Depends(get_permission_context),
         db: AsyncSession = Depends(get_db),
     ) -> Person:
         person = require_found(await db.get(Person, id), "Person")
@@ -87,16 +96,23 @@ async def _require_can_place(
     perm_ctx: PermissionContext,
     person_id: UUID,
     eenheid_id: UUID,
-    *,
-    ending: bool = False,
 ) -> tuple[Person, OrganisatieEenheid]:
-    """Load person and eenheid and check the caller may change the placement."""
+    """Load person and eenheid and check the caller may place them there."""
     person = require_found(await db.get(Person, person_id), "Person")
     eenheid = require_found(
         await db.get(OrganisatieEenheid, eenheid_id), "Organisatie-eenheid"
     )
-    await require_can_place(db, perm_ctx, person, eenheid, ending=ending)
+    await require_can_place(db, perm_ctx, person, eenheid)
     return person, eenheid
+
+
+async def _placement(
+    db: AsyncSession, person_id: UUID, placement_id: UUID
+) -> PersonOrganisatieEenheid:
+    placement = await db.get(PersonOrganisatieEenheid, placement_id)
+    if placement is not None and placement.person_id != person_id:
+        placement = None
+    return require_found(placement, "Placement")
 
 
 async def _find_name_duplicates(
@@ -155,7 +171,7 @@ async def create_person(
     actor_id: UUID | None = Query(None),
     force: bool = Query(False),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:create")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonCreateResponse:
     """Create a person.
 
@@ -163,6 +179,9 @@ async def create_person(
     If a person with the same name already exists, returns 409 with the
     duplicates unless force=true is passed.
     """
+    # A new person lives in no eenheid yet (placing is a separate, guarded
+    # step), so creating one is decided tenant-wide.
+    await require(db, perm_ctx, "people:create", "person")
     # Agent creation requires admin privileges (agents bypass email whitelist).
     if data.is_agent and not perm_ctx.is_super_admin:
         raise HTTPException(
@@ -221,7 +240,12 @@ async def create_person(
             status_code=409, detail=f"E-mailadres '{data.email}' is al in gebruik"
         )
     if data.email:
-        email_obj = PersonEmail(person_id=person.id, email=data.email, is_default=True)
+        email_obj = PersonEmail(
+            person_id=person.id,
+            email=data.email,
+            is_default=True,
+            added_by_id=perm_ctx.person_id,
+        )
         db.add(email_obj)
         await db.flush()
         await db.refresh(person, attribute_names=["emails"])
@@ -435,9 +459,10 @@ async def get_person(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:read")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonDetailResponse:
     """Get detailed person info including emails, phones, and org placements."""
+    require_can_read_person(perm_ctx, id)
     repo = PersonRepository(db)
     person = require_found(await repo.get(id), "Person")
     resp = PersonDetailResponse.model_validate(person)
@@ -496,9 +521,9 @@ async def delete_person(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:manage")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
-    """Delete a person permanently."""
+    """Delete a person permanently (``require_can_delete_person`` decides)."""
     repo = PersonRepository(db)
     person = require_found(await repo.get(id), "Person")
     await require_can_delete_person(db, perm_ctx, person)
@@ -558,9 +583,10 @@ async def list_person_organisaties(
     current_user: OptionalUser,
     actief: bool = Query(True),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("people:read")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[PersonOrganisatieResponse]:
     """List org unit placements for a person. Defaults to active placements only."""
+    require_can_read_person(perm_ctx, id)
     require_found(await db.get(Person, id), "Person")
 
     stmt = (
@@ -599,35 +625,59 @@ async def add_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonOrganisatieResponse:
-    """Place a person in an org unit. Returns 409 if already active in that unit."""
-    _, eenheid = await _require_can_place(db, perm_ctx, id, data.organisatie_eenheid_id)
+    """Place a person in an org unit. Returns 409 if already active in that unit.
+
+    A manager placing someone who already has an informational placement
+    there (contact administration) confirms that placement instead.  A
+    trusted placement also settles a pending placement request for it.
+    """
+    person, eenheid = await _require_can_place(
+        db, perm_ctx, id, data.organisatie_eenheid_id
+    )
+    bron = await placement_bron(db, perm_ctx, person, eenheid)
 
     # Check for existing active placement in same org unit
-    existing = await db.execute(
-        select(PersonOrganisatieEenheid).where(
-            PersonOrganisatieEenheid.person_id == id,
-            PersonOrganisatieEenheid.organisatie_eenheid_id
-            == data.organisatie_eenheid_id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
+    existing = (
+        await db.scalars(
+            select(PersonOrganisatieEenheid).where(
+                PersonOrganisatieEenheid.person_id == id,
+                PersonOrganisatieEenheid.organisatie_eenheid_id
+                == data.organisatie_eenheid_id,
+                PersonOrganisatieEenheid.eind_datum.is_(None),
+            )
         )
-    )
-    if existing.scalar_one_or_none() is not None:
+    ).all()
+    if any(p.bron in TRUSTED_PLACEMENT_BRONNEN for p in existing) or (
+        existing and bron not in TRUSTED_PLACEMENT_BRONNEN
+    ):
         raise HTTPException(
             status_code=409,
             detail="Persoon is al ingedeeld bij deze eenheid",
         )
 
-    placement = PersonOrganisatieEenheid(
-        person_id=id,
-        organisatie_eenheid_id=data.organisatie_eenheid_id,
-        dienstverband=data.dienstverband,
-        start_datum=data.start_datum,
-    )
-    db.add(placement)
+    if existing:
+        placement = existing[0]
+        placement.bron = bron
+    else:
+        placement = PersonOrganisatieEenheid(
+            person_id=id,
+            organisatie_eenheid_id=data.organisatie_eenheid_id,
+            dienstverband=data.dienstverband,
+            start_datum=data.start_datum,
+            bron=bron,
+        )
+        db.add(placement)
     await db.flush()
     await db.refresh(placement)
+    if bron in TRUSTED_PLACEMENT_BRONNEN:
+        await approve_placement_requests(
+            db,
+            person_id=id,
+            eenheid_id=data.organisatie_eenheid_id,
+            decided_by=perm_ctx.person_id,
+        )
 
     await log_activity(
         db,
@@ -664,15 +714,14 @@ async def update_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonOrganisatieResponse:
-    """Update an org placement (e.g. set eind_datum to end placement)."""
-    stmt = select(PersonOrganisatieEenheid).where(
-        PersonOrganisatieEenheid.id == placement_id,
-        PersonOrganisatieEenheid.person_id == id,
-    )
-    result = await db.execute(stmt)
-    placement = require_found(result.scalar_one_or_none(), "Placement")
+    """Update an org placement (e.g. set eind_datum to end placement).
+
+    Changing or reopening a trusted placement keeps it trusted only for who
+    decides about the members (``bron_after_change``).
+    """
+    placement = await _placement(db, id, placement_id)
     update_data = data.model_dump(exclude_unset=True)
     # Only an earlier end date counts as ending; a later one would reopen it.
     ending = (
@@ -680,16 +729,18 @@ async def update_person_organisatie(
         and data.eind_datum is not None
         and (placement.eind_datum is None or data.eind_datum <= placement.eind_datum)
     )
-    await _require_can_place(
-        db, perm_ctx, id, placement.organisatie_eenheid_id, ending=ending
+    person, eenheid = await require_can_change_placement(
+        db, perm_ctx, placement, ending=ending
     )
 
+    if not ending:
+        placement.bron = await bron_after_change(
+            db, perm_ctx, person, eenheid, placement.bron
+        )
     for key, value in update_data.items():
         setattr(placement, key, value)
     await db.flush()
     await db.refresh(placement)
-
-    eenheid = await db.get(OrganisatieEenheid, placement.organisatie_eenheid_id)
 
     await log_activity(
         db,
@@ -699,14 +750,14 @@ async def update_person_organisatie(
         details={
             "person_id": str(id),
             "placement_id": str(placement_id),
-            "organisatie_eenheid_naam": eenheid.naam if eenheid else None,
+            "organisatie_eenheid_naam": eenheid.naam,
         },
     )
     return PersonOrganisatieResponse(
         id=placement.id,
         person_id=placement.person_id,
         organisatie_eenheid_id=placement.organisatie_eenheid_id,
-        organisatie_eenheid_naam=eenheid.naam if eenheid else "",
+        organisatie_eenheid_naam=eenheid.naam,
         dienstverband=placement.dienstverband,
         start_datum=placement.start_datum,
         eind_datum=placement.eind_datum,
@@ -723,18 +774,11 @@ async def delete_person_organisatie(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("people:update")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> None:
     """Delete an org placement permanently."""
-    stmt = select(PersonOrganisatieEenheid).where(
-        PersonOrganisatieEenheid.id == placement_id,
-        PersonOrganisatieEenheid.person_id == id,
-    )
-    result = await db.execute(stmt)
-    placement = require_found(result.scalar_one_or_none(), "Placement")
-    await _require_can_place(
-        db, perm_ctx, id, placement.organisatie_eenheid_id, ending=True
-    )
+    placement = await _placement(db, id, placement_id)
+    await require_can_change_placement(db, perm_ctx, placement, ending=True)
     await db.delete(placement)
     await db.flush()
 
@@ -761,6 +805,7 @@ async def add_person_email(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _person: Person = Depends(identity_editable_person),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> PersonEmailResponse:
     """Add an email address to a person. First email auto-becomes default."""
     email = normalize_email(data.email)
@@ -783,6 +828,7 @@ async def add_person_email(
         person_id=id,
         email=email,
         is_default=data.is_default or is_first,
+        added_by_id=perm_ctx.person_id,
     )
     db.add(email_obj)
 
@@ -898,7 +944,7 @@ async def add_person_phone(
 
     if data.label not in PHONE_LABELS:
         raise HTTPException(
-            status_code=422,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Label moet een van {list(PHONE_LABELS.keys())} zijn",
         )
 

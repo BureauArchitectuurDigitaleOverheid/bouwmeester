@@ -17,7 +17,10 @@ from bouwmeester.core.api_key import generate_api_key, hash_api_key
 from bouwmeester.core.database import async_session
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.person_email import PersonEmail
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.repositories.corpus_node import CorpusNodeRepository
 from bouwmeester.repositories.edge import EdgeRepository
 from bouwmeester.repositories.edge_type import EdgeTypeRepository
@@ -860,6 +863,8 @@ async def seed(db: AsyncSession) -> None:
             organisatie_eenheid_id=eenheid.id,
             dienstverband="in_dienst",
             start_datum=date.today(),
+            # Staff placed by their manager: a trusted placement.
+            bron=PLACEMENT_BRON_LEIDINGGEVENDE,
         )
         db.add(placement)
         await db.flush()
@@ -1011,6 +1016,8 @@ async def seed(db: AsyncSession) -> None:
             organisatie_eenheid_id=eenheid.id,
             dienstverband="in_dienst",
             start_datum=date.today(),
+            # Staff placed by their manager: a trusted placement.
+            bron=PLACEMENT_BRON_LEIDINGGEVENDE,
         )
         db.add(placement)
         await db.flush()
@@ -3772,7 +3779,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_1.id,
             target_node_id=instr_algo_register.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.9,
             reason="Gedeelde tags: algoritmen, ai",
             status="pending",
@@ -3782,7 +3789,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_1.id,
             target_node_id=bk_algo_kader.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.8,
             reason="Gedeelde tags: algoritmen",
             status="pending",
@@ -3862,7 +3869,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_2.id,
             target_node_id=instr_digid.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.85,
             reason="Gedeelde tags: digitale identiteit",
             status="pending",
@@ -3872,7 +3879,7 @@ async def seed(db: AsyncSession) -> None:
         SuggestedEdge(
             parlementair_item_id=mi_2.id,
             target_node_id=instr_eidas_wallet.id,
-            edge_type_id="adresseert",
+            edge_type_id="evalueert",
             confidence=0.75,
             reason="Gedeelde tags: eIDAS",
             status="pending",

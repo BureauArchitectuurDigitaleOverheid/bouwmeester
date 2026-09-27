@@ -52,7 +52,19 @@ export function errorDetail(error: unknown): string {
   return '';
 }
 
+const forbiddenListeners = new Set<() => void>();
+
+/**
+ * Be told about every 403 the API answers. A refusal the UI did not expect
+ * means its cached rights are stale (see `hooks/useCan.ts`).
+ */
+export function onForbidden(listener: () => void): () => void {
+  forbiddenListeners.add(listener);
+  return () => forbiddenListeners.delete(listener);
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
+  if (response.status === 403) forbiddenListeners.forEach((listener) => listener());
   if (!response.ok) {
     let body: unknown;
     const text = await response.text();

@@ -10,6 +10,7 @@ import { formatCurrencyCompact, calculateUtilization } from '@/utils/format';
 import { useOpdrachtDetail } from '@/contexts/OpdrachtDetailContext';
 import { useOpdrachtCreate } from '@/contexts/OpdrachtCreateContext';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 import { NlddListItemButton } from '@/components/nldd/NlddLink';
 
 interface FinancieelOverzichtPanelProps {
@@ -22,6 +23,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
   const { data: opdrachten = [], isLoading: loadingOpdrachten } = useNodeOpdrachten(nodeId);
   const { openOpdrachtDetail } = useOpdrachtDetail();
   const { openOpdrachtCreate } = useOpdrachtCreate();
+  const { allowed: canCreateOpdracht } = useCan('opdracht:create', { type: 'opdracht' });
 
   if (loadingOverzicht || loadingOpdrachten) {
     return <LoadingSpinner text="Laden..." />;
@@ -101,7 +103,7 @@ export function FinancieelOverzichtPanel({ nodeId, nodeType }: FinancieelOverzic
         <nldd-container layout="row" gap="8" vertical-alignment="center">
           <nldd-title size={6}><h4>Opdrachten</h4></nldd-title>
           <nldd-spacer direction="horizontal" size="flexible" />
-          {nodeType === 'instrument' && (
+          {nodeType === 'instrument' && canCreateOpdracht && (
             <NlddButton
               variant="secondary"
               size="sm"

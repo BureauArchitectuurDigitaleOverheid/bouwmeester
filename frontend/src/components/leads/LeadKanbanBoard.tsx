@@ -6,9 +6,20 @@ import { LeadMetricsBar } from './LeadMetricsBar';
 import { LeadIntakeDialog } from './LeadIntakeDialog';
 import { useLeads, useMoveLead, useReorderLeads } from '@/hooks/useLeads';
 import { useLeadColumns } from '@/hooks/useLeadColumns';
+import { useCan } from '@/hooks/useCan';
 import { useLeadDetail } from '@/contexts/LeadDetailContext';
 import type { Lead, LeadColumn, LeadFilters } from '@/types';
 import { leadColumnTagColor } from './stageColors';
+
+/** A card's drag handle: a lead is only dragged (moved) by someone who may update it. */
+function LeadDragSource({
+  leadId,
+  onDragStart,
+  ...rest
+}: { leadId: string } & React.HTMLAttributes<HTMLDivElement>) {
+  const { allowed } = useCan('lead:update', { type: 'lead', id: leadId });
+  return <div {...rest} draggable={allowed} onDragStart={allowed ? onDragStart : undefined} />;
+}
 
 interface LeadKanbanBoardProps {
   searchQuery?: string;
@@ -48,6 +59,7 @@ export function LeadKanbanBoard({
   } | null>(null);
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [showIntake, setShowIntake] = useState(false);
+  const { allowed: canCreateLead } = useCan('lead:create', { type: 'initiatief', id: initiatiefId });
 
   const allLeads = useMemo(() => leads ?? [], [leads]);
   const filteredLeads = useMemo(() => {
@@ -244,8 +256,8 @@ export function LeadKanbanBoard({
                                 backgroundColor: indicatorAbove ? 'var(--primitives-color-accent-100)' : 'transparent',
                               }}
                             />
-                            <div
-                              draggable
+                            <LeadDragSource
+                              leadId={lead.id}
                               onDragStart={(e) => handleDragStart(e, lead)}
                               onDragEnd={handleDragEnd}
                               onDragOver={(e) =>
@@ -258,7 +270,7 @@ export function LeadKanbanBoard({
                                 lead={lead}
                                 onClick={() => openLeadDetail(lead.id)}
                               />
-                            </div>
+                            </LeadDragSource>
                           </div>
                         );
                       })}
@@ -288,14 +300,16 @@ export function LeadKanbanBoard({
                   )}
                 </nldd-container>
 
-                <NlddButton
-                  text="Nieuwe lead"
-                  startIcon="plus"
-                  variant="neutral-transparent"
-                  size="sm"
-                  onClick={() => setShowIntake(true)}
-                  width="full"
-                />
+                {canCreateLead && (
+                  <NlddButton
+                    text="Nieuwe lead"
+                    startIcon="plus"
+                    variant="neutral-transparent"
+                    size="sm"
+                    onClick={() => setShowIntake(true)}
+                    width="full"
+                  />
+                )}
               </nldd-container>
             </nldd-box>
           </div>

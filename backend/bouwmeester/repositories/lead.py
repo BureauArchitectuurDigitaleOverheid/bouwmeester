@@ -8,11 +8,12 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
-    apply_initiatief_filter,
+    apply_lead_filter,
 )
 from bouwmeester.models.lead import Lead
 from bouwmeester.models.lead_activity import LeadActivity
 from bouwmeester.models.lead_column import LeadColumn
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.tag import LeadTag, Tag
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.lead import LeadCreate, LeadUpdate
@@ -77,7 +78,7 @@ class LeadRepository(BaseRepository[Lead]):
         self, id: UUID, init_ctx: InitiatiefContext | None = None
     ) -> Lead | None:
         stmt = select(Lead).where(Lead.id == id).options(*_lead_options())
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -100,7 +101,7 @@ class LeadRepository(BaseRepository[Lead]):
                 selectinload(Lead.lead_tags).selectinload(LeadTag.tag),
             )
         )
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -165,7 +166,7 @@ class LeadRepository(BaseRepository[Lead]):
                     Lead.next_action_date <= today + timedelta(days=7),
                 )
 
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
 
         # Sorting
         sort_columns = {
@@ -279,7 +280,6 @@ class LeadRepository(BaseRepository[Lead]):
     ) -> dict[UUID, list[str]]:
         """Get contact person names for multiple leads in one query."""
         from bouwmeester.models.person import Person
-        from bouwmeester.models.resource_permission import ResourcePermission
 
         if not lead_ids:
             return {}
@@ -326,17 +326,42 @@ class LeadRepository(BaseRepository[Lead]):
         stmt = select(Lead).where(or_(*conditions)).options(*_lead_options())
         if exclude_id:
             stmt = stmt.where(Lead.id != exclude_id)
-        stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+        stmt = apply_lead_filter(stmt, init_ctx)
         stmt = stmt.order_by(func.similarity(Lead.title, title).desc()).limit(5)
 
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def grants_to_move(
+        self, source_id: UUID, target_id: UUID
+    ) -> tuple[list[ResourcePermission], list[ResourcePermission]]:
+        """The source's resource roles a merge moves, and those it drops.
+
+        A grant is dropped when the target already has the same holder
+        with the same rol.
+        """
+        rows = await self.session.execute(
+            select(ResourcePermission)
+            .where(
+                ResourcePermission.resource_type == "lead",
+                ResourcePermission.resource_id.in_([source_id, target_id]),
+            )
+            .options(selectinload(ResourcePermission.person))
+        )
+        grants = rows.scalars().all()
+
+        def holder(g: ResourcePermission) -> tuple:
+            return (g.person_id, g.organisatie_eenheid_id, g.rol)
+
+        existing = {holder(g) for g in grants if g.resource_id == target_id}
+        source = [g for g in grants if g.resource_id == source_id]
+        moving = [g for g in source if holder(g) not in existing]
+        return moving, [g for g in source if holder(g) in existing]
+
     async def merge(self, source_id: UUID, target_id: UUID) -> Lead | None:
         """Merge source lead into target lead, then delete source."""
         from bouwmeester.models.lead_attachment import LeadAttachment
         from bouwmeester.models.lead_node import LeadNode
-        from bouwmeester.models.resource_permission import ResourcePermission
 
         source = await self.get_detail(source_id)
         target = await self.get_detail(target_id)
@@ -350,25 +375,11 @@ class LeadRepository(BaseRepository[Lead]):
             activity.lead_id = target_id
 
         # Move contacts from source to target (skip duplicates)
-        stmt = select(ResourcePermission).where(
-            ResourcePermission.resource_type == "lead",
-            ResourcePermission.resource_id == source_id,
-        )
-        result = await self.session.execute(stmt)
-        # Get existing target contacts
-        target_stmt = select(ResourcePermission).where(
-            ResourcePermission.resource_type == "lead",
-            ResourcePermission.resource_id == target_id,
-        )
-        target_result = await self.session.execute(target_stmt)
-        existing_contacts = {
-            (c.person_id, c.rol) for c in target_result.scalars().all()
-        }
-        for contact in result.scalars().all():
-            if (contact.person_id, contact.rol) not in existing_contacts:
-                contact.resource_id = target_id
-            else:
-                await self.session.delete(contact)
+        moving, duplicate = await self.grants_to_move(source_id, target_id)
+        for contact in moving:
+            contact.resource_id = target_id
+        for contact in duplicate:
+            await self.session.delete(contact)
 
         # Move attachments from source to target
         stmt = select(LeadAttachment).where(LeadAttachment.lead_id == source_id)
@@ -412,7 +423,11 @@ class LeadRepository(BaseRepository[Lead]):
                 f"{target.description}\n\n---\nSamengevoegd:\n{source.description}"
             )
 
-        # Delete source lead
+        # Delete source lead, with the channel links, abonnementen and other
+        # rows that point at it without a foreign key.
+        from bouwmeester.core.deletion import remove_scoped
+
+        await remove_scoped(self.session, {"lead": {source_id}})
         await self.session.delete(source)
         await self.session.flush()
 
@@ -461,7 +476,7 @@ class LeadRepository(BaseRepository[Lead]):
             lead_stmt = lead_stmt.where(Lead.created_at >= dt_from)
         if dt_to is not None:
             lead_stmt = lead_stmt.where(Lead.created_at <= dt_to)
-        lead_stmt = apply_initiatief_filter(lead_stmt, Lead.initiatief_id, init_ctx)
+        lead_stmt = apply_lead_filter(lead_stmt, init_ctx)
         result = await self.session.execute(lead_stmt)
         leads = list(result.scalars().all())
 
@@ -536,7 +551,7 @@ class LeadRepository(BaseRepository[Lead]):
         initiatief_id: UUID | None = None,
     ) -> dict:
         def scoped(stmt):
-            stmt = apply_initiatief_filter(stmt, Lead.initiatief_id, init_ctx)
+            stmt = apply_lead_filter(stmt, init_ctx)
             if initiatief_id is not None:
                 stmt = stmt.where(Lead.initiatief_id == initiatief_id)
             return stmt

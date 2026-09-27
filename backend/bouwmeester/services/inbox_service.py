@@ -4,9 +4,11 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.repositories.activity import ActivityRepository
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxItem, InboxResponse
+from bouwmeester.services.visibility_filters import inbox_items
 
 
 class InboxService:
@@ -15,8 +17,10 @@ class InboxService:
         self.task_repo = TaskRepository(session)
         self.activity_repo = ActivityRepository(session)
 
-    async def get_inbox(self, person_id: UUID) -> InboxResponse:
-        """Aggregate inbox items for a person.
+    async def get_inbox(
+        self, person_id: UUID, perm_ctx: PermissionContext
+    ) -> InboxResponse:
+        """Aggregate inbox items for a person, as far as *perm_ctx* reads them.
 
         Includes:
         - Overdue tasks assigned to the person
@@ -75,6 +79,7 @@ class InboxService:
                     )
                 )
 
+        items = await inbox_items(self.session, perm_ctx, items)
         # Sort by created_at descending
         items.sort(key=lambda x: x.created_at, reverse=True)
 

@@ -30,9 +30,7 @@ from bouwmeester.core.permissions import (
 )
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
-from bouwmeester.services.merge_organisatie_eenheden import (
-    merge_organisatie_eenheden,
-)
+from bouwmeester.services.merge_organisatie_eenheden import MergeResult, merge_into
 
 log = logging.getLogger(__name__)
 
@@ -65,23 +63,15 @@ class ManualMergeRequest(BaseModel):
     target_id: uuid.UUID
 
 
-def _backfill_target_fields(
-    *, target: OrganisatieEenheid, source: OrganisatieEenheid
-) -> None:
-    """Vul lege target-velden met source-data vóór de merge.
-
-    afkorting/website/kvk/beschrijving levert TOOI niet maar een
-    handmatige rij vaak wel; zonder backfill zou die data met de
-    source-rij verdwijnen.
-    """
-    if not target.afkorting and source.afkorting:
-        target.afkorting = source.afkorting
-    if not target.website and source.website:
-        target.website = source.website
-    if not target.kvk_nummer and source.kvk_nummer:
-        target.kvk_nummer = source.kvk_nummer
-    if not target.beschrijving and source.beschrijving:
-        target.beschrijving = source.beschrijving
+def _merge_response(target: OrganisatieEenheid, result: MergeResult) -> dict:
+    """The answer to a merge, with the trust it took away from the source."""
+    return {
+        "status": "merged",
+        "doelrij_id": str(target.id),
+        "rewritten": result.rewritten,
+        "eigenaarsrechten_verwijderd": result.owner_grants_removed,
+        "plaatsingen_onbevestigd": result.placements_unconfirmed,
+    }
 
 
 @router.get("", response_model=list[ReconciliationResponse])
@@ -170,10 +160,7 @@ async def merge_reconciliation(
             detail="Een van beide rijen bestaat niet meer; reconciliation is stale",
         )
 
-    _backfill_target_fields(target=kandidaat, source=handmatig)
-    await db.flush()
-
-    rewritten = await merge_organisatie_eenheden(db, handmatig.id, kandidaat.id)
+    result = await merge_into(db, source=handmatig, target=kandidaat)
 
     rec.status = "merged"
     rec.resolved_by = perm_ctx.person_id
@@ -184,13 +171,9 @@ async def merge_reconciliation(
         "Reconciliation %s gemerged in kandidaat %s; FK-rewrites: %s",
         rec_id,
         kandidaat.id,
-        rewritten,
+        result.rewritten,
     )
-    return {
-        "status": "merged",
-        "doelrij_id": str(kandidaat.id),
-        "rewritten": rewritten,
-    }
+    return _merge_response(kandidaat, result)
 
 
 @router.post("/{rec_id}/ignore", summary="Markeer reconciliation als no-merge")
@@ -248,10 +231,7 @@ async def manual_merge(
             detail="target is een synthetische groep, geen echte eenheid",
         )
 
-    _backfill_target_fields(target=target, source=source)
-    await db.flush()
-
-    rewritten = await merge_organisatie_eenheden(db, source.id, target.id)
+    result = await merge_into(db, source=source, target=target)
 
     # Sluit open reconciliations die nu zinloos zijn: source is verwijderd
     # en al zijn FK's (ook PendingReconciliation.handmatige_id/kandidaat_id)
@@ -285,10 +265,6 @@ async def manual_merge(
         source.naam,
         target.id,
         target.naam,
-        rewritten,
+        result.rewritten,
     )
-    return {
-        "status": "merged",
-        "doelrij_id": str(target.id),
-        "rewritten": rewritten,
-    }
+    return _merge_response(target, result)

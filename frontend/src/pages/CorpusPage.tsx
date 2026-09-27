@@ -10,13 +10,15 @@ import { NodeCreateForm } from '@/components/nodes/NodeCreateForm';
 import { ExportButton } from '@/components/nodes/ExportButton';
 import { CorpusGraph } from '@/components/graph/CorpusGraph';
 import { CorpusMatrix } from '@/components/graph/CorpusMatrix';
-import { eventValue, useNlddEvent } from '@/components/nldd/events';
+import { eventValue, orUndef, useNlddEvent } from '@/components/nldd/events';
 import { NodeType } from '@/types';
 import { useVocabulary } from '@/contexts/VocabularyContext';
 import { useGraphView } from '@/hooks/useGraph';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useCan } from '@/hooks/useCan';
 
 type ViewMode = 'list' | 'graph' | 'matrix';
 
@@ -44,6 +46,9 @@ function CorpusSearchField({ value, onChange }: { value: string; onChange: (v: s
 
 export function CorpusPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
+  // Exporting reads the whole tenant: system roles only.
+  const canExport = usePermissions().hasSystemPermission('import_export:export');
+  const { allowed: canCreate, showAction: showCreate } = useCan('node:create', { type: 'corpus_node' });
   const { subscribe } = useGlobalFileDropContext();
   const [droppedFile, setDroppedFile] = useState<File | undefined>(undefined);
 
@@ -233,6 +238,7 @@ export function CorpusPage() {
               alternative, so it never becomes a menu item. */}
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
         </nldd-toolbar-item>
+        {canExport && (
         <nldd-toolbar-item slot="end">
           {/* ExportButton owns its own anchored nldd-menu with four export
               formats; the overflow slot only takes flat menu items, so this
@@ -241,10 +247,13 @@ export function CorpusPage() {
           <ExportButton hideLabel />
           <nldd-menu-item slot="overflow" text="Exporteren" icon="download"></nldd-menu-item>
         </nldd-toolbar-item>
-        <nldd-toolbar-item slot="end" priority={2}>
-          <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} text="Nieuwe node" compactBelowSm />
-          <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus"></nldd-menu-item>
-        </nldd-toolbar-item>
+        )}
+        {showCreate && (
+          <nldd-toolbar-item slot="end" priority={2}>
+            <NlddButton startIcon="plus" onClick={() => setShowCreateForm(true)} disabled={!canCreate} text="Nieuwe node" compactBelowSm />
+            <nldd-menu-item slot="overflow" text="Nieuwe node" icon="plus" disabled={orUndef(!canCreate)}></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {/* View content */}

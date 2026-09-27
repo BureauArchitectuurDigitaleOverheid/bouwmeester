@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   getOrganisatieTree,
@@ -13,6 +14,7 @@ import {
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { OrganisatieEenheidCreate, OrganisatieEenheidUpdate } from '@/types';
+import { CHANGES_RIGHTS, useEenhedenWith } from '@/hooks/useCan';
 
 export function useOrganisatieTree(includeHistorisch = false) {
   return useQuery({
@@ -54,6 +56,7 @@ export function useOrganisatiePersonenRecursive(id: string | null) {
 
 export function useCreateOrganisatieEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (data: OrganisatieEenheidCreate) => createOrganisatieEenheid(data),
     errorMessage: 'Fout bij aanmaken eenheid',
     invalidateKeys: [queryKeys.organisatie.all],
@@ -62,6 +65,7 @@ export function useCreateOrganisatieEenheid() {
 
 export function useUpdateOrganisatieEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ id, data }: { id: string; data: OrganisatieEenheidUpdate }) =>
       updateOrganisatieEenheid(id, data),
     errorMessage: 'Fout bij bijwerken eenheid',
@@ -71,6 +75,7 @@ export function useUpdateOrganisatieEenheid() {
 
 export function useDeleteOrganisatieEenheid() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => deleteOrganisatieEenheid(id),
     errorMessage: 'Fout bij verwijderen eenheid',
     invalidateKeys: [queryKeys.organisatie.all],
@@ -83,4 +88,15 @@ export function useManagedEenheden(personId: string | undefined) {
     queryFn: () => getManagedEenheden(personId!),
     enabled: !!personId,
   });
+}
+
+/**
+ * The eenheden (flat list order) on which the backend allows `action`, such
+ * as `org:manage` for module toggles and sharing.
+ */
+export function useEenhedenAllowed(action: string) {
+  const { data: eenheden, isLoading } = useOrganisatieFlat();
+  const { includes, isLoading: deciding } = useEenhedenWith(action);
+  const filtered = useMemo(() => (eenheden ?? []).filter((e) => includes(e.id)), [eenheden, includes]);
+  return { eenheden: filtered, isLoading: isLoading || deciding };
 }

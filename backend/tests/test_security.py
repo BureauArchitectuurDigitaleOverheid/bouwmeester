@@ -60,6 +60,7 @@ async def authed_client(db_session, _test_app, create_person, request):
                 person_id=user.id,
                 organisatie_eenheid_id=org.id,
                 start_datum=date.today(),
+                bron="leidinggevende",
             )
         )
     await db_session.flush()

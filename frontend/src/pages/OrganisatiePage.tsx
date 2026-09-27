@@ -18,6 +18,7 @@ import {
 } from '@/hooks/useOrganisatie';
 import { useAddPersonOrganisatie, usePersonOrganisaties } from '@/hooks/usePeople';
 import { usePersonFormSubmit } from '@/hooks/usePersonFormSubmit';
+import { useCan, useIfAllowed } from '@/hooks/useCan';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { todayISO } from '@/utils/dates';
 import type { OrganisatieEenheid, OrganisatieEenheidCreate, OrganisatieEenheidUpdate, Person } from '@/types';
@@ -148,6 +149,12 @@ export function OrganisatiePage() {
   const updateMutation = useUpdateOrganisatieEenheid();
   const deleteMutation = useDeleteOrganisatieEenheid();
   const addPlacementMutation = useAddPersonOrganisatie();
+  const ifAllowed = useIfAllowed();
+  // Where the new eenheid goes is picked in the form; the route decides then.
+  const { allowed: canCreateEenheid, showAction: showCreateEenheid } = useCan('org:create', {
+    type: 'organisatie_eenheid',
+    anywhere: true,
+  });
   const { handleSubmit: handlePersonFormSubmit, isPending: isPersonPending } = usePersonFormSubmit(
     () => {
       setShowPersonForm(false);
@@ -232,14 +239,20 @@ export function OrganisatiePage() {
   };
 
   const handleDropPerson = (personId: string, targetNodeId: string) => {
-    addPlacementMutation.mutate({
-      personId,
-      data: {
-        organisatie_eenheid_id: targetNodeId,
-        dienstverband: 'in_dienst',
-        start_datum: todayISO(),
-      },
-    });
+    void ifAllowed(
+      'person:place',
+      { type: 'person', id: personId, eenheidId: targetNodeId },
+      'Je mag deze persoon niet in deze eenheid plaatsen.',
+      () =>
+        addPlacementMutation.mutate({
+          personId,
+          data: {
+            organisatie_eenheid_id: targetNodeId,
+            dienstverband: 'in_dienst',
+            start_datum: todayISO(),
+          },
+        }),
+    );
   };
 
   if (isLoading) {
@@ -257,10 +270,12 @@ export function OrganisatiePage() {
             Beheer de organisatiestructuur: Ministerie, DG, Directie, Afdeling, Team.
           </nldd-text>
         </nldd-toolbar-item>
-        <nldd-toolbar-item slot="end">
-          <NlddButton startIcon="plus" onClick={() => handleAdd(null)} text="Eenheid toevoegen" />
-          <nldd-menu-item slot="overflow" text="Eenheid toevoegen" icon="plus" />
-        </nldd-toolbar-item>
+        {showCreateEenheid && (
+          <nldd-toolbar-item slot="end">
+            <NlddButton startIcon="plus" onClick={() => handleAdd(null)} disabled={!canCreateEenheid} text="Eenheid toevoegen" />
+            <nldd-menu-item slot="overflow" text="Eenheid toevoegen" icon="plus" disabled={orUndef(!canCreateEenheid)} />
+          </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {isEmpty ? (
@@ -269,7 +284,9 @@ export function OrganisatiePage() {
           title="Nog geen organisatie-eenheden"
           description="Begin met het opzetten van de organisatiestructuur door een top-niveau eenheid toe te voegen."
           action={
-            <NlddButton variant="primary" onClick={() => handleAdd(null)} text="Eerste eenheid aanmaken" />
+            canCreateEenheid && (
+              <NlddButton variant="primary" onClick={() => handleAdd(null)} text="Eerste eenheid aanmaken" />
+            )
           }
         />
       ) : (
@@ -302,7 +319,7 @@ export function OrganisatiePage() {
                 tree={filteredTree}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
-                onAdd={handleAdd}
+                onAdd={canCreateEenheid ? handleAdd : undefined}
                 onDropPerson={handleDropPerson}
                 searchTerm={searchTerm}
                 expandedByDefaultIds={expandedByDefaultIds}

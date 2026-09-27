@@ -106,7 +106,6 @@ class TestClassificatieFoutafhandeling:
             message="Hoofd wetgevingsbeleid wil capaciteit vrijmaken",
             initiatief_naam="RegelRecht",
             channel_display_name="leads",
-            recent_leads=[],
         )
 
     async def test_onbereikbare_llm_is_een_storing(self):

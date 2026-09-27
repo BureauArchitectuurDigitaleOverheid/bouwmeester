@@ -1,5 +1,8 @@
 """Recursive queries over the organisatie-eenheid tree and memberships.
 
+Membership (who counts as placed in an eenheid for access) is defined once,
+in ``membership_ids_select``: an active placement with a trusted bron.
+
 Two parent sources exist.  ``get_descendant_ids`` walks the temporal
 ``OrganisatieEenheidParent`` table (active records) and serves reporting
 such as task overviews.  Everything that decides access (visibility, rights,
@@ -14,12 +17,25 @@ recursion instead of looping forever.
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.lead import Lead
+from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
-from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.organisatie_eenheid import (
+    INTERNAL_EENHEID_TYPES,
+    OrganisatieEenheid,
+)
+from bouwmeester.models.person_organisatie import (
+    TRUSTED_PLACEMENT_BRONNEN,
+    PersonOrganisatieEenheid,
+)
+from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.models.role import PersonRole
+from bouwmeester.models.shared_access import SharedAccess
+from bouwmeester.models.task import Task
 
 
 async def get_self_and_ancestor_ids(
@@ -40,26 +56,35 @@ async def get_self_and_ancestor_ids(
     return set(result.scalars().all())
 
 
-async def get_ancestor_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
-    """Return every eenheid above any of *eenheid_ids* (not the ids themselves)."""
+async def get_chains(
+    session: AsyncSession, eenheid_ids: list[UUID]
+) -> dict[UUID, set[UUID]]:
+    """``{eenheid: itself plus every eenheid above it}`` for many, in one query.
+
+    An id that does not exist maps to just itself.
+    """
     if not eenheid_ids:
-        return set()
+        return {}
     cte = (
-        select(OrganisatieEenheid.parent_id.label("id"))
-        .where(
-            OrganisatieEenheid.id.in_(eenheid_ids),
-            OrganisatieEenheid.parent_id.isnot(None),
+        select(
+            OrganisatieEenheid.id.label("start_id"),
+            OrganisatieEenheid.id.label("id"),
+            OrganisatieEenheid.parent_id.label("parent_id"),
         )
-        .cte(name="parents", recursive=True)
+        .where(OrganisatieEenheid.id.in_(eenheid_ids))
+        .cte(name="chains", recursive=True)
     )
     cte = cte.union(
-        select(OrganisatieEenheid.parent_id).where(
-            OrganisatieEenheid.id == cte.c.id,
-            OrganisatieEenheid.parent_id.isnot(None),
-        )
+        select(
+            cte.c.start_id, OrganisatieEenheid.id, OrganisatieEenheid.parent_id
+        ).where(OrganisatieEenheid.id == cte.c.parent_id)
     )
-    result = await session.execute(select(cte.c.id))
-    return set(result.scalars().all())
+    chains: dict[UUID, set[UUID]] = {eid: {eid} for eid in eenheid_ids}
+    for start_id, eid in (
+        await session.execute(select(cte.c.start_id, cte.c.id))
+    ).all():
+        chains[start_id].add(eid)
+    return chains
 
 
 async def get_subtree_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
@@ -78,16 +103,82 @@ async def get_subtree_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set
     return set(result.scalars().all())
 
 
+async def touches_organisation(session: AsyncSession, eenheid_id: UUID) -> bool:
+    """True if *eenheid_id* or an eenheid above it is internal."""
+    return bool(await get_touching_ids(session, [eenheid_id]))
+
+
+async def get_touching_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
+    """The eenheden of *eenheid_ids* that are internal or hang below one."""
+    chains = await get_chains(session, list(eenheid_ids))
+    internal = await get_internal_ids(session, list(set().union(*chains.values())))
+    return {eid for eid, chain in chains.items() if chain & internal}
+
+
+async def get_internal_ids(session: AsyncSession, eenheid_ids: list[UUID]) -> set[UUID]:
+    """The eenheden of *eenheid_ids* that are internal (ministerie down to team)."""
+    if not eenheid_ids:
+        return set()
+    result = await session.scalars(
+        select(OrganisatieEenheid.id).where(
+            OrganisatieEenheid.id.in_(eenheid_ids),
+            OrganisatieEenheid.type.in_(INTERNAL_EENHEID_TYPES),
+        )
+    )
+    return set(result.all())
+
+
+def placement_not_ended(today: date | None = None):
+    """SQL: the placement has not ended (it may still have to start)."""
+    today = today or date.today()
+    return or_(
+        PersonOrganisatieEenheid.eind_datum.is_(None),
+        PersonOrganisatieEenheid.eind_datum >= today,
+    )
+
+
+def placement_active(today: date | None = None):
+    """SQL: the placement holds today."""
+    today = today or date.today()
+    return and_(
+        PersonOrganisatieEenheid.start_datum <= today, placement_not_ended(today)
+    )
+
+
+def placement_trusted():
+    """SQL: the placement gives access (``TRUSTED_PLACEMENT_BRONNEN``)."""
+    return PersonOrganisatieEenheid.bron.in_(TRUSTED_PLACEMENT_BRONNEN)
+
+
+def membership_ids_select(*person_ids: UUID) -> Select:
+    """SELECT the eenheden the persons are members of today, for access.
+
+    The one definition of membership: an active, trusted placement.  One
+    row per placement, so several persons can be counted per eenheid.
+    """
+    return select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
+        PersonOrganisatieEenheid.person_id.in_(person_ids),
+        placement_active(),
+        placement_trusted(),
+    )
+
+
 async def get_membership_ids(session: AsyncSession, person_id: UUID) -> list[UUID]:
-    """Return the eenheden where *person_id* has an active placement today."""
-    today = date.today()
-    stmt = select(PersonOrganisatieEenheid.organisatie_eenheid_id).where(
-        PersonOrganisatieEenheid.person_id == person_id,
-        PersonOrganisatieEenheid.start_datum <= today,
-        or_(
-            PersonOrganisatieEenheid.eind_datum.is_(None),
-            PersonOrganisatieEenheid.eind_datum >= today,
-        ),
+    """The eenheden *person_id* is a member of today (see ``membership_ids_select``).
+
+    Longest-running first (then naam, id), so whoever needs "the" own
+    eenheid takes the first one and REST and chat agree.
+    """
+    eenheid_id = PersonOrganisatieEenheid.organisatie_eenheid_id
+    stmt = (
+        membership_ids_select(person_id)
+        .join(OrganisatieEenheid, OrganisatieEenheid.id == eenheid_id)
+        .group_by(eenheid_id, OrganisatieEenheid.naam)
+        .order_by(
+            func.min(PersonOrganisatieEenheid.start_datum),
+            OrganisatieEenheid.naam,
+            eenheid_id,
+        )
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -114,3 +205,100 @@ async def get_descendant_ids(
     stmt = select(cte.c.id)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+def _reference_queries(
+    eenheid_id: UUID, *, structure: bool
+) -> list[tuple[str, Select]]:
+    """Labelled count queries for what refers to *eenheid_id*."""
+
+    def count(model, *where) -> Select:
+        return select(func.count()).select_from(model).where(*where)
+
+    queries = [
+        ("nodes", count(CorpusNode, CorpusNode.organisatie_eenheid_id == eenheid_id)),
+        ("leads", count(Lead, Lead.organisatie_eenheid_id == eenheid_id)),
+        ("taken", count(Task, Task.organisatie_eenheid_id == eenheid_id)),
+        (
+            "opdrachten",
+            count(
+                Opdracht,
+                or_(
+                    Opdracht.opdrachtgever_id == eenheid_id,
+                    Opdracht.opdrachtnemer_eenheid_id == eenheid_id,
+                ),
+            ),
+        ),
+        (
+            "toegangsrechten (bijvoorbeeld op initiatieven)",
+            count(
+                ResourcePermission,
+                ResourcePermission.organisatie_eenheid_id == eenheid_id,
+            ),
+        ),
+        (
+            "gedeelde toegang",
+            count(
+                SharedAccess,
+                or_(
+                    SharedAccess.source_eenheid_id == eenheid_id,
+                    SharedAccess.target_eenheid_id == eenheid_id,
+                ),
+            ),
+        ),
+    ]
+    if structure:
+        queries[:0] = [
+            (
+                "subeenheden",
+                count(
+                    OrganisatieEenheid,
+                    or_(
+                        OrganisatieEenheid.parent_id == eenheid_id,
+                        OrganisatieEenheid.id.in_(
+                            select(OrganisatieEenheidParent.eenheid_id).where(
+                                OrganisatieEenheidParent.parent_id == eenheid_id,
+                                OrganisatieEenheidParent.geldig_tot.is_(None),
+                            )
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "personen",
+                count(
+                    PersonOrganisatieEenheid,
+                    PersonOrganisatieEenheid.organisatie_eenheid_id == eenheid_id,
+                    placement_not_ended(),
+                ),
+            ),
+            (
+                "rollen",
+                count(
+                    PersonRole,
+                    PersonRole.organisatie_eenheid_id == eenheid_id,
+                    or_(
+                        PersonRole.eind_datum.is_(None),
+                        PersonRole.eind_datum >= date.today(),
+                    ),
+                ),
+            ),
+        ]
+    return queries
+
+
+async def eenheid_references(
+    session: AsyncSession, eenheid_id: UUID, *, structure: bool = False
+) -> list[str]:
+    """What refers to *eenheid_id*, as ``"<n> <label>"`` parts (empty: nothing).
+
+    Without *structure*: what its members reach through it (resources,
+    grants, shares).  With *structure* also what deleting it would cascade
+    away: eenheden below it, its placements and roles.
+    """
+    parts = []
+    for label, stmt in _reference_queries(eenheid_id, structure=structure):
+        n = await session.scalar(stmt)
+        if n:
+            parts.append(f"{n} {label}")
+    return parts

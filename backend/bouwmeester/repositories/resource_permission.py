@@ -1,14 +1,13 @@
 """Repository for unified resource permission operations."""
 
-from datetime import date
 from uuid import UUID
 
-from sqlalchemy import or_, select, union
+from sqlalchemy import select, union
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.repositories.base import BaseRepository
+from bouwmeester.repositories.org_tree import membership_ids_select
 
 
 class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
@@ -88,41 +87,17 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
             stmt = stmt.where(ResourcePermission.organisatie_eenheid_id == eenheid_id)
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def get_roles_for_person_resource(
-        self, person_id: UUID, resource_type: str, resource_id: UUID
-    ) -> set[str]:
-        """Return all roles a person has on a resource (direct + via eenheid)."""
-        today = date.today()
-
-        direct_stmt = select(ResourcePermission.rol).where(
-            ResourcePermission.person_id == person_id,
-            ResourcePermission.resource_type == resource_type,
-            ResourcePermission.resource_id == resource_id,
+    async def get_roles_for_person_by_resource(
+        self, person_id: UUID, resource_type: str
+    ) -> dict[UUID, set[str]]:
+        """Every role a person has on resources of one type, in one query."""
+        result = await self.session.execute(
+            _person_roles_stmt(person_id, resource_type)
         )
-
-        eenheid_stmt = (
-            select(ResourcePermission.rol)
-            .join(
-                PersonOrganisatieEenheid,
-                PersonOrganisatieEenheid.organisatie_eenheid_id
-                == ResourcePermission.organisatie_eenheid_id,
-            )
-            .where(
-                ResourcePermission.resource_type == resource_type,
-                ResourcePermission.resource_id == resource_id,
-                ResourcePermission.organisatie_eenheid_id.isnot(None),
-                PersonOrganisatieEenheid.person_id == person_id,
-                PersonOrganisatieEenheid.start_datum <= today,
-                or_(
-                    PersonOrganisatieEenheid.eind_datum.is_(None),
-                    PersonOrganisatieEenheid.eind_datum >= today,
-                ),
-            )
-        )
-
-        combined = union(direct_stmt, eenheid_stmt)
-        result = await self.session.execute(combined)
-        return set(result.scalars().all())
+        roles: dict[UUID, set[str]] = {}
+        for rid, rol in result.all():
+            roles.setdefault(rid, set()).add(rol)
+        return roles
 
     async def list_for_person(self, person_id: UUID) -> list[ResourcePermission]:
         """Return all resource permissions for a person."""
@@ -148,16 +123,20 @@ class ResourcePermissionRepository(BaseRepository[ResourcePermission]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_resource_ids_for_person(
-        self, person_id: UUID, resource_type: str
-    ) -> dict[UUID, set[str]]:
-        """Return {resource_id: {roles}} for a person's resources."""
-        stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
-            ResourcePermission.person_id == person_id,
-            ResourcePermission.resource_type == resource_type,
-        )
-        result = await self.session.execute(stmt)
-        mapping: dict[UUID, set[str]] = {}
-        for resource_id, rol in result.all():
-            mapping.setdefault(resource_id, set()).add(rol)
-        return mapping
+
+def _person_roles_stmt(person_id: UUID, resource_type: str):
+    """(resource_id, rol) a person holds, directly or through a membership.
+
+    A role held by an eenheid counts for its members only
+    (``org_tree.membership_ids_select``: trusted placements).
+    """
+    on_resource = [ResourcePermission.resource_type == resource_type]
+
+    direct_stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
+        ResourcePermission.person_id == person_id, *on_resource
+    )
+    eenheid_stmt = select(ResourcePermission.resource_id, ResourcePermission.rol).where(
+        *on_resource,
+        ResourcePermission.organisatie_eenheid_id.in_(membership_ids_select(person_id)),
+    )
+    return union(direct_stmt, eenheid_stmt)

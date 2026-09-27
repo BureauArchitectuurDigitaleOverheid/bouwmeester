@@ -8,6 +8,7 @@ from sqlalchemy import select
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.models.github_link import SCOPE_LEAD, GitHubLink
 from bouwmeester.models.lead import Lead
+from bouwmeester.models.resource_permission import ResourcePermission
 
 
 @pytest.fixture
@@ -207,6 +208,16 @@ async def test_created_by_id_is_set_when_authenticated(
     De code moet ``current_user.id`` gebruiken, niet ``current_user["id"]``,
     anders throwt de POST-route op een echte authenticated user.
     """
+    # A real user needs write access on the lead: make them its opdrachtgever.
+    db_session.add(
+        ResourcePermission(
+            person_id=sample_person.id,
+            resource_type="lead",
+            resource_id=sample_lead.id,
+            rol="opdrachtgever",
+        )
+    )
+    await db_session.flush()
     _test_app.dependency_overrides[get_optional_user] = lambda: sample_person
     try:
         resp = await client.post(

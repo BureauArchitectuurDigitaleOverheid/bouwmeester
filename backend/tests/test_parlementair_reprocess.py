@@ -4,15 +4,20 @@ import uuid
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from sqlalchemy import select
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.edge import Edge
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.tag import NodeTag, Tag
 from bouwmeester.models.task import Task
 from bouwmeester.services.llm.base import TagExtractionResult
-from bouwmeester.services.parlementair_import_service import ParlementairImportService
+from bouwmeester.services.parlementair_import_service import (
+    REVIEW_WORK_TYPE,
+    ParlementairImportService,
+)
 
 # Tests use item_type="motie" to avoid collisions with real toezegging
 # data that may exist in the test database.
@@ -125,7 +130,7 @@ async def test_reprocess_picks_up_pending_items(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -140,7 +145,7 @@ async def test_reprocess_no_llm_provider(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=None),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -162,7 +167,7 @@ async def test_reprocess_no_matches_moves_to_out_of_scope(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -179,7 +184,7 @@ async def test_reprocess_no_matches_moves_to_out_of_scope(db_session):
 
 
 async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
-    """Tasks linked to the corpus node are cascade-deleted when node is removed."""
+    """The item's review task goes with the corpus node."""
     item, node = await _make_item(db_session)
 
     task = Task(
@@ -188,6 +193,7 @@ async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
         title="Beoordeel motie",
         status="open",
         priority="normaal",
+        work_type=REVIEW_WORK_TYPE,
         parlementair_item_id=item.id,
     )
     db_session.add(task)
@@ -197,7 +203,7 @@ async def test_reprocess_no_matches_cascade_deletes_tasks(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -216,7 +222,7 @@ async def test_reprocess_no_matches_deletes_politieke_input(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -255,7 +261,7 @@ async def test_reprocess_with_matches_creates_edges(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[tag.name])),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -297,7 +303,7 @@ async def test_reprocess_with_matches_tags_corpus_node(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[tag.name])),
     ):
         await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -320,7 +326,7 @@ async def test_reprocess_updates_llm_fields(db_session):
     service = ParlementairImportService(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(
             return_value=_mock_llm(
                 matched_tags=["test_tag"],
@@ -349,7 +355,7 @@ async def test_reprocess_llm_failure_skips_item(db_session):
     failing_llm.extract_tags.side_effect = Exception("LLM timeout")
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=failing_llm),
     ):
         result = await service.reprocess_imported_items(item_type=TEST_TYPE)
@@ -377,28 +383,56 @@ async def test_detach_corpus_node_deletes_node(db_session):
     assert await db_session.get(CorpusNode, node_id) is None
 
 
-async def test_detach_corpus_node_cascade_deletes_tasks(db_session):
-    """_detach_corpus_node cascade-deletes tasks linked to the corpus node."""
+@pytest.mark.parametrize(
+    ("work_type", "linked_to_item", "deleted"),
+    [
+        (REVIEW_WORK_TYPE, True, True),  # the item's own review task
+        (None, True, False),  # a task someone linked to the item
+        (None, False, False),  # a task someone added to the node
+    ],
+    ids=["review_task", "linked_task", "other_task"],
+)
+async def test_detach_corpus_node_only_when_unclaimed(
+    db_session, work_type, linked_to_item, deleted
+):
+    """The node goes (with its review task) only when nobody built on it
+    (``core.deletion``); otherwise node, task and the item's link stay."""
     item, node = await _make_item(db_session)
-
-    open_task = Task(
+    task = Task(
         id=uuid.uuid4(),
         node_id=node.id,
         title="Open task",
         status="open",
         priority="normaal",
-        parlementair_item_id=item.id,
+        work_type=work_type,
+        parlementair_item_id=item.id if linked_to_item else None,
     )
-    db_session.add(open_task)
+    db_session.add(task)
     await db_session.flush()
 
-    service = ParlementairImportService(db_session)
-    await service._detach_corpus_node(item)
+    await ParlementairImportService(db_session)._detach_corpus_node(item)
 
-    assert item.corpus_node_id is None
-    assert await db_session.get(CorpusNode, node.id) is None
-    # Task is cascade-deleted with the corpus node
-    assert await db_session.get(Task, open_task.id) is None
+    assert (item.corpus_node_id is None) is deleted
+    assert (await db_session.get(CorpusNode, node.id) is None) is deleted
+    assert (await db_session.get(Task, task.id) is None) is deleted
+
+
+async def test_detach_corpus_node_keeps_node_with_edge(db_session, sample_edge_type):
+    """An edge someone drew to the node is work built on it: the node stays."""
+    item, node = await _make_item(db_session)
+    other = CorpusNode(id=uuid.uuid4(), title="Dossier", node_type="dossier")
+    db_session.add(other)
+    await db_session.flush()
+    edge = Edge(
+        from_node_id=node.id, to_node_id=other.id, edge_type_id=sample_edge_type.id
+    )
+    db_session.add(edge)
+    await db_session.flush()
+
+    await ParlementairImportService(db_session)._detach_corpus_node(item)
+
+    assert item.corpus_node_id == node.id
+    assert await db_session.get(Edge, edge.id) is not None
 
 
 async def test_detach_corpus_node_no_node_is_noop(db_session):
@@ -439,7 +473,7 @@ async def test_process_item_llm_failure_creates_pending(db_session):
     failing_llm.extract_tags.side_effect = Exception("LLM down")
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=failing_llm),
     ):
         result = await service._process_item(fetched, strategy)
@@ -472,7 +506,7 @@ async def test_process_item_no_llm_provider_creates_pending(db_session):
     strategy = get_strategy("toezegging")
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=None),
     ):
         result = await service._process_item(fetched, strategy)
@@ -495,7 +529,7 @@ async def test_reprocess_endpoint_returns_result(client, db_session):
     await _make_item(db_session)
 
     with patch(
-        "bouwmeester.services.parlementair_import_service.get_llm_service",
+        "bouwmeester.services.parlementair_import_service.get_llm_service_for",
         new=AsyncMock(return_value=_mock_llm(matched_tags=[])),
     ):
         resp = await client.post(

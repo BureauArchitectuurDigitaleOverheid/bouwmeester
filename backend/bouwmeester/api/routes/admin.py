@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.database import get_db
 from bouwmeester.core.encryption import decrypt_value, encrypt_value
-from bouwmeester.core.permissions import AdminUser, SuperAdminUser
+from bouwmeester.core.permissions import (
+    AdminUser,
+    PermissionContext,
+    SuperAdminUser,
+    get_permission_context,
+)
 from bouwmeester.core.query_utils import normalize_email
 from bouwmeester.core.whitelist import refresh_whitelist_cache, seed_admins_from_file
 from bouwmeester.models.access_request import AccessRequest
@@ -390,12 +395,6 @@ _DEFAULT_CONFIG = [
         "description": "Token voor slash-commando verificatie",
         "is_secret": True,
     },
-    {
-        "key": "MATTERMOST_NOTIFICATION_CHANNEL_ID",
-        "value": "",
-        "description": "Kanaal-ID voor broadcast-notificaties",
-        "is_secret": False,
-    },
     # FCC (Fortes Change Cloud) integration
     {
         "key": "FCC_ODATA_URL",
@@ -436,6 +435,43 @@ _DEFAULT_CONFIG = [
 ]
 
 
+# Settings that decide where data goes, besides secrets and ``*_URL``s.
+_DATA_FLOW_KEYS = frozenset(
+    {
+        "LLM_PROVIDER",
+        "MATTERMOST_ENABLED",
+        "FCC_SYNC_ENABLED",
+        "FCC_PUSH_ENABLED",
+        "FCC_USE_MOCK",
+        "FCC_PROJECT_ENTITY",
+    }
+)
+
+
+def _super_admin_only(entry: AppConfig) -> bool:
+    """Credentials, addresses and data-flow switches: whoever sets one can act
+    as a linked user or receives what is sent, so only super_admin changes it.
+    """
+    return entry.is_secret or entry.key.endswith("_URL") or entry.key in _DATA_FLOW_KEYS
+
+
+def _can_edit_config(entry: AppConfig, perm_ctx: PermissionContext) -> bool:
+    """Who may change a config entry (PATCH refuses, the list flags it)."""
+    return perm_ctx.is_super_admin or not _super_admin_only(entry)
+
+
+def _config_response(
+    entry: AppConfig, perm_ctx: PermissionContext
+) -> AppConfigResponse:
+    """Serialize a config entry: secrets masked, ``editable`` per caller."""
+    resp = AppConfigResponse.model_validate(entry)
+    if entry.is_secret:
+        # Decrypt for masking (show last 4 chars of real value)
+        resp.value = _mask_secret(decrypt_value(entry.value))
+    resp.editable = _can_edit_config(entry, perm_ctx)
+    return resp
+
+
 def _mask_secret(value: str) -> str:
     """Mask a secret value for display, showing only last 4 chars."""
     if not value or len(value) <= 4:
@@ -471,19 +507,12 @@ async def _ensure_default_config(db: AsyncSession) -> None:
 async def list_config(
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[AppConfigResponse]:
     """List all configuration entries. Secret values are masked."""
     await _ensure_default_config(db)
     result = await db.execute(select(AppConfig).order_by(AppConfig.key))
-    entries = []
-    for row in result.scalars().all():
-        resp = AppConfigResponse.model_validate(row)
-        if row.is_secret:
-            # Decrypt for masking (show last 4 chars of real value)
-            plain = decrypt_value(row.value)
-            resp.value = _mask_secret(plain)
-        entries.append(resp)
-    return entries
+    return [_config_response(row, perm_ctx) for row in result.scalars().all()]
 
 
 @router.patch(
@@ -495,14 +524,20 @@ async def update_config(
     data: AppConfigUpdate,
     admin: AdminUser,
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> AppConfigResponse:
-    """Update a configuration value."""
+    """Update a configuration value (keys and addresses: super_admin only)."""
     result = await db.execute(select(AppConfig).where(AppConfig.key == key))
     entry = result.scalar_one_or_none()
     if entry is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuratie '{key}' niet gevonden",
+        )
+    if not _can_edit_config(entry, perm_ctx):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Alleen systeembeheerders wijzigen sleutels en adressen",
         )
 
     entry.value = encrypt_value(data.value) if entry.is_secret else data.value
@@ -525,10 +560,7 @@ async def update_config(
         details={"key": key},
     )
 
-    resp = AppConfigResponse.model_validate(entry)
-    if entry.is_secret:
-        resp.value = _mask_secret(decrypt_value(entry.value))
-    return resp
+    return _config_response(entry, perm_ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -538,10 +570,10 @@ async def update_config(
 
 @router.get("/database/export")
 async def export_database(
-    admin: AdminUser,
+    admin: SuperAdminUser,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """Export full database as pg_dump (optionally age-encrypted)."""
+    """Export the database as pg_dump; super_admin only, it bypasses visibility."""
     from bouwmeester.services.database_backup_service import (
         export_database as do_export,
     )
@@ -582,7 +614,7 @@ async def export_database(
 
 @router.get("/database/info", response_model=DatabaseBackupInfo)
 async def export_database_info(
-    admin: AdminUser,
+    admin: SuperAdminUser,
 ) -> DatabaseBackupInfo:
     """Return metadata about the current database (revision, etc.)."""
     from bouwmeester.services.database_backup_service import _get_alembic_revision

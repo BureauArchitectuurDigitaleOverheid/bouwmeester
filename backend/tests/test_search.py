@@ -58,3 +58,53 @@ async def test_search_result_has_required_fields(client, sample_node):
     assert "title" in result
     assert "score" in result
     assert "url" in result
+
+
+# ---------------------------------------------------------------------------
+# Visibility through shares only
+# ---------------------------------------------------------------------------
+
+
+async def test_search_with_only_shared_eenheden(db_session):
+    """Someone who sees an eenheid only through a share still gets its nodes.
+
+    The SQL filter refers to ``:visible_eenheid_ids``; it must be bound
+    whenever the clause uses it, not only when own eenheden exist.
+    """
+    import uuid
+
+    from bouwmeester.core.org_context import OrgContext
+    from bouwmeester.models.corpus_node import CorpusNode
+    from bouwmeester.repositories.search import SearchRepository
+    from tests.factories import make_org
+
+    shared = await make_org(db_session, "Gedeelde directie")
+    hidden = await make_org(db_session, "Verborgen directie")
+    seen = CorpusNode(
+        id=uuid.uuid4(),
+        title="Deelbaar zonnepaneeldossier",
+        node_type="dossier",
+        organisatie_eenheid_id=shared.id,
+    )
+    unseen = CorpusNode(
+        id=uuid.uuid4(),
+        title="Verborgen zonnepaneeldossier",
+        node_type="dossier",
+        organisatie_eenheid_id=hidden.id,
+    )
+    db_session.add_all([seen, unseen])
+    await db_session.flush()
+    ctx = OrgContext(
+        person_id=uuid.uuid4(),
+        shared_eenheid_ids=[shared.id],
+        is_authenticated=True,
+    )
+    repo = SearchRepository(db_session)
+
+    found = await repo.full_text_search(
+        "zonnepaneeldossier", result_types=["corpus_node"], org_ctx=ctx
+    )
+    similar = await repo.find_similar_nodes("zonnepaneeldossier", org_ctx=ctx)
+
+    assert {str(r["id"]) for r in found} == {str(seen.id)}
+    assert {str(r["id"]) for r in similar} == {str(seen.id)}

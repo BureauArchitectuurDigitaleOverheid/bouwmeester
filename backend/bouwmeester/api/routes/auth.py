@@ -7,7 +7,7 @@ import time
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -34,7 +34,7 @@ from bouwmeester.models.onboarding_dismissal import OnboardingDismissal
 from bouwmeester.models.org_placement_request import OrgPlacementRequest
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.repositories.org_tree import get_membership_ids, membership_ids_select
 from bouwmeester.repositories.person import PersonRepository
 from bouwmeester.schema.access_request import (
     AccessRequestCreate,
@@ -246,6 +246,9 @@ async def auth_status(
         if not is_email_allowed(email):
             logger.warning("Access denied for %s — not on whitelist", email)
             request.session.clear()
+            # The login proved this address: the access-request endpoints
+            # answer for it, and for no other.
+            request.session[_DENIED_EMAIL] = normalize_email(email)
             return {
                 "authenticated": False,
                 "oidc_configured": oidc_configured,
@@ -318,23 +321,13 @@ async def auth_status(
             placement_denied = False
             if person_id:
                 pid = UUID(person_id)
-                # Own placements (active)
-                placement_stmt = (
-                    select(
-                        OrganisatieEenheid.id,
-                        OrganisatieEenheid.naam,
-                        OrganisatieEenheid.type,
-                    )
-                    .join(
-                        PersonOrganisatieEenheid,
-                        PersonOrganisatieEenheid.organisatie_eenheid_id
-                        == OrganisatieEenheid.id,
-                    )
-                    .where(
-                        PersonOrganisatieEenheid.person_id == pid,
-                        PersonOrganisatieEenheid.eind_datum.is_(None),
-                    )
-                )
+                # Own eenheden: memberships (trusted placements) only.  With
+                # just informational placements the user still needs one.
+                placement_stmt = select(
+                    OrganisatieEenheid.id,
+                    OrganisatieEenheid.naam,
+                    OrganisatieEenheid.type,
+                ).where(OrganisatieEenheid.id.in_(membership_ids_select(pid)))
                 placement_result = await db.execute(placement_stmt)
                 org_eenheden = [
                     {"id": str(r.id), "naam": r.naam, "type": r.type}
@@ -361,9 +354,7 @@ async def auth_status(
                     elif latest_req == "denied":
                         placement_denied = True
 
-            # Build org context once: it derives the managed eenheden and
-            # the managed subtree without duplicate queries.
-            managed_subtree_ids_list: list[str] = []
+            # Build org context once: it derives the managed eenheden.
             org_ctx = None
             if person_id:
                 person_for_org = await db.get(Person, UUID(person_id))
@@ -371,13 +362,6 @@ async def auth_status(
                     org_ctx = await build_org_context(
                         db, person_for_org, perm_ctx=perm_ctx
                     )
-
-                    if org_ctx.is_admin:
-                        managed_subtree_ids_list = ["*"]
-                    else:
-                        managed_subtree_ids_list = [
-                            str(eid) for eid in org_ctx.managed_subtree_ids
-                        ]
 
                     # Managed eenheden details (from org context)
                     if org_ctx.managed_eenheid_ids:
@@ -451,8 +435,6 @@ async def auth_status(
                 "placement_denied": placement_denied,
                 "roles": roles_list,
                 "permissions": permissions_list,
-                # Eenheden whose members this person manages ("*" = all).
-                "managed_subtree_ids": managed_subtree_ids_list,
                 "system_permissions": system_permissions_list,
             }
         except Exception:
@@ -513,12 +495,12 @@ async def complete_onboarding(
     org_row = org_result.first()
     if org_row is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Organisatie-eenheid niet gevonden",
         )
     if org_row.type == "ministerie":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Selecteer een organisatie-eenheid onder ministerie-niveau",
         )
 
@@ -526,17 +508,13 @@ async def complete_onboarding(
     current_user.naam = body.naam
     current_user.functie = body.functie
 
-    # Create a placement request if the user has no active placement.
+    # Create a placement request if the user is no member anywhere yet
+    # (informational placements do not count).
     # If pending requests exist for other eenheden, withdraw them first --
     # a person can only request one team at a time, and the wizard is the
     # latest expression of intent.
-    existing_placement = await db.execute(
-        select(PersonOrganisatieEenheid.id).where(
-            PersonOrganisatieEenheid.person_id == current_user.id,
-            PersonOrganisatieEenheid.eind_datum.is_(None),
-        )
-    )
-    if existing_placement.scalar_one_or_none() is None:
+    member_of = await get_membership_ids(db, current_user.id)
+    if not member_of:
         # Idempotent: a pending request for this same eenheid means the
         # user re-submitted; do nothing. For other eenheden, drop them.
         existing_pending = await db.execute(
@@ -618,7 +596,7 @@ async def dismiss_onboarding_feature(
     feature = get_feature(body.feature_key)
     if feature is None or not feature.dismissible:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Ongeldige of niet-overslaan-bare onboarding stap",
         )
 
@@ -649,8 +627,27 @@ async def dismiss_onboarding_feature(
 # POST /request-access -- submit an access request (public, rate-limited)
 # ---------------------------------------------------------------------------
 
-# Stricter rate limiter for access requests.
+# Stricter rate limiter for access requests, keyed per refused login.
 _access_request_rate_limiter = InMemoryRateLimiter(window=300, max_requests=5)
+# The status check is polled (every 5 s) while a request is pending; keyed
+# per address, since behind the ingress everyone shares one IP.
+_access_status_rate_limiter = InMemoryRateLimiter(window=60, max_requests=20)
+
+# Session key: the address a login proved but the whitelist refused.  Set by
+# ``/status``; the access-request endpoints only answer for this address, so
+# nobody learns another address's whitelist status or deny reason.
+_DENIED_EMAIL = "access_denied_email"
+
+
+def _denied_email(request: Request) -> str:
+    """The refused address of this session, or 401."""
+    email = request.session.get(_DENIED_EMAIL)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Log eerst in om toegang aan te vragen",
+        )
+    return email
 
 
 @router.post("/request-access", response_model=AccessRequestStatusResponse)
@@ -659,10 +656,23 @@ async def request_access(
     body: AccessRequestCreate,
     db: AsyncSession = Depends(get_db),
 ) -> AccessRequestStatusResponse:
-    """Submit an access request. Public endpoint (no auth required)."""
-    _access_request_rate_limiter.check(request)
+    """Submit an access request for the address this session logged in with.
+
+    Public (the requester has no access yet) but bound to the refused login:
+    a request for any other address is refused.
+    """
+    # The session first: a request without a refused login spends nobody's
+    # budget.  Keyed per login, since behind the ingress everyone shares one
+    # IP and an IP limit lets one visitor lock out all others.
+    denied = _denied_email(request)
+    _access_request_rate_limiter.check_key(denied)
 
     email = normalize_email(body.email)
+    if email != denied:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Je kunt alleen toegang aanvragen voor je eigen e-mailadres",
+        )
 
     # If already on whitelist, tell the user
     if is_email_allowed(email):
@@ -714,11 +724,16 @@ async def request_access(
 
 @router.get("/access-request-status", response_model=AccessRequestStatusResponse)
 async def access_request_status(
-    email: str = Query(...),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> AccessRequestStatusResponse:
-    """Check the status of the latest access request for an email."""
-    email = normalize_email(email)
+    """The status of this session's latest access request.
+
+    Only for the address the session's login proved (``_DENIED_EMAIL``);
+    an ``email`` query parameter is ignored.
+    """
+    email = _denied_email(request)
+    _access_status_rate_limiter.check_key(email)
 
     # If already on whitelist, they're allowed now
     if is_email_allowed(email):

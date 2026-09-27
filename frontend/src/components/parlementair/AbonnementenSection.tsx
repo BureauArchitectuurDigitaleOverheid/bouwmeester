@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/nldd/Icon';
+import { useCan } from '@/hooks/useCan';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   createAbonnement,
@@ -25,6 +26,8 @@ import {
  */
 export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) {
   const [abonnementen, setAbonnementen] = useState<ParlementairAbonnement[]>([]);
+  // Zoektermen are written with the rights on the initiatief.
+  const { allowed: canWrite } = useCan('parlementair_abonnement:create', { type: 'initiatief', id: initiatiefId });
   const [nieuweTerm, setNieuweTerm] = useState('');
   const [bezig, setBezig] = useState(false);
   const [fout, setFout] = useState<string | null>(null);
@@ -201,7 +204,7 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
               </nldd-text>
             </nldd-container>
           </nldd-container>
-          {abonnementen.length > 0 && (
+          {canWrite && abonnementen.length > 0 && (
             <nldd-button
               variant="neutral-transparent"
               size="sm"
@@ -215,17 +218,19 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
 
         {fout && <nldd-banner variant="critical" size="sm" text={fout} />}
 
-        <nldd-container layout="row" gap="8" vertical-alignment="bottom">
-          <TermField value={nieuweTerm} onChange={setNieuweTerm} onSubmit={toevoegen} />
-          <nldd-button
-            variant="secondary"
-            size="sm"
-            text="Volgen"
-            start-icon="add"
-            loading={orUndef(bezig)}
-            onClick={toevoegen}
-          />
-        </nldd-container>
+        {canWrite && (
+          <nldd-container layout="row" gap="8" vertical-alignment="bottom">
+            <TermField value={nieuweTerm} onChange={setNieuweTerm} onSubmit={toevoegen} />
+            <nldd-button
+              variant="secondary"
+              size="sm"
+              text="Volgen"
+              start-icon="add"
+              loading={orUndef(bezig)}
+              onClick={toevoegen}
+            />
+          </nldd-container>
+        )}
 
         {suggesties !== null && (
           <SuggestieLijst
@@ -267,8 +272,8 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
                 key={a.id}
                 abonnement={a}
                 bezig={bezigeRij === a.id}
-                onToggle={() => schakel(a)}
-                onDelete={() => verwijder(a)}
+                onToggle={canWrite ? () => schakel(a) : undefined}
+                onDelete={canWrite ? () => verwijder(a) : undefined}
               />
             ))}
           </nldd-table>
@@ -498,8 +503,9 @@ function AbonnementRow({
 }: {
   abonnement: ParlementairAbonnement;
   bezig: boolean;
-  onToggle: () => void;
-  onDelete: () => void;
+  /** Left out for someone who may only look. */
+  onToggle?: () => void;
+  onDelete?: () => void;
 }) {
   const laatste = abonnement.laatste_treffer_op
     ? new Date(abonnement.laatste_treffer_op).toLocaleDateString('nl-NL')
@@ -526,6 +532,7 @@ function AbonnementRow({
       />
       <nldd-text-cell text={laatste} hide-below="lg" />
       <nldd-cell>
+        {onToggle && onDelete && (
         <nldd-container layout="row" gap="4" horizontal-alignment="right">
           <nldd-button
             variant="neutral-transparent"
@@ -548,6 +555,7 @@ function AbonnementRow({
             onClick={onDelete}
           />
         </nldd-container>
+        )}
       </nldd-cell>
     </nldd-table-row>
   );

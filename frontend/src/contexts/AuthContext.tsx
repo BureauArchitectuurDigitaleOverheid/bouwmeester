@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BASE_URL } from '@/api/client';
 import { getStoredPersonId, isWebAuthnAvailable } from '@/api/webauthn';
 
@@ -30,8 +30,6 @@ interface AuthPerson {
   roles?: { role_id: string; role_naam: string | null; organisatie_eenheid_id: string | null; eenheid_naam: string | null }[];
   permissions?: string[];
   system_permissions?: string[];
-  /** Eenheden whose members this person manages; "*" means all. */
-  managed_subtree_ids?: string[];
 }
 
 interface AuthState {
@@ -51,9 +49,6 @@ interface AuthContextValue extends AuthState {
   logout: () => void;
   refreshAuthStatus: () => Promise<void>;
   canPasskeyLogin: boolean;
-  realIsAdmin: boolean;
-  viewAsNonAdmin: boolean;
-  toggleViewAsNonAdmin: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -114,7 +109,6 @@ async function fetchAuthStatus(): Promise<AuthState> {
           roles: data.person.roles ?? [],
           permissions: data.person.permissions ?? [],
           system_permissions: data.person.system_permissions ?? [],
-          managed_subtree_ids: data.person.managed_subtree_ids ?? [],
         }
       : null,
     error: null,
@@ -257,32 +251,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // localStorage changes after registration or logout.
   const canPasskeyLogin = isWebAuthnAvailable() && !!getStoredPersonId();
 
-  const [viewAsNonAdmin, setViewAsNonAdmin] = useState(false);
-  const toggleViewAsNonAdmin = useCallback(() => setViewAsNonAdmin((prev) => !prev), []);
-  const realIsAdmin = state.person?.is_admin ?? false;
-
-  const effectiveState = useMemo(() => {
-    if (!viewAsNonAdmin || !state.person) return state;
-    return {
-      ...state,
-      person: {
-        ...state.person,
-        is_admin: false,
-        roles: [],
-        permissions: ['node:read', 'task:read', 'edge:read', 'lead:read', 'initiatief:read', 'opdracht:read', 'tag:read', 'people:read', 'org:read'],
-      },
-    };
-  }, [state, viewAsNonAdmin]);
-
   const value: AuthContextValue = {
-    ...effectiveState,
+    ...state,
     login,
     logout,
     refreshAuthStatus,
     canPasskeyLogin,
-    realIsAdmin,
-    viewAsNonAdmin,
-    toggleViewAsNonAdmin,
   };
 
   return (

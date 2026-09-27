@@ -6,35 +6,39 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from bouwmeester.core.org_context import OrgContext, apply_task_filter
+from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.org_tree import get_descendant_ids
+from bouwmeester.repositories.task import task_options
 from bouwmeester.schema.task import (
     EenheidOverviewResponse,
     EenheidPersonTaskStats,
     EenheidSubeenheidStats,
-    TaskResponse,
 )
-
-
-def _task_options():
-    """Eager-load options so TaskResponse can serialize relationships."""
-    return [
-        selectinload(Task.assignee),
-        selectinload(Task.organisatie_eenheid),
-        selectinload(Task.node),
-        selectinload(Task.subtasks).selectinload(Task.assignee),
-    ]
+from bouwmeester.services.visibility_filters import task_responses
 
 
 class EenheidOverviewService:
-    def __init__(self, session: AsyncSession) -> None:
+    """Task overview of an eenheid, counting only the tasks the caller sees."""
+
+    def __init__(
+        self,
+        session: AsyncSession,
+        perm_ctx: PermissionContext,
+        org_ctx: OrgContext,
+    ) -> None:
         self.session = session
+        self.perm_ctx = perm_ctx
+        self.org_ctx = org_ctx
+
+    def _visible(self, stmt):
+        return apply_task_filter(stmt, self.org_ctx)
 
     async def get_overview(
         self, organisatie_eenheid_id: UUID
@@ -56,11 +60,13 @@ class EenheidOverviewService:
 
         return EenheidOverviewResponse(
             unassigned_count=no_unit_count + no_person_count,
-            unassigned_no_unit=[TaskResponse.model_validate(t) for t in no_unit_tasks],
+            unassigned_no_unit=await task_responses(
+                self.session, self.perm_ctx, no_unit_tasks
+            ),
             unassigned_no_unit_count=no_unit_count,
-            unassigned_no_person=[
-                TaskResponse.model_validate(t) for t in no_person_tasks
-            ],
+            unassigned_no_person=await task_responses(
+                self.session, self.perm_ctx, no_person_tasks
+            ),
             unassigned_no_person_count=no_person_count,
             by_person=by_person,
             by_subeenheid=by_subeenheid,
@@ -76,14 +82,13 @@ class EenheidOverviewService:
             & Task.assignee_id.is_(None)
             & Task.status.notin_(["done", "cancelled"])
         )
-        count_stmt = select(func.count()).select_from(Task).where(base)
+        count_stmt = self._visible(select(func.count()).select_from(Task).where(base))
         result = await self.session.execute(count_stmt)
         count = result.scalar_one()
 
         tasks_stmt = (
-            select(Task)
-            .where(base)
-            .options(*_task_options())
+            self._visible(select(Task).where(base))
+            .options(*task_options())
             .order_by(Task.deadline.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
         )
@@ -99,14 +104,13 @@ class EenheidOverviewService:
             & Task.assignee_id.is_(None)
             & Task.status.notin_(["done", "cancelled"])
         )
-        count_stmt = select(func.count()).select_from(Task).where(base)
+        count_stmt = self._visible(select(func.count()).select_from(Task).where(base))
         result = await self.session.execute(count_stmt)
         count = result.scalar_one()
 
         tasks_stmt = (
-            select(Task)
-            .where(base)
-            .options(*_task_options())
+            self._visible(select(Task).where(base))
+            .options(*task_options())
             .order_by(Task.deadline.asc().nulls_last(), Task.created_at.desc())
             .limit(limit)
         )
@@ -136,16 +140,14 @@ class EenheidOverviewService:
         person_ids = [p.id for p in people]
 
         # Batch: get all task stats for these people in one query
-        stats_stmt = (
+        stats_stmt = self._visible(
             select(
                 Task.assignee_id,
                 Task.status,
                 Task.deadline,
                 func.count().label("cnt"),
-            )
-            .where(Task.assignee_id.in_(person_ids))
-            .group_by(Task.assignee_id, Task.status, Task.deadline)
-        )
+            ).where(Task.assignee_id.in_(person_ids))
+        ).group_by(Task.assignee_id, Task.status, Task.deadline)
         stats_result = await self.session.execute(stats_stmt)
 
         # Aggregate per person
@@ -213,15 +215,13 @@ class EenheidOverviewService:
             child_id_sets[child.id] = await get_descendant_ids(self.session, child.id)
 
         # Batch: get all task stats for all descendant units in one query
-        stats_stmt = (
+        stats_stmt = self._visible(
             select(
                 Task.organisatie_eenheid_id,
                 Task.status,
                 func.count().label("cnt"),
-            )
-            .where(Task.organisatie_eenheid_id.in_(all_unit_ids))
-            .group_by(Task.organisatie_eenheid_id, Task.status)
-        )
+            ).where(Task.organisatie_eenheid_id.in_(all_unit_ids))
+        ).group_by(Task.organisatie_eenheid_id, Task.status)
         stats_result = await self.session.execute(stats_stmt)
 
         # Index stats by unit_id

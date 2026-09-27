@@ -16,13 +16,31 @@ export interface ReconciliationItem {
   created_at: string;
 }
 
+/** Answer of both merges, with the trust the merge took away from the source. */
+export interface MergeResult {
+  status: string;
+  doelrij_id: string;
+  rewritten: Record<string, number>;
+  eigenaarsrechten_verwijderd: number;
+  plaatsingen_onbevestigd: number;
+}
+
+/** "Merge voltooid." plus what the merge took away, when anything. */
+export function mergeResultMessage(result: MergeResult): string {
+  const lost = [
+    result.eigenaarsrechten_verwijderd > 0 && `${result.eigenaarsrechten_verwijderd} eigenaarsrechten verwijderd`,
+    result.plaatsingen_onbevestigd > 0 && `${result.plaatsingen_onbevestigd} plaatsingen wachten op bevestiging`,
+  ].filter(Boolean);
+  return lost.length > 0 ? `Merge voltooid: ${lost.join(', ')}.` : 'Merge voltooid.';
+}
+
 export async function listReconciliations(
   status: 'open' | 'merged' | 'ignored' = 'open',
 ): Promise<ReconciliationItem[]> {
   return apiGet<ReconciliationItem[]>('/api/admin/reconciliation', { status });
 }
 
-export async function mergeReconciliation(id: string): Promise<{ status: string; doelrij_id: string }> {
+export async function mergeReconciliation(id: string): Promise<MergeResult> {
   return apiPost(`/api/admin/reconciliation/${id}/merge`, {});
 }
 
@@ -41,16 +59,11 @@ export async function scanOrphanHandmatig(): Promise<OrphanScanResult> {
   return apiPost('/api/admin/sync/orphan-handmatig', {});
 }
 
-export interface ManualMergeResult {
-  status: string;
-  doelrij_id: string;
-  rewritten: Record<string, number>;
-}
 
 export async function manualMerge(
   sourceId: string,
   targetId: string,
-): Promise<ManualMergeResult> {
+): Promise<MergeResult> {
   return apiPost('/api/admin/reconciliation/manual-merge', {
     source_id: sourceId,
     target_id: targetId,

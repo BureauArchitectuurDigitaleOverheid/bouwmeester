@@ -10,8 +10,13 @@ from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_system_permission,
+)
 from bouwmeester.models.fcc_sync_log import FccSyncLog
 from bouwmeester.models.opdracht import Opdracht
 from bouwmeester.schema.fcc import (
@@ -24,10 +29,17 @@ from bouwmeester.schema.fcc import (
     SyncStatus,
 )
 from bouwmeester.schema.opdracht import OpdrachtResponse
+from bouwmeester.services.visibility_filters import (
+    opdracht_response,
+    opdracht_responses,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/fcc", tags=["fcc"])
+
+# The FCC sync as a whole is tenant-wide and needs a system role.  Pushing or
+# resolving one opdracht is decided on that opdracht (where it lives).
 
 
 @router.get(
@@ -37,7 +49,7 @@ router = APIRouter(prefix="/fcc", tags=["fcc"])
 async def get_last_sync(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    _perm=Depends(require_system_permission("fcc:sync")),
 ) -> FccLastSyncResponse:
     """Get the timestamp of the most recent FCC sync."""
     stmt = select(FccSyncLog).order_by(FccSyncLog.created_at.desc()).limit(1)
@@ -53,7 +65,7 @@ async def get_last_sync(
 async def trigger_sync(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    _perm=Depends(require_system_permission("fcc:sync")),
 ) -> FccSyncTriggerResponse:
     """Trigger a manual FCC sync cycle (pull, push if enabled, then match contacts)."""
     from bouwmeester.services.fcc_import_service import FccImportService
@@ -93,7 +105,7 @@ async def list_sync_logs(
     limit: int = Query(50, ge=1, le=200),
     opdracht_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    _perm=Depends(require_system_permission("fcc:sync")),
 ) -> list[FccSyncLogResponse]:
     """List FCC sync audit log entries."""
     stmt = select(FccSyncLog).order_by(FccSyncLog.created_at.desc())
@@ -111,7 +123,7 @@ async def list_sync_logs(
 async def get_fcc_schema(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    _perm=Depends(require_system_permission("fcc:sync")),
 ) -> FccSchemaResponse:
     """Discover available FCC OData entity sets via $metadata."""
     from bouwmeester.services.fcc_import_service import FccImportService
@@ -132,7 +144,8 @@ async def get_fcc_schema(
 async def list_conflicts(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    _perm=Depends(require_system_permission("fcc:sync")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[OpdrachtResponse]:
     """List opdrachten with FCC sync conflicts."""
     stmt = (
@@ -142,7 +155,7 @@ async def list_conflicts(
         .order_by(Opdracht.updated_at.desc())
     )
     result = await db.execute(stmt)
-    return [OpdrachtResponse.model_validate(row) for row in result.scalars().all()]
+    return await opdracht_responses(db, perm_ctx, result.scalars().all())
 
 
 @router.post(
@@ -154,7 +167,9 @@ async def resolve_conflict(
     data: FccConflictResolveRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    perm_ctx: PermissionContext = Depends(
+        requires("fcc:sync", "opdracht", path_param="opdracht_id")
+    ),
 ) -> OpdrachtResponse:
     """Resolve an FCC sync conflict for an opdracht."""
     from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -186,7 +201,7 @@ async def resolve_conflict(
 
     # Re-fetch to pick up sync state changes
     opdracht = require_found(await repo.get(opdracht_id), "Opdracht")
-    return OpdrachtResponse.model_validate(opdracht)
+    return await opdracht_response(db, perm_ctx, opdracht)
 
 
 @router.post(
@@ -197,7 +212,9 @@ async def push_opdracht(
     opdracht_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("fcc:sync")),
+    perm_ctx: PermissionContext = Depends(
+        requires("fcc:sync", "opdracht", path_param="opdracht_id")
+    ),
 ) -> OpdrachtResponse:
     """Push a single opdracht to FCC (requires FCC_PUSH_ENABLED)."""
     from bouwmeester.repositories.opdracht import OpdrachtRepository
@@ -220,4 +237,4 @@ async def push_opdracht(
 
     # Re-fetch to pick up sync state changes
     opdracht = require_found(await repo.get(opdracht_id), "Opdracht")
-    return OpdrachtResponse.model_validate(opdracht)
+    return await opdracht_response(db, perm_ctx, opdracht)

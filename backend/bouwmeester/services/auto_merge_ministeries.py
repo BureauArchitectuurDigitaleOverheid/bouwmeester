@@ -1,11 +1,14 @@
-"""Auto-merge handmatige ministerie-rijen met TOOI-rijen.
+"""Merge manual ministerie rows into their TOOI rows automatically.
 
-Wordt aangeroepen aan het einde van sync_tooi(). Voor type=ministerie
-auto-mergen we omdat ministerie-namen wettelijk uniek zijn — kans op
-valse positief is nul. Voor andere types blijft reconciliation handmatig.
+Called at the end of ``sync_tooi()``.  For type ministerie a name match is
+safe (ministerie names are unique by law); other types are reconciled by
+hand.
 
-Mirror van scripts/merge_existing_with_tooi.py maar nu binnen het package
-zodat tooi_sync.py er rechtstreeks aan kan.
+Only an official-looking manual row is merged: a top-level one (no parent)
+that is not a user's own external root (no eenheid eigenaar).  A ministerie
+someone hung below their own organisation is left alone, so it cannot take
+over the TOOI row.  The TOOI row always survives: the manual row's
+children, placements and grants move onto it (``merge_into``).
 """
 
 from __future__ import annotations
@@ -17,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
+from bouwmeester.models.resource_permission import ResourcePermission
+from bouwmeester.services.merge_organisatie_eenheden import merge_into
 
 log = logging.getLogger(__name__)
 
@@ -28,11 +33,29 @@ def _normalize(naam: str) -> str:
     return n.strip()
 
 
-async def merge_ministries(session: AsyncSession) -> int:
-    """Merge handmatige ministerie-rijen met TOOI-rijen via open reconciliations.
+async def _is_official_candidate(
+    session: AsyncSession, handmatig: OrganisatieEenheid
+) -> bool:
+    """A top-level manual ministerie that is not someone's own root."""
+    if handmatig.parent_id is not None:
+        return False
+    owner = await session.scalar(
+        select(ResourcePermission.id)
+        .where(
+            ResourcePermission.resource_type == "organisatie_eenheid",
+            ResourcePermission.resource_id == handmatig.id,
+            ResourcePermission.rol == "eigenaar",
+        )
+        .limit(1)
+    )
+    return owner is None
 
-    Returns het aantal gemergde rijen. Idempotent: zonder open conflicten
-    doet hij niks.
+
+async def merge_ministries(session: AsyncSession) -> int:
+    """Merge manual ministerie rows into TOOI rows via open reconciliations.
+
+    Returns the number of merged rows.  Idempotent: without open conflicts
+    it does nothing.
     """
     rows = (
         (
@@ -58,46 +81,36 @@ async def merge_ministries(session: AsyncSession) -> int:
             continue
         if _normalize(handmatig.naam) != _normalize(kandidaat.naam):
             continue
+        if not await _is_official_candidate(session, handmatig):
+            log.warning(
+                "Auto-merge ministerie skipped: %s (%s) is not a top-level "
+                "manual ministerie; left for manual reconciliation",
+                handmatig.id,
+                handmatig.naam,
+            )
+            continue
 
-        # Per rij in een savepoint zodat één onverwachte FK-constraint
-        # of unique-violation de hele sync niet rollback'd. Bij failure:
-        # log + door met volgende reconciliation. Het Beheer > Reconciliatie-
-        # paneel toont dan nog steeds de open rij voor handmatige merge.
+        # One savepoint per row, so an unexpected FK or unique violation
+        # does not roll back the whole sync; the open row stays visible in
+        # Beheer > Reconciliatie for a manual merge.
+        naam = handmatig.naam
         try:
             async with session.begin_nested():
                 log.info(
-                    "Auto-merge ministerie: handmatig %s (%s) <- TOOI %s (%s)",
+                    "Auto-merge ministerie: handmatig %s (%s) -> TOOI %s (%s)",
                     handmatig.id,
-                    handmatig.naam,
+                    naam,
                     kandidaat.id,
                     kandidaat.naam,
                 )
-
-                kandidaat_tooi_uri = kandidaat.tooi_uri
-                kandidaat_organisatiesoort = kandidaat.tooi_organisatiesoort
-                kandidaat_afkorting = kandidaat.afkorting
-                kandidaat_oin = kandidaat.oin
-
+                await merge_into(session, source=handmatig, target=kandidaat)
                 rec.status = "merged"
-                rec.kandidaat_id = None
-
-                await session.delete(kandidaat)
-                await session.flush()
-
-                handmatig.tooi_uri = kandidaat_tooi_uri
-                handmatig.tooi_organisatiesoort = kandidaat_organisatiesoort
-                if not handmatig.afkorting and kandidaat_afkorting:
-                    handmatig.afkorting = kandidaat_afkorting
-                if not handmatig.oin and kandidaat_oin:
-                    handmatig.oin = kandidaat_oin
-                if handmatig.bron == "handmatig":
-                    handmatig.bron = "tooi"
                 merged_count += 1
         except Exception as exc:  # noqa: BLE001
             log.warning(
-                "Auto-merge faalde voor reconciliation %s (%s): %s — overslaan",
+                "Auto-merge failed for reconciliation %s (%s): %s; skipped",
                 rec.id,
-                handmatig.naam if handmatig else "?",
+                naam,
                 exc,
             )
 

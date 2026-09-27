@@ -4,6 +4,7 @@ import { CreatableSelect } from '@/components/common/CreatableSelect';
 import { Icon } from '@/components/nldd/Icon';
 import { orUndef, useNlddEvent } from '@/components/nldd/events';
 import { useUpdateTask } from '@/hooks/useTasks';
+import { useCan } from '@/hooks/useCan';
 import { useOrganisatieFlat, useOrganisatiePersonenRecursive } from '@/hooks/useOrganisatie';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { buildPersonOptions } from '@/utils/personOptions';
@@ -17,6 +18,7 @@ import {
 import type { Task, Person, OrganisatieEenheidPersonenGroup } from '@/types';
 import { formatFunctie } from '@/types';
 import type { SelectOption } from '@/components/common/CreatableSelect';
+import { descendantIds } from '@/utils/orgTree';
 
 const PERSON_LEVEL_TYPES = new Set(['afdeling', 'dienst', 'bureau', 'cluster', 'team']);
 
@@ -26,21 +28,6 @@ function flattenPersonenGroup(group: OrganisatieEenheidPersonenGroup): Person[] 
     people.push(...flattenPersonenGroup(child));
   }
   return people;
-}
-
-function getDescendantIds(allUnits: { id: string; parent_id?: string | null }[], parentId: string): Set<string> {
-  const descendants = new Set<string>();
-  const queue = [parentId];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    for (const u of allUnits) {
-      if (u.parent_id === current && !descendants.has(u.id)) {
-        descendants.add(u.id);
-        queue.push(u.id);
-      }
-    }
-  }
-  return descendants;
 }
 
 interface UnassignedTasksSectionProps {
@@ -91,15 +78,16 @@ function DisclosureHeader({ icon, label, count, open, onToggle }: DisclosureHead
 function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: { task: Task; showPersonAssign: boolean; selectedEenheidId: string; personOptions: SelectOption[] }) {
   const { openTaskDetail } = useTaskDetail();
   const updateTask = useUpdateTask();
+  const { allowed: canUpdate } = useCan('task:update', { type: 'task', id: task.id });
   const { data: eenheden } = useOrganisatieFlat();
 
   const isOverdue = task.due_date && checkOverdue(task.due_date);
 
   const eenheidOptions: SelectOption[] = useMemo(() => {
     const all = eenheden ?? [];
-    const descendantIds = selectedEenheidId ? getDescendantIds(all, selectedEenheidId) : new Set<string>();
+    const below = selectedEenheidId ? descendantIds(all, [selectedEenheidId]) : new Set<string>();
     const filtered = selectedEenheidId
-      ? all.filter((e) => descendantIds.has(e.id))
+      ? all.filter((e) => below.has(e.id))
       : all;
     return [
       { value: '', label: 'Geen' },
@@ -173,6 +161,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           own width="full" above (nldd-container has no flex-shrink
           attribute). The two selects below keep their md-breakpoint caveat
           from the outer row: nldd-container's width is not responsive. */}
+      {canUpdate && (
       <nldd-container layout="row" gap="8" vertical-alignment="center" className="shrink-0">
         <div className="unassigned-task-field">
           <CreatableSelect
@@ -193,6 +182,7 @@ function TaskRow({ task, showPersonAssign, selectedEenheidId, personOptions }: {
           </div>
         )}
       </nldd-container>
+      )}
     </div>
   );
 }

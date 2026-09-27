@@ -18,6 +18,19 @@ type RequestState =
   | { step: 'error'; message: string }
   | { step: 'already_pending' };
 
+interface AccessRequestStatus {
+  status: string | null;
+  deny_reason?: string;
+}
+
+/** This session's access request status, or null when there is none to show. */
+async function fetchAccessRequestStatus(): Promise<AccessRequestStatus | null> {
+  const res = await fetch(`${BASE_URL}/api/auth/access-request-status`, {
+    credentials: 'include',
+  });
+  return res.ok ? ((await res.json()) as AccessRequestStatus) : null;
+}
+
 export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
   const [state, setState] = useState<RequestState>({ step: 'idle' });
 
@@ -25,14 +38,14 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
     window.location.href = `${BASE_URL}/api/auth/logout`;
   };
 
-  // Check for existing pending request on mount
+  // Check for existing pending request on mount. The status is that of the
+  // address this session logged in with (the backend keeps it in the
+  // session), so no address goes in the URL.
   useEffect(() => {
     if (!email) return;
-    fetch(`${BASE_URL}/api/auth/access-request-status?email=${encodeURIComponent(email)}`, {
-      credentials: 'include',
-    })
-      .then((res) => res.json())
+    fetchAccessRequestStatus()
       .then((data) => {
+        if (!data) return;
         if (data.status === 'pending') {
           setState({ step: 'pending' });
         } else if (data.status === 'denied') {
@@ -52,11 +65,8 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(
-          `${BASE_URL}/api/auth/access-request-status?email=${encodeURIComponent(email)}`,
-          { credentials: 'include' }
-        );
-        const data = await res.json();
+        const data = await fetchAccessRequestStatus();
+        if (!data) return;
         if (data.status === 'approved') {
           setState({ step: 'approved' });
         } else if (data.status === 'denied') {
@@ -97,6 +107,15 @@ export function AccessDeniedPage({ email }: AccessDeniedPageProps) {
         if (!res.ok) {
           if (res.status === 429) {
             setState({ step: 'error', message: 'Te veel verzoeken, probeer het later opnieuw.' });
+            return;
+          }
+          if (res.status === 401 || res.status === 403) {
+            // The request is bound to the login the whitelist refused; that
+            // session is gone (expired, or logged in elsewhere).
+            setState({
+              step: 'error',
+              message: 'Je sessie is verlopen. Log opnieuw in om toegang aan te vragen.',
+            });
             return;
           }
           setState({ step: 'error', message: 'Er ging iets mis. Probeer het later opnieuw.' });

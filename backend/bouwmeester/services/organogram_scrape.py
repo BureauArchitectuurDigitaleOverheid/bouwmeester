@@ -23,12 +23,13 @@ import uuid
 from dataclasses import dataclass, field
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.text import normalize_org_name, unescape_html
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
+from bouwmeester.services.sync_matching import OFFICIAL_EENHEID_BRONNEN
 
 log = logging.getLogger(__name__)
 
@@ -196,13 +197,20 @@ async def sync_organogram(
     sync_run_id = uuid.uuid4()
     stats = OrganogramScrapeStats(sync_run_id=sync_run_id)
 
-    # Pak ministeries uit DB
+    # Only the official ministeries: at the top, brought by an official
+    # source (or linked to TOOI).  A ministerie someone created below their
+    # own organisation must not receive official, trusted DGs.
     ministeries = (
         (
             await session.execute(
                 select(OrganisatieEenheid).where(
                     OrganisatieEenheid.type == "ministerie",
                     OrganisatieEenheid.geldig_tot.is_(None),
+                    OrganisatieEenheid.parent_id.is_(None),
+                    or_(
+                        OrganisatieEenheid.bron.in_(OFFICIAL_EENHEID_BRONNEN),
+                        OrganisatieEenheid.tooi_uri.isnot(None),
+                    ),
                 )
             )
         )

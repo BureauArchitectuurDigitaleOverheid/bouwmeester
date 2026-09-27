@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCan } from '@/hooks/useCan';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   getLeads,
@@ -39,6 +40,7 @@ import type {
   LeadActivityCreate,
   LeadFilters,
 } from '@/types';
+import { CHANGES_RIGHTS, touches } from '@/hooks/useCan';
 
 export function useLeads(filters?: LeadFilters) {
   return useQuery({
@@ -65,6 +67,7 @@ export function useCreateLead() {
 
 export function useUpdateLead() {
   return useMutationWithError({
+    meta: touches(({ id }: { id: string }) => ({ type: 'lead', id })),
     mutationFn: ({ id, data }: { id: string; data: LeadUpdate }) => updateLead(id, data),
     errorMessage: 'Fout bij bijwerken lead',
     invalidateKeys: [queryKeys.leads.lists(), queryKeys.leads.all, queryKeys.leads.metrics()],
@@ -197,6 +200,7 @@ export function useLeadMetrics(initiatiefId?: string) {
 
 export function useAddLeadContact() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({
       leadId,
       personId,
@@ -213,6 +217,7 @@ export function useAddLeadContact() {
 
 export function useRemoveLeadContact() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ leadId, contactId }: { leadId: string; contactId: string }) =>
       removeLeadContact(leadId, contactId),
     errorMessage: 'Fout bij verwijderen externe contactpersoon',
@@ -320,8 +325,15 @@ export function useCommunityGraph(initiatiefId?: string) {
 
 export function useParseLeadIntake() {
   return useMutation({
-    mutationFn: ({ rawText, files }: { rawText?: string; files?: File[] }) =>
-      parseLeadIntake(rawText, files),
+    mutationFn: ({
+      rawText,
+      files,
+      initiatiefId,
+    }: {
+      rawText?: string;
+      files?: File[];
+      initiatiefId?: string;
+    }) => parseLeadIntake(rawText, files, initiatiefId),
   });
 }
 
@@ -373,6 +385,7 @@ export function useCheckDuplicates(title: string, organization?: string) {
 
 export function useMergeLeads() {
   return useMutationWithError({
+    meta: CHANGES_RIGHTS,
     mutationFn: ({ sourceId, targetId }: { sourceId: string; targetId: string }) =>
       mergeLeads(sourceId, targetId),
     errorMessage: 'Fout bij samenvoegen leads',
@@ -392,4 +405,19 @@ export function useLeadTimeline(params?: {
     queryKey: [...queryKeys.leads.all, 'timeline', params],
     queryFn: () => getLeadTimeline(params),
   });
+}
+
+/**
+ * May the current user put lead content on the public page of `initiatiefId`
+ * (public fields, a published post with a public text)? That page is the
+ * initiatief's, as in the backend's `lead_rules.require_may_publish`:
+ * `lead:update` alone does not reach it. A lead without initiatief shows on
+ * no page.
+ */
+export function useCanPublishLead(initiatiefId: string | null | undefined): boolean {
+  const { allowed } = useCan(
+    'initiatief:update',
+    initiatiefId ? { type: 'initiatief', id: initiatiefId } : null,
+  );
+  return !initiatiefId || allowed;
 }

@@ -3,16 +3,18 @@
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import distinct, func, select
+from sqlalchemy import distinct, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.org_context import OrgContext, apply_task_filter
 from bouwmeester.models.task import Task
 from bouwmeester.repositories.base import BaseRepository
 from bouwmeester.schema.task import TaskCreate, TaskUpdate
 
+REORDER_MISMATCH = "Geef precies de subtaken van deze taak op, elk één keer"
 
-def _task_options():
+
+def task_options():
     """Standard eager-load options for task queries."""
     return [
         selectinload(Task.assignee),
@@ -27,7 +29,7 @@ class TaskRepository(BaseRepository[Task]):
     model = Task
 
     async def get(self, id: UUID) -> Task | None:
-        stmt = select(Task).where(Task.id == id).options(*_task_options())
+        stmt = select(Task).where(Task.id == id).options(*task_options())
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -41,7 +43,7 @@ class TaskRepository(BaseRepository[Task]):
         opdracht_id: UUID | None = None,
         org_ctx: OrgContext | None = None,
     ) -> list[Task]:
-        stmt = select(Task).options(*_task_options()).offset(skip).limit(limit)
+        stmt = select(Task).options(*task_options()).offset(skip).limit(limit)
         if status is not None:
             stmt = stmt.where(Task.status == status)
         if organisatie_eenheid_id is not None:
@@ -52,7 +54,7 @@ class TaskRepository(BaseRepository[Task]):
                 stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
         if opdracht_id is not None:
             stmt = stmt.where(Task.opdracht_id == opdracht_id)
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         stmt = stmt.order_by(Task.created_at.desc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -104,12 +106,12 @@ class TaskRepository(BaseRepository[Task]):
         stmt = (
             select(Task)
             .where(Task.opdracht_id == opdracht_id)
-            .options(*_task_options())
+            .options(*task_options())
             .offset(skip)
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -123,17 +125,13 @@ class TaskRepository(BaseRepository[Task]):
         stmt = (
             select(Task)
             .where(Task.assignee_id == assignee_id)
-            .options(*_task_options())
+            .options(*task_options())
             .offset(skip)
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        # Exception: you always see your own tasks, so if the assignee
-        # matches the current user we skip org filtering entirely.
-        if org_ctx is not None and org_ctx.person_id == assignee_id:
-            pass  # no org filter - user sees all their own tasks
-        else:
-            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        # Your own tasks are always visible (``apply_task_filter``).
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -147,12 +145,12 @@ class TaskRepository(BaseRepository[Task]):
         stmt = (
             select(Task)
             .where(Task.node_id == node_id)
-            .options(*_task_options())
+            .options(*task_options())
             .offset(skip)
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -168,14 +166,12 @@ class TaskRepository(BaseRepository[Task]):
                 Task.deadline < date.today(),
                 Task.status.notin_(["done", "cancelled"]),
             )
-            .options(*_task_options())
+            .options(*task_options())
         )
         if assignee_id is not None:
             stmt = stmt.where(Task.assignee_id == assignee_id)
-        # Skip org filter when listing the caller's own overdue tasks —
-        # users always see their own tasks regardless of org-scope.
-        if not (org_ctx is not None and org_ctx.person_id == assignee_id):
-            stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        # Your own tasks are always visible (``apply_task_filter``).
+        stmt = apply_task_filter(stmt, org_ctx)
         stmt = stmt.order_by(Task.deadline.asc())
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
@@ -194,12 +190,12 @@ class TaskRepository(BaseRepository[Task]):
         else:
             stmt = select(Task).where(Task.organisatie_eenheid_id == eenheid_id)
         stmt = (
-            stmt.options(*_task_options())
+            stmt.options(*task_options())
             .offset(skip)
             .limit(limit)
             .order_by(Task.created_at.desc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -215,9 +211,9 @@ class TaskRepository(BaseRepository[Task]):
                 Task.assignee_id.is_(None),
                 Task.status.notin_(["done", "cancelled"]),
             )
-            .options(*_task_options())
+            .options(*task_options())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         if organisatie_eenheid_id is not None:
             stmt = stmt.where(Task.organisatie_eenheid_id == organisatie_eenheid_id)
         stmt = stmt.order_by(Task.created_at.desc())
@@ -233,48 +229,35 @@ class TaskRepository(BaseRepository[Task]):
         stmt = (
             select(Task)
             .where(Task.parent_id == parent_id)
-            .options(*_task_options())
+            .options(*task_options())
             .order_by(Task.order.asc().nulls_last(), Task.created_at.asc())
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
     async def reorder_subtasks(
-        self, parent_id: UUID, task_ids: list[UUID]
+        self,
+        parent_id: UUID,
+        task_ids: list[UUID],
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> list[Task]:
-        """Set order field on subtasks according to the given ID list.
+        """Order the subtasks *org_ctx* sees as *task_ids* lists them.
 
-        Returns the reordered subtask list.
-        Raises ValueError if any task_id does not belong to the parent.
+        *task_ids* must be exactly the visible subtasks of the parent;
+        subtasks the caller cannot see keep their order.  Returns the
+        visible subtasks in their new order.  Raises ``ValueError`` with a
+        message that names neither a subtask nor how many there are.
         """
-        # Batch-fetch all referenced tasks in one query
-        stmt = select(Task).where(Task.id.in_(task_ids))
-        result = await self.session.execute(stmt)
-        tasks_by_id = {t.id: t for t in result.scalars().all()}
-
-        # Validate: every provided ID must be an actual subtask of this parent
-        for tid in task_ids:
-            task = tasks_by_id.get(tid)
-            if task is None or task.parent_id != parent_id:
-                raise ValueError(f"Task {tid} is not a subtask of {parent_id}")
-
-        # Validate completeness: all subtasks of the parent must be included
-        count_stmt = (
-            select(func.count()).select_from(Task).where(Task.parent_id == parent_id)
-        )
-        actual_count = (await self.session.execute(count_stmt)).scalar_one()
-        if len(task_ids) != actual_count:
-            raise ValueError(
-                f"Expected {actual_count} subtask(s) but received {len(task_ids)}"
-            )
-
-        # Build order lookup from the requested sequence
+        visible = await self.get_subtasks(parent_id, org_ctx=org_ctx)
+        by_id = {t.id: t for t in visible}
+        if len(task_ids) != len(set(task_ids)) or set(task_ids) != set(by_id):
+            raise ValueError(REORDER_MISMATCH)
         for idx, tid in enumerate(task_ids):
-            tasks_by_id[tid].order = idx
-
+            by_id[tid].order = idx
         await self.session.flush()
-        return await self.get_subtasks(parent_id)
+        return await self.get_subtasks(parent_id, org_ctx=org_ctx)
 
     async def get_distinct_work_types(
         self,
@@ -288,7 +271,7 @@ class TaskRepository(BaseRepository[Task]):
             .where(Task.work_type != "")
             .order_by(Task.work_type)
         )
-        stmt = apply_org_filter(stmt, Task.organisatie_eenheid_id, org_ctx)
+        stmt = apply_task_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         return [row[0] for row in result.all()]
 

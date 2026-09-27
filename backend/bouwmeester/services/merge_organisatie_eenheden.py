@@ -32,6 +32,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
 log = logging.getLogger(__name__)
 
 
@@ -460,3 +462,64 @@ async def merge_organisatie_eenheden(
 
     log.info("Merge %s -> %s klaar: %s", source_id, target_id, rewritten)
     return rewritten
+
+
+def _backfill_target_fields(
+    *, target: OrganisatieEenheid, source: OrganisatieEenheid
+) -> None:
+    """Fill empty target fields from the source before the merge.
+
+    TOOI supplies no afkorting/website/kvk/beschrijving, a manual row often
+    does; without a backfill that data would vanish with the source row.
+    """
+    for field in ("afkorting", "website", "kvk_nummer", "beschrijving"):
+        if not getattr(target, field) and getattr(source, field):
+            setattr(target, field, getattr(source, field))
+
+
+@dataclass(frozen=True)
+class MergeResult:
+    """What a merge changed: rewritten references and the trust it took away."""
+
+    rewritten: dict[str, int]
+    owner_grants_removed: int
+    placements_unconfirmed: int
+
+
+async def merge_into(
+    session: AsyncSession, *, source: OrganisatieEenheid, target: OrganisatieEenheid
+) -> MergeResult:
+    """Backfill *target* from *source*, then merge *source* into it; caller commits.
+
+    The say over members does not carry over: the source's eigenaar grants
+    are dropped (in its whole subtree when the target touches the
+    organisation, as ``bring_into_organisation`` does) and placements
+    confirmed by who no longer decides lose their trust
+    (``core.authority.distrust_lost_confirmations``).
+    """
+    from bouwmeester.core.authority import (
+        distrust_lost_confirmations,
+        drop_eenheid_owner_grants,
+        snapshot_trust,
+    )
+    from bouwmeester.repositories.org_tree import (
+        get_subtree_ids,
+        touches_organisation,
+    )
+
+    _backfill_target_fields(target=target, source=source)
+    await session.flush()
+    snapshot = await snapshot_trust(session, source.id)
+    dropped = {source.id}
+    if await touches_organisation(session, target.id):
+        dropped = await get_subtree_ids(session, [source.id])
+    owners = await drop_eenheid_owner_grants(session, dropped)
+    rewritten = await merge_organisatie_eenheden(session, source.id, target.id)
+    unconfirmed = await distrust_lost_confirmations(
+        session, snapshot, moved_into={source.id: target.id}
+    )
+    return MergeResult(
+        rewritten=rewritten,
+        owner_grants_removed=owners,
+        placements_unconfirmed=unconfirmed,
+    )

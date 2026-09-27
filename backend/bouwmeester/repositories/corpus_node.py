@@ -7,10 +7,14 @@ Overrides BaseRepository.create() and update() to manage temporal records
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.org_context import (
+    OrgContext,
+    apply_node_filter,
+    apply_org_filter,
+)
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
@@ -122,6 +126,37 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def _listed(
+        stmt,
+        node_type: str | None = None,
+        *,
+        search: str | None = None,
+        active_only: bool = True,
+        include_unconnected_pi: bool = False,
+        org_ctx: OrgContext | None = None,
+    ):
+        """*stmt* restricted to the nodes the node list shows.
+
+        The one filter of the list (``GET /api/nodes``) and of every count
+        that claims to count it (the dashboard), defaults included: active
+        nodes, no unconnected politieke_input, only what *org_ctx* sees.
+        """
+        if node_type is not None:
+            stmt = stmt.where(CorpusNode.node_type == node_type)
+        if search:
+            escaped = escape_like(search)
+            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%", escape="\\"))
+        if active_only:
+            stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
+        # Exclude unconnected politieke_input nodes at the SQL level so
+        # pagination (offset/limit) remains correct.
+        if not include_unconnected_pi and (
+            node_type is None or node_type == "politieke_input"
+        ):
+            stmt = stmt.where(exclude_unconnected_pi())
+        return apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+
     async def get_all(
         self,
         skip: int = 0,
@@ -133,23 +168,14 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         include_unconnected_pi: bool = False,
         org_ctx: OrgContext | None = None,
     ) -> list[CorpusNode]:
-        stmt = select(CorpusNode)
-        if node_type is not None:
-            stmt = stmt.where(CorpusNode.node_type == node_type)
-        if search:
-            escaped = escape_like(search)
-            stmt = stmt.where(CorpusNode.title.ilike(f"%{escaped}%", escape="\\"))
-        if active_only:
-            stmt = stmt.where(CorpusNode.geldig_tot.is_(None))
-
-        # Exclude unconnected politieke_input nodes at the SQL level so
-        # pagination (offset/limit) remains correct.
-        if not include_unconnected_pi and (
-            node_type is None or node_type == "politieke_input"
-        ):
-            stmt = stmt.where(exclude_unconnected_pi())
-
-        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        stmt = self._listed(
+            select(CorpusNode),
+            node_type,
+            search=search,
+            active_only=active_only,
+            include_unconnected_pi=include_unconnected_pi,
+            org_ctx=org_ctx,
+        )
         # Alphabetical by title: this is the generic node list used by
         # selection dropdowns (e.g. the Opdracht instrument picker), where
         # alphabetical order is what users expect, not creation order.
@@ -157,97 +183,17 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_neighbors(self, id: UUID) -> dict:
-        """Return the node and its directly connected nodes with edges."""
-        node = await self.get(id)
-        if node is None:
-            return {"node": None, "neighbors": []}
-
-        # Nodes connected via edges_from (this node -> neighbor)
-        stmt_from = (
-            select(Edge, CorpusNode)
-            .join(CorpusNode, Edge.to_node_id == CorpusNode.id)
-            .where(Edge.from_node_id == id)
-        )
-        # Nodes connected via edges_to (neighbor -> this node)
-        stmt_to = (
-            select(Edge, CorpusNode)
-            .join(CorpusNode, Edge.from_node_id == CorpusNode.id)
-            .where(Edge.to_node_id == id)
-        )
-
-        result_from = await self.session.execute(stmt_from)
-        result_to = await self.session.execute(stmt_to)
-
-        neighbors = []
-        for edge, neighbor_node in result_from.all():
-            neighbors.append({"node": neighbor_node, "edge": edge})
-        for edge, neighbor_node in result_to.all():
-            neighbors.append({"node": neighbor_node, "edge": edge})
-
-        return {"node": node, "neighbors": neighbors}
-
-    async def get_graph(self, node_id: UUID, depth: int = 2) -> dict:
-        """Return a subgraph around a node using a recursive CTE for BFS traversal."""
-        # Use a recursive CTE to find all nodes within `depth` hops
-        cte_query = text(
-            """
-            WITH RECURSIVE graph_walk AS (
-                -- Base case: the starting node
-                SELECT
-                    id AS node_id,
-                    0 AS level
-                FROM corpus_node
-                WHERE id = :start_id
-
-                UNION
-
-                -- Recursive case: follow edges in both directions
-                SELECT
-                    CASE
-                        WHEN e.from_node_id = gw.node_id THEN e.to_node_id
-                        ELSE e.from_node_id
-                    END AS node_id,
-                    gw.level + 1 AS level
-                FROM graph_walk gw
-                JOIN edge e ON e.from_node_id = gw.node_id
-                             OR e.to_node_id = gw.node_id
-                WHERE gw.level < :max_depth
-            )
-            SELECT DISTINCT node_id FROM graph_walk
-            """
-        )
-        result = await self.session.execute(
-            cte_query, {"start_id": str(node_id), "max_depth": depth}
-        )
-        node_ids = [row[0] for row in result.all()]
-
-        if not node_ids:
-            return {"nodes": [], "edges": []}
-
-        # Fetch all nodes
-        nodes_stmt = select(CorpusNode).where(CorpusNode.id.in_(node_ids))
-        nodes_result = await self.session.execute(nodes_stmt)
-        nodes = list(nodes_result.scalars().all())
-
-        # Fetch all edges between these nodes
-        edges_stmt = select(Edge).where(
-            Edge.from_node_id.in_(node_ids),
-            Edge.to_node_id.in_(node_ids),
-        )
-        edges_result = await self.session.execute(edges_stmt)
-        edges = list(edges_result.scalars().all())
-
-        return {"nodes": nodes, "edges": edges}
-
     async def get_beleidskompas_progress(
         self,
         dossier_ids: list[UUID],
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> dict[UUID, tuple[int, int]]:
         """Return beleidskompas progress for a list of dossier node IDs.
 
         For each dossier, counts child node types connected via
-        ``onderdeel_van`` edges and checks against the 5 KCBR steps.
+        ``onderdeel_van`` edges and checks against the 5 KCBR steps.  Only
+        the children *org_ctx* sees count.
 
         Returns a dict mapping dossier_id → (completed_steps, total_steps).
         """
@@ -280,6 +226,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
             )
             .distinct()
         )
+        stmt = apply_node_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         rows = result.all()
 
@@ -306,10 +253,10 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
         node_type: str | None = None,
         org_ctx: OrgContext | None = None,
     ) -> int:
-        stmt = select(func.count()).select_from(CorpusNode)
-        if node_type is not None:
-            stmt = stmt.where(CorpusNode.node_type == node_type)
-        stmt = apply_org_filter(stmt, CorpusNode.organisatie_eenheid_id, org_ctx)
+        """How many nodes the node list shows with its default filter."""
+        stmt = self._listed(
+            select(func.count()).select_from(CorpusNode), node_type, org_ctx=org_ctx
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one()
 

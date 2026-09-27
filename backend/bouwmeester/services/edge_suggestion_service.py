@@ -11,6 +11,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.org_context import OrgContext, apply_org_filter
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
 from bouwmeester.models.edge_type import EdgeType
@@ -49,8 +50,14 @@ class EdgeSuggestionService:
         step_description: str = "",
         max_candidates: int = 10,
         max_llm_scored: int = 5,
+        org_ctx: OrgContext | None = None,
     ) -> list[EdgeSuggestionItem]:
-        """Find nodes of specific types to link to a dossier."""
+        """Find nodes of specific types to link to a dossier.
+
+        Candidates are limited to the nodes *org_ctx* sees (as in
+        ``GET /nodes``): their titles go into the LLM prompt and back to
+        the caller.
+        """
         dossier_uuid = uuid.UUID(dossier_id)
 
         # Get the dossier
@@ -71,6 +78,9 @@ class EdgeSuggestionService:
         candidates_stmt = select(CorpusNode).where(
             CorpusNode.node_type.in_(step_node_types),
             CorpusNode.id.notin_(linked_ids | {dossier_uuid}),
+        )
+        candidates_stmt = apply_org_filter(
+            candidates_stmt, CorpusNode.organisatie_eenheid_id, org_ctx
         )
         candidates_result = await self.session.execute(candidates_stmt)
         candidates = list(candidates_result.scalars().all())

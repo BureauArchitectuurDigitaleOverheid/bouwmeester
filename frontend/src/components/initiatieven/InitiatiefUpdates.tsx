@@ -16,6 +16,7 @@ import {
 import type { InitiatiefDetail, InitiatiefUpdatePost } from '@/types';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 /** Controlled `nldd-text-field` for an update post's title. */
 function UpdateTitleField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -30,8 +31,8 @@ function UpdateTitleField({ value, onChange }: { value: string; onChange: (v: st
  * published one appears on `/c/:slug` as soon as the public page is on.
  */
 export function InitiatiefUpdates({ initiatief }: { initiatief: InitiatiefDetail }) {
-  const canEdit =
-    initiatief.access_level === 'eigenaar' || initiatief.access_level === 'contributor';
+  // Every post is written with the rights on its initiatief, so one decision covers them all.
+  const { allowed: canEdit } = useCan('initiatief_update:create', { type: 'initiatief', id: initiatief.id });
   const { data: posts = [] } = useInitiatiefUpdates(initiatief.id);
   const createMutation = useCreateInitiatiefUpdate();
   const editMutation = useEditInitiatiefUpdate();

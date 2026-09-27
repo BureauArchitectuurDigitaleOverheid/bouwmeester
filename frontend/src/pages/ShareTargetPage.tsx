@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { useParseLeadIntake } from '@/hooks/useLeads';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useCan } from '@/hooks/useCan';
 import type { LeadParseResult } from '@/types';
 import { INITIATIEVEN_PATH } from '@/utils/initiatiefRoutes';
 
@@ -64,10 +64,13 @@ export function ShareTargetPage() {
   const [error, setError] = useState<string | null>(null);
 
   const parseMutation = useParseLeadIntake();
-  const { hasPermission } = usePermissions();
-  const canCreateLeads = hasPermission('lead:read');
+  // Is there anywhere this person may create a lead? The backend decides.
+  const { allowed: canCreateLeads, isLoading: rightsLoading } = useCan('lead:create', {
+    type: 'lead',
+    anywhere: true,
+  });
 
-  // Read shared data from cache on mount
+  // Read shared data from cache once the rights are known
   useEffect(() => {
     if (!received || !canCreateLeads) return;
     readSharedData().then((data) => {
@@ -77,7 +80,7 @@ export function ShareTargetPage() {
         setError('Geen afbeeldingen ontvangen.');
       }
     });
-  }, [received]);
+  }, [received, canCreateLeads]);
 
   // Auto-parse when shared data arrives
   useEffect(() => {
@@ -106,7 +109,7 @@ export function ShareTargetPage() {
   };
 
   // No lead permission — show access denied
-  if (received && !canCreateLeads) {
+  if (received && !rightsLoading && !canCreateLeads) {
     return (
       <nldd-simple-section width="400px" horizontal-alignment="center" padding-block="80">
         <nldd-inline-dialog

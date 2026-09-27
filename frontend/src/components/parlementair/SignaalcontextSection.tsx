@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/nldd/Icon';
+import { useCan } from '@/hooks/useCan';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
   getSignaalcontext,
@@ -25,6 +26,7 @@ import {
  */
 export function SignaalcontextSection({ initiatiefId }: { initiatiefId: string }) {
   const [open, setOpen] = useState(false);
+  const { allowed: canEdit } = useCan('initiatief:update', { type: 'initiatief', id: initiatiefId });
   const [tekst, setTekst] = useState('');
   const [origineel, setOrigineel] = useState('');
   const [bezig, setBezig] = useState(false);
@@ -78,7 +80,7 @@ export function SignaalcontextSection({ initiatiefId }: { initiatiefId: string }
               </nldd-text>
             </nldd-container>
           </nldd-container>
-          {!open && (
+          {canEdit && !open && (
             <nldd-button
               variant="secondary"
               size="sm"

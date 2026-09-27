@@ -29,6 +29,7 @@ from bouwmeester.services.kamerstuk_soort import (
     CAT_OVERIG,
     CATEGORIE_PRESENTATIE,
 )
+from bouwmeester.services.llm.base import KamerstukAlertResult
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_utils import escape_mattermost_md as _escape_md
 from bouwmeester.services.mattermost_utils import (
@@ -37,6 +38,20 @@ from bouwmeester.services.mattermost_utils import (
 from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
+
+# A scope that follows parliamentary items: (scope_type, scope_id).
+ScopeKey = tuple[str, UUID]
+
+
+def per_scope(abonnementen: list) -> dict[ScopeKey, list]:
+    """The abonnementen grouped by the scope they belong to."""
+    groepen: dict[ScopeKey, list] = {}
+    for abonnement in abonnementen:
+        groepen.setdefault((abonnement.scope_type, abonnement.scope_id), []).append(
+            abonnement
+        )
+    return groepen
+
 
 # De kleur van de streep links komt uit de categorie (zie
 # `kamerstuk_soort.CATEGORIE_PRESENTATIE`), zodat een kamervraag er anders
@@ -182,12 +197,19 @@ class ParlementairAlertService:
         self.abonnement_repo = ParlementairAbonnementRepository(session)
         self.mattermost = MattermostService(session)
 
-    async def post_alert(self, item: ParlementairItem) -> int:
-        """Post het item in elk kanaal dat via een abonnement meekijkt.
+    async def post_alert(
+        self,
+        item: ParlementairItem,
+        beoordelingen: dict[ScopeKey, KamerstukAlertResult] | None = None,
+    ) -> int:
+        """Post the item in the channels of every scope that follows it.
 
-        Geeft terug in hoeveel kanalen is gepost. Nul is een geldige
-        uitkomst: een initiatief hoeft geen kanaal te hebben, en dan staat
-        de treffer alleen in de webapp.
+        One message per scope, with only that scope's own terms and
+        judgement from *beoordelingen*.  A scope that switched the category
+        off, or whose threshold the item misses, gets no message.
+
+        Returns the number of channels posted to.  Zero is a valid outcome:
+        a scope need not have a channel.
         """
         if not await self.mattermost.is_enabled():
             return 0
@@ -196,77 +218,71 @@ class ParlementairAlertService:
         if not abonnementen:
             return 0
 
-        # Een abonnement kan soorten uitzetten die het niet in Mattermost
-        # wil zien — procedurevergaderingen zijn nuttig maar talrijk. Het
-        # stuk is dan wél geïmporteerd en in de webapp zichtbaar; alleen
-        # het bericht blijft uit. Zo verliest een filter nooit dekking.
-        extra = item.extra_data or {}
-        categorie = extra.get("categorie") or CAT_OVERIG
-        score = _relevantie(extra)
-        abonnementen = [
-            a
-            for a in abonnementen
-            if categorie not in (a.uitgezette_categorieen or [])
-            # Onder de drempel geen bericht. Het stuk is wél geïmporteerd
-            # en staat in de webapp: een drempel hoort ruis te schelen,
-            # geen dekking. Een meting over zeven stukken gaf een scherpe
-            # scheiding: alles met inhoud op 15 of hoger, en alleen een
-            # procedureel verslag zonder inhoud op 0. De standaard staat
-            # daarom laag genoeg om een stuk waarin de term als gewoon
-            # woord valt nog door te laten; of dat ruis is, is een oordeel
-            # van de lezer en niet van het model.
-            and score >= (a.minimum_relevantie or 0)
-        ]
-        if not abonnementen:
-            logger.info(
-                "Kamerstuk %s (%s, score %d) niet gepost: uitgezet of onder "
-                "de drempel van alle abonnees",
-                item.zaak_nummer,
-                categorie,
-                score,
-            )
-            return 0
-
-        # Welk vinkje dit stuk nodig heeft. Nieuws en kamerstukken zijn
-        # los aan te zetten: een kanaal dat de Kamer volgt heeft niet
-        # vanzelf om de vakpers gevraagd, en andersom.
+        beoordelingen = beoordelingen or {}
+        categorie = (item.extra_data or {}).get("categorie") or CAT_OVERIG
+        # News and parliamentary items are switched on separately per
+        # channel: following the Kamer is not asking for the trade press.
         vinkje = _vinkje_voor(item)
 
-        # Eén kanaal kan via meerdere termen meekijken; post er één keer.
-        kanalen: dict[str, MattermostChannelLink] = {}
-        for abonnement in abonnementen:
-            stmt = select(MattermostChannelLink).where(
-                MattermostChannelLink.scope_type == abonnement.scope_type,
-                MattermostChannelLink.scope_id == abonnement.scope_id,
-                MattermostChannelLink.disabled_at.is_(None),
-                # Per kanaal aan te zetten, net als auto-notes en
-                # lead-suggesties. Een kanaal dat voor leads is gekoppeld
-                # hoort niet ongevraagd elk kamerstuk te krijgen.
-                vinkje.is_(True),
-            )
-            for link in (await self.session.execute(stmt)).scalars().all():
-                kanalen.setdefault(link.channel_id, link)
+        gepost_in: set[str] = set()
+        for scope, scope_abonnementen in per_scope(abonnementen).items():
+            beoordeling = beoordelingen.get(scope)
+            score = _relevantie(beoordeling)
+            # Below the threshold or a category switched off: no message, the
+            # item stays in the web app (a filter never loses coverage).
+            termen = [
+                a.term
+                for a in scope_abonnementen
+                if categorie not in (a.uitgezette_categorieen or [])
+                and score >= (a.minimum_relevantie or 0)
+            ]
+            if not termen:
+                continue
+            # A channel linked to two scopes gets the item once.
+            kanalen = [
+                link
+                for link in await self._kanalen(scope, vinkje)
+                if link.channel_id not in gepost_in
+            ]
+            if not kanalen:
+                continue
+            text, props = self.format_alert(item, termen, beoordeling)
+            for link in kanalen:
+                if await self.mattermost.send_channel_message(
+                    link.channel_id, text, props
+                ):
+                    gepost_in.add(link.channel_id)
 
-        if not kanalen:
+        if not gepost_in:
             logger.info(
-                "Stuk %s heeft abonnees maar geen kanaal met dit soort alerts aan",
+                "Kamerstuk %s (%s) niet gepost: uitgezet, onder de drempel of "
+                "geen kanaal met dit soort alerts aan",
                 item.zaak_nummer,
+                categorie,
             )
-            return 0
+        return len(gepost_in)
 
-        termen = [a.term for a in abonnementen]
-        text, props = self.format_alert(item, termen)
-
-        gepost = 0
-        for channel_id in kanalen:
-            if await self.mattermost.send_channel_message(channel_id, text, props):
-                gepost += 1
-        return gepost
+    async def _kanalen(self, scope: ScopeKey, vinkje) -> list[MattermostChannelLink]:
+        """The active channels of *scope* with this kind of alert switched on."""
+        scope_type, scope_id = scope
+        stmt = select(MattermostChannelLink).where(
+            MattermostChannelLink.scope_type == scope_type,
+            MattermostChannelLink.scope_id == scope_id,
+            MattermostChannelLink.disabled_at.is_(None),
+            vinkje.is_(True),
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
 
     def format_alert(
-        self, item: ParlementairItem, termen: list[str]
+        self,
+        item: ParlementairItem,
+        termen: list[str],
+        beoordeling: KamerstukAlertResult | None = None,
     ) -> tuple[str, dict]:
         """Bouw het bericht: strak, met bron, soort en herkomst.
+
+        *termen* and *beoordeling* are those of the one scope whose
+        channels get this message.
 
         Het soort staat vooraan omdat het het eerste is wat iemand wil
         weten. Een agenda van een procedurevergadering die over twee dagen
@@ -275,7 +291,7 @@ class ParlementairAlertService:
         de Kamer en is geen beleid.
         """
         extra = item.extra_data or {}
-        score = _relevantie(extra)
+        score = _relevantie(beoordeling)
         categorie = extra.get("categorie") or CAT_OVERIG
         presentatie = CATEGORIE_PRESENTATIE.get(
             categorie, CATEGORIE_PRESENTATIE[CAT_OVERIG]
@@ -292,13 +308,17 @@ class ParlementairAlertService:
         # een kamerstuk van derden samen, dus een stuk dat het overhaalt
         # om `@channel` of een link in de samenvatting te zetten krijgt
         # dat anders ongefilterd in het kanaal.
-        samenvatting = _escape_proza(_bruikbare_samenvatting(item.llm_samenvatting))
+        # The scope's own summary first, then the item's general one.
+        samenvatting = _escape_proza(
+            _bruikbare_samenvatting(beoordeling.samenvatting if beoordeling else None)
+            or _bruikbare_samenvatting(item.llm_samenvatting)
+        )
         if not samenvatting:
             samenvatting = _escape_proza(_terugval(item, termen))
 
         tekst_delen = [samenvatting]
 
-        actie = (extra.get("actie") or "").strip()
+        actie = (beoordeling.actie if beoordeling else "").strip()
         if actie:
             tekst_delen.append(f":arrow_right: {_escape_proza(actie)}")
 
@@ -418,7 +438,10 @@ class ParlementairAlertService:
         return " · ".join(delen)
 
     async def post_inhaalslag(
-        self, abonnementen: list, items: list[ParlementairItem]
+        self,
+        abonnementen: list,
+        items: list[ParlementairItem],
+        beoordelingen: dict[UUID, KamerstukAlertResult] | None = None,
     ) -> int:
         """Meld in één bericht wat nieuwe zoektermen terugvonden.
 
@@ -442,8 +465,10 @@ class ParlementairAlertService:
         # bericht met 47 stukken op, waarvan 46 via een term die vooral de
         # metafoor ving. De stukken blijven geïmporteerd en in de webapp
         # zichtbaar; alleen het bericht wordt korter.
+        # *beoordelingen* holds this scope's judgement per item id.
+        beoordelingen = beoordelingen or {}
         drempel = min((a.minimum_relevantie or 0) for a in abonnementen)
-        items = [i for i in items if _relevantie(i.extra_data or {}) >= drempel]
+        items = [i for i in items if _relevantie(beoordelingen.get(i.id)) >= drempel]
         if not items:
             logger.info(
                 "Inhaalslag voor %s: niets boven de drempel van %d",
@@ -455,13 +480,10 @@ class ParlementairAlertService:
         # Alle termen delen dezelfde scope (de aanroeper groepeert
         # daarop), dus de kanalen zijn voor allemaal gelijk.
         eerste = abonnementen[0]
-        stmt = select(MattermostChannelLink).where(
-            MattermostChannelLink.scope_type == eerste.scope_type,
-            MattermostChannelLink.scope_id == eerste.scope_id,
-            MattermostChannelLink.disabled_at.is_(None),
-            MattermostChannelLink.parlementaire_alerts_enabled.is_(True),
+        kanalen = await self._kanalen(
+            (eerste.scope_type, eerste.scope_id),
+            MattermostChannelLink.parlementaire_alerts_enabled,
         )
-        kanalen = list((await self.session.execute(stmt)).scalars().all())
         if not kanalen:
             return 0
 
@@ -522,13 +544,13 @@ class ParlementairAlertService:
         await self.abonnement_repo.markeer_weggeklikt(item_id)
 
 
-def _relevantie(extra: dict) -> int:
-    """Lees de relevantiescore uit extra_data, met een veilige default.
+def _relevantie(beoordeling: KamerstukAlertResult | None) -> int:
+    """The relevance score of one scope's judgement, with a safe default.
 
-    Zonder score behandelen we het stuk als middenmoot: zichtbaar, niet
-    schreeuwend. Een ontbrekende score mag nooit stilte betekenen.
+    Without a score the item counts as middling: visible, not loud.  A
+    missing score must never mean silence.
     """
-    waarde = extra.get("relevantie_score")
+    waarde = getattr(beoordeling, "relevantie_score", None)
     # `bool` is een `int` in Python, en True zou dan score 1 worden — onder
     # elke drempel, dus stilte. En `int(float("nan"))` gooit een ValueError;
     # een taalmodel dat NaN in zijn JSON zet is niet exotisch.

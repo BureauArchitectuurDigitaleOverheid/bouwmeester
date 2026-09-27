@@ -14,41 +14,50 @@ import {
 import { usePeople } from '@/hooks/usePeople';
 import { useOrganisatieFlat } from '@/hooks/useOrganisatie';
 import { INITIATIEF_ROL_LABELS } from '@/types';
-import type { InitiatiefDetail } from '@/types';
+import type { InitiatiefDetail, InitiatiefMember } from '@/types';
 import { StakeholderTab } from '@/components/stakeholders/StakeholderTab';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
+import { useEenheidGrants } from '@/hooks/useEenheidGrants';
+
+const INITIATIEF_ROLS = Object.keys(INITIATIEF_ROL_LABELS);
 
 /**
  * The "Mensen" tab: who works on the initiatief (members and eenheden, which
  * both grant access) and who has a stake in it (stakeholders, which grant
- * nothing). Only an eigenaar changes membership; contributors can assess
- * stakeholders.
+ * nothing). Membership is a grant, decided by the backend's grant authority;
+ * stakeholders follow the right to update the initiatief.
  */
 export function InitiatiefMensen({ initiatief }: { initiatief: InitiatiefDetail }) {
-  const isEigenaar = initiatief.access_level === 'eigenaar';
-  const canEdit = isEigenaar || initiatief.access_level === 'contributor';
+  const resource = { type: 'initiatief', id: initiatief.id } as const;
+  // Adding a member hands out the default rol.
+  const { allowed: canManage } = useCan('resource_role:grant', { ...resource, rol: 'contributor' });
 
   return (
     <nldd-container gap="32">
-      <Members initiatief={initiatief} isEigenaar={isEigenaar} />
-      <Eenheden initiatief={initiatief} isEigenaar={isEigenaar} />
+      <Members initiatief={initiatief} canManage={canManage} />
+      <Eenheden initiatief={initiatief} canManage={canManage} />
       <nldd-container gap="8">
         <SectionHeading icon="person" text="Stakeholders" />
-        <StakeholderTab scopeType="initiatief" scopeId={initiatief.id} readOnly={!canEdit} />
+        <StakeholderTab scopeType="initiatief" scopeId={initiatief.id} />
       </nldd-container>
     </nldd-container>
   );
 }
 
-function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isEigenaar: boolean }) {
+function Members({
+  initiatief,
+  canManage,
+}: {
+  initiatief: InitiatiefDetail;
+  canManage: boolean;
+}) {
   const addMemberMutation = useAddInitiatiefMember();
   const removeMemberMutation = useRemoveInitiatiefMember();
   const updateRoleMutation = useUpdateInitiatiefMemberRole();
   const { data: allPeople = [] } = usePeople();
   const [addMemberValue, setAddMemberValue] = useState('');
-
-  const eigenaarCount = initiatief.members.filter((m) => m.rol === 'eigenaar').length;
 
   const availablePeopleOptions = useMemo(() => {
     const memberIds = new Set(initiatief.members.map((m) => m.person_id));
@@ -73,46 +82,18 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
       {initiatief.members.length > 0 && (
         <nldd-list type="list" variant="box-tinted">
           {initiatief.members.map((member) => (
-            <nldd-list-item key={member.person_id}>
-              <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
-                <nldd-container layout="row" gap="8" vertical-alignment="center">
-                  <nldd-text-cell text={member.person_naam} width="fit-content" />
-                  <Badge color={member.rol === 'eigenaar' ? 'paars' : 'coolgray'}>
-                    {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
-                  </Badge>
-                </nldd-container>
-                {isEigenaar && (
-                  <div className="hug">
-                    {member.rol === 'eigenaar' ? (
-                      eigenaarCount > 1 && (
-                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'contributor')} text="Maak bijdrager" />
-                      )
-                    ) : (
-                      <>
-                        <NlddButton variant="neutral-transparent" size="sm" onClick={() => setRole(member.person_id, 'eigenaar')} text="Maak eigenaar" />
-                        <NlddIconButton
-                          icon="close"
-                          accessibleLabel={`${member.person_naam} verwijderen`}
-                          variant="neutral-transparent"
-                          size="sm"
-                          onClick={() =>
-                            removeMemberMutation.mutateAsync({
-                              initiatiefId: initiatief.id,
-                              personId: member.person_id,
-                            })
-                          }
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
-              </nldd-container>
-            </nldd-list-item>
+            <MemberRow
+              key={member.person_id}
+              initiatiefId={initiatief.id}
+              member={member}
+              onRemove={() => removeMemberMutation.mutate({ initiatiefId: initiatief.id, personId: member.person_id })}
+              onSetRole={(rol) => void setRole(member.person_id, rol)}
+            />
           ))}
         </nldd-list>
       )}
 
-      {isEigenaar && (
+      {canManage && (
         <nldd-container layout="row" gap="8" vertical-alignment="top">
           <nldd-container width="fit-content" className="row-fill">
             <CreatableSelect
@@ -142,12 +123,69 @@ function Members({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isE
   );
 }
 
-function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; isEigenaar: boolean }) {
+/**
+ * One member. Removing is the revoke of the current rol; changing the rol is
+ * that revoke plus the grant of the new rol to this person.
+ */
+function MemberRow({
+  initiatiefId,
+  member,
+  onRemove,
+  onSetRole,
+}: {
+  initiatiefId: string;
+  member: InitiatiefMember;
+  onRemove: () => void;
+  onSetRole: (rol: 'eigenaar' | 'contributor') => void;
+}) {
+  const grant = { type: 'initiatief', id: initiatiefId, targetPersonId: member.person_id } as const;
+  const isEigenaar = member.rol === 'eigenaar';
+  const newRol = isEigenaar ? 'contributor' : 'eigenaar';
+  const { allowed: canRemove } = useCan('resource_role:revoke', { ...grant, rol: member.rol });
+  const { allowed: canGrantNew } = useCan('resource_role:grant', { ...grant, rol: newRol });
+  const canSetRole = canRemove && canGrantNew;
+  return (
+    <nldd-list-item>
+      <nldd-container layout="row" width="full" gap="8" horizontal-alignment="right" vertical-alignment="center">
+        <nldd-container layout="row" gap="8" vertical-alignment="center">
+          <nldd-text-cell text={member.person_naam} width="fit-content" />
+          <Badge color={isEigenaar ? 'paars' : 'coolgray'}>
+            {INITIATIEF_ROL_LABELS[member.rol] ?? member.rol}
+          </Badge>
+        </nldd-container>
+        {(canSetRole || canRemove) && (
+          <div className="hug">
+            {canSetRole && (
+              <NlddButton
+                variant="neutral-transparent"
+                size="sm"
+                onClick={() => onSetRole(newRol)}
+                text={isEigenaar ? 'Maak bijdrager' : 'Maak eigenaar'}
+              />
+            )}
+            {canRemove && (
+              <NlddIconButton
+                icon="close"
+                accessibleLabel={`${member.person_naam} verwijderen`}
+                variant="neutral-transparent"
+                size="sm"
+                onClick={onRemove}
+              />
+            )}
+          </div>
+        )}
+      </nldd-container>
+    </nldd-list-item>
+  );
+}
+
+function Eenheden({ initiatief, canManage }: { initiatief: InitiatiefDetail; canManage: boolean }) {
   const addEenheidMutation = useAddInitiatiefEenheid();
   const removeEenheidMutation = useRemoveInitiatiefEenheid();
   const updateEenheidRolMutation = useUpdateInitiatiefEenheidRol();
   const { data: allEenheden = [] } = useOrganisatieFlat();
   const [addEenheidValue, setAddEenheidValue] = useState('');
+  const grants = useEenheidGrants('initiatief', initiatief.id, initiatief.eenheden, INITIATIEF_ROLS);
 
   const availableEenheidOptions = useMemo(() => {
     const linked = new Set(initiatief.eenheden.map((e) => e.eenheid_id));
@@ -163,7 +201,7 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
   };
 
   // Without an eigenaar to add one, an empty list is only noise.
-  if (!isEigenaar && initiatief.eenheden.length === 0) return null;
+  if (!canManage && initiatief.eenheden.length === 0) return null;
 
   return (
     <nldd-container gap="8">
@@ -174,68 +212,72 @@ function Eenheden({ initiatief, isEigenaar }: { initiatief: InitiatiefDetail; is
 
       {initiatief.eenheden.length > 0 && (
         <nldd-list type="list" variant="box-tinted">
-          {initiatief.eenheden.map((eenheid) => (
-            <nldd-list-item key={eenheid.eenheid_id}>
-              <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
-                {/* The name takes what the role column leaves. With
-                    `fit-content` and no floor it shrank to within a word:
-                    "RegelRecht" broke as "RegelRec/ht". */}
-                <nldd-text-cell text={eenheid.eenheid_naam} width="full" />
-                {/* A fixed width for the role column. `fit-content` gave it
-                    nothing of its own to measure, so it collapsed to zero and
-                    drew the select's chevrons and the delete cross on top of
-                    each other at the row's edge. */}
-                <nldd-container
-                  layout="row"
-                  width={isEigenaar ? '200px' : '120px'}
-                  className="shrink-0"
-                  gap="6"
-                  vertical-alignment="center"
-                  horizontal-alignment="right"
-                >
-                  {isEigenaar ? (
-                    <nldd-container width="160px">
-                      <Select
-                        value={eenheid.rol}
-                        aria-label="Rol van deze eenheid"
-                        onChange={(e) =>
-                          updateEenheidRolMutation.mutateAsync({
+          {initiatief.eenheden.map((eenheid, i) => {
+            const { canRemove, rols } = grants[i];
+            const canChangeRol = rols.length > 1;
+            return (
+              <nldd-list-item key={eenheid.eenheid_id}>
+                <nldd-container layout="row" width="full" gap="8" vertical-alignment="center">
+                  {/* The name takes what the role column leaves. With
+                      `fit-content` and no floor it shrank to within a word:
+                      "RegelRecht" broke as "RegelRec/ht". */}
+                  <nldd-text-cell text={eenheid.eenheid_naam} width="full" />
+                  {/* A fixed width for the role column. `fit-content` gave it
+                      nothing of its own to measure, so it collapsed to zero and
+                      drew the select's chevrons and the delete cross on top of
+                      each other at the row's edge. */}
+                  <nldd-container
+                    layout="row"
+                    width={canChangeRol || canRemove ? '200px' : '120px'}
+                    className="shrink-0"
+                    gap="6"
+                    vertical-alignment="center"
+                    horizontal-alignment="right"
+                  >
+                    {canChangeRol ? (
+                      <nldd-container width="160px">
+                        <Select
+                          value={eenheid.rol}
+                          aria-label="Rol van deze eenheid"
+                          onChange={(e) =>
+                            updateEenheidRolMutation.mutateAsync({
+                              initiatiefId: initiatief.id,
+                              eenheidId: eenheid.eenheid_id,
+                              rol: e.target.value,
+                            })
+                          }
+                          options={rols.map((value) => ({
+                            value,
+                            label: INITIATIEF_ROL_LABELS[value] ?? value,
+                          }))}
+                        />
+                      </nldd-container>
+                    ) : (
+                      <nldd-tag color="neutral" size="sm" text={INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol} />
+                    )}
+                    {canRemove && (
+                      <NlddIconButton
+                        icon="close"
+                        accessibleLabel={`${eenheid.eenheid_naam} verwijderen`}
+                        variant="neutral-transparent"
+                        size="sm"
+                        onClick={() =>
+                          removeEenheidMutation.mutateAsync({
                             initiatiefId: initiatief.id,
                             eenheidId: eenheid.eenheid_id,
-                            rol: e.target.value,
                           })
                         }
-                        options={Object.entries(INITIATIEF_ROL_LABELS).map(([value, label]) => ({
-                          value,
-                          label,
-                        }))}
                       />
-                    </nldd-container>
-                  ) : (
-                    <nldd-tag color="neutral" size="sm" text={INITIATIEF_ROL_LABELS[eenheid.rol] ?? eenheid.rol} />
-                  )}
-                  {isEigenaar && (
-                    <NlddIconButton
-                      icon="close"
-                      accessibleLabel={`${eenheid.eenheid_naam} verwijderen`}
-                      variant="neutral-transparent"
-                      size="sm"
-                      onClick={() =>
-                        removeEenheidMutation.mutateAsync({
-                          initiatiefId: initiatief.id,
-                          eenheidId: eenheid.eenheid_id,
-                        })
-                      }
-                    />
-                  )}
+                    )}
+                  </nldd-container>
                 </nldd-container>
-              </nldd-container>
-            </nldd-list-item>
-          ))}
+              </nldd-list-item>
+            );
+          })}
         </nldd-list>
       )}
 
-      {isEigenaar && (
+      {canManage && (
         <nldd-container layout="row" gap="8" vertical-alignment="top">
           <nldd-container width="fit-content" className="row-fill">
             <CreatableSelect

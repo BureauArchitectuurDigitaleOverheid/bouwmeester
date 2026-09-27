@@ -34,7 +34,7 @@ async def test_organogram_scrape_geen_duplicaat_op_dg_prefix(
         id=uuid.uuid4(),
         naam="ministerie van Binnenlandse Zaken en Koninkrijksrelaties",
         type="ministerie",
-        bron="handmatig",
+        bron="tooi",
     )
     seed_dg = OrganisatieEenheid(
         id=uuid.uuid4(),
@@ -79,7 +79,7 @@ async def test_organogram_scrape_maakt_wel_nieuwe_dg_aan(
         id=uuid.uuid4(),
         naam="ministerie van Binnenlandse Zaken en Koninkrijksrelaties",
         type="ministerie",
-        bron="handmatig",
+        bron="tooi",
     )
     db_session.add(bzk)
     await db_session.flush()

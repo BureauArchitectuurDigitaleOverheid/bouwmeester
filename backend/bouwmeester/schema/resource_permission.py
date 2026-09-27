@@ -5,26 +5,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from bouwmeester.core.resource_roles import RESOURCE_ROLES
 from bouwmeester.schema.person import PersonResponse
-
-# All valid resource role values (union across all resource types)
-_VALID_ROLES: set[str] = {
-    "eigenaar",
-    "betrokken",
-    "adviseur",
-    "indiener",
-    "contributor",
-    "viewer",
-    "opdrachtgever",
-    "contactpersoon",
-    "coordinator",
-    "lid",
-}
 
 
 def _validate_rol(v: str) -> str:
-    if v not in _VALID_ROLES:
-        msg = f"Invalid rol '{v}'. Must be one of: {', '.join(sorted(_VALID_ROLES))}"
+    if v not in RESOURCE_ROLES:
+        msg = f"Invalid rol '{v}'. Must be one of: {', '.join(sorted(RESOURCE_ROLES))}"
         raise ValueError(msg)
     return v
 

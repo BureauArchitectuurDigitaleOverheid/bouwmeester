@@ -259,7 +259,14 @@ async def _ensure_email_linked(db: AsyncSession, person_id: UUID, email: str) ->
         return
     try:
         async with db.begin_nested():
-            db.add(PersonEmail(person_id=person_id, email=email, is_default=False))
+            db.add(
+                PersonEmail(
+                    person_id=person_id,
+                    email=email,
+                    is_default=False,
+                    added_by_id=person_id,
+                )
+            )
             await db.flush()
     except IntegrityError:
         pass  # Concurrent insert — ignore (savepoint already rolled back)
@@ -300,15 +307,39 @@ async def get_or_create_person(
 
     email_owner = await find_person_by_email(db, email)
 
-    # Link to an existing Person only on a verified email, and only if that
-    # Person is not already bound to another identity.
-    if email_owner is not None and email_verified:
+    # Link to an existing Person only on a verified email, only if that
+    # Person is not already bound to another identity, and never to an
+    # agent: an agent acts with its own API key, a login must not take it.
+    if email_owner is not None and email_owner.is_agent:
+        logger.warning(
+            "Email %s belongs to agent %s; not linking subject %s",
+            email,
+            email_owner.id,
+            sub,
+        )
+    elif email_owner is not None and email_verified:
         if email_owner.oidc_subject is None:
+            # Local import: core.authority imports this module indirectly.
+            from bouwmeester.core.authority import (
+                hold_access_of_unproven_login,
+                hold_unconfirmed_placements,
+            )
+
             email_owner.oidc_subject = sub
             email_owner.oidc_email = email
             if name and not email_owner.naam:
                 email_owner.naam = name
             await db.flush()
+            # The contact becomes an account: what it holds without a
+            # manager's confirmation is held for one.
+            await hold_unconfirmed_placements(db, email_owner)
+            if await hold_access_of_unproven_login(db, email_owner, email):
+                logger.warning(
+                    "First login of person %s through an address added by "
+                    "someone who could not hand out its access; held for "
+                    "confirmation",
+                    email_owner.id,
+                )
             await db.refresh(email_owner)
             return email_owner
         logger.warning(
@@ -346,7 +377,14 @@ async def get_or_create_person(
     if email_owner is None:
         try:
             async with db.begin_nested():
-                db.add(PersonEmail(person_id=person.id, email=email, is_default=True))
+                db.add(
+                    PersonEmail(
+                        person_id=person.id,
+                        email=email,
+                        is_default=True,
+                        added_by_id=person.id,
+                    )
+                )
                 await db.flush()
         except IntegrityError:
             pass  # claimed concurrently by someone else; keep the person

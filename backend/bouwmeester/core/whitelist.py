@@ -78,29 +78,48 @@ async def _get_person_ids_by_emails(
 ) -> set[UUID]:
     """Return the people the admin seed may promote for the given emails.
 
-    Only ``PersonEmail`` counts: it is unique, while the legacy
-    ``Person.email`` column is free text.  And a person who has logged in
-    only qualifies when the address is the one their IdP vouched for
-    (``oidc_email``): anyone may add an address to their own profile, so
-    holding it proves nothing.  A person who never logged in qualifies; the
-    first login links only on a verified email.
+    Only ``PersonEmail`` counts (unique; ``Person.email`` is free text).
+    A person who logged in qualifies only when it is the address their IdP
+    vouched for (``oidc_email``); one who never did only when it is their
+    sole address, since the first login links on any of them.
     """
+    from sqlalchemy.orm import aliased
+
     from bouwmeester.models.person import Person
     from bouwmeester.models.person_email import PersonEmail
 
+    other = aliased(PersonEmail)
+    address_count = (
+        select(func.count())
+        .select_from(other)
+        .where(other.person_id == Person.id)
+        .correlate(Person)
+        .scalar_subquery()
+    )
     result = await session.execute(
         select(
             Person.id,
             func.lower(PersonEmail.email),
             Person.oidc_subject,
             Person.oidc_email,
+            address_count,
         )
         .join(PersonEmail, PersonEmail.person_id == Person.id)
         .where(func.lower(PersonEmail.email).in_(emails))
     )
     ids: set[UUID] = set()
-    for person_id, email, oidc_subject, oidc_email in result.all():
-        if oidc_subject is None or (oidc_email or "").lower() == email:
+    for person_id, email, oidc_subject, oidc_email, n_addresses in result.all():
+        if oidc_subject is None:
+            if n_addresses == 1:
+                ids.add(person_id)
+            else:
+                logger.warning(
+                    "Admin seed: %s is one of several addresses of person %s, "
+                    "who never logged in; not promoting",
+                    email,
+                    person_id,
+                )
+        elif (oidc_email or "").lower() == email:
             ids.add(person_id)
         else:
             logger.warning(

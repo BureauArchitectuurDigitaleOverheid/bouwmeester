@@ -18,6 +18,7 @@ import { LeadIntakeDialog } from '@/components/leads/LeadIntakeDialog';
 import { LeadStage, LEAD_STAGE_LABELS } from '@/types';
 import { useGlobalFileDropContext } from '@/hooks/useGlobalFileDropContext';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 type LeadViewMode = 'inbox' | 'kanban' | 'list' | 'graph' | 'timeline';
 
@@ -73,6 +74,8 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
   const viewMode: LeadViewMode = viewParam && VIEW_MODES.includes(viewParam) ? viewParam : 'inbox';
 
   const [showIntake, setShowIntake] = useState(false);
+  // A lead in an initiatief is created with the rights on that initiatief.
+  const { allowed: canCreateLead } = useCan('lead:create', { type: 'initiatief', id: initiatiefId });
   const { subscribe } = useGlobalFileDropContext();
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
 
@@ -224,10 +227,12 @@ export function InitiatiefLeads({ initiatiefId }: { initiatiefId: string }) {
               while this one is a tool inside the Leads tab. */}
           <ViewToggle value={viewMode} onChange={setViewMode} options={VIEW_OPTIONS} />
         </nldd-toolbar-item>
-        <nldd-toolbar-item slot="end" priority={2}>
-          <NlddButton startIcon="plus" onClick={() => setShowIntake(true)} text="Nieuwe lead" />
-          <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
-        </nldd-toolbar-item>
+        {canCreateLead && (
+          <nldd-toolbar-item slot="end" priority={2}>
+            <NlddButton startIcon="plus" onClick={() => setShowIntake(true)} text="Nieuwe lead" />
+            <nldd-menu-item slot="overflow" text="Nieuwe lead" icon="plus"></nldd-menu-item>
+          </nldd-toolbar-item>
+        )}
       </nldd-toolbar>
 
       {viewMode === 'inbox' ? (

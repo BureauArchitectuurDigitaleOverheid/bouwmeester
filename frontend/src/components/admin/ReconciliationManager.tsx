@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { CHANGES_RIGHTS } from '@/hooks/useCan';
 import {
   listReconciliations,
   mergeReconciliation,
   ignoreReconciliation,
   scanOrphanHandmatig,
   manualMerge,
+  mergeResultMessage,
   type OrphanScanResult,
 } from '@/api/reconciliation';
 import { getOrganisatieFlatMetHistorisch } from '@/api/organisatie';
@@ -68,6 +70,7 @@ function ManualMergePanel() {
   );
 
   const mergeMutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: () => manualMerge(sourceId, targetId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation'] });
@@ -212,8 +215,8 @@ function ManualMergePanel() {
               : 'onbekende fout'}
           </nldd-text>
         )}
-        {mergeMutation.isSuccess && (
-          <nldd-text size="sm" color="success">Merge voltooid.</nldd-text>
+        {mergeMutation.data && (
+          <nldd-text size="sm" color="success">{mergeResultMessage(mergeMutation.data)}</nldd-text>
         )}
       </nldd-container>
     </Card>
@@ -233,6 +236,7 @@ export function ReconciliationManager() {
   });
 
   const mergeMutation = useMutation({
+    meta: CHANGES_RIGHTS,
     mutationFn: (id: string) => mergeReconciliation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reconciliation'] });
@@ -304,6 +308,10 @@ export function ReconciliationManager() {
           />
         ))}
       </nldd-toggle-button-group>
+
+      {mergeMutation.data && (
+        <nldd-text size="sm" color="success">{mergeResultMessage(mergeMutation.data)}</nldd-text>
+      )}
 
       {isLoading && <LoadingSpinner />}
 

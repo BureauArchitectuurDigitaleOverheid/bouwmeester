@@ -21,8 +21,15 @@ from sqlalchemy import select
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.tooi_sync_log import TooiSyncLog
 from bouwmeester.services import tk_persoon_sync
-from bouwmeester.services.tk_persoon_sync import TkSyncStats, _sync_tk
+from bouwmeester.services.tk_persoon_sync import (
+    TkSyncStats,
+    _existing_persons_by_tk_id,
+    _sync_tk,
+)
+
+_tk_persons = _existing_persons_by_tk_id
 
 
 async def _setup(db_session, monkeypatch) -> tuple[OrganisatieEenheid, Person, str]:
@@ -36,7 +43,7 @@ async def _setup(db_session, monkeypatch) -> tuple[OrganisatieEenheid, Person, s
     naam = f"Tweede Kamer {uuid.uuid4().hex[:8]}"
     monkeypatch.setattr(tk_persoon_sync, "TK_EENHEID_NAAM", naam)
 
-    eenheid = OrganisatieEenheid(naam=naam, type="Ministerie")
+    eenheid = OrganisatieEenheid(naam=naam, type="overig", bron="tooi")
     db_session.add(eenheid)
     await db_session.flush()
 
@@ -90,7 +97,9 @@ async def test_twee_open_feed_records_geven_een_open_rij(db_session, monkeypatch
         ]
 
     stats = TkSyncStats(sync_run_id=uuid.uuid4())
-    await _sync_tk(db_session, uuid.uuid4(), fetcher, {tk_id: person}, stats)
+    await _sync_tk(
+        db_session, uuid.uuid4(), fetcher, await _tk_persons(db_session), stats
+    )
     await db_session.flush()
 
     open_rijen = await _open_rijen(db_session, eenheid.id, person.id)
@@ -136,7 +145,9 @@ async def test_heropende_rij_botst_niet_met_bestaande_open_rij(db_session, monke
         ]
 
     stats = TkSyncStats(sync_run_id=uuid.uuid4())
-    await _sync_tk(db_session, uuid.uuid4(), fetcher, {tk_id: person}, stats)
+    await _sync_tk(
+        db_session, uuid.uuid4(), fetcher, await _tk_persons(db_session), stats
+    )
     # Voor de fix gooide deze flush een UniqueViolationError.
     await db_session.flush()
 
@@ -157,9 +168,63 @@ async def test_afgesloten_records_blijven_normaal_werken(db_session, monkeypatch
         ]
 
     stats = TkSyncStats(sync_run_id=uuid.uuid4())
-    await _sync_tk(db_session, uuid.uuid4(), fetcher, {tk_id: person}, stats)
+    await _sync_tk(
+        db_session, uuid.uuid4(), fetcher, await _tk_persons(db_session), stats
+    )
     await db_session.flush()
 
     rows = await _rijen(db_session, eenheid.id, person.id)
     assert len(rows) == 2
     assert len([r for r in rows if r.eind_datum is None]) == 1
+
+
+# ---------------------------------------------------------------------------
+# A trusted TK placement never lands on something a user controls (round 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_user_created_tweede_kamer_is_not_used(db_session, monkeypatch):
+    """Only an official eenheid of that name receives trusted placements."""
+    eenheid, person, tk_id = await _setup(db_session, monkeypatch)
+    eenheid.bron = "handmatig"
+    await db_session.flush()
+
+    async def fetcher():
+        return [_record(tk_id, "2024-01-01", None)]
+
+    stats = TkSyncStats(sync_run_id=uuid.uuid4())
+    await _sync_tk(
+        db_session, uuid.uuid4(), fetcher, await _tk_persons(db_session), stats
+    )
+    assert await _rijen(db_session, eenheid.id, person.id) == []
+    assert stats.fouten
+
+
+async def test_account_carrying_the_tk_key_gets_no_placement(db_session, monkeypatch):
+    eenheid, person, tk_id = await _setup(db_session, monkeypatch)
+    person.oidc_subject = f"sub-{uuid.uuid4().hex}"
+    await db_session.flush()
+
+    async def fetcher():
+        return [_record(tk_id, "2024-01-01", None)]
+
+    run = uuid.uuid4()
+    stats = TkSyncStats(sync_run_id=run)
+    await _sync_tk(db_session, run, fetcher, await _tk_persons(db_session), stats)
+    await db_session.flush()
+
+    assert await _rijen(db_session, eenheid.id, person.id) == []
+    assert person.tk_persoon_id is None
+    kamerlid = await db_session.scalar(
+        select(Person).where(Person.tk_persoon_id == tk_id)
+    )
+    assert kamerlid is not None and kamerlid.id != person.id
+    assert len(await _open_rijen(db_session, eenheid.id, kamerlid.id)) == 1
+    conflict = await db_session.scalar(
+        select(TooiSyncLog.id).where(
+            TooiSyncLog.sync_run_id == run,
+            TooiSyncLog.action == "conflict",
+            TooiSyncLog.person_id == kamerlid.id,
+        )
+    )
+    assert conflict is not None

@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser, effective_person_id
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_system_permission,
+)
 from bouwmeester.schema.activity import ActivityFeedResponse, ActivityResponse
 from bouwmeester.schema.inbox import InboxResponse
 from bouwmeester.services.activity_service import ActivityService
@@ -18,7 +22,8 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 
 @router.get("/feed", response_model=ActivityFeedResponse)
 async def get_activity_feed(
-    _perm=Depends(require_permission("audit:read")),
+    # Tenant-wide log: only a system grant of audit:read reads everything.
+    _perm=Depends(require_system_permission("audit:read")),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     event_type: str | None = Query(None, max_length=50, pattern=r"^[a-z][a-z_.]*$"),
@@ -44,8 +49,9 @@ async def get_inbox(
     current_user: OptionalUser,
     person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InboxResponse:
     """Get aggregated inbox for a person (tasks, notifications, deadlines)."""
     pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
-    return await service.get_inbox(pid)
+    return await service.get_inbox(pid, perm_ctx)

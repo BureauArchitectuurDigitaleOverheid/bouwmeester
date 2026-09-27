@@ -7,7 +7,6 @@ for permission checking.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import Annotated
 from uuid import UUID
@@ -19,57 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.models.person import Person
-from bouwmeester.repositories.resource_permission import ResourcePermissionRepository
 from bouwmeester.repositories.role import PersonRoleRepository, RoleRepository
-
-logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Resource role -> permission mappings (fixed business rules)
-# ---------------------------------------------------------------------------
-
-RESOURCE_ROLE_PERMISSIONS: dict[str, dict[str, set[str]]] = {
-    "corpus_node": {
-        "eigenaar": {
-            "node:read",
-            "node:update",
-            "node:delete",
-            "resource_permission:manage",
-        },
-        "betrokken": {"node:read", "node:update"},
-        "adviseur": {"node:read"},
-        "indiener": {"node:read"},
-    },
-    "initiatief": {
-        "eigenaar": {
-            "initiatief:read",
-            "initiatief:update",
-            "initiatief:delete",
-            "resource_permission:manage",
-        },
-        "contributor": {"initiatief:read", "initiatief:update"},
-        "viewer": {"initiatief:read"},
-    },
-    "lead": {
-        "opdrachtgever": {"lead:read", "lead:update"},
-        "contactpersoon": {"lead:read"},
-        "betrokken": {"lead:read"},
-    },
-    "opdracht": {
-        "eigenaar": {
-            "opdracht:read",
-            "opdracht:update",
-            "opdracht:delete",
-            "resource_permission:manage",
-        },
-        "betrokken": {"opdracht:read"},
-        # Informational: the person is the client's contact, no access.
-        "contactpersoon": set(),
-    },
-    "organisatie_eenheid": {
-        "eigenaar": {"org:manage", "resource_permission:manage"},
-    },
-}
 
 
 @dataclass
@@ -86,6 +35,8 @@ class PermissionContext:
     # Per-eenheid resolved permissions for scoped checks
     scoped_permissions: dict[UUID, set[str]] = field(default_factory=dict)
     is_super_admin: bool = False
+    # Per-request memo for ``core.authz`` (decisions, ancestor chains).
+    authz_cache: dict = field(default_factory=dict, repr=False, compare=False)
 
     def has_permission(self, perm: str) -> bool:
         """Check if the user has a permission (any scope)."""
@@ -97,7 +48,7 @@ class PermissionContext:
         """Check if a system-level role grants the permission.
 
         For tenant-wide actions; rights on one eenheid are resolved in
-        ``core.authority.rights_on_eenheid`` (with inheritance).
+        ``core.authz.rights_on_eenheid`` (with inheritance).
         """
         return self.is_super_admin or perm in self.system_permissions
 
@@ -113,9 +64,10 @@ async def build_permission_context(
 ) -> PermissionContext:
     """Build a PermissionContext by querying person_role + role_permission.
 
-    Members of an eenheid (via PersonOrganisatieEenheid) who have no
+    Members of an eenheid (a trusted placement, ``get_membership_ids``) who have no
     explicit PersonRole on that eenheid receive an implicit ``viewer``
-    role so they can see modules enabled for their team.
+    role so they can see modules enabled for their team, but only in an
+    eenheid that touches the organisation (``get_touching_ids``).
     """
     pr_repo = PersonRoleRepository(db)
     system_roles, scoped_roles = await pr_repo.get_active_role_ids_for_person(person.id)
@@ -136,11 +88,16 @@ async def build_permission_context(
             is_super_admin=True,
         )
 
-    # Grant implicit viewer role for eenheden the person is a member of
-    # but has no explicit PersonRole on.
-    from bouwmeester.repositories.org_tree import get_membership_ids
+    # Grant the implicit viewer role for eenheden the person is a member of
+    # but has no explicit PersonRole on.  Only inside the organisation: an
+    # external organisation is anyone's to create and to staff (its
+    # eigenaar confirms its members), so membership there gives nothing
+    # implicit, only what is granted or shared to it.
+    from bouwmeester.repositories.org_tree import get_membership_ids, get_touching_ids
 
-    member_eenheid_ids = await get_membership_ids(db, person.id)
+    member_eenheid_ids = await get_touching_ids(
+        db, await get_membership_ids(db, person.id)
+    )
     for eid in member_eenheid_ids:
         if eid not in scoped_roles:
             scoped_roles[eid] = ["viewer"]
@@ -287,26 +244,6 @@ async def get_super_admin_user(
 
 AdminUser = Annotated[Person | None, Depends(get_admin_user)]
 SuperAdminUser = Annotated[Person | None, Depends(get_super_admin_user)]
-
-
-async def check_resource_permission(
-    db: AsyncSession,
-    person_id: UUID,
-    resource_type: str,
-    resource_id: UUID,
-    required_perm: str,
-) -> bool:
-    """Check if a person has a resource-level permission."""
-    rp_repo = ResourcePermissionRepository(db)
-    roles = await rp_repo.get_roles_for_person_resource(
-        person_id, resource_type, resource_id
-    )
-    type_mappings = RESOURCE_ROLE_PERMISSIONS.get(resource_type, {})
-    for rol in roles:
-        granted = type_mappings.get(rol, set())
-        if required_perm in granted:
-            return True
-    return False
 
 
 def require_permission(*perms: str):

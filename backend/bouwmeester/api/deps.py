@@ -1,9 +1,20 @@
 """Shared API dependencies and utilities."""
 
 import logging
+from typing import Any
+from uuid import UUID
 
 from fastapi import HTTPException, UploadFile
 from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bouwmeester.core.authority import require_can_dissolve_eenheid
+from bouwmeester.core.authz import require, requires
+from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+from bouwmeester.repositories.tag import TagRepository
+from bouwmeester.schema.tag import TagCreate
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +56,48 @@ def require_found[T](obj: T | None, name: str = "Resource") -> T:
     if obj is None:
         raise HTTPException(
             status_code=404,
-            detail=f"{name} not found",
+            detail=f"{name} niet gevonden",
         )
     return obj
+
+
+async def get_child_or_404[T](
+    db: AsyncSession,
+    model: type[T],
+    child_id: UUID,
+    parent: tuple[Any, UUID],
+    *options: Any,
+    name: str = "Resource",
+) -> T:
+    """The *model* row *child_id* under ``parent = (column, parent_id)``, or 404.
+
+    Access was decided on the parent, so a child of another parent is missing.
+    """
+    column, parent_id = parent
+    stmt = (
+        select(model)
+        .where(model.id == child_id, column == parent_id)  # type: ignore[attr-defined]
+        .options(*options)
+    )
+    return require_found((await db.execute(stmt)).scalar_one_or_none(), name)
+
+
+async def require_can_end_eenheid(
+    db: AsyncSession, perm_ctx: PermissionContext, eenheid: OrganisatieEenheid
+) -> None:
+    """Guard dissolving (``geldig_tot``) or deleting an eenheid, alike."""
+    await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
+    await require_can_dissolve_eenheid(db, perm_ctx, eenheid)
+
+
+def on_initiatief(permission: str):
+    """``requires(permission)`` on the initiatief in the ``initiatief_id`` path."""
+    return requires(permission, "initiatief", path_param="initiatief_id")
+
+
+def on_lead(permission: str):
+    """``requires(permission)`` on the lead in the ``lead_id`` path."""
+    return requires(permission, "lead", path_param="lead_id")
 
 
 def require_deleted(deleted: bool, name: str = "Resource") -> None:
@@ -55,7 +105,7 @@ def require_deleted(deleted: bool, name: str = "Resource") -> None:
     if not deleted:
         raise HTTPException(
             status_code=404,
-            detail=f"{name} not found",
+            detail=f"{name} niet gevonden",
         )
 
 
@@ -81,3 +131,23 @@ def validate_list[T: BaseModel](
                 exc_info=True,
             )
     return results
+
+
+async def resolve_tag_to_link(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    *,
+    tag_id: UUID | None,
+    tag_name: str | None,
+) -> UUID:
+    """The tag to link, by id or by name; a new name needs ``tag:create``."""
+    if tag_id is not None:
+        return tag_id
+    if not tag_name:
+        raise HTTPException(status_code=400, detail="Provide tag_id or tag_name")
+    repo = TagRepository(db)
+    existing = await repo.get_by_name(tag_name)
+    if existing is not None:
+        return existing.id
+    await require(db, perm_ctx, "tag:create", "tag")
+    return (await repo.create(TagCreate(name=tag_name))).id

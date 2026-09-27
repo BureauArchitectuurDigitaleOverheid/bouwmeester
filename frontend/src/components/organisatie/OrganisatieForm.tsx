@@ -10,7 +10,7 @@ import type {
 } from '@/types';
 import { ORGANISATIE_TYPE_OPTIONS, formatFunctie } from '@/types';
 import { useOrganisatieFlat, useOrganisatiePersonen } from '@/hooks/useOrganisatie';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useCan, useEenhedenWith } from '@/hooks/useCan';
 import { NlddButton } from '@/components/nldd/NlddButton';
 
 interface OrganisatieFormProps {
@@ -36,9 +36,11 @@ export function OrganisatieForm({
   const [type, setType] = useState('');
   const [parentId, setParentId] = useState<string>('');
   const [managerId, setManagerId] = useState<string>('');
-  // Naming a manager is a role assignment; hide it from who can't make one.
-  const { hasPermission, isSuperAdmin } = usePermissions();
-  const canSetManager = isSuperAdmin || hasPermission('people:assign_role');
+  // Naming a manager is a role assignment on this eenheid (asked when editing only).
+  const { allowed: canSetManager } = useCan(
+    'eenheid:set_manager',
+    editData ? { type: 'organisatie_eenheid', id: editData.id } : null,
+  );
   const [beschrijving, setBeschrijving] = useState('');
   const [typeOptions, setTypeOptions] = useState<SelectOption[]>(
     ORGANISATIE_TYPE_OPTIONS.map((o) => ({ ...o })),
@@ -47,11 +49,18 @@ export function OrganisatieForm({
   const { data: flatList = [] } = useOrganisatieFlat();
   const { data: personen = [] } = useOrganisatiePersonen(editData?.id ?? null);
 
-  // Parent options from flat list, excluding self (in edit mode)
+  // A new eenheid goes where the caller may create one of this type. Editing
+  // keeps every option: the current parent must stay selectable and the
+  // route decides a move.
+  const { includes: mayCreateIn } = useEenhedenWith('org:create', type || undefined);
+  const { allowed: mayCreateTop } = useCan(
+    'org:create',
+    editData ? null : { type: 'organisatie_eenheid', eenheidType: type || undefined },
+  );
   const parentOptions: SelectOption[] = [
-    { value: '', label: 'Geen (top-niveau)' },
+    ...(editData || mayCreateTop ? [{ value: '', label: 'Geen (top-niveau)' }] : []),
     ...flatList
-      .filter((e) => !editData || e.id !== editData.id)
+      .filter((e) => (editData ? e.id !== editData.id : mayCreateIn(e.id)))
       .map((e) => ({
         value: e.id,
         label: e.naam,

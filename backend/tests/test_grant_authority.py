@@ -38,7 +38,13 @@ from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole
-from tests.factories import client_as, grant_role, make_org, make_person, place
+from tests.factories import (
+    client_as,
+    grant_role,
+    make_org,
+    make_person,
+    place,
+)
 
 
 @dataclass
@@ -202,6 +208,25 @@ async def test_manager_cannot_place_outside_subtree(tree: Tree):
             f"/api/people/{tree.member.id}/organisaties", json=_placement(tree.dg)
         )
     assert resp.status_code == 403
+
+
+async def test_placing_someone_unnamed_is_a_managers_call(tree: Tree):
+    """``person=None`` asks about another account without revealing anyone's."""
+    from bouwmeester.core.authority import require_can_place
+    from bouwmeester.core.permissions import build_permission_context
+
+    member_ctx = await build_permission_context(tree.db, tree.member)
+    with pytest.raises(HTTPException):
+        await require_can_place(tree.db, member_ctx, None, tree.team)
+    with pytest.raises(HTTPException):
+        await require_can_place(tree.db, member_ctx, None, tree.team, ending=True)
+    await require_can_place(tree.db, member_ctx, None, tree.team, contact=True)
+    manager_ctx = await build_permission_context(tree.db, tree.directie_manager)
+    await require_can_place(tree.db, manager_ctx, None, tree.team)
+    anonymous = PermissionContext(is_authenticated=True)
+    with pytest.raises(HTTPException) as refused:
+        await require_can_place(tree.db, anonymous, None, tree.team, contact=True)
+    assert refused.value.status_code == 403
 
 
 async def test_member_links_contact_to_external_org(tree: Tree):
@@ -369,17 +394,19 @@ async def test_dienst_counts_as_internal(tree: Tree):
     assert resp.status_code == 403
 
 
-async def test_editor_can_rename_visible_eenheid(tree: Tree):
+async def test_renaming_needs_rights_on_the_eenheid_not_visibility(tree: Tree):
+    """Unchanged structural fields do not trip the guards; seeing is not editing."""
+    body = {
+        "naam": "Team met nieuwe naam",
+        "parent_id": str(tree.directie.id),
+        "manager_id": None,
+    }
     async with client_as(tree.db, tree.editor) as c:
-        resp = await c.put(
-            f"/api/organisatie/{tree.team.id}",
-            json={
-                "naam": "Team met nieuwe naam",
-                "parent_id": str(tree.directie.id),
-                "manager_id": None,
-            },
-        )
-    assert resp.status_code == 200, resp.text
+        editor = await c.put(f"/api/organisatie/{tree.team.id}", json=body)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        manager = await c.put(f"/api/organisatie/{tree.team.id}", json=body)
+    assert editor.status_code == 403
+    assert manager.status_code == 200, manager.text
 
 
 async def test_two_active_managers_do_not_break_edits(tree: Tree):
@@ -551,7 +578,8 @@ async def test_only_owner_grants_on_unlinked_initiatief(tree: Tree):
             f"/api/resource-permissions/initiatief/{initiatief.id}",
             json={"person_id": str(tree.member.id), "rol": "viewer"},
         )
-    assert resp.status_code == 403
+    # the initiatief is not visible to them: refused as if missing
+    assert resp.status_code == 404
 
 
 async def _link_initiatief(
@@ -605,6 +633,37 @@ async def test_last_owner_cannot_leave(tree: Tree):
     assert resp.status_code == 409
 
 
+async def test_reader_without_authority_does_not_learn_the_last_owner(tree: Tree):
+    """Authority comes first: a mere reader gets 403, not "last eigenaar"."""
+    initiatief = await _initiatief(tree.db)
+    owner = ResourcePermission(
+        person_id=tree.member.id,
+        resource_type="initiatief",
+        resource_id=initiatief.id,
+        rol="eigenaar",
+    )
+    tree.db.add_all(
+        [
+            owner,
+            ResourcePermission(
+                person_id=tree.editor.id,
+                resource_type="initiatief",
+                resource_id=initiatief.id,
+                rol="viewer",
+            ),
+        ]
+    )
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        seen = await c.get(f"/api/initiatieven/{initiatief.id}")
+        removed = await c.delete(f"/api/resource-permissions/{owner.id}")
+    assert seen.status_code == 200, seen.text
+    assert removed.status_code == 403, removed.text
+    async with client_as(tree.db, tree.member) as c:
+        own = await c.delete(f"/api/resource-permissions/{owner.id}")
+    assert own.status_code == 409, own.text
+
+
 async def test_owner_hands_out_roles(tree: Tree):
     initiatief = await _initiatief(tree.db)
     tree.db.add(
@@ -647,6 +706,95 @@ async def test_editor_adds_node_stakeholder_but_not_owner(tree: Tree):
         )
     assert betrokken.status_code == 201, betrokken.text
     assert eigenaar.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("who", "rol", "expected"),
+    [("editor", "eigenaar", 403), ("editor", "contributor", 200),
+     ("manager", "eigenaar", 200)],
+)  # fmt: skip
+async def test_only_who_may_delete_makes_an_initiatief_eigenaar(
+    tree: Tree, who, rol, expected
+):
+    """eigenaar gives initiatief:delete, which an editor above the team lacks.
+
+    resource_permission:manage used to be enough: two such editors could
+    make each other eigenaar and then delete the initiatief.
+    """
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "eigenaar")
+    person = tree.directie_manager
+    if who == "editor":
+        person = await make_person(tree.db, "Directieredacteur")
+        await place(tree.db, person, tree.directie)
+        await grant_role(tree.db, person, "editor", tree.directie)
+    async with client_as(tree.db, person) as c:
+        resp = await c.post(
+            f"/api/resource-permissions/initiatief/{initiatief.id}",
+            json={"person_id": str(tree.contact.id), "rol": rol},
+        )
+    assert resp.status_code == expected, resp.text
+
+
+async def test_grants_are_listed_only_where_you_may_grant(tree: Tree):
+    """resource_permission:manage somewhere else no longer lists the grants."""
+    initiatief = await _initiatief(tree.db)
+    await _link_initiatief(tree.db, initiatief, tree.team, "eigenaar")
+    elsewhere = await make_person(tree.db, "Redacteur elders")
+    await place(tree.db, elsewhere, tree.sibling)
+    await grant_role(tree.db, elsewhere, "editor", tree.sibling)
+    url = f"/api/resource-permissions/initiatief/{initiatief.id}"
+    async with client_as(tree.db, elsewhere) as c:
+        refused = await c.get(url)
+    async with client_as(tree.db, tree.editor) as c:
+        allowed = await c.get(url)
+    assert refused.status_code == 404  # not visible to them either
+    assert allowed.status_code == 200, allowed.text
+
+
+async def test_member_leaves_node_without_any_rights(tree: Tree):
+    """Leaving is always possible, whatever you may do on the node."""
+    node = await _node(tree.db)
+    grant = ResourcePermission(
+        person_id=tree.member.id,
+        resource_type="corpus_node",
+        resource_id=node.id,
+        rol="adviseur",
+    )
+    tree.db.add(grant)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.member) as c:
+        resp = await c.delete(f"/api/resource-permissions/{grant.id}")
+    assert resp.status_code == 200, resp.text
+
+
+async def test_owner_steps_down_but_cannot_step_up(tree: Tree):
+    initiatief = await _initiatief(tree.db)
+    grants = [
+        ResourcePermission(
+            person_id=person.id,
+            resource_type="initiatief",
+            resource_id=initiatief.id,
+            rol=rol,
+        )
+        for person, rol in (
+            (tree.member, "eigenaar"),
+            (tree.editor, "viewer"),
+            (tree.directie_manager, "eigenaar"),
+        )
+    ]
+    tree.db.add_all(grants)
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        up = await c.put(
+            f"/api/resource-permissions/{grants[1].id}", json={"rol": "eigenaar"}
+        )
+    async with client_as(tree.db, tree.member) as c:
+        down = await c.put(
+            f"/api/resource-permissions/{grants[0].id}", json={"rol": "viewer"}
+        )
+    assert up.status_code == 403
+    assert down.status_code == 200, down.text
 
 
 # ---------------------------------------------------------------------------
@@ -886,7 +1034,7 @@ async def test_editor_cannot_make_own_team_opdracht_owner(tree: Tree):
 
 
 def test_ai_matches_grant_nothing():
-    from bouwmeester.core.permissions import RESOURCE_ROLE_PERMISSIONS
+    from bouwmeester.core.resource_roles import RESOURCE_ROLE_PERMISSIONS
     from bouwmeester.services.opdracht_matching_service import AI_GRANTED_ROL
 
     assert RESOURCE_ROLE_PERMISSIONS["opdracht"][AI_GRANTED_ROL] == set()
@@ -911,6 +1059,19 @@ async def test_ministry_admin_revokes_within_subtree_only(tree: Tree):
     assert refused.status_code == 403
 
 
+async def test_super_admin_cannot_revoke_own_super_admin(tree: Tree):
+    assignment = await tree.db.scalar(
+        select(PersonRole).where(
+            PersonRole.person_id == tree.super_admin.id,
+            PersonRole.role_id == "super_admin",
+        )
+    )
+    async with client_as(tree.db, tree.super_admin) as c:
+        resp = await c.delete(f"/api/roles/assignments/{assignment.id}")
+    assert resp.status_code == 400, resp.text
+    assert "eigen" in resp.json()["detail"].lower()
+
+
 async def test_editor_cannot_dissolve_team(tree: Tree):
     async with client_as(tree.db, tree.editor) as c:
         resp = await c.put(
@@ -931,17 +1092,64 @@ async def test_external_eenheid_with_internal_part_is_not_free_to_move(tree: Tre
 
 
 async def test_sharing_needs_authority_over_the_source(tree: Tree):
+    """The route and ``eenheid:share`` decide alike."""
+    from tests.authz_world import ask
+
     share = {"target_eenheid_id": str(tree.gemeente.id), "access_level": "read"}
+    sources = [tree.team, tree.ministerie]
     async with client_as(tree.db, tree.ministry_admin) as c:
-        inside = await c.post(
-            "/api/sharing", json={**share, "source_eenheid_id": str(tree.team.id)}
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask(
+                        "eenheid:share",
+                        "organisatie_eenheid",
+                        source.id,
+                        target_eenheid_id=tree.gemeente.id,
+                    )
+                    for source in sources
+                ]
+            },
         )
-        outside = await c.post(
-            "/api/sharing",
-            json={**share, "source_eenheid_id": str(tree.ministerie.id)},
-        )
+        inside, outside = [
+            await c.post(
+                "/api/sharing", json={**share, "source_eenheid_id": str(source.id)}
+            )
+            for source in sources
+        ]
+    assert [d["decision"] for d in asked.json()["evaluations"]] == [True, False]
     assert inside.status_code == 200, inside.text
     assert outside.status_code == 403
+
+
+async def test_sharing_with_own_eenheid_is_refused_alike(tree: Tree):
+    from tests.authz_world import ask
+
+    async with client_as(tree.db, tree.ministry_admin) as c:
+        asked = await c.post(
+            "/api/authz/evaluations",
+            json={
+                "evaluations": [
+                    ask(
+                        "eenheid:share",
+                        "organisatie_eenheid",
+                        tree.team.id,
+                        target_eenheid_id=tree.dg.id,
+                    )
+                ]
+            },
+        )
+        shared = await c.post(
+            "/api/sharing",
+            json={
+                "source_eenheid_id": str(tree.team.id),
+                "target_eenheid_id": str(tree.dg.id),
+                "access_level": "read",
+            },
+        )
+    assert asked.json()["evaluations"][0]["decision"] is False
+    assert shared.status_code == 403, shared.text
 
 
 async def test_pending_requests_follow_the_managed_subtree(tree: Tree):
@@ -954,27 +1162,49 @@ async def test_pending_requests_follow_the_managed_subtree(tree: Tree):
     assert str(above.id) not in ids
 
 
-async def test_managed_subtree_in_org_context(tree: Tree):
+async def test_manager_sees_managed_subtree(tree: Tree):
     from bouwmeester.core.org_context import build_org_context
 
     ctx = await build_org_context(tree.db, tree.directie_manager)
     assert {tree.directie.id, tree.team.id, tree.sibling.id} <= set(
-        ctx.managed_subtree_ids
+        ctx.visible_eenheid_ids
     )
-    assert tree.dg.id not in ctx.managed_subtree_ids
+
+
+async def _first_login(tree: Tree, person: Person) -> Person:
+    email = await _email_of(tree.db, person)
+    return await get_or_create_person(
+        tree.db,
+        sub=f"login-{uuid.uuid4().hex}",
+        email=email,
+        name="",
+        email_verified=True,
+    )
+
+
+async def _pending_requests(tree: Tree, person: Person) -> set[uuid.UUID]:
+    rows = await tree.db.scalars(
+        select(OrgPlacementRequest.organisatie_eenheid_id).where(
+            OrgPlacementRequest.person_id == person.id,
+            OrgPlacementRequest.status == "pending",
+        )
+    )
+    return set(rows)
 
 
 async def test_first_login_keeps_placements(tree: Tree):
     """A manager who placed a new hire before their first login keeps it."""
-    await place(tree.db, tree.contact, tree.team)
-    email = await _email_of(tree.db, tree.contact)
+    async with client_as(tree.db, tree.directie_manager) as c:
+        resp = await c.post(
+            f"/api/people/{tree.contact.id}/organisaties", json=_placement(tree.team)
+        )
+    assert resp.status_code == 201, resp.text
 
-    person = await get_or_create_person(
-        tree.db, sub="new-colleague", email=email, name="C", email_verified=True
-    )
+    person = await _first_login(tree, tree.contact)
 
     assert person.id == tree.contact.id
     assert await _placement_of(tree.db, tree.contact, tree.team) is not None
+    assert await _pending_requests(tree, tree.contact) == set()
 
 
 async def _opdracht(db: AsyncSession, **eenheden) -> Opdracht:
@@ -1024,7 +1254,8 @@ async def test_initiatief_member_route_uses_the_same_rules(tree: Tree):
             f"/api/initiatieven/{initiatief.id}/members",
             json={"person_id": str(tree.directie_manager.id), "rol": "eigenaar"},
         )
-    assert resp.status_code == 403
+    # the initiatief is not visible to them: refused as if missing
+    assert resp.status_code == 404
 
 
 async def test_manager_links_own_staff_to_external_org(tree: Tree):

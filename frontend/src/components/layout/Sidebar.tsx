@@ -34,10 +34,10 @@ interface NavItem {
 
 export function Sidebar({ mobile }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, setMobileSidebarOpen } = useUIStore();
-  const { person: authPerson, authenticated, logout, realIsAdmin, viewAsNonAdmin, toggleViewAsNonAdmin } = useAuth();
+  const { person: authPerson, authenticated, logout } = useAuth();
   const { currentPerson } = useCurrentPerson();
   const { data: managedEenheden } = useManagedEenheden(currentPerson?.id);
-  const { hasPermission, hasAnyPermission } = usePermissions();
+  const { hasPermission, hasAnyPermission, hasSystemPermission } = usePermissions();
   const location = useLocation();
 
   // Inside the sheet the sidebar is always expanded (with labels).
@@ -97,7 +97,8 @@ export function Sidebar({ mobile }: SidebarProps) {
       'org:manage',
     );
     const isManager = (authPerson?.managed_eenheden?.length ?? 0) > 0;
-    if (hasPermission('audit:read')) {
+    // The feed is tenant-wide: only a system role's audit:read opens it.
+    if (hasSystemPermission('audit:read')) {
       items.push({
         to: '/auditlog',
         icon: 'clock-arrow-counter-clockwise',
@@ -111,7 +112,7 @@ export function Sidebar({ mobile }: SidebarProps) {
       items.push({ to: '/admin?tab=placements', icon: 'shield', label: 'Beheer', group: 'werk' });
     }
     return items;
-  }, [authPerson?.managed_eenheden, hasPermission, hasAnyPermission]);
+  }, [authPerson?.managed_eenheden, hasAnyPermission, hasSystemPermission]);
 
   /** Match the previous NavLink behaviour: exact for "/", prefix for the rest. */
   const isCurrent = (to: string) => {
@@ -248,17 +249,8 @@ export function Sidebar({ mobile }: SidebarProps) {
           accessible-label="Beheer en instellingen"
         >
           {renderItems(bottomNavItems)}
-          {/* Actions rather than places, so button rows; a navigation list
-              supports those alongside its links. They live here and not in the
-              header because they are rarely used and the header toolbar is
-              full. */}
-          {realIsAdmin && (
-            <NlddListItemButton onClick={runAction(toggleViewAsNonAdmin)}>
-              {viewAsNonAdmin
-                ? renderCells('eye-slash', 'Terug naar beheerweergave')
-                : renderCells('eye', 'Bekijk als medewerker')}
-            </NlddListItemButton>
-          )}
+          {/* An action rather than a place, so a button row; a navigation
+              list supports those alongside its links. */}
           {authenticated && (
             <NlddListItemButton onClick={runAction(logout)}>
               {renderCells('logout', 'Uitloggen')}

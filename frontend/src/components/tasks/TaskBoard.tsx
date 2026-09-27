@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { TaskCard } from './TaskCard';
 import { useUpdateTask } from '@/hooks/useTasks';
+import { useCan } from '@/hooks/useCan';
 import { TaskStatus, TASK_STATUS_LABELS } from '@/types';
 import type { Task } from '@/types';
 
@@ -24,6 +25,29 @@ const COLUMN_TAG_COLOR: Record<TaskStatus, NlddTagColor> = {
   [TaskStatus.DONE]: 'success',
   [TaskStatus.CANCELLED]: 'neutral',
 };
+
+/** A board card, draggable to another column only when the task may be updated. */
+function BoardCard({
+  task,
+  onEdit,
+  onDragStart,
+}: {
+  task: Task;
+  onEdit: (task: Task) => void;
+  onDragStart: (e: React.DragEvent, task: Task) => void;
+}) {
+  const { allowed } = useCan('task:update', { type: 'task', id: task.id });
+  return (
+    // Plain div: this is the native drag SOURCE (draggable + onDragStart).
+    <div
+      draggable={allowed}
+      onDragStart={allowed ? (e) => onDragStart(e, task) : undefined}
+      className={allowed ? 'draggable-card' : undefined}
+    >
+      <TaskCard task={task} onEdit={onEdit} compact />
+    </div>
+  );
+}
 
 export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
   const updateTask = useUpdateTask();
@@ -97,15 +121,7 @@ export function TaskBoard({ tasks, onEditTask }: TaskBoardProps) {
 
           <nldd-container gap="8" padding-inline="12" padding-bottom="12">
             {tasksByStatus[status]?.map((task) => (
-              // Plain div: this is the native drag SOURCE (draggable + onDragStart).
-              <div
-                key={task.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, task)}
-                className="draggable-card"
-              >
-                <TaskCard task={task} onEdit={onEditTask} compact />
-              </div>
+              <BoardCard key={task.id} task={task} onEdit={onEditTask} onDragStart={handleDragStart} />
             ))}
 
             {(tasksByStatus[status]?.length ?? 0) === 0 && (

@@ -13,14 +13,17 @@ from datetime import date, timedelta
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import get_optional_user
+from bouwmeester.core.auth import get_current_user, get_optional_user
 from bouwmeester.core.database import get_db
 from bouwmeester.models.org_naam import OrganisatieEenheidNaam
 from bouwmeester.models.org_parent import OrganisatieEenheidParent
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
+from bouwmeester.models.person_organisatie import (
+    PLACEMENT_BRON_LEIDINGGEVENDE,
+    PersonOrganisatieEenheid,
+)
 from bouwmeester.models.role import PersonRole
 
 YESTERDAY = date.today() - timedelta(days=1)
@@ -71,15 +74,23 @@ async def make_org(
     return org
 
 
-async def place(db: AsyncSession, person: Person, org: OrganisatieEenheid) -> None:
-    db.add(
-        PersonOrganisatieEenheid(
-            person_id=person.id,
-            organisatie_eenheid_id=org.id,
-            start_datum=YESTERDAY,
-        )
+async def place(
+    db: AsyncSession,
+    person: Person,
+    org: OrganisatieEenheid,
+    *,
+    bron: str = PLACEMENT_BRON_LEIDINGGEVENDE,
+) -> PersonOrganisatieEenheid:
+    """Place *person* in *org*; by default a manager's (trusted) placement."""
+    placement = PersonOrganisatieEenheid(
+        person_id=person.id,
+        organisatie_eenheid_id=org.id,
+        start_datum=YESTERDAY,
+        bron=bron,
     )
+    db.add(placement)
     await db.flush()
+    return placement
 
 
 async def grant_role(
@@ -115,6 +126,8 @@ async def client_as(db: AsyncSession, person: Person | None):
 
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[get_optional_user] = lambda: person
+    if person is not None:
+        app.dependency_overrides[get_current_user] = lambda: person
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

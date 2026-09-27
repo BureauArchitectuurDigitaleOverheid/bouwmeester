@@ -15,29 +15,31 @@ import { INITIATIEVEN_PATH } from '@/utils/initiatiefRoutes';
 import { InitiatiefKleurPicker } from './InitiatiefKleurPicker';
 import { SectionHeading } from './SectionHeading';
 import { NlddButton } from '@/components/nldd/NlddButton';
+import { useCan } from '@/hooks/useCan';
 
 /**
  * The "Instellingen" tab: things set once. Name, description and color are
  * edited in place here, which replaces the separate edit dialog the old
- * modal needed because it had no room left. Contributors may change those;
- * everything below them is the eigenaar's.
+ * modal needed because it had no room left. Whoever may update the
+ * initiatief changes those and the funnel columns; the feature toggles and
+ * deleting need the right to delete it (the eigenaar's, in practice).
  */
 export function InitiatiefInstellingen({ initiatief }: { initiatief: InitiatiefDetail }) {
-  const isEigenaar = initiatief.access_level === 'eigenaar';
+  const resource = { type: 'initiatief', id: initiatief.id } as const;
+  const { allowed: canUpdate } = useCan('initiatief:update', resource);
+  const { allowed: canDelete } = useCan('initiatief:delete', resource);
 
   return (
     <nldd-container gap="32">
-      <GeneralSettings initiatief={initiatief} />
-      {isEigenaar && (
-        <>
-          <FeatureSettings initiatief={initiatief} />
-          <nldd-container gap="8">
-            <SectionHeading icon="columns-3" text="Funnel-kolommen" />
-            <ColumnsManager initiatiefId={initiatief.id} />
-          </nldd-container>
-          <DeleteInitiatief initiatief={initiatief} />
-        </>
+      {canUpdate && <GeneralSettings initiatief={initiatief} />}
+      {canDelete && <FeatureSettings initiatief={initiatief} />}
+      {canUpdate && (
+        <nldd-container gap="8">
+          <SectionHeading icon="columns-3" text="Funnel-kolommen" />
+          <ColumnsManager initiatiefId={initiatief.id} />
+        </nldd-container>
       )}
+      {canDelete && <DeleteInitiatief initiatief={initiatief} />}
     </nldd-container>
   );
 }
@@ -76,9 +78,6 @@ function GeneralSettings({ initiatief }: { initiatief: InitiatiefDetail }) {
     (form.beschrijving ?? '') !== (saved.beschrijving ?? '') ||
     form.kleur !== saved.kleur;
 
-  const canEdit =
-    initiatief.access_level === 'eigenaar' || initiatief.access_level === 'contributor';
-  if (!canEdit) return null;
 
   return (
     <nldd-container gap="16">

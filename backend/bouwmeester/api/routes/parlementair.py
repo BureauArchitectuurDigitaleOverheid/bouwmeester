@@ -5,18 +5,27 @@ from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import validate_list
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authority import require_can_change_resource_role
+from bouwmeester.core.authority import require_can_name_owner
+from bouwmeester.core.authz import can, require, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import PermissionContext, require_permission
+from bouwmeester.core.org_context import OrgContext, get_org_context, sees_node
+from bouwmeester.core.permissions import (
+    PermissionContext,
+    get_permission_context,
+    require_permission,
+    require_system_permission,
+)
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
+from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.task import Task
@@ -24,21 +33,26 @@ from bouwmeester.repositories.parlementair_item import (
     ParlementairItemRepository,
     SuggestedEdgeRepository,
 )
+from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.parlementair_item import (
     ParlementairItemResponse,
     SuggestedEdgeResponse,
 )
+from bouwmeester.schema.task import TaskCreate
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.edge_schema_service import EdgeSchemaService
+from bouwmeester.services.parlementair_import_service import REVIEW_WORK_TYPE
+from bouwmeester.services.task_rules import require_task_create
 
 logger = logging.getLogger(__name__)
 
 SUGGESTED_EDGE_DESCRIPTION = "Automatisch voorgesteld vanuit parlementaire import"
+_NO_NODE = "Deze import heeft nog geen gekoppeld item"
 
 
 class FollowUpTask(BaseModel):
-    title: str
-    description: str | None = None
+    title: str = Field(min_length=1, max_length=500)
+    description: str | None = Field(None, max_length=10000)
     assignee_id: UUID | None = None
     deadline: date | None = None
 
@@ -51,6 +65,79 @@ class CompleteReviewRequest(BaseModel):
 router = APIRouter(prefix="/parlementair", tags=["parlementair"])
 
 
+async def _require_can_review(
+    db: AsyncSession, perm_ctx: PermissionContext, import_id: UUID
+) -> ParlementairItem:
+    """``parlementair:review`` on the item's node (none yet: like a new node)."""
+    item = require_found(await db.get(ParlementairItem, import_id), "Import")
+    await require(
+        db, perm_ctx, "parlementair:review", "corpus_node", item.corpus_node_id
+    )
+    return item
+
+
+def _sees_target(edge: SuggestedEdge, org_ctx: OrgContext) -> bool:
+    """Does the caller see the suggestion's loaded target node (``sees_node``)?"""
+    target = edge.target_node
+    return target is not None and sees_node(
+        org_ctx, target.id, target.organisatie_eenheid_id
+    )
+
+
+# A scope's judgement belongs to that scope; older items still carry one in
+# ``extra_data``, which is never returned.
+_SCOPE_JUDGEMENT_KEYS = frozenset({"relevantie_score", "relevantie_reden", "actie"})
+
+
+def _is_review_task(task: Task, item: ParlementairItem) -> bool:
+    """The review task the import created on the item's node."""
+    return task.work_type == REVIEW_WORK_TYPE and task.node_id == item.corpus_node_id
+
+
+def _item_response(
+    item: ParlementairItem, org_ctx: OrgContext
+) -> ParlementairItemResponse:
+    """The item with only the suggestions whose target node the caller sees."""
+    response = ParlementairItemResponse.model_validate(item)
+    if response.extra_data:
+        response.extra_data = {
+            k: v
+            for k, v in response.extra_data.items()
+            if k not in _SCOPE_JUDGEMENT_KEYS
+        }
+    visible = {edge.id for edge in item.suggested_edges if _sees_target(edge, org_ctx)}
+    response.suggested_edges = [
+        edge for edge in response.suggested_edges if edge.id in visible
+    ]
+    return response
+
+
+def _edge_response(edge: SuggestedEdge, org_ctx: OrgContext) -> SuggestedEdgeResponse:
+    """One suggestion; target, id and reason hidden when the caller cannot see it."""
+    response = SuggestedEdgeResponse.model_validate(edge)
+    if not _sees_target(edge, org_ctx):
+        response.target_node = None
+        response.target_node_id = None
+        response.reason = None
+    return response
+
+
+def _require_status(edge: SuggestedEdge, *allowed: str) -> None:
+    """409 unless the suggestion is in one of the *allowed* statuses."""
+    if edge.status not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Over deze suggestie is al besloten; zet haar eerst terug "
+                "om opnieuw te beslissen"
+            ),
+        )
+
+
+_REVIEW_EDGE = requires("suggested_edge:update", "suggested_edge", path_param="edge_id")
+_RESET_EDGE = requires("suggested_edge:delete", "suggested_edge", path_param="edge_id")
+
+
 @router.get("/imports", response_model=list[ParlementairItemResponse])
 async def list_imports(
     current_user: OptionalUser,
@@ -61,6 +148,7 @@ async def list_imports(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> list[ParlementairItemResponse]:
     """List imported parliamentary items. Filter by status, bron, type, or search."""
@@ -73,7 +161,7 @@ async def list_imports(
         skip=skip,
         limit=limit,
     )
-    return validate_list(ParlementairItemResponse, imports)
+    return [_item_response(item, org_ctx) for item in imports]
 
 
 @router.get("/imports/{import_id}", response_model=ParlementairItemResponse)
@@ -81,14 +169,13 @@ async def get_import(
     import_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> ParlementairItemResponse:
     """Get a single parliamentary import item by ID."""
     repo = ParlementairItemRepository(db)
-    item = await repo.get_by_id(import_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
-    return ParlementairItemResponse.model_validate(item)
+    item = require_found(await repo.get_by_id(import_id), "Import")
+    return _item_response(item, org_ctx)
 
 
 @router.post("/imports/trigger")
@@ -97,7 +184,7 @@ async def trigger_import(
     item_types: list[str] | None = Query(None, alias="types"),
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:import")),
+    _perm=Depends(require_system_permission("parlementair:import")),
 ) -> dict:
     """Trigger a manual parliamentary item import poll."""
     from bouwmeester.services.parlementair_import_service import (
@@ -124,7 +211,7 @@ async def reprocess_imports(
     item_type: Literal["motie", "kamervraag", "toezegging"] = Query("toezegging"),
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:import")),
+    _perm=Depends(require_system_permission("parlementair:import")),
 ) -> dict:
     """Re-process imported items that have no suggested edges.
 
@@ -154,12 +241,13 @@ async def get_review_queue(
     current_user: OptionalUser,
     type_filter: str | None = Query(None, alias="type"),
     db: AsyncSession = Depends(get_db),
+    org_ctx: OrgContext = Depends(get_org_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> list[ParlementairItemResponse]:
     """Get parliamentary items pending review, optionally filtered by type."""
     repo = ParlementairItemRepository(db)
     imports = await repo.get_review_queue(item_type=type_filter)
-    return validate_list(ParlementairItemResponse, imports)
+    return [_item_response(item, org_ctx) for item in imports]
 
 
 @router.put("/imports/{import_id}/reject", response_model=ParlementairItemResponse)
@@ -168,15 +256,16 @@ async def reject_import(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> ParlementairItemResponse:
     """Reject a parliamentary import item (sets status to rejected)."""
+    await _require_can_review(db, perm_ctx, import_id)
     repo = ParlementairItemRepository(db)
-    item = await repo.update_status(
-        import_id, "rejected", reviewed_at=datetime.now(UTC)
+    item = require_found(
+        await repo.update_status(import_id, "rejected", reviewed_at=datetime.now(UTC)),
+        "Import",
     )
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
 
     await log_activity(
         db,
@@ -186,7 +275,7 @@ async def reject_import(
         details={"item_id": str(import_id)},
     )
 
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
 
 
 @router.put("/imports/{import_id}/reopen", response_model=ParlementairItemResponse)
@@ -195,26 +284,26 @@ async def reopen_import(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> ParlementairItemResponse:
     """Reopen a rejected or out-of-scope item for review."""
     from bouwmeester.services.parlementair_import_service import (
         ParlementairImportService,
     )
 
+    await _require_can_review(db, perm_ctx, import_id)
     repo = ParlementairItemRepository(db)
-    item = await repo.get_by_id(import_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
+    item = require_found(await repo.get_by_id(import_id), "Import")
     if item.status not in ("rejected", "out_of_scope"):
         raise HTTPException(
             status_code=400,
             detail="Alleen afgewezen of buiten-scope items kunnen heropend worden",
         )
 
-    item = await repo.update_status(import_id, "imported", reviewed_at=None)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
+    item = require_found(
+        await repo.update_status(import_id, "imported", reviewed_at=None), "Import"
+    )
 
     # Ensure corpus node exists (out-of-scope items skip node creation)
     service = ParlementairImportService(db)
@@ -236,7 +325,37 @@ async def reopen_import(
 
     # Re-fetch to ensure all relationships are loaded for serialization
     item = await repo.get_by_id(import_id)
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
+
+
+async def _make_sole_person_owner(
+    db: AsyncSession, perm_ctx: PermissionContext, node_id: UUID, person_id: UUID
+) -> None:
+    """Make *person_id* the node's only person eigenaar (eenheid grants stay)."""
+    await require_can_name_owner(db, perm_ctx, node_id, person_id)
+    grants = (
+        await db.scalars(
+            select(ResourcePermission).where(
+                ResourcePermission.resource_type == "corpus_node",
+                ResourcePermission.resource_id == node_id,
+                ResourcePermission.rol == "eigenaar",
+                ResourcePermission.person_id.isnot(None),
+            )
+        )
+    ).all()
+    if any(grant.person_id == person_id for grant in grants):
+        return
+    db.add(
+        ResourcePermission(
+            person_id=person_id,
+            resource_type="corpus_node",
+            resource_id=node_id,
+            rol="eigenaar",
+        )
+    )
+    for grant in grants:
+        await db.delete(grant)
+    await db.flush()
 
 
 @router.post("/imports/{import_id}/complete", response_model=ParlementairItemResponse)
@@ -246,71 +365,49 @@ async def complete_review(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(require_permission("parlementair:review")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> ParlementairItemResponse:
     """Complete review: assign eigenaar, create follow-up tasks, mark as reviewed."""
+    item = await _require_can_review(db, perm_ctx, import_id)
     repo = ParlementairItemRepository(db)
-    item = await repo.get_by_id(import_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="Import not found")
     if item.corpus_node_id is None:
-        raise HTTPException(status_code=400, detail="Import has no linked corpus node")
+        raise HTTPException(status_code=400, detail=_NO_NODE)
+    require_found(await db.get(Person, body.eigenaar_id), "Eigenaar")
 
-    # Validate eigenaar person exists
-    person = await db.get(Person, body.eigenaar_id)
-    if person is None:
-        raise HTTPException(status_code=404, detail="Eigenaar person not found")
-
-    # Upsert eigenaar stakeholder on the corpus node
-    stmt = select(ResourcePermission).where(
-        ResourcePermission.resource_type == "corpus_node",
-        ResourcePermission.resource_id == item.corpus_node_id,
-        ResourcePermission.rol == "eigenaar",
-    )
-    result = await db.execute(stmt)
-    existing = result.scalar_one_or_none()
-    # Naming the first eigenaar of a freshly imported item is the point of
-    # the review.  Replacing someone who already owns it is a change of
-    # rights like any other.
-    if existing is not None and existing.person_id != body.eigenaar_id:
-        await require_can_change_resource_role(db, perm_ctx, existing, new_rol=None)
-    if existing is None:
-        db.add(
-            ResourcePermission(
-                person_id=body.eigenaar_id,
-                resource_type="corpus_node",
-                resource_id=item.corpus_node_id,
-                rol="eigenaar",
-            )
+    # Follow-up tasks are new tasks like any other: the POST /tasks rules.
+    follow_ups = [
+        TaskCreate(
+            node_id=item.corpus_node_id,
+            parlementair_item_id=import_id,
+            title=t.title,
+            description=t.description,
+            assignee_id=t.assignee_id,
+            deadline=t.deadline,
         )
-    elif existing.person_id != body.eigenaar_id:
-        existing.person_id = body.eigenaar_id
-    await db.flush()
+        for t in body.tasks
+    ]
+    for follow_up in follow_ups:
+        await require_task_create(db, perm_ctx, follow_up)
 
-    # Auto-complete existing review tasks before creating new ones
+    await _make_sole_person_owner(db, perm_ctx, item.corpus_node_id, body.eigenaar_id)
+
+    # Close the open review tasks.  Anyone who reads the item may link their
+    # own tasks to it: those close only when the reviewer may change them.
     stmt = select(Task).where(
         Task.parlementair_item_id == import_id,
         Task.status.notin_(["done", "cancelled"]),
     )
-    result = await db.execute(stmt)
-    for task in result.scalars().all():
-        task.status = "done"
+    for task in (await db.execute(stmt)).scalars().all():
+        if _is_review_task(task, item) or await can(
+            db, perm_ctx, "task:update", "task", task.id
+        ):
+            task.status = "done"
     await db.flush()
 
-    # Create optional follow-up tasks
-    for t in body.tasks:
-        db.add(
-            Task(
-                node_id=item.corpus_node_id,
-                parlementair_item_id=import_id,
-                title=t.title,
-                description=t.description,
-                assignee_id=t.assignee_id,
-                deadline=t.deadline,
-                priority="normaal",
-            )
-        )
-    await db.flush()
+    task_repo = TaskRepository(db)
+    for follow_up in follow_ups:
+        await task_repo.create(follow_up)
 
     # Update item status to reviewed
     item = await repo.update_status(
@@ -325,7 +422,7 @@ async def complete_review(
         details={"item_id": str(import_id), "eigenaar_id": str(body.eigenaar_id)},
     )
 
-    return ParlementairItemResponse.model_validate(item)
+    return _item_response(item, org_ctx)
 
 
 class UpdateSuggestedEdgeRequest(BaseModel):
@@ -338,19 +435,21 @@ async def update_suggested_edge(
     body: UpdateSuggestedEdgeRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
     """Update a suggested edge (e.g. change its edge type) before approval."""
+    suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
     repo = SuggestedEdgeRepository(db)
-    suggested_edge = await repo.get_by_id(edge_id)
-    if suggested_edge is None:
-        raise HTTPException(status_code=404, detail="Suggested edge not found")
     if suggested_edge.status != "pending":
-        raise HTTPException(status_code=400, detail="Can only update pending edges")
+        raise HTTPException(
+            status_code=400,
+            detail="Alleen openstaande suggesties kunnen worden gewijzigd",
+        )
     suggested_edge.edge_type_id = body.edge_type_id
     await db.flush()
     updated = await repo.get_by_id(edge_id)
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/approve", response_model=SuggestedEdgeResponse)
@@ -359,22 +458,16 @@ async def approve_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
-    """Approve a suggested edge, creating the actual edge in the graph."""
+    """Approve an open suggested edge, creating the actual edge in the graph."""
+    suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
+    _require_status(suggested_edge, "pending")
     suggested_edge_repo = SuggestedEdgeRepository(db)
-    suggested_edge = await suggested_edge_repo.get_by_id(edge_id)
-    if suggested_edge is None:
-        raise HTTPException(status_code=404, detail="Suggested edge not found")
-
-    # Fetch the parent item to get corpus_node_id
-    item_repo = ParlementairItemRepository(db)
-    item = await item_repo.get_by_id(suggested_edge.parlementair_item_id)
+    item = await db.get(ParlementairItem, suggested_edge.parlementair_item_id)
     if item is None or item.corpus_node_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Import has no linked corpus node",
-        )
+        raise HTTPException(status_code=400, detail=_NO_NODE)
 
     # Validate against edge schema rules
     from_node = await db.get(CorpusNode, item.corpus_node_id)
@@ -385,7 +478,7 @@ async def approve_edge(
         )
         if error:
             raise HTTPException(
-                status_code=422,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=error,
             )
 
@@ -396,8 +489,15 @@ async def approve_edge(
         edge_type_id=suggested_edge.edge_type_id,
         description=SUGGESTED_EDGE_DESCRIPTION,
     )
-    db.add(edge)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            db.add(edge)
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Deze relatie bestaat al",
+        ) from None
 
     # Update suggested edge status
     suggested_edge.status = "approved"
@@ -414,7 +514,7 @@ async def approve_edge(
     )
 
     updated = await suggested_edge_repo.get_by_id(edge_id)
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/reject", response_model=SuggestedEdgeResponse)
@@ -423,17 +523,18 @@ async def reject_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    _authz=Depends(_REVIEW_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
-    """Reject a suggested edge (sets status to rejected)."""
-    repo = SuggestedEdgeRepository(db)
-    updated = await repo.update_status(
-        edge_id,
-        "rejected",
-        reviewed_at=datetime.now(UTC),
+    """Reject an open suggested edge (sets status to rejected)."""
+    _require_status(
+        require_found(await db.get(SuggestedEdge, edge_id), "Suggestie"), "pending"
     )
-    if updated is None:
-        raise HTTPException(status_code=404, detail="Suggested edge not found")
+    repo = SuggestedEdgeRepository(db)
+    updated = require_found(
+        await repo.update_status(edge_id, "rejected", reviewed_at=datetime.now(UTC)),
+        "Suggestie",
+    )
 
     await log_activity(
         db,
@@ -443,7 +544,7 @@ async def reject_edge(
         details={"suggested_edge_id": str(edge_id)},
     )
 
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)
 
 
 @router.put("/edges/{edge_id}/reset", response_model=SuggestedEdgeResponse)
@@ -452,13 +553,12 @@ async def reset_suggested_edge(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("parlementair:review")),
+    _authz=Depends(_RESET_EDGE),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
-    """Reset a suggested edge back to pending, undoing approve/reject."""
+    """Reset a suggestion to pending; undoing an approval deletes its edge."""
+    suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
     repo = SuggestedEdgeRepository(db)
-    suggested_edge = await repo.get_by_id(edge_id)
-    if suggested_edge is None:
-        raise HTTPException(status_code=404, detail="Suggested edge not found")
 
     # If it was approved, delete the actual edge that was created
     if suggested_edge.status == "approved" and suggested_edge.edge_id is not None:
@@ -481,4 +581,4 @@ async def reset_suggested_edge(
         details={"suggested_edge_id": str(edge_id)},
     )
 
-    return SuggestedEdgeResponse.model_validate(updated)
+    return _edge_response(updated, org_ctx)

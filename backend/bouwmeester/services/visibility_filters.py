@@ -1,0 +1,171 @@
+"""Responses name only what the caller may read.
+
+References a response embeds (a task's subtasks and node, a lead's
+initiatief, ...) are decided with the same ``<type>:read`` as the thing
+itself: unreadable ones are left out of lists, embedded summaries become
+``None``, and the id on the record itself stays.
+"""
+
+from collections.abc import Iterable, Sequence
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bouwmeester.core.authz import can, prefetch, read_permission
+from bouwmeester.core.permissions import PermissionContext
+from bouwmeester.models.lead import Lead
+from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.models.task import Task
+from bouwmeester.schema.inbox import InboxItem
+from bouwmeester.schema.lead import LeadDetailResponse, LeadResponse
+from bouwmeester.schema.opdracht import OpdrachtResponse
+from bouwmeester.schema.task import TaskResponse
+
+
+async def readable_ids(
+    db: AsyncSession,
+    perm_ctx: PermissionContext,
+    resource_type: str,
+    ids: Iterable[UUID | None],
+) -> set[UUID]:
+    """The ids among *ids* the caller may read, in a constant number of queries."""
+    wanted = {rid for rid in ids if rid is not None}
+    if not wanted:
+        return set()
+    await prefetch(db, perm_ctx, resource_type, wanted)
+    permission = read_permission(resource_type)
+    return {
+        rid for rid in wanted if await can(db, perm_ctx, permission, resource_type, rid)
+    }
+
+
+async def task_responses(
+    db: AsyncSession, perm_ctx: PermissionContext, tasks: Sequence[Task]
+) -> list[TaskResponse]:
+    """Tasks the caller reads, their subtasks, node and opdracht redacted."""
+    tasks = list(tasks)
+    subtasks = await readable_ids(
+        db, perm_ctx, "task", (s.id for t in tasks for s in t.subtasks)
+    )
+    nodes = await readable_ids(db, perm_ctx, "corpus_node", (t.node_id for t in tasks))
+    opdrachten = await readable_ids(
+        db, perm_ctx, "opdracht", (t.opdracht_id for t in tasks)
+    )
+    responses = []
+    for task in tasks:
+        response = TaskResponse.model_validate(task)
+        response.subtasks = [s for s in response.subtasks if s.id in subtasks]
+        if response.node_id not in nodes:
+            response.node = None
+        if response.opdracht_id not in opdrachten:
+            response.opdracht = None
+        responses.append(response)
+    return responses
+
+
+async def task_response(
+    db: AsyncSession, perm_ctx: PermissionContext, task: Task
+) -> TaskResponse:
+    """One task the caller reads, redacted like :func:`task_responses`."""
+    return (await task_responses(db, perm_ctx, [task]))[0]
+
+
+async def opdracht_responses(
+    db: AsyncSession, perm_ctx: PermissionContext, opdrachten: Sequence[Opdracht]
+) -> list[OpdrachtResponse]:
+    """Opdrachten the caller reads, with only the nodes they read."""
+    opdrachten = list(opdrachten)
+    nodes = await readable_ids(
+        db,
+        perm_ctx,
+        "corpus_node",
+        [o.instrument_id for o in opdrachten]
+        + [k.node_id for o in opdrachten for k in o.node_koppelingen],
+    )
+    responses = []
+    for opdracht in opdrachten:
+        response = OpdrachtResponse.model_validate(opdracht)
+        response.node_koppelingen = [
+            k for k in response.node_koppelingen if k.node_id in nodes
+        ]
+        if response.instrument_id not in nodes:
+            response.instrument = None
+        responses.append(response)
+    return responses
+
+
+async def opdracht_response(
+    db: AsyncSession, perm_ctx: PermissionContext, opdracht: Opdracht
+) -> OpdrachtResponse:
+    """One opdracht the caller reads, redacted like :func:`opdracht_responses`."""
+    return (await opdracht_responses(db, perm_ctx, [opdracht]))[0]
+
+
+async def redact_leads[R: LeadResponse](
+    db: AsyncSession, perm_ctx: PermissionContext, responses: list[R]
+) -> list[R]:
+    """Leads the caller reads, without the initiatief summary they cannot read.
+
+    A role on one lead reads that lead, not its initiatief.
+    """
+    initiatieven = await readable_ids(
+        db, perm_ctx, "initiatief", (r.initiatief_id for r in responses)
+    )
+    for response in responses:
+        if response.initiatief_id not in initiatieven:
+            response.initiatief = None
+    return responses
+
+
+async def lead_response(
+    db: AsyncSession, perm_ctx: PermissionContext, lead: Lead
+) -> LeadResponse:
+    """One lead the caller reads, redacted like :func:`redact_leads`."""
+    return (await redact_leads(db, perm_ctx, [LeadResponse.model_validate(lead)]))[0]
+
+
+async def redact_lead_detail(
+    db: AsyncSession, perm_ctx: PermissionContext, response: LeadDetailResponse
+) -> LeadDetailResponse:
+    """A lead the caller reads, with only the initiatief and nodes they read."""
+    nodes = await readable_ids(
+        db, perm_ctx, "corpus_node", (ln.node_id for ln in response.linked_nodes)
+    )
+    response.linked_nodes = [ln for ln in response.linked_nodes if ln.node_id in nodes]
+    return (await redact_leads(db, perm_ctx, [response]))[0]
+
+
+async def inbox_items(
+    db: AsyncSession, perm_ctx: PermissionContext, items: Sequence[InboxItem]
+) -> list[InboxItem]:
+    """Inbox items about what the caller reads, other references cleared.
+
+    An item is about its task, or for a ``node_change`` about its node; its
+    title and description name that subject, so an item whose subject the
+    caller cannot read is left out.  A further reference they cannot read
+    becomes ``None``.
+    """
+    tasks = await readable_ids(db, perm_ctx, "task", (i.related_task_id for i in items))
+    nodes = await readable_ids(
+        db, perm_ctx, "corpus_node", (i.related_node_id for i in items)
+    )
+    kept = []
+    for item in items:
+        if item.type == "node_change":
+            if item.related_node_id not in nodes:
+                continue
+        elif item.related_task_id not in tasks:
+            continue
+        kept.append(
+            item.model_copy(
+                update={
+                    "related_node_id": item.related_node_id
+                    if item.related_node_id in nodes
+                    else None,
+                    "related_task_id": item.related_task_id
+                    if item.related_task_id in tasks
+                    else None,
+                }
+            )
+        )
+    return kept

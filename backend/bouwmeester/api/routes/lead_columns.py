@@ -1,22 +1,13 @@
-"""API routes for per-initiatief funnel-kolommen."""
+"""API routes for per-initiatief funnel-kolommen (decided on the initiatief)."""
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
-from bouwmeester.api.routes.initiatief import (
-    _require_access,
-    _resolve_access_level,
-)
+from bouwmeester.api.deps import on_initiatief
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
-from bouwmeester.core.permissions import (
-    PermissionContext,
-    get_permission_context,
-)
-from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.repositories.lead_column import LeadColumnRepository
 from bouwmeester.schema.lead_column import (
     LeadColumnCreate,
@@ -27,6 +18,12 @@ from bouwmeester.schema.lead_column import (
 from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/initiatieven", tags=["lead-columns"])
+
+# Columns are sub-records of the initiatief in the path.
+_READ_INITIATIEF = on_initiatief("initiatief:read")
+_CREATE_COLUMN = on_initiatief("lead_column:create")
+_UPDATE_COLUMN = on_initiatief("lead_column:update")
+_DELETE_COLUMN = on_initiatief("lead_column:delete")
 
 
 def _to_response(column, lead_count: int = 0) -> LeadColumnResponse:
@@ -51,22 +48,10 @@ def _to_response(column, lead_count: int = 0) -> LeadColumnResponse:
 )
 async def list_columns(
     initiatief_id: UUID,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_READ_INITIATIEF),
 ) -> list[LeadColumnResponse]:
-    """List funnel-kolommen for an initiatief. Any member with access."""
-    init_repo = InitiatiefRepository(db)
-    require_found(await init_repo.get_by_id(initiatief_id), "Initiatief")
-    access_level = await _resolve_access_level(
-        init_repo, initiatief_id, current_user, perm_ctx
-    )
-    if access_level is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Geen toegang tot dit initiatief",
-        )
-
+    """List funnel-kolommen for an initiatief. Anyone who may read it."""
     repo = LeadColumnRepository(db)
     columns = await repo.list_for_initiatief(initiatief_id)
     counts = await repo.lead_counts_for_initiatief(initiatief_id)
@@ -83,13 +68,9 @@ async def create_column(
     data: LeadColumnCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_CREATE_COLUMN),
 ) -> LeadColumnResponse:
-    """Create a new funnel-kolom. Eigenaar only."""
-    init_repo = InitiatiefRepository(db)
-    require_found(await init_repo.get_by_id(initiatief_id), "Initiatief")
-    await _require_access(init_repo, initiatief_id, current_user, perm_ctx, "eigenaar")
-
+    """Create a new funnel-kolom."""
     repo = LeadColumnRepository(db)
     if await repo.slug_or_name_exists(initiatief_id, name=data.name):
         raise HTTPException(
@@ -124,13 +105,9 @@ async def update_column(
     data: LeadColumnUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_UPDATE_COLUMN),
 ) -> LeadColumnResponse:
-    """Update a funnel-kolom (name/color/flags). Slug is immutable. Eigenaar only."""
-    init_repo = InitiatiefRepository(db)
-    require_found(await init_repo.get_by_id(initiatief_id), "Initiatief")
-    await _require_access(init_repo, initiatief_id, current_user, perm_ctx, "eigenaar")
-
+    """Update a funnel-kolom (name/color/flags). Slug is immutable."""
     repo = LeadColumnRepository(db)
     existing = await repo.get(column_id)
     if existing is None or existing.initiatief_id != initiatief_id:
@@ -173,13 +150,9 @@ async def delete_column(
     current_user: OptionalUser,
     move_to: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_DELETE_COLUMN),
 ) -> None:
-    """Delete a kolom. Migrates leads to ``move_to`` if non-empty (eigenaar)."""
-    init_repo = InitiatiefRepository(db)
-    require_found(await init_repo.get_by_id(initiatief_id), "Initiatief")
-    await _require_access(init_repo, initiatief_id, current_user, perm_ctx, "eigenaar")
-
+    """Delete a kolom. Migrates leads to ``move_to`` if non-empty."""
     repo = LeadColumnRepository(db)
     deleted, error = await repo.delete_with_move(initiatief_id, column_id, move_to)
     if not deleted:
@@ -230,13 +203,9 @@ async def reorder_columns(
     data: LeadColumnReorder,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_UPDATE_COLUMN),
 ) -> list[LeadColumnResponse]:
-    """Reorder kolommen. Body must list every column id (eigenaar)."""
-    init_repo = InitiatiefRepository(db)
-    require_found(await init_repo.get_by_id(initiatief_id), "Initiatief")
-    await _require_access(init_repo, initiatief_id, current_user, perm_ctx, "eigenaar")
-
+    """Reorder kolommen. Body must list every column id."""
     repo = LeadColumnRepository(db)
     ok, error = await repo.reorder(initiatief_id, data.column_ids)
     if not ok:

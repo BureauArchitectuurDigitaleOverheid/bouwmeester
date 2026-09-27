@@ -30,10 +30,14 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
+from bouwmeester.services.sync_matching import (
+    find_official_eenheid,
+    person_for_sync,
+)
 
 log = logging.getLogger(__name__)
 
@@ -293,103 +297,60 @@ async def _resolveer_organisatie(
 ) -> OrganisatieEenheid | None:
     """Vind OrganisatieEenheid op basis van afkorting/dienstnaam-hint.
 
+    Alleen eenheden uit een officiële bron komen in aanmerking
+    (``find_official_eenheid``): een door een gebruiker aangemaakte eenheid
+    met een gelijkende naam krijgt nooit een vertrouwde plaatsing.  Matchen
+    meerdere eenheden, dan geen match.
+
     Strategie:
     1. Strip 'de '/'het ' prefix.
     2. Match op ministerie-afkorting (AFKORTING_NAAR_MINISTERIE).
     3. Match op specifieke dienst-naam (DIENST_NAAR_NAAM_HINT).
     4. Direct naam-zoek case-insensitive (substring).
     5. Voor onbekende diensten zoals Belastingdienst zonder TOOI-rij:
-       fallback naar ministerie-rij van het overkoepelende ministerie als
-       de hint vaak voorkomt (Belastingdienst -> Financiën).
+       fallback naar ministerie-rij van het overkoepelende ministerie.
     """
     hint_clean = hint.strip()
-    # Strip 'de '/'het ' prefix
     hint_clean = re.sub(r"^(?:de|het)\s+", "", hint_clean, flags=re.IGNORECASE)
+    if not hint_clean:
+        return None
 
-    # 1. Ministerie-afkorting
+    def ministerie(naam: str) -> tuple:
+        return (
+            OrganisatieEenheid.naam.ilike(f"%{escape_like(naam)}"),
+            OrganisatieEenheid.type == "ministerie",
+        )
+
+    def naam_bevat(naam: str) -> tuple:
+        return (OrganisatieEenheid.naam.ilike(f"%{escape_like(naam)}%"),)
+
+    pogingen: list[tuple] = []
     if hint_clean in AFKORTING_NAAR_MINISTERIE:
-        target = AFKORTING_NAAR_MINISTERIE[hint_clean]
-        row = (
-            (
-                await session.execute(
-                    select(OrganisatieEenheid).where(
-                        OrganisatieEenheid.naam.ilike(f"%{target}"),
-                        OrganisatieEenheid.type == "ministerie",
-                        OrganisatieEenheid.geldig_tot.is_(None),
-                    )
-                )
-            )
-            .scalars()
-            .first()
-        )
-        if row:
-            return row
-    # 2. Specifieke dienst
+        pogingen.append(ministerie(AFKORTING_NAAR_MINISTERIE[hint_clean]))
     if hint_clean in DIENST_NAAR_NAAM_HINT:
-        target = DIENST_NAAR_NAAM_HINT[hint_clean]
-        row = (
-            (
-                await session.execute(
-                    select(OrganisatieEenheid)
-                    .where(
-                        OrganisatieEenheid.naam.ilike(f"%{target}%"),
-                        OrganisatieEenheid.geldig_tot.is_(None),
-                    )
-                    .limit(1)
-                )
-            )
-            .scalars()
-            .first()
-        )
-        if row:
-            return row
-    # 3. Direct naam-zoek (case-insensitive substring)
-    row = (
-        (
-            await session.execute(
-                select(OrganisatieEenheid)
-                .where(
-                    OrganisatieEenheid.naam.ilike(f"%{hint_clean}%"),
-                    OrganisatieEenheid.geldig_tot.is_(None),
-                )
-                .limit(1)
-            )
-        )
-        .scalars()
-        .first()
-    )
-    if row:
-        return row
-    # 4. Fallback: koppel diensten zonder eigen TOOI-rij aan hun
-    # overkoepelende ministerie.
-    _dienst_fallback_ministerie = {
-        "Belastingdienst": "Financiën",
-        "Douane": "Financiën",
-        "FIOD": "Financiën",
-        "NCTV": "Justitie en Veiligheid",
-        "Politie": "Justitie en Veiligheid",
-        "DJI": "Justitie en Veiligheid",
-        "IND": "Asiel en Migratie",
-        "Rijkswaterstaat": "Infrastructuur en Waterstaat",
-    }
-    if hint_clean in _dienst_fallback_ministerie:
-        target = _dienst_fallback_ministerie[hint_clean]
-        row = (
-            (
-                await session.execute(
-                    select(OrganisatieEenheid).where(
-                        OrganisatieEenheid.naam.ilike(f"%{target}"),
-                        OrganisatieEenheid.type == "ministerie",
-                        OrganisatieEenheid.geldig_tot.is_(None),
-                    )
-                )
-            )
-            .scalars()
-            .first()
-        )
-        if row:
+        pogingen.append(naam_bevat(DIENST_NAAR_NAAM_HINT[hint_clean]))
+    pogingen.append(naam_bevat(hint_clean))
+    if hint_clean in _DIENST_FALLBACK_MINISTERIE:
+        pogingen.append(ministerie(_DIENST_FALLBACK_MINISTERIE[hint_clean]))
+
+    for where in pogingen:
+        row = await find_official_eenheid(session, *where)
+        if row is not None:
             return row
     return None
+
+
+# Diensten zonder eigen TOOI-rij: koppel aan het overkoepelende ministerie.
+_DIENST_FALLBACK_MINISTERIE = {
+    "Belastingdienst": "Financiën",
+    "Douane": "Financiën",
+    "FIOD": "Financiën",
+    "NCTV": "Justitie en Veiligheid",
+    "Politie": "Justitie en Veiligheid",
+    "DJI": "Justitie en Veiligheid",
+    "IND": "Asiel en Migratie",
+    "Rijkswaterstaat": "Infrastructuur en Waterstaat",
+}
 
 
 async def sync_abd(
@@ -400,14 +361,13 @@ async def sync_abd(
 ) -> AbdSyncStats:
     """Scrape ABD-benoemingen en koppel ze aan personen + organisaties.
 
-    Idempotent: bij elk record wordt op (Person.naam + functietitel + eenheid)
+    Idempotent: bij elk record wordt op (persoon + functietitel + eenheid)
     gecheckt of de plaatsing al bestaat. Bestaat hij: niets doen. Is er wel
     een actieve plaatsing in dezelfde eenheid met een andere functietitel,
     dan geldt de benoeming als opvolging en wordt de oude afgesloten.
     """
     sync_run_id = uuid.uuid4()
     stats = AbdSyncStats(sync_run_id=sync_run_id)
-    date.today()
 
     benoemingen = await fetcher()
     if not benoemingen:
@@ -424,17 +384,20 @@ async def sync_abd(
             )
             continue
 
-        # Person opzoeken op exact naam
-        person = (
-            (await session.execute(select(Person).where(Person.naam == b.naam)))
-            .scalars()
-            .first()
+        # Alleen een persoon die deze sync zelf bracht; nooit een account of
+        # een contact dat zich naar de benoemde heeft hernoemd.
+        match = await person_for_sync(
+            session,
+            b.naam,
+            bron="abd_scrape",
+            sync_run_id=sync_run_id,
+            log_bron="abd_scrape",
         )
-        if person is None:
-            person = Person(naam=b.naam, bron="abd_scrape")
-            session.add(person)
-            await session.flush()
-            stats.nieuwe_personen += 1
+        if match.person is None:
+            stats.fouten.append(match.ambiguity(b.naam))
+            continue
+        person = match.person
+        stats.nieuwe_personen += match.created
 
         # Bestaat plaatsing al?
         bestaand = (

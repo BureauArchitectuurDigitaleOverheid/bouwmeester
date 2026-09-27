@@ -1,40 +1,82 @@
-"""Initiatief-based access context for leads visibility filtering.
+"""Who sees which initiatieven and leads: one definition for lists and details.
 
-Determines which initiatieven a user can see based on:
-- Direct membership (resource_permission with person_id set)
-- Organisatie-eenheid membership (resource_permission with eenheid_id set
-  + PersonOrganisatieEenheid)
+An initiatief is visible through a system role, a resource role on it
+(direct or through an own eenheid), or an owning eenheid that is visible in
+the org chart (``core.org_context``).  A lead is visible through its
+initiatief, a resource role on the lead, or, without initiatief, its
+eenheid (none: tenant-wide).  ``core.authz`` answers ``*:read`` from the
+same context as the list filters here.
 """
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
-from datetime import date
 from uuid import UUID
 
-from fastapi import Depends, Request
-from sqlalchemy import or_, select, union
+from fastapi import Depends
+from sqlalchemy import and_, false, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.core.auth import get_optional_user
 from bouwmeester.core.database import get_db
+from bouwmeester.core.org_context import (
+    OrgContext,
+    build_org_context,
+    org_eenheid_clause,
+    sees_eenheid,
+)
 from bouwmeester.core.permissions import PermissionContext, get_permission_context
+from bouwmeester.models.initiatief import Initiatief
+from bouwmeester.models.lead import Lead
 from bouwmeester.models.person import Person
-from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
 class InitiatiefContext:
-    """Initiatief-based access context for the current user."""
+    """The initiatieven and lead roles visible to the current user."""
 
     person_id: UUID | None = None
     visible_initiatief_ids: list[UUID] = field(default_factory=list)
+    # The caller's org visibility, for leads without initiatief.
+    org_ctx: OrgContext | None = None
+    # Leads the person holds a resource role on (seen regardless of initiatief).
+    lead_role_ids: list[UUID] = field(default_factory=list)
     is_admin: bool = False
     is_authenticated: bool = False
+
+    def sees_initiatief(self, initiatief_id: UUID) -> bool:
+        if self.is_admin:
+            return True
+        return self.is_authenticated and initiatief_id in self.visible_initiatief_ids
+
+    def sees_lead(self, lead: Lead) -> bool:
+        return self.sees_lead_in(
+            lead.id, lead.initiatief_id, lead.organisatie_eenheid_id
+        )
+
+    def sees_lead_in(
+        self, lead_id: UUID, initiatief_id: UUID | None, eenheid_id: UUID | None
+    ) -> bool:
+        """``sees_lead`` for a lead known by its id, initiatief and eenheid."""
+        if self.is_admin:
+            return True
+        if not self.is_authenticated:
+            return False
+        if lead_id in self.lead_role_ids:
+            return True
+        if initiatief_id is not None:
+            return initiatief_id in self.visible_initiatief_ids
+        return eenheid_id is None or (
+            self.org_ctx is not None and sees_eenheid(self.org_ctx, eenheid_id)
+        )
+
+
+def _role_holder_clause(person_id: UUID, own_eenheid_ids: list[UUID]):
+    """A resource role held by the person, directly or via a placement."""
+    return or_(
+        ResourcePermission.person_id == person_id,
+        ResourcePermission.organisatie_eenheid_id.in_(own_eenheid_ids),
+    )
 
 
 async def build_initiatief_context(
@@ -42,11 +84,9 @@ async def build_initiatief_context(
     person: Person | None,
     *,
     perm_ctx: PermissionContext | None = None,
+    org_ctx: OrgContext | None = None,
 ) -> InitiatiefContext:
-    """Build an InitiatiefContext for the given person.
-
-    Pass an existing *perm_ctx* to avoid building it a second time.
-    """
+    """Build an InitiatiefContext (pass *perm_ctx* and *org_ctx* if known)."""
     from bouwmeester.core.permissions import (
         anonymous_permission_context,
         build_permission_context,
@@ -60,78 +100,83 @@ async def build_initiatief_context(
         )
     if perm_ctx is None:
         perm_ctx = await build_permission_context(db, person)
-    if perm_ctx.is_super_admin:
+    if perm_ctx.has_system_permission("initiatief:read"):
         return InitiatiefContext(
-            person_id=person.id,
-            is_admin=True,
-            is_authenticated=True,
+            person_id=person.id, is_admin=True, is_authenticated=True
         )
+    if org_ctx is None:
+        org_ctx = await build_org_context(db, person, perm_ctx=perm_ctx)
 
-    # Direct person-scoped membership
-    direct_stmt = select(ResourcePermission.resource_id.label("initiatief_id")).where(
-        ResourcePermission.resource_type == "initiatief",
-        ResourcePermission.person_id == person.id,
-    )
-
-    # Via eenheid-scoped resource_permission + PersonOrganisatieEenheid
-    today = date.today()
-    eenheid_stmt = (
-        select(ResourcePermission.resource_id.label("initiatief_id"))
-        .join(
-            PersonOrganisatieEenheid,
-            PersonOrganisatieEenheid.organisatie_eenheid_id
-            == ResourcePermission.organisatie_eenheid_id,
-        )
+    own = list(org_ctx.own_eenheid_ids)
+    initiatief_ids = await db.scalars(
+        select(ResourcePermission.resource_id)
         .where(
             ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.organisatie_eenheid_id.isnot(None),
-            PersonOrganisatieEenheid.person_id == person.id,
-            PersonOrganisatieEenheid.start_datum <= today,
             or_(
-                PersonOrganisatieEenheid.eind_datum.is_(None),
-                PersonOrganisatieEenheid.eind_datum >= today,
+                _role_holder_clause(person.id, own),
+                and_(
+                    ResourcePermission.rol == "eigenaar",
+                    ResourcePermission.organisatie_eenheid_id.in_(
+                        org_ctx.visible_eenheid_ids
+                    ),
+                ),
             ),
         )
+        .distinct()
     )
-
-    combined = union(direct_stmt, eenheid_stmt)
-    result = await db.execute(combined)
-    visible_ids = list(result.scalars().all())
-
+    lead_ids = await db.scalars(
+        select(ResourcePermission.resource_id)
+        .where(
+            ResourcePermission.resource_type == "lead",
+            _role_holder_clause(person.id, own),
+        )
+        .distinct()
+    )
     return InitiatiefContext(
         person_id=person.id,
-        visible_initiatief_ids=visible_ids,
+        visible_initiatief_ids=list(initiatief_ids.all()),
+        org_ctx=org_ctx,
+        lead_role_ids=list(lead_ids.all()),
         is_admin=False,
         is_authenticated=True,
     )
 
 
 async def get_initiatief_context(
-    request: Request,
-    person: Person | None = Depends(get_optional_user),
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InitiatiefContext:
-    """FastAPI dependency that returns the InitiatiefContext."""
-    cached = getattr(request.state, "initiatief_context", None)
-    if cached is not None:
-        return cached
+    """FastAPI dependency: the caller's InitiatiefContext (built once, in authz)."""
+    from bouwmeester.core.authz import visibility
 
-    ctx = await build_initiatief_context(db, person, perm_ctx=perm_ctx)
-
-    request.state.initiatief_context = ctx
-    return ctx
+    _, init_ctx = await visibility(db, perm_ctx)
+    return init_ctx
 
 
-def apply_initiatief_filter(stmt, column, ctx: InitiatiefContext | None):
-    """Apply initiatief-based visibility filter to a SQLAlchemy statement."""
+def apply_initiatief_filter(stmt, ctx: InitiatiefContext | None):
+    """Restrict a select over ``Initiatief`` to the visible initiatieven."""
     if ctx is None or ctx.is_admin:
         return stmt
     if not ctx.is_authenticated:
-        return stmt.where(column.is_(None))
+        return stmt.where(false())
+    return stmt.where(Initiatief.id.in_(ctx.visible_initiatief_ids))
+
+
+def apply_lead_filter(stmt, ctx: InitiatiefContext | None):
+    """Restrict a select over ``Lead`` to the visible leads (see ``sees_lead``)."""
+    if ctx is None or ctx.is_admin:
+        return stmt
+    if not ctx.is_authenticated:
+        return stmt.where(false())
+    eenheid_visible = (
+        org_eenheid_clause(Lead.organisatie_eenheid_id, ctx.org_ctx)
+        if ctx.org_ctx is not None
+        else Lead.organisatie_eenheid_id.is_(None)
+    )
     return stmt.where(
         or_(
-            column.in_(ctx.visible_initiatief_ids),
-            column.is_(None),
+            and_(Lead.initiatief_id.is_(None), eenheid_visible),
+            Lead.initiatief_id.in_(ctx.visible_initiatief_ids),
+            Lead.id.in_(ctx.lead_role_ids),
         )
     )

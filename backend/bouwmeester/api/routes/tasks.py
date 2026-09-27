@@ -5,16 +5,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found, validate_list
+from bouwmeester.api.deps import require_found
 from bouwmeester.core.auth import OptionalUser, effective_person_id
+from bouwmeester.core.authz import require, require_move, requires
 from bouwmeester.core.database import get_db
-from bouwmeester.core.org_context import (
-    OrgContext,
-    check_org_scope,
-    check_resource_org_scope,
-    get_org_context,
-)
-from bouwmeester.core.permissions import require_permission
+from bouwmeester.core.deletion import delete_guarded
+from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.task import TaskRepository
 from bouwmeester.schema.inbox import InboxResponse
@@ -31,12 +28,18 @@ from bouwmeester.services.activity_service import (
     log_activity,
     resolve_actor,
 )
+from bouwmeester.services.agent_rules import require_may_assign
 from bouwmeester.services.eenheid_overview_service import EenheidOverviewService
 from bouwmeester.services.inbox_service import InboxService
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.task_rules import require_task_create, require_task_links
+from bouwmeester.services.visibility_filters import task_response, task_responses
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+_READ_TASK = requires("task:read", "task")
+_UPDATE_TASK = requires("task:update", "task")
 
 
 @router.get("", response_model=list[TaskResponse])
@@ -51,6 +54,7 @@ async def list_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks with optional filters."""
@@ -80,7 +84,7 @@ async def list_tasks(
             status=status_filter,
             org_ctx=org_ctx,
         )
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -89,11 +93,10 @@ async def create_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:create")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> TaskResponse:
     """Create a task linked to a node. Notifies assignee and team manager."""
-    check_org_scope(data.organisatie_eenheid_id, org_ctx)
+    await require_task_create(db, perm_ctx, data)
     repo = TaskRepository(db)
     task = await repo.create(data)
 
@@ -103,7 +106,7 @@ async def create_task(
         task.id,
         data.description,
         task.title,
-        sender_id=data.assignee_id,
+        sender_id=perm_ctx.person_id,
         source_task_id=task.id,
         source_node_id=task.node_id,
     )
@@ -138,7 +141,7 @@ async def create_task(
         },
     )
 
-    return TaskResponse.model_validate(task)
+    return await task_response(db, perm_ctx, task)
 
 
 @router.get("/my", response_model=list[TaskResponse])
@@ -148,6 +151,7 @@ async def get_my_tasks(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> list[TaskResponse]:
     """Get tasks assigned to the current user (or person_id in dev mode).
 
@@ -157,7 +161,7 @@ async def get_my_tasks(
     pid = effective_person_id(current_user, person_id)
     repo = TaskRepository(db)
     tasks = await repo.get_by_assignee(pid, skip=skip, limit=limit)
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.get("/inbox", response_model=InboxResponse)
@@ -165,14 +169,16 @@ async def get_task_inbox(
     current_user: OptionalUser,
     person_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> InboxResponse:
     """Get aggregated inbox data for a person (tasks, notifications, deadlines).
 
-    Inbox is always self-scoped (own tasks/notifications), so no org_ctx.
+    Inbox is self-scoped (own tasks and activity); what it names is
+    redacted to what the caller reads (``visibility_filters.inbox_items``).
     """
     pid = effective_person_id(current_user, person_id)
     service = InboxService(db)
-    return await service.get_inbox(pid)
+    return await service.get_inbox(pid, perm_ctx)
 
 
 @router.get("/unassigned", response_model=list[TaskResponse])
@@ -180,22 +186,23 @@ async def get_unassigned_tasks(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List tasks that have no assignee, optionally filtered by org unit."""
     if organisatie_eenheid_id is not None:
-        check_org_scope(organisatie_eenheid_id, org_ctx)
+        await require(
+            db, perm_ctx, "task:read", "task", eenheid_id=organisatie_eenheid_id
+        )
     repo = TaskRepository(db)
     tasks = await repo.get_unassigned(organisatie_eenheid_id, org_ctx=org_ctx)
-    return validate_list(TaskResponse, tasks)
+    return await task_responses(db, perm_ctx, tasks)
 
 
 @router.get("/work-types", response_model=list[str])
 async def get_work_types(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[str]:
     """Return distinct work_type values for autocomplete."""
@@ -208,12 +215,12 @@ async def get_eenheid_overview(
     current_user: OptionalUser,
     organisatie_eenheid_id: UUID = Query(...),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> EenheidOverviewResponse:
-    """Overview of tasks for an organisatie-eenheid."""
-    check_org_scope(organisatie_eenheid_id, org_ctx)
-    service = EenheidOverviewService(db)
+    """Overview of the tasks of an organisatie-eenheid the caller sees."""
+    await require(db, perm_ctx, "task:read", "task", eenheid_id=organisatie_eenheid_id)
+    service = EenheidOverviewService(db, perm_ctx, org_ctx)
     return await service.get_overview(organisatie_eenheid_id)
 
 
@@ -222,14 +229,12 @@ async def get_task(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(_READ_TASK),
 ) -> TaskResponse:
     """Get a single task by ID, including assignee and node summaries."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     task = require_found(await repo.get(id), "Task")
-    return TaskResponse.model_validate(task)
+    return await task_response(db, perm_ctx, task)
 
 
 @router.get("/{id}/subtasks", response_model=list[TaskResponse])
@@ -237,14 +242,13 @@ async def get_task_subtasks(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:read")),
+    perm_ctx: PermissionContext = Depends(_READ_TASK),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
     """List subtasks of a parent task."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
     repo = TaskRepository(db)
     subtasks = await repo.get_subtasks(id, org_ctx=org_ctx)
-    return [TaskResponse.model_validate(t) for t in subtasks]
+    return await task_responses(db, perm_ctx, subtasks)
 
 
 @router.put("/{id}/subtasks/reorder", response_model=list[TaskResponse])
@@ -253,18 +257,17 @@ async def reorder_subtasks(
     data: ReorderRequest,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:update")),
+    perm_ctx: PermissionContext = Depends(_UPDATE_TASK),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[TaskResponse]:
-    """Reorder subtasks of a parent task."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
+    """Reorder the subtasks of a parent task the caller sees."""
     repo = TaskRepository(db)
     require_found(await repo.get(id), "Task")
     try:
-        subtasks = await repo.reorder_subtasks(id, data.task_ids)
+        subtasks = await repo.reorder_subtasks(id, data.task_ids, org_ctx=org_ctx)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return [TaskResponse.model_validate(t) for t in subtasks]
+    return await task_responses(db, perm_ctx, subtasks)
 
 
 @router.put("/{id}", response_model=TaskResponse)
@@ -274,20 +277,22 @@ async def update_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:update")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(_UPDATE_TASK),
 ) -> TaskResponse:
     """Update a task. Notifies on assignee change, completion, or org unit change."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
-    if data.organisatie_eenheid_id is not None:
-        check_org_scope(data.organisatie_eenheid_id, org_ctx)
     repo = TaskRepository(db)
 
     # Capture old state before update
-    old_task = await repo.get(id)
-    old_assignee_id = old_task.assignee_id if old_task else None
-    old_status = old_task.status if old_task else None
-    old_org_unit_id = old_task.organisatie_eenheid_id if old_task else None
+    old_task = require_found(await repo.get(id), "Task")
+
+    await require_task_links(db, perm_ctx, data)
+    await require_move(
+        db, perm_ctx, "task", old_task, data.model_dump(exclude_unset=True)
+    )
+    await require_may_assign(db, perm_ctx, data, current=old_task.assignee_id)
+    old_assignee_id = old_task.assignee_id
+    old_status = old_task.status
+    old_org_unit_id = old_task.organisatie_eenheid_id
 
     task = require_found(await repo.update(id, data), "Task")
 
@@ -297,7 +302,7 @@ async def update_task(
         task.id,
         data.description,
         task.title,
-        sender_id=data.assignee_id,
+        sender_id=perm_ctx.person_id,
         source_task_id=task.id,
         source_node_id=task.node_id,
     )
@@ -313,7 +318,7 @@ async def update_task(
             if old_assignee_id:
                 # Reassignment: notify both
                 await notif_svc.notify_task_reassigned(
-                    task, old_assignee_id, new_assignee
+                    task, old_assignee_id, new_assignee, actor_id=resolved_id
                 )
             else:
                 # First assignment
@@ -355,7 +360,7 @@ async def update_task(
         details={"title": task.title, **changes},
     )
 
-    return TaskResponse.model_validate(task)
+    return await task_response(db, perm_ctx, task)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -364,16 +369,14 @@ async def delete_task(
     current_user: OptionalUser,
     actor_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(require_permission("task:delete")),
-    org_ctx: OrgContext = Depends(get_org_context),
+    perm_ctx: PermissionContext = Depends(requires("task:delete", "task")),
 ) -> None:
-    """Delete a task permanently."""
-    await check_resource_org_scope(db, "task", id, org_ctx)
-    repo = TaskRepository(db)
-    task = await repo.get(id)
-    task_title = task.title if task else None
-    task_node_id = task.node_id if task else None
-    require_deleted(await repo.delete(id), "Task")
+    """Delete a task with its subtasks; 409 when the caller may not delete
+    every subtask (``core.deletion``)."""
+    task = require_found(await TaskRepository(db).get(id), "Task")
+    task_title = task.title
+    task_node_id = task.node_id
+    await delete_guarded(db, perm_ctx, "task", id)
     await log_activity(
         db,
         current_user,

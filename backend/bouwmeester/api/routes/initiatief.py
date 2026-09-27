@@ -12,19 +12,19 @@ from bouwmeester.core.authority import (
     require_can_change_grants,
     require_can_grant_resource_role,
 )
+from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
+from bouwmeester.core.deletion import delete_guarded
 from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
 from bouwmeester.core.permissions import (
     PermissionContext,
-    build_permission_context,
     get_permission_context,
 )
 from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.initiatief import (
-    EENHEID_ROL_RANK,
     InitiatiefCreate,
     InitiatiefDetailResponse,
     InitiatiefEenheidCreate,
@@ -42,69 +42,9 @@ from bouwmeester.services.activity_service import log_activity
 
 router = APIRouter(prefix="/initiatieven", tags=["initiatieven"])
 
-
-async def _resolve_access_level(
-    repo: InitiatiefRepository,
-    initiatief_id: UUID,
-    user: OptionalUser,
-    perm_ctx: PermissionContext | None = None,
-) -> str | None:
-    """Return the highest access level the user has on this initiatief.
-
-    Collects levels from all sources and returns the maximum:
-    - Super admin / system RBAC permissions
-    - Direct membership via ResourcePermission
-    - Eenheid membership via resource_permission (eenheid-scoped)
-    """
-    if not user:
-        return "eigenaar"  # dev mode, no OIDC
-    if perm_ctx is None:
-        perm_ctx = await build_permission_context(repo.session, user)
-    if perm_ctx.is_super_admin:
-        return "eigenaar"
-
-    levels: list[str] = []
-
-    # System RBAC permissions
-    if perm_ctx.has_permission("initiatief:delete"):
-        levels.append("eigenaar")
-    elif perm_ctx.has_permission("initiatief:update"):
-        levels.append("contributor")
-
-    # Direct membership
-    direct_role = await repo.get_member_role(initiatief_id, user.id)
-    if direct_role:
-        levels.append(direct_role)
-
-    # Eenheid membership
-    eenheid_role = await repo.get_eenheid_access_level(initiatief_id, user.id)
-    if eenheid_role:
-        levels.append(eenheid_role)
-
-    if not levels:
-        return None
-    return max(levels, key=lambda r: EENHEID_ROL_RANK.get(r, 0))
-
-
-async def _require_access(
-    repo: InitiatiefRepository,
-    initiatief_id: UUID,
-    user: OptionalUser,
-    perm_ctx: PermissionContext | None,
-    required_level: str,
-) -> None:
-    """Raise 403 unless user has at least the required access level."""
-    level = await _resolve_access_level(repo, initiatief_id, user, perm_ctx)
-    if level is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Geen toegang tot dit initiatief",
-        )
-    if EENHEID_ROL_RANK.get(level, 0) < EENHEID_ROL_RANK.get(required_level, 0):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Onvoldoende rechten voor deze actie",
-        )
+_READ_INITIATIEF = requires("initiatief:read", "initiatief")
+_UPDATE_INITIATIEF = requires("initiatief:update", "initiatief")
+_DELETE_INITIATIEF = requires("initiatief:delete", "initiatief")
 
 
 @router.get("", response_model=list[InitiatiefListItemResponse])
@@ -135,6 +75,7 @@ async def create_initiatief(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> InitiatiefResponse:
+    """Any logged-in user may start an initiatief; they become its eigenaar."""
     repo = InitiatiefRepository(db)
     created_by_id = current_user.id if current_user else None
     initiatief = await repo.create(data, created_by_id=created_by_id)
@@ -153,19 +94,11 @@ async def create_initiatief(
 @router.get("/{id}", response_model=InitiatiefDetailResponse)
 async def get_initiatief(
     id: UUID,
-    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_READ_INITIATIEF),
 ) -> InitiatiefDetailResponse:
     repo = InitiatiefRepository(db)
     initiatief = require_found(await repo.get_detail(id), "Initiatief")
-    # Resolve access level (also serves as the membership check)
-    access_level = await _resolve_access_level(repo, id, current_user, perm_ctx)
-    if access_level is None and current_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Initiatief niet gevonden",
-        )
     from bouwmeester.repositories.resource_permission import (
         ResourcePermissionRepository,
     )
@@ -201,7 +134,6 @@ async def get_initiatief(
     resp = InitiatiefDetailResponse.model_validate(initiatief)
     resp.members = members
     resp.eenheden = eenheden
-    resp.access_level = access_level
     return resp
 
 
@@ -211,10 +143,9 @@ async def update_initiatief(
     data: InitiatiefUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    _authz=Depends(_UPDATE_INITIATIEF),
 ) -> InitiatiefResponse:
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "contributor")
     initiatief = require_found(await repo.update(id, data), "Initiatief")
 
     await log_activity(
@@ -234,11 +165,11 @@ async def update_initiatief_settings(
     data: InitiatiefSettingsUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    # initiatief:delete: only an eigenaar-level role has it.
+    _authz=Depends(_DELETE_INITIATIEF),
 ) -> InitiatiefResponse:
     """Update settings (slug, toggles, score-labels). Eigenaar only."""
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
     initiatief = require_found(await repo.update_settings(id, data), "Initiatief")
 
     await log_activity(
@@ -260,26 +191,14 @@ async def delete_initiatief(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(get_permission_context),
+    perm_ctx: PermissionContext = Depends(_DELETE_INITIATIEF),
 ) -> None:
+    """Delete an initiatief with its leads, updates, columns, channel links,
+    abonnementen and grants (``core.deletion``)."""
     repo = InitiatiefRepository(db)
-    await _require_access(repo, id, current_user, perm_ctx, "eigenaar")
     initiatief = require_found(await repo.get_by_id(id), "Initiatief")
     initiatief_naam = initiatief.naam
-
-    # Clean up resource_permission rows
-    from sqlalchemy import delete as sa_delete
-
-    from bouwmeester.models.resource_permission import ResourcePermission
-
-    await db.execute(
-        sa_delete(ResourcePermission).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == id,
-        )
-    )
-
-    require_deleted(await repo.delete(id), "Initiatief")
+    await delete_guarded(db, perm_ctx, "initiatief", id)
 
     await log_activity(
         db,
@@ -287,6 +206,26 @@ async def delete_initiatief(
         None,
         "initiatief.deleted",
         details={"initiatief_id": str(id), "naam": initiatief_naam},
+    )
+
+
+def _member_response(member) -> InitiatiefMemberResponse:
+    return InitiatiefMemberResponse(
+        initiatief_id=member.resource_id,
+        person_id=member.person_id,
+        person_naam=member.person.naam if member.person else "",
+        rol=member.rol,
+        created_at=member.created_at,
+    )
+
+
+def _eenheid_response(rp) -> InitiatiefEenheidResponse:
+    return InitiatiefEenheidResponse(
+        initiatief_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        created_at=rp.created_at,
     )
 
 
@@ -331,13 +270,7 @@ async def add_member(
         },
     )
 
-    return InitiatiefMemberResponse(
-        initiatief_id=member.resource_id,
-        person_id=member.person_id,
-        person_naam=member.person.naam if member.person else "",
-        rol=member.rol,
-        created_at=member.created_at,
-    )
+    return _member_response(member)
 
 
 @router.delete(
@@ -360,11 +293,7 @@ async def remove_member(
         person_id=person_id,
         new_rol=None,
     )
-    if not await repo.remove_member(id, person_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lid niet gevonden",
-        )
+    require_deleted(await repo.remove_member(id, person_id), "Lid")
 
     await log_activity(
         db,
@@ -398,11 +327,7 @@ async def update_member_role(
         new_rol=data.rol,
     )
     member = await repo.update_member_role(id, person_id, data.rol)
-    if member is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Lid niet gevonden",
-        )
+    require_found(member, "Lid")
 
     await log_activity(
         db,
@@ -416,13 +341,7 @@ async def update_member_role(
         },
     )
 
-    return InitiatiefMemberResponse(
-        initiatief_id=member.resource_id,
-        person_id=member.person_id,
-        person_naam=member.person.naam if member.person else "",
-        rol=member.rol,
-        created_at=member.created_at,
-    )
+    return _member_response(member)
 
 
 # ---------------------------------------------------------------------------
@@ -474,13 +393,7 @@ async def add_eenheid(
         },
     )
 
-    return InitiatiefEenheidResponse(
-        initiatief_id=rp.resource_id,
-        eenheid_id=rp.organisatie_eenheid_id,
-        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
-        rol=rp.rol,
-        created_at=rp.created_at,
-    )
+    return _eenheid_response(rp)
 
 
 @router.delete(
@@ -503,11 +416,7 @@ async def remove_eenheid(
         eenheid_id=eenheid_id,
         new_rol=None,
     )
-    if not await repo.remove_eenheid(id, eenheid_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Eenheid niet gevonden",
-        )
+    require_deleted(await repo.remove_eenheid(id, eenheid_id), "Eenheid")
 
     await log_activity(
         db,
@@ -541,11 +450,7 @@ async def update_eenheid_rol(
         new_rol=data.rol,
     )
     rp = await repo.update_eenheid_rol(id, eenheid_id, data.rol)
-    if rp is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Eenheid niet gevonden",
-        )
+    require_found(rp, "Eenheid")
 
     await log_activity(
         db,
@@ -559,13 +464,7 @@ async def update_eenheid_rol(
         },
     )
 
-    return InitiatiefEenheidResponse(
-        initiatief_id=rp.resource_id,
-        eenheid_id=rp.organisatie_eenheid_id,
-        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
-        rol=rp.rol,
-        created_at=rp.created_at,
-    )
+    return _eenheid_response(rp)
 
 
 # ---------------------------------------------------------------------------
@@ -580,13 +479,13 @@ async def update_eenheid_rol(
 async def list_initiatieven_for_eenheid(
     eenheid_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _perm=Depends(get_permission_context),
+    init_ctx: InitiatiefContext = Depends(get_initiatief_context),
 ) -> list[InitiatiefEenheidWithNameResponse]:
-    """List all initiatieven linked to an eenheid via resource_permission."""
+    """The visible initiatieven linked to an eenheid via resource_permission."""
     from bouwmeester.models.initiatief import Initiatief
 
     repo = InitiatiefRepository(db)
-    perms = await repo.list_for_eenheid(eenheid_id)
+    perms = await repo.list_for_eenheid(eenheid_id, init_ctx)
 
     if not perms:
         return []

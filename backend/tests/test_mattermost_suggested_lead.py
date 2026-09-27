@@ -62,7 +62,6 @@ def _llm_yes(title="Gemeente X", description="Wil iets met regelhulp"):
             confidence=0.82,
             proposed_title=title,
             proposed_description=description,
-            match_existing_lead_id=None,
             reasoning="lijkt een nieuwe lead",
         )
     )
@@ -75,7 +74,6 @@ def _llm_no():
             confidence=0.1,
             proposed_title="",
             proposed_description="",
-            match_existing_lead_id=None,
             reasoning="ack-bericht",
         )
     )
@@ -561,7 +559,6 @@ async def test_llm_storing_markeert_unavailable(db_session, sample_channel):
             confidence=0.0,
             proposed_title="",
             proposed_description="",
-            match_existing_lead_id=None,
             reasoning="LLM-call mislukt",
             failed=True,
         )
@@ -619,19 +616,15 @@ async def test_llm_says_no_marks_no_lead(db_session, sample_channel):
 
 
 # ---------------------------------------------------------------------------
-# Lead-kandidaten-selectie voor LLM (recency + trigram-similarity)
+# Match met een bestaande lead (trigram-similarity, zonder LLM)
 # ---------------------------------------------------------------------------
 
 
-async def test_collect_candidates_includes_old_lead_via_similarity(
-    db_session, sample_initiatief
-):
-    """Een oude lead (buiten de top-25 recency) moet via trigram-similarity
-    op organisatie/titel toch in de kandidaten-lijst belanden zodra de
-    naam in het bericht voorkomt. Reproductie van het HHNK-scenario."""
+async def test_find_matching_lead_finds_old_lead_by_name(db_session, sample_initiatief):
+    """Een oude lead wordt gevonden zodra de naam in het bericht staat,
+    hoeveel nieuwere leads er ook zijn. Het HHNK-scenario."""
     from datetime import UTC, datetime, timedelta
 
-    # 1 oude HHNK-lead, lang geleden aangemaakt.
     old = Lead(
         id=uuid.uuid4(),
         title="HHNK",
@@ -642,52 +635,45 @@ async def test_collect_candidates_includes_old_lead_via_similarity(
     db_session.add(old)
     await db_session.flush()
     old.created_at = datetime.now(UTC) - timedelta(days=120)
-
-    # Ruim genoeg jongere leads om de oude HHNK uit de top-25 te duwen.
     for i in range(40):
-        recent = Lead(
-            id=uuid.uuid4(),
-            title=f"Andere lead {i}",
-            organization=f"Organisatie {i}",
-            initiatief_id=sample_initiatief.id,
-            stage="lead",
+        db_session.add(
+            Lead(
+                id=uuid.uuid4(),
+                title=f"Andere lead {i}",
+                organization=f"Organisatie {i}",
+                initiatief_id=sample_initiatief.id,
+                stage="lead",
+            )
         )
-        db_session.add(recent)
     await db_session.flush()
 
-    ingest = MattermostIngestService(db_session)
-    rows = await ingest._collect_lead_candidates_for_llm(
+    row = await MattermostIngestService(db_session)._find_matching_lead(
         sample_initiatief.id,
         "Ik denk dat ik een nieuwe lead heb! HHNK lijkt een goeie partner",
     )
 
-    ids = [r.id for r in rows]
-    assert old.id in ids, (
-        "Oude HHNK-lead moet via trigram-similarity gevonden worden, "
-        "ook al staat hij niet in de top-25 nieuwste."
-    )
+    assert row is not None and row.id == old.id
 
 
-async def test_collect_candidates_dedups_overlap(db_session, sample_initiatief):
-    """Een lead die zowel in de recency-top als in de similarity-top zit,
-    mag maar één keer voorkomen in de output."""
-    overlap = Lead(
-        id=uuid.uuid4(),
-        title="Gemeente Utrecht",
-        organization="Gemeente Utrecht",
-        initiatief_id=sample_initiatief.id,
-        stage="lead",
+async def test_find_matching_lead_ignores_loose_resemblance(
+    db_session, sample_initiatief
+):
+    db_session.add(
+        Lead(
+            id=uuid.uuid4(),
+            title="Gemeente Utrecht",
+            organization="Gemeente Utrecht",
+            initiatief_id=sample_initiatief.id,
+            stage="lead",
+        )
     )
-    db_session.add(overlap)
     await db_session.flush()
 
-    ingest = MattermostIngestService(db_session)
-    rows = await ingest._collect_lead_candidates_for_llm(
-        sample_initiatief.id,
-        "Gemeente Utrecht heeft interesse",
+    row = await MattermostIngestService(db_session)._find_matching_lead(
+        sample_initiatief.id, "Provincie Zeeland heeft interesse"
     )
 
-    assert [r.id for r in rows].count(overlap.id) == 1
+    assert row is None
 
 
 # ---------------------------------------------------------------------------
@@ -747,11 +733,13 @@ async def test_post_suggestion_reply_new_lead_copy(
 
     assert "Nieuwe lead voor" in posted_text
     assert "Regelrecht" in posted_text
-    assert "Gemeente X" in posted_text
+    # Vrije tekst van het model hoort niet in het kanaal.
+    assert "Gemeente X" not in posted_text + str(attachment)
+    assert "regelhulp" not in posted_text + str(attachment)
     assert "82%" in posted_text
     assert ":link:" not in posted_text
     assert "bestaande lead" not in posted_text.lower()
-    assert attachment["title"] == "Gemeente X"
+    assert attachment["title"] == "Mogelijke nieuwe lead"
     assert attachment["footer"] == "Bouwmeester · suggestie vanuit Mattermost"
 
     emojis = [c.args[1] for c in stub.add_reaction.await_args_list]
@@ -761,8 +749,8 @@ async def test_post_suggestion_reply_new_lead_copy(
 async def test_post_suggestion_reply_existing_lead_copy(
     db_session, sample_initiatief, sample_channel
 ):
-    """Met match: copy noemt bestaande lead + stage-label, :link: staat
-    boven :white_check_mark: en is aanbevolen."""
+    """Met match: copy meldt een bestaande lead zonder die te noemen, :link:
+    staat boven :white_check_mark: en is aanbevolen."""
     suggested = SuggestedLead(
         source_post_id=_id(),
         source_channel_id=sample_channel.channel_id,
@@ -801,14 +789,14 @@ async def test_post_suggestion_reply_existing_lead_copy(
     attachment = call.kwargs["props"]["attachments"][0]
 
     assert "bestaande lead" in posted_text.lower()
-    assert "HHNK (Hoogheemraadschap Hollands Noorderkwartier)" in posted_text
-    assert "Verkennen" in posted_text  # stage-label, niet de raw key
-    assert "verkennen" not in posted_text.replace("Verkennen", "")  # geen raw key
+    # Het kanaal hoort niet welke lead: titel en stage staan er niet in.
+    assert "Hoogheemraadschap" not in posted_text + str(attachment)
+    assert "erkennen" not in posted_text + str(attachment)
     assert "95%" in posted_text
     assert "_(aanbevolen)_" in posted_text
     # :link: moet vóór :white_check_mark: staan in de instructie
     assert posted_text.index(":link:") < posted_text.index(":white_check_mark:")
-    assert attachment["title"] == "HHNK (Hoogheemraadschap Hollands Noorderkwartier)"
+    assert attachment["title"] == "Bestaande lead herkend"
     assert attachment["footer"] == "Bouwmeester · bestaande lead herkend"
     assert "gemeld als nieuwe lead" not in attachment["text"].lower()
 
@@ -819,10 +807,8 @@ async def test_post_suggestion_reply_existing_lead_copy(
 async def test_ingest_propagates_matched_lead_to_reply(
     db_session, sample_initiatief, sample_channel
 ):
-    """End-to-end: als de LLM een bestaande lead-id teruggeeft die in de
-    candidate-rows staat, ontvangt _post_suggestion_reply een matched_lead
-    dict met titel + stage. Vangt regressies in de extractie-loop in
-    _create_suggested_lead."""
+    """End-to-end: noemt het bericht een bestaande lead, dan ontvangt
+    _post_suggestion_reply een matched_lead dict met titel + stage."""
     existing = Lead(
         id=uuid.uuid4(),
         title="HHNK (Hoogheemraadschap Hollands Noorderkwartier)",
@@ -839,7 +825,6 @@ async def test_ingest_propagates_matched_lead_to_reply(
             confidence=0.95,
             proposed_title="HHNK",
             proposed_description="Vraag van HHNK",
-            match_existing_lead_id=str(existing.id),
             reasoning="naam matcht expliciet",
         )
     )
