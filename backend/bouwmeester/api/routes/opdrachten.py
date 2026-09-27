@@ -42,6 +42,7 @@ from bouwmeester.schema.opdracht import (
     OpdrachtUpdate,
 )
 from bouwmeester.services.activity_service import log_activity
+from bouwmeester.services.agent_rules import require_may_assign
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.opdracht_matching_service import OpdrachtMatchingService
 from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
@@ -174,6 +175,7 @@ async def create_opdracht(
     ]:
         await require(db, perm_ctx, "node:read", "corpus_node", node_id)
     await require(db, perm_ctx, "opdracht:create", "opdracht", place=data)
+    await require_may_assign(db, perm_ctx, data, field="verantwoordelijke_id")
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
 
@@ -273,6 +275,13 @@ async def update_opdracht(
     )
     if "instrument_id" in data.model_fields_set and data.instrument_id is not None:
         await require(db, perm_ctx, "node:read", "corpus_node", data.instrument_id)
+    await require_may_assign(
+        db,
+        perm_ctx,
+        data,
+        current=old.verantwoordelijke_id,
+        field="verantwoordelijke_id",
+    )
 
     # Reject setting instrument_id to null on non-FCC opdrachten
     if (

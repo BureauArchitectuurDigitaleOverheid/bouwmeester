@@ -172,3 +172,14 @@ async def test_mention_of_agent_notifies_only_from_super_admin(world, agent, who
         )
     )
     assert (notes.scalars().first() is not None) is (who == ADMIN)
+
+
+@pytest.mark.parametrize(("who", "expected"), [(EDITOR, 403), (ADMIN, 200)])
+async def test_opdracht_verantwoordelijke_agent(world, agent, who, expected):
+    """The verantwoordelijke gets the opdracht's follow-up tasks: an instruction."""
+    async with client_as(world.db, world.person[who]) as c:
+        resp = await c.put(
+            f"/api/opdrachten/{world.res['opdracht_free']}",
+            json={"verantwoordelijke_id": str(agent.id)},
+        )
+    assert resp.status_code == expected, resp.text
