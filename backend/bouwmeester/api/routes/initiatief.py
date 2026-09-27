@@ -75,12 +75,7 @@ async def create_initiatief(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
 ) -> InitiatiefResponse:
-    """Any logged-in user may start a personal initiatief.
-
-    The creator becomes its eigenaar through a person-level resource role;
-    the payload carries nothing else that grants access.  Linking an eenheid
-    afterwards goes through the grant routes (``core.authority``).
-    """
+    """Any logged-in user may start an initiatief; they become its eigenaar."""
     repo = InitiatiefRepository(db)
     created_by_id = current_user.id if current_user else None
     initiatief = await repo.create(data, created_by_id=created_by_id)
@@ -170,7 +165,7 @@ async def update_initiatief_settings(
     data: InitiatiefSettingsUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    # Eigenaar only: initiatief:delete is what only an eigenaar-level role has.
+    # initiatief:delete: only an eigenaar-level role has it.
     _authz=Depends(_DELETE_INITIATIEF),
 ) -> InitiatiefResponse:
     """Update settings (slug, toggles, score-labels). Eigenaar only."""
@@ -211,6 +206,26 @@ async def delete_initiatief(
         None,
         "initiatief.deleted",
         details={"initiatief_id": str(id), "naam": initiatief_naam},
+    )
+
+
+def _member_response(member) -> InitiatiefMemberResponse:
+    return InitiatiefMemberResponse(
+        initiatief_id=member.resource_id,
+        person_id=member.person_id,
+        person_naam=member.person.naam if member.person else "",
+        rol=member.rol,
+        created_at=member.created_at,
+    )
+
+
+def _eenheid_response(rp) -> InitiatiefEenheidResponse:
+    return InitiatiefEenheidResponse(
+        initiatief_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        created_at=rp.created_at,
     )
 
 
@@ -255,13 +270,7 @@ async def add_member(
         },
     )
 
-    return InitiatiefMemberResponse(
-        initiatief_id=member.resource_id,
-        person_id=member.person_id,
-        person_naam=member.person.naam if member.person else "",
-        rol=member.rol,
-        created_at=member.created_at,
-    )
+    return _member_response(member)
 
 
 @router.delete(
@@ -332,13 +341,7 @@ async def update_member_role(
         },
     )
 
-    return InitiatiefMemberResponse(
-        initiatief_id=member.resource_id,
-        person_id=member.person_id,
-        person_naam=member.person.naam if member.person else "",
-        rol=member.rol,
-        created_at=member.created_at,
-    )
+    return _member_response(member)
 
 
 # ---------------------------------------------------------------------------
@@ -390,13 +393,7 @@ async def add_eenheid(
         },
     )
 
-    return InitiatiefEenheidResponse(
-        initiatief_id=rp.resource_id,
-        eenheid_id=rp.organisatie_eenheid_id,
-        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
-        rol=rp.rol,
-        created_at=rp.created_at,
-    )
+    return _eenheid_response(rp)
 
 
 @router.delete(
@@ -467,13 +464,7 @@ async def update_eenheid_rol(
         },
     )
 
-    return InitiatiefEenheidResponse(
-        initiatief_id=rp.resource_id,
-        eenheid_id=rp.organisatie_eenheid_id,
-        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
-        rol=rp.rol,
-        created_at=rp.created_at,
-    )
+    return _eenheid_response(rp)
 
 
 # ---------------------------------------------------------------------------

@@ -400,6 +400,28 @@ async def remove_node_koppeling(
     )
 
 
+def _member_response(member) -> OpdrachtMemberResponse:
+    return OpdrachtMemberResponse(
+        opdracht_id=member.resource_id,
+        person_id=member.person_id,
+        person_naam=member.person.naam if member.person else "",
+        rol=member.rol,
+        source=member.source,
+        created_at=member.created_at,
+    )
+
+
+def _eenheid_response(rp) -> OpdrachtEenheidResponse:
+    return OpdrachtEenheidResponse(
+        opdracht_id=rp.resource_id,
+        eenheid_id=rp.organisatie_eenheid_id,
+        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
+        rol=rp.rol,
+        source=rp.source,
+        created_at=rp.created_at,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Member management (contactpersonen)
 # ---------------------------------------------------------------------------
@@ -448,14 +470,7 @@ async def add_member(
         },
     )
 
-    return OpdrachtMemberResponse(
-        opdracht_id=member.resource_id,
-        person_id=member.person_id,
-        person_naam=member.person.naam if member.person else "",
-        rol=member.rol,
-        source=member.source,
-        created_at=member.created_at,
-    )
+    return _member_response(member)
 
 
 @router.delete(
@@ -525,14 +540,7 @@ async def update_member_role(
         },
     )
 
-    return OpdrachtMemberResponse(
-        opdracht_id=member.resource_id,
-        person_id=member.person_id,
-        person_naam=member.person.naam if member.person else "",
-        rol=member.rol,
-        source=member.source,
-        created_at=member.created_at,
-    )
+    return _member_response(member)
 
 
 # ---------------------------------------------------------------------------
@@ -583,14 +591,7 @@ async def add_eenheid(
         },
     )
 
-    return OpdrachtEenheidResponse(
-        opdracht_id=rp.resource_id,
-        eenheid_id=rp.organisatie_eenheid_id,
-        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
-        rol=rp.rol,
-        source=rp.source,
-        created_at=rp.created_at,
-    )
+    return _eenheid_response(rp)
 
 
 @router.delete(
@@ -660,14 +661,7 @@ async def update_eenheid_rol(
         },
     )
 
-    return OpdrachtEenheidResponse(
-        opdracht_id=rp.resource_id,
-        eenheid_id=rp.organisatie_eenheid_id,
-        eenheid_naam=rp.eenheid.naam if rp.eenheid else "",
-        rol=rp.rol,
-        source=rp.source,
-        created_at=rp.created_at,
-    )
+    return _eenheid_response(rp)
 
 
 # ---------------------------------------------------------------------------
