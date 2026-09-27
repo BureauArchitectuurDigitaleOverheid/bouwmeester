@@ -1,9 +1,8 @@
 """Tests for FCC import/export services and API endpoints.
 
-Sinds de TOOI-migratie matcht FCC `_resolve_opdrachtnemer` op
-`OrganisatieEenheid` (afkorting -> naam -> nieuwe rij onder
-'Marktpartijen en overige'). Tests gebruiken nu OrganisatieEenheid
-ipv het verwijderde ExterneOrganisatie-model.
+FCC `_resolve_opdrachtnemer` matches `OrganisatieEenheid` rows an official
+source brought (afkorting -> naam), else its own `fcc_import` row under
+'Marktpartijen en overige'.
 """
 
 import uuid
@@ -395,58 +394,97 @@ async def test_eliminate_migratie_levert_ictu_seed(db_session: AsyncSession):
     assert len(handmatig) <= 1, "Meer dan één handmatige ICTU — reconciliation-risico"
 
 
-@pytest.mark.usefixtures("_use_mock_client")
-async def test_import_resolves_existing_opdrachtnemer(db_session: AsyncSession):
-    """Import koppelt Uitvoeringsorganisatie aan bestaande OrganisatieEenheid op afkorting."""  # noqa: E501
-    # ICTU kan al bestaan via de eliminate-externe-organisatie-migratie
-    # (oude seed). Hergebruik die rij of maak hem aan als hij ontbreekt,
-    # zodat de FCC resolver hem op afkorting matcht.
-    existing = await db_session.execute(
-        select(OrganisatieEenheid).where(OrganisatieEenheid.afkorting == "ICTU")
-    )
-    ictu = existing.scalars().first()
-    if ictu is None:
-        ictu = OrganisatieEenheid(
-            naam="ICTU",
-            afkorting="ICTU",
-            type="uitvoeringsorganisatie",
-            bron="handmatig",
-        )
-        db_session.add(ictu)
-        await db_session.flush()
+def _eenheid(db: AsyncSession, naam: str, bron: str, afkorting=None):
+    row = OrganisatieEenheid(naam=naam, afkorting=afkorting, type="overig", bron=bron)
+    db.add(row)
+    return row
 
-    service = FccImportService(db_session)
-    await service.poll_and_import()
-    await db_session.flush()
 
-    # Mock item 900001 has Uitvoeringsorganisatie="ICTU"
-    result = await db_session.execute(
-        select(Opdracht).where(Opdracht.fcc_id == "900001")
-    )
-    wallet = result.scalar_one()
-    assert wallet.opdrachtnemer_eenheid_id == ictu.id
+async def _import(db: AsyncSession, fcc_id: str) -> OrganisatieEenheid | None:
+    """Run the mock import and return the opdrachtnemer of *fcc_id*."""
+    await FccImportService(db).poll_and_import()
+    await db.flush()
+    opdracht = (
+        await db.execute(select(Opdracht).where(Opdracht.fcc_id == fcc_id))
+    ).scalar_one()
+    if opdracht.opdrachtnemer_eenheid_id is None:
+        return None
+    return await db.get(OrganisatieEenheid, opdracht.opdrachtnemer_eenheid_id)
 
 
 @pytest.mark.usefixtures("_use_mock_client")
-async def test_import_auto_creates_unknown_opdrachtnemer(db_session: AsyncSession):
-    """Import maakt nieuwe OrganisatieEenheid aan voor onbekende Uitvoeringsorganisatie."""  # noqa: E501
-    service = FccImportService(db_session)
-    await service.poll_and_import()
+async def test_import_resolves_official_opdrachtnemer(db_session: AsyncSession):
+    """Mock item 900001 ('ICTU') lands on the one official ICTU, matched on
+    afkorting case-insensitively, not on the migrated or user-made ones."""
+    ictu = _eenheid(db_session, "Stichting ICTU", "tooi", afkorting="ictu")
+    _eenheid(db_session, "ICTU", "handmatig", afkorting="ICTU")
+    await db_session.flush()
+    assert await _import(db_session, "900001") == ictu
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+@pytest.mark.parametrize(
+    "rows",
+    [
+        # A user names an eenheid after the uitvoeringsorganisatie: its
+        # members would read the opdracht.
+        [("KOOP", "handmatig", "KOOP")],
+        # Two official matches: ambiguous, not guessed.
+        [("KOOP een", "tooi", "KOOP"), ("KOOP twee", "tooi", "KOOP")],
+        [],
+    ],
+    ids=["user_eenheid", "ambiguous", "unknown"],
+)
+async def test_import_falls_back_to_own_fcc_row(db_session: AsyncSession, rows):
+    """Mock item 900003 ('KOOP') gets an fcc_import row under 'Marktpartijen
+    en overige' instead, reused by the next project with the same value."""
+    decoys = [_eenheid(db_session, n, b, afkorting=a) for n, b, a in rows]
+    await db_session.flush()
+    org = await _import(db_session, "900003")
+    assert org not in decoys
+    assert (org.naam, org.bron) == ("KOOP", "fcc_import")
+    parent = await db_session.get(OrganisatieEenheid, org.parent_id)
+    assert (parent.naam, parent.bron) == ("Marktpartijen en overige", "synthetisch")
+
+    opdracht = (
+        await db_session.execute(select(Opdracht).where(Opdracht.fcc_id == "900003"))
+    ).scalar_one()
+    opdracht.opdrachtnemer_eenheid_id = None
+    await FccImportService(db_session)._resolve_opdrachtnemer(
+        opdracht, {"Uitvoeringsorganisatie": "koop"}
+    )
+    assert opdracht.opdrachtnemer_eenheid_id == org.id
+
+
+@pytest.mark.usefixtures("_use_mock_client")
+@pytest.mark.parametrize(
+    ("hand", "kept"),
+    [
+        (("Eigen keuze", "handmatig", None), True),
+        (("ICTU", "handmatig", "ICTU"), False),
+    ],
+    ids=["chosen_by_hand", "earlier_name_match"],
+)
+async def test_reimport_keeps_opdrachtnemer_chosen_by_hand(
+    db_session: AsyncSession, hand, kept
+):
+    """A re-import leaves an opdrachtnemer someone picked by hand alone while
+    FCC's value is unchanged; a link that is only a name match (as the old
+    resolver made to a user's eenheid) is resolved again."""
+    ictu = _eenheid(db_session, "ICTU", "tooi", afkorting="ICTU")
+    await db_session.flush()
+    await _import(db_session, "900001")
+    opdracht = (
+        await db_session.execute(select(Opdracht).where(Opdracht.fcc_id == "900001"))
+    ).scalar_one()
+    naam, bron, afkorting = hand
+    chosen = _eenheid(db_session, naam, bron, afkorting=afkorting)
+    await db_session.flush()
+    opdracht.opdrachtnemer_eenheid_id = chosen.id
+    opdracht.fcc_modified_at = datetime(2020, 1, 1, tzinfo=UTC)
     await db_session.flush()
 
-    # Mock item 900003 has Uitvoeringsorganisatie="KOOP" (niet aanwezig
-    # als afkorting/naam in DB) -> nieuwe rij onder Marktpartijen en overige
-    # met bron='fcc_import'.
-    result = await db_session.execute(
-        select(Opdracht).where(Opdracht.fcc_id == "900003")
-    )
-    overheid_nl = result.scalar_one()
-    assert overheid_nl.opdrachtnemer_eenheid_id is not None
-
-    org = await db_session.get(OrganisatieEenheid, overheid_nl.opdrachtnemer_eenheid_id)
-    assert org is not None
-    assert org.naam == "KOOP"
-    assert org.bron == "fcc_import"
+    assert await _import(db_session, "900001") == (chosen if kept else ictu)
 
 
 # ---------------------------------------------------------------------------

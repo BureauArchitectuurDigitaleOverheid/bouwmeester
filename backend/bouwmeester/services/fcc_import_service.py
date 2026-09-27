@@ -19,6 +19,11 @@ from bouwmeester.services.fcc_sync_log_helper import log_fcc_sync
 logger = logging.getLogger(__name__)
 
 
+def _uitvoering(data: dict) -> str:
+    """FCC's Uitvoeringsorganisatie of a project, unescaped and stripped."""
+    return unescape_html((data.get("Uitvoeringsorganisatie") or "").strip())
+
+
 class FccImportService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -152,7 +157,7 @@ class FccImportService:
                 return True
 
             self._apply_fcc_data(existing, data)
-            await self._resolve_opdrachtnemer(existing, data)
+            await self._resolve_opdrachtnemer(existing, data, existing.fcc_raw_data)
             existing.fcc_modified_at = fcc_modified
             existing.last_synced_at = datetime.now(UTC)
             existing.sync_status = SyncStatus.synced
@@ -237,72 +242,78 @@ class FccImportService:
         opdracht.fcc_portfolio = data.get("Portfolio") or None
         opdracht.fcc_labels = data.get("Labels") or None
 
-    async def _resolve_opdrachtnemer(self, opdracht: Opdracht, data: dict) -> None:
+    async def _resolve_opdrachtnemer(
+        self, opdracht: Opdracht, data: dict, previous: dict | None = None
+    ) -> None:
         """Link Uitvoeringsorganisatie to opdrachtnemer via OrganisatieEenheid.
 
-        Strategie:
-          1. Probeer match op afkorting (case-insensitive). FCC-data is
-             afkorting-zwaar ('RvIG', 'RDW', 'DPC').
-          2. Probeer match op naam (case-insensitive).
-          3. Geen match? Maak nieuwe OrganisatieEenheid aan onder synthetische
-             groep 'Marktpartijen en overige' met bron='fcc_import'.
+        The opdrachtnemer's members read the opdracht, so a name only matches
+        an eenheid an official source brought (``find_official_eenheid``),
+        exactly (case-insensitive) and unambiguously: first on afkorting
+        (FCC data is afkorting-heavy: 'RvIG', 'RDW'), then on naam.  A user
+        who names an eenheid after an uitvoeringsorganisatie gets nothing.
+        Otherwise the import reuses (or creates) its own ``fcc_import`` row
+        under the synthetic group 'Marktpartijen en overige'.
+
+        An opdrachtnemer someone chose by hand (one not named after the FCC
+        value) is kept as long as FCC's value is unchanged since *previous*.
         """
-        from sqlalchemy import select as _select
+        from sqlalchemy import func
 
         from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+        from bouwmeester.services.sync_matching import find_official_eenheid
 
-        uitvoering = unescape_html((data.get("Uitvoeringsorganisatie") or "").strip())
+        uitvoering = _uitvoering(data)
+        current = (
+            await self.session.get(
+                OrganisatieEenheid, opdracht.opdrachtnemer_eenheid_id
+            )
+            if opdracht.opdrachtnemer_eenheid_id
+            else None
+        )
+        if (
+            current is not None
+            and previous is not None
+            and _uitvoering(previous) == uitvoering
+            and uitvoering.lower()
+            not in {(current.afkorting or "").lower(), current.naam.lower()}
+        ):
+            return
         if not uitvoering:
             opdracht.opdrachtnemer_eenheid_id = None
             return
 
-        # 1. Match op afkorting
-        eenheid = (
-            (
-                await self.session.execute(
-                    _select(OrganisatieEenheid)
-                    .where(
-                        OrganisatieEenheid.afkorting.ilike(uitvoering),
-                        OrganisatieEenheid.geldig_tot.is_(None),
-                    )
-                    .limit(1)
-                )
-            )
-            .scalars()
-            .first()
+        key = uitvoering.lower()
+        eenheid = await find_official_eenheid(
+            self.session, func.lower(OrganisatieEenheid.afkorting) == key
+        ) or await find_official_eenheid(
+            self.session, func.lower(OrganisatieEenheid.naam) == key
         )
-
-        # 2. Match op naam
         if eenheid is None:
             eenheid = (
-                (
-                    await self.session.execute(
-                        _select(OrganisatieEenheid)
-                        .where(
-                            OrganisatieEenheid.naam.ilike(uitvoering),
-                            OrganisatieEenheid.geldig_tot.is_(None),
-                        )
-                        .limit(1)
+                await self.session.execute(
+                    select(OrganisatieEenheid)
+                    .where(
+                        OrganisatieEenheid.bron == "fcc_import",
+                        OrganisatieEenheid.geldig_tot.is_(None),
+                        func.lower(OrganisatieEenheid.naam) == key,
                     )
+                    .order_by(OrganisatieEenheid.created_at, OrganisatieEenheid.id)
+                    .limit(1)
                 )
-                .scalars()
-                .first()
-            )
-
-        # 3. Nieuwe rij onder Marktpartijen en overige
+            ).scalar_one_or_none()
         if eenheid is None:
             parent = (
-                (
-                    await self.session.execute(
-                        _select(OrganisatieEenheid).where(
-                            OrganisatieEenheid.bron == "synthetisch",
-                            OrganisatieEenheid.naam == "Marktpartijen en overige",
-                        )
+                await self.session.execute(
+                    select(OrganisatieEenheid)
+                    .where(
+                        OrganisatieEenheid.bron == "synthetisch",
+                        OrganisatieEenheid.naam == "Marktpartijen en overige",
                     )
+                    .order_by(OrganisatieEenheid.id)
+                    .limit(1)
                 )
-                .scalars()
-                .first()
-            )
+            ).scalar_one_or_none()
             eenheid = OrganisatieEenheid(
                 naam=uitvoering,
                 type="overig",
@@ -342,7 +353,7 @@ class FccImportService:
             return False
 
         self._apply_fcc_data(opdracht, data)
-        await self._resolve_opdrachtnemer(opdracht, data)
+        await self._resolve_opdrachtnemer(opdracht, data, opdracht.fcc_raw_data)
         fcc_modified = self.parse_fcc_date(data)
 
         opdracht.fcc_modified_at = fcc_modified
