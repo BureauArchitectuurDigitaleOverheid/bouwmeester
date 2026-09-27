@@ -261,6 +261,7 @@ async def search_channels(
 async def update_channel_link(
     link_id: UUID,
     data: MattermostChannelLinkUpdate,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _authz=Depends(
         requires(
@@ -272,6 +273,17 @@ async def update_channel_link(
 ) -> MattermostChannelLinkResponse:
     repo = MattermostChannelLinkRepository(db)
     link = require_found(await repo.get(link_id), "Koppeling")
+
+    # Switching on what reads the channel's posts (notes, lead suggestions)
+    # or reviving the link is linking it anew: the same membership check as
+    # creating it, whoever made the link.
+    starts_ingest = (
+        data.reenable
+        or (data.auto_note_enabled and not link.auto_note_enabled)
+        or (data.suggest_leads_enabled and not link.suggest_leads_enabled)
+    )
+    if starts_ingest:
+        await _require_may_link(db, link.channel_id, current_user)
 
     # Reenable mag alleen als de bot daadwerkelijk weer in het kanaal zit
     # — anders zet je `disabled_at=None` op een dode koppeling en raakt de
