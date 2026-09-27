@@ -5,7 +5,7 @@ Per kabinet staan de bewindspersonen + functies. De van/tot van het kabinet
 geeft default voor de plaatsing, individuele afwijkingen kunnen later via
 extra YAML-velden.
 
-Idempotent: bestaande plaatsingen met dezelfde (person_naam, eenheid_id,
+Idempotent: bestaande plaatsingen met dezelfde (persoon, eenheid_id,
 start_datum) worden overgeslagen.
 """
 
@@ -22,9 +22,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
-from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
+from bouwmeester.services.sync_matching import person_for_sync
 
 log = logging.getLogger(__name__)
 
@@ -86,17 +86,20 @@ async def sync_historische_kabinetten(
                 )
                 continue
 
-            # Person opzoeken (breed match op naam)
-            person = (
-                (await session.execute(select(Person).where(Person.naam == naam)))
-                .scalars()
-                .first()
+            # Alleen een persoon die een sync zelf bracht (zie sync_matching).
+            match = await person_for_sync(
+                session,
+                naam,
+                bron="kabinet_yaml",
+                also={"tk_odata"},
+                sync_run_id=sync_run_id,
+                log_bron="kabinet",
             )
-            if person is None:
-                person = Person(naam=naam, bron="kabinet_yaml")
-                session.add(person)
-                await session.flush()
-                stats.nieuwe_personen += 1
+            if match.person is None:
+                stats.fouten.append(match.ambiguity(naam))
+                continue
+            person = match.person
+            stats.nieuwe_personen += match.created
 
             entry_van = _parse_datum(entry.get("van")) or van
             entry_tot = _parse_datum(entry.get("tot")) or tot

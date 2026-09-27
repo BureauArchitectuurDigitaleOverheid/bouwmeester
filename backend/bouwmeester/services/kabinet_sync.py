@@ -19,13 +19,19 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person import Person
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
+from bouwmeester.services.sync_matching import (
+    PersonMatch,
+    create_sync_person,
+    escape_like,
+    match_sync_person,
+)
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +52,30 @@ def _parse_datum(s: Any, fallback: date | None = None) -> date | None:
     if isinstance(s, date):
         return s
     return datetime.fromisoformat(str(s)).date()
+
+
+async def _tk_person_by_parts(session: AsyncSession, naam: str) -> Person | None:
+    """The one usable TK person with *naam*'s first and last word, or None."""
+    parts = naam.split()
+    if len(parts) < 2:
+        return None
+    voornaam, achternaam = parts[0], parts[-1]
+    match = await match_sync_person(
+        session,
+        naam,
+        bronnen={"tk_odata"},
+        where=and_(
+            Person.naam.ilike(f"%{escape_like(achternaam)}"),
+            Person.naam.ilike(f"{escape_like(voornaam)}%"),
+        ),
+    )
+    if match.person is not None:
+        log.info(
+            "Kabinet: '%s' gemerged in bestaande TK-persoon '%s'",
+            naam,
+            match.person.naam,
+        )
+    return match.person
 
 
 async def sync_kabinet(
@@ -118,52 +148,34 @@ async def sync_kabinet(
             stats.onveranderd += 1
             continue
 
-        # Person opzoeken — eerst breed op naam (bewindspersonen zijn vaak
-        # ex-Kamerlid en bestaan al via tk_odata). Alleen nieuw aanmaken als
-        # de naam echt nog niet voorkomt; voorkomt dubbele Person-rijen.
-        # Match-strategie:
+        # Person opzoeken.  Alleen personen die een sync zelf bracht: een
+        # eerdere kabinet-run, of een TK-persoon op zijn vaste sleutel
+        # (bewindspersonen zijn vaak ex-Kamerlid).  Nooit een account of een
+        # contact dat zich naar de bewindspersoon heeft hernoemd.
         #   1. Exact naam
-        #   2. Achternaam-substring (bv. 'Pieter Heerma' matcht 'Pieter
-        #      Enneüs Heerma')
-        person = (
-            (await session.execute(select(Person).where(Person.naam == naam)))
-            .scalars()
-            .first()
+        #   2. Voor- en achternaam van een TK-persoon (bv. 'Pieter Heerma'
+        #      matcht 'Pieter Enneüs Heerma')
+        match = await match_sync_person(
+            session, naam, bronnen={"kabinet_yaml", "tk_odata"}
         )
-        if person is None:
-            # Probeer match op laatste woord van de naam (achternaam)
-            achternaam = naam.split()[-1] if naam else ""
-            voornaam = naam.split()[0] if naam else ""
-            if achternaam and voornaam:
-                kandidaten = (
-                    (
-                        await session.execute(
-                            select(Person).where(
-                                Person.naam.ilike(f"%{achternaam}"),
-                                Person.naam.ilike(f"{voornaam}%"),
-                                Person.tk_persoon_id.is_not(None),
-                            )
-                        )
-                    )
-                    .scalars()
-                    .all()
-                )
-                if len(kandidaten) == 1:
-                    person = kandidaten[0]
-                    log.info(
-                        "Kabinet: '%s' gemerged in bestaande TK-persoon '%s'",
-                        naam,
-                        person.naam,
-                    )
-        if person is None:
-            person = Person(
-                naam=naam,
-                email=entry.get("email"),
+        if match.person is None and not match.ambiguous:
+            tk = await _tk_person_by_parts(session, naam)
+            if tk is not None:
+                match = PersonMatch(person=tk)
+        if match.person is None and not match.ambiguous:
+            match = await create_sync_person(
+                session,
+                naam,
                 bron="kabinet_yaml",
+                sync_run_id=sync_run_id,
+                log_bron="kabinet",
+                match=match,
             )
-            session.add(person)
-            await session.flush()
-            stats.nieuwe_personen += 1
+        if match.person is None:
+            stats.fouten.append(match.ambiguity(naam))
+            continue
+        person = match.person
+        stats.nieuwe_personen += match.created
 
         # Eenheid opzoeken
         eenheid = (
