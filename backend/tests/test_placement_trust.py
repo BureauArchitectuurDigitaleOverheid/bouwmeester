@@ -5,12 +5,6 @@ decides about the members of its eenheid made it; anyone else's is contact
 administration (``handmatig``) and becomes a request at first login.  Who
 already holds access through a record decides about its email addresses.
 Grants to an eenheid never reach the grantor, not even later.
-
-``pt`` adds to ``world``: a contact without login, a new hire the manager
-placed, a gemeente at the top that holds a role on an initiatief, a partner
-gemeente of the team editor that holds one too, a bare gemeente, a gemeente
-in another ministry, a directie admin who asked to join ``elders``, and an
-eigenaar grant on the node elders.
 """
 
 import uuid
@@ -30,19 +24,8 @@ from bouwmeester.models.person import Person
 from bouwmeester.models.person_email import PersonEmail
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.role import PersonRole
-from tests.authz_world import (
-    World,
-    add,
-    add_directie_admin,
-    assert_route_case,
-    load_migration,
-    make_agent,
-    notifications,
-    perm_ctx,
-    request,
-    route_case_id,
-    rp,
-)
+from tests import authz_world as aw
+from tests.authz_world import World, add, make_agent, request, rp
 from tests.factories import client_as, grant_role, make_org, make_person, place
 
 WEEK_AGO = date.today() - timedelta(days=7)
@@ -50,16 +33,15 @@ WEEK_AGO = date.today() - timedelta(days=7)
 
 @pytest.fixture
 async def pt(world: World) -> World:
+    """A contact, a placed new hire, gemeenten (one with a role on an initiatief,
+    one the team editor's partner, a bare one, one in another ministry), a
+    directie admin who asked to join elders, an eigenaar grant on node elders."""
     db, res = world.db, world.res
     world.person["contact"] = await make_person(db, "Contact", account=False)
     world.person["new_hire"] = await make_person(db, "Nieuwe collega", account=False)
     await place(db, world.person["new_hire"], world.org["team"])
-    foreign_dg = await make_org(
-        db,
-        "Ander DG",
-        "directoraat_generaal",
-        await make_org(db, "Ander", "ministerie"),
-    )
+    ander = await make_org(db, "Ander", "ministerie")
+    foreign_dg = await make_org(db, "Ander DG", "directoraat_generaal", ander)
     for key, parent in (("gemeente", None), ("partner", None), ("bare", None),
                         ("foreign_gemeente", foreign_dg)):  # fmt: skip
         res[key] = (await make_org(db, key.title(), "gemeente", parent)).id
@@ -69,21 +51,15 @@ async def pt(world: World) -> World:
         init = await add(world, Initiatief(id=uuid.uuid4(), naam=f"Init {key}"))
         db.add(rp("initiatief", init.id, "contributor", eenheid=await _org(world, key)))
         res[f"init_{key}"] = init.id
-    admin = await add_directie_admin(world, "org_admin", "Directiebeheerder")
+    admin = await aw.add_directie_admin(world, "org_admin", "Directiebeheerder")
     elders = world.org["elders"].id
     db.add(OrgPlacementRequest(person_id=admin.id, dienstverband="in_dienst",
                                organisatie_eenheid_id=elders))  # fmt: skip
     owner = await make_person(db, "Eigenaar elders")
-    res["elders_grant"] = (
-        await add(
-            world, rp("corpus_node", res["node_elders"], "eigenaar", person=owner)
-        )
-    ).id
-    res["editor_role"] = await db.scalar(
-        select(PersonRole.id).where(
-            PersonRole.person_id == world.person["team_editor"].id
-        )
-    )
+    grant = rp("corpus_node", res["node_elders"], "eigenaar", person=owner)
+    res["elders_grant"] = (await add(world, grant)).id
+    editor = PersonRole.person_id == world.person["team_editor"].id
+    res["editor_role"] = await db.scalar(select(PersonRole.id).where(editor))
     await db.flush()
     return world
 
@@ -104,19 +80,16 @@ async def _first_login(w: World, who: str) -> Person:
 
 
 async def _placement(w: World, who: str, key: str) -> PersonOrganisatieEenheid | None:
-    return await w.db.scalar(
-        select(PersonOrganisatieEenheid).where(
-            PersonOrganisatieEenheid.person_id == w.person[who].id,
-            PersonOrganisatieEenheid.organisatie_eenheid_id == w.values()[key],
-        )
-    )
+    poe = PersonOrganisatieEenheid
+    return await w.db.scalar(select(poe).where(
+        poe.person_id == w.person[who].id,
+        poe.organisatie_eenheid_id == w.values()[key]))  # fmt: skip
 
 
 async def _pending(w: World, who: str) -> set:
-    stmt = select(OrgPlacementRequest.organisatie_eenheid_id).where(
-        OrgPlacementRequest.person_id == w.person[who].id,
-        OrgPlacementRequest.status == "pending",
-    )
+    opr = OrgPlacementRequest
+    stmt = select(opr.organisatie_eenheid_id).where(
+        opr.person_id == w.person[who].id, opr.status == "pending")  # fmt: skip
     return {str(i) for i in (await w.db.scalars(stmt)).all()}
 
 
@@ -134,10 +107,7 @@ async def _reads(w: World, who: str, key: str, action: str = "initiatief:read"):
     return await can(w.db, ctx, action, "initiatief", w.res[f"init_{key}"])
 
 
-# ---------------------------------------------------------------------------
 # Placing: who makes a placement trusted
-# ---------------------------------------------------------------------------
-
 # (placer, person, eenheid, status, bron, reads the eenheid's initiatief after)
 PLACEMENTS = [
     ("manager", "manager", "eenheid_team", 403, None, None),  # never yourself
@@ -181,7 +151,7 @@ async def test_a_contact_placement_waits_for_a_manager_at_first_login(pt):
     assert await _placement(pt, "contact", "eenheid_team") is None
     assert await _pending(pt, "contact") == {pt.values()["eenheid_team"]}
     assert await _placement(pt, "contact", "gemeente") is not None
-    assert await notifications(pt, pt.person["manager"].id, "placement_request")
+    assert await aw.notifications(pt, pt.person["manager"].id, "placement_request")
 
 
 async def test_a_manager_confirms_a_contact_placement(pt):
@@ -237,10 +207,7 @@ async def test_an_informational_placement_still_needs_onboarding(world):
     assert await _pending(world, "newcomer") == {str(world.org["team"].id)}
 
 
-# ---------------------------------------------------------------------------
 # Changing a placement: a trusted one only by who decides, else it is demoted
-# ---------------------------------------------------------------------------
-
 _LATER = str(date.today() + timedelta(days=30))
 _TODAY = str(date.today())
 
@@ -260,9 +227,8 @@ CHANGES = [
 ]  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    ("bron", "ended", "who", "method", "body", "status", "after"), CHANGES
-)
+@pytest.mark.parametrize(("bron", "ended", "who", "method", "body", "status", "after"),
+                         CHANGES)  # fmt: skip
 async def test_changing_a_placement(pt, bron, ended, who, method, body, status, after):
     placement = await place(pt.db, pt.person["contact"], pt.org["team"], bron=bron)
     if ended:
@@ -296,18 +262,14 @@ async def test_the_deploy_migration_confirms_accounts_not_contacts(pt):
     # A week back: the migration compares with the database's CURRENT_DATE (UTC).
     placements[-1].eind_datum = WEEK_AGO
     await pt.db.flush()
-    migration = load_migration("7c1e5a9d3b20_confirm_existing_placements")
+    migration = aw.load_migration("7c1e5a9d3b20_confirm_existing_placements")
     await pt.db.execute(text(migration.CONFIRM_SQL))
     for placement, (_, _, bron) in zip(placements, rows):
         await pt.db.refresh(placement)
         assert placement.bron == bron, (placement.person_id, bron)
 
 
-# ---------------------------------------------------------------------------
 # Identity: who holds access through a record decides its addresses
-# ---------------------------------------------------------------------------
-
-
 async def _target(w: World, setup: str) -> str:
     """The person whose addresses are changed, per setup; returns its key."""
     if setup == "self":
@@ -360,17 +322,14 @@ async def test_adding_an_email_needs_authority_over_the_access(pt, setup, who, s
     resp = await request(pt, who, "POST", url, {"email": email})
     assert resp.status_code == status, resp.text
     if status == 201:
-        added_by = await pt.db.scalar(
-            select(PersonEmail.added_by_id).where(PersonEmail.email == email)
-        )
-        assert added_by == pt.person[who].id
+        added = select(PersonEmail.added_by_id).where(PersonEmail.email == email)
+        assert await pt.db.scalar(added) == pt.person[who].id
 
 
 async def test_login_never_links_to_an_agent(world):
     agent = await make_agent(world)
-    person = await get_or_create_person(
-        world.db, "sub-agent-login", agent.email, "Iemand", email_verified=True
-    )
+    person = await get_or_create_person(world.db, "sub-agent-login", agent.email,
+                                        "Iemand", email_verified=True)  # fmt: skip
     assert person.id != agent.id and not person.is_agent
     await world.db.refresh(agent)
     assert agent.oidc_subject is None
@@ -406,10 +365,7 @@ async def test_admin_seed_promotes_only_on_a_sole_address(world):
     assert ids == {sole.id}
 
 
-# ---------------------------------------------------------------------------
 # Grants and roles never reach further than the grantor's own say
-# ---------------------------------------------------------------------------
-
 ROUTES = [
     ("viewer", "PUT", "/api/people/{p_new_hire}", {"functie": "Nieuw"}, 200),
     # sharing with an eenheid you asked to join is sharing with yourself
@@ -426,9 +382,9 @@ ROUTES = [
 ]  # fmt: skip
 
 
-@pytest.mark.parametrize("case", ROUTES, ids=[route_case_id(c) for c in ROUTES])
+@pytest.mark.parametrize("case", ROUTES, ids=[aw.route_case_id(c) for c in ROUTES])
 async def test_routes(pt, case):
-    await assert_route_case(pt, *case)
+    await aw.assert_route_case(pt, *case)
 
 
 @pytest.mark.parametrize("link", ["fresh", "requested", "joins_later"])
@@ -447,7 +403,8 @@ async def test_an_eenheid_grant_never_reaches_the_grantor(world, link):
 
     async def grant():
         await require_can_grant_resource_role(
-            world.db, await perm_ctx(world, "afd_editor"), resource_type="initiatief",
+            world.db, await aw.perm_ctx(world, "afd_editor"),
+            resource_type="initiatief",
             resource_id=world.res["initiatief"], rol="contributor",
             target_eenheid_id=sub.id)  # fmt: skip
 

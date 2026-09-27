@@ -15,21 +15,14 @@ from bouwmeester.core import authority
 from bouwmeester.core.authz import can
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.role import PersonRole
-from tests.authz_world import (
-    World,
-    add,
-    add_directie_admin,
-    ask,
-    evaluate,
-    perm_ctx,
-    rp,
-)
+from tests import authz_world as aw
+from tests.authz_world import World, add, ask, evaluate, perm_ctx, rp
 from tests.factories import client_as
 
 
 @pytest.fixture
 async def ew(world: World) -> World:
-    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    await aw.add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
     return world
 
 
@@ -83,10 +76,7 @@ def test_evaluations_endpoint_is_not_public():
     assert not is_public_path("/api/authz/evaluations")
 
 
-# ---------------------------------------------------------------------------
 # Grant actions: the core.authority guards
-# ---------------------------------------------------------------------------
-
 T, E = "{eenheid_team}", "{eenheid_elders}"
 INIT, ND, RO = "{initiatief}", "{node_directie}", "{p_role_only}"
 RA, RG, RV = "role:assign", "resource_role:grant", "resource_role:revoke"
@@ -149,45 +139,36 @@ GRANTS = [
 ]  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    ("who", "action", "rtype", "rid", "props", "expected"),
-    GRANTS,
-    ids=[f"{g[0]}-{g[1]}-{i}" for i, g in enumerate(GRANTS)],
-)
-async def test_grant_actions_ask_the_authority_guards(
-    ew, who, action, rtype, rid, props, expected
-):
+_GRANT_IDS = [f"{g[0]}-{g[1]}-{i}" for i, g in enumerate(GRANTS)]
+
+
+@pytest.mark.parametrize(("who", "action", "rtype", "rid", "props", "expected"),
+                         GRANTS, ids=_GRANT_IDS)  # fmt: skip
+async def test_grant_actions_ask_the_authority_guards(ew, who, action, rtype, rid,
+                                                      props, expected):  # fmt: skip
     assert await evaluate(ew, who, ask(action, rtype, rid, **props)) == [expected]
 
 
-@pytest.mark.parametrize(
-    ("who", "holder", "role_id", "expected"),
-    [
-        ("ministry_admin", "team_editor", "editor", True),
-        ("manager", "team_editor", "editor", False),  # no people:assign_role
-        ("team_editor", "team_editor", "editor", True),  # stepping down
-        ("super_admin", "super_admin", "super_admin", False),  # last-admin lock
-    ],
-)
+@pytest.mark.parametrize(("who", "holder", "role_id", "expected"), [
+    ("ministry_admin", "team_editor", "editor", True),
+    ("manager", "team_editor", "editor", False),  # no people:assign_role
+    ("team_editor", "team_editor", "editor", True),  # stepping down
+    ("super_admin", "super_admin", "super_admin", False),  # last-admin lock
+])  # fmt: skip
 async def test_role_revoke_asks_the_revoke_guard(ew, who, holder, role_id, expected):
+    held = PersonRole.person_id == ew.person[holder].id
     assignment_id = await ew.db.scalar(
-        select(PersonRole.id).where(
-            PersonRole.person_id == ew.person[holder].id,
-            PersonRole.role_id == role_id,
-        )
+        select(PersonRole.id).where(held, PersonRole.role_id == role_id)
     )
     got = await evaluate(ew, who, ask("role:revoke", "role", assignment_id))
     assert got == [expected]
 
 
 async def test_the_last_eigenaar_cannot_leave(ew):
-    await add(
-        ew,
-        rp("corpus_node", ew.res["node_free"], "eigenaar", person=ew.person["viewer"]),
-    )
-    question = ask(
-        RV, "corpus_node", "{node_free}", target_person_id="{p_viewer}", rol="eigenaar"
-    )
+    viewer = ew.person["viewer"]
+    await add(ew, rp("corpus_node", ew.res["node_free"], "eigenaar", person=viewer))
+    question = ask(RV, "corpus_node", "{node_free}", target_person_id="{p_viewer}",
+                   rol="eigenaar")  # fmt: skip
     assert await evaluate(ew, "viewer", question) == [False]
 
 
@@ -216,22 +197,14 @@ async def test_anywhere_asks_every_eenheid(ew, who, action, rtype, expected):
         assert nowhere is False  # without anywhere a task needs an eenheid
 
 
-# ---------------------------------------------------------------------------
 # Grants to an eenheid, asked like the guards decide them
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("who", ["afd_editor", "team_editor", "role_only", "manager"])
 async def test_evaluation_grants_to_an_eenheid_like_the_guard(world, who):
     try:
         await authority.require_can_grant_resource_role(
-            world.db,
-            await perm_ctx(world, who),
-            resource_type="initiatief",
-            resource_id=world.res["initiatief"],
-            rol="contributor",
-            target_eenheid_id=world.org["elders"].id,
-        )
+            world.db, await perm_ctx(world, who), resource_type="initiatief",
+            resource_id=world.res["initiatief"], rol="contributor",
+            target_eenheid_id=world.org["elders"].id)  # fmt: skip
         expected = True
     except Exception:  # noqa: BLE001 - any refusal is "no"
         expected = False
@@ -246,11 +219,7 @@ async def test_evaluation_revokes_a_grant_of_an_eenheid(iw, who, expected):
     assert await evaluate(iw, who, question) == [expected]
 
 
-# ---------------------------------------------------------------------------
 # GET /api/authz/eenheden equals asking per eenheid
-# ---------------------------------------------------------------------------
-
-
 def _per_eenheid(action: str, eenheid_id, eenheid_type: str | None) -> dict:
     if eenheid_type:
         return ask(action, OE, eenheid_id=eenheid_id, eenheid_type=eenheid_type)
@@ -263,37 +232,27 @@ def _per_eenheid(action: str, eenheid_id, eenheid_type: str | None) -> dict:
     return ask("person:place", "person", eenheid_id=eenheid_id)
 
 
-@pytest.mark.parametrize(
-    ("action", "eenheid_type"),
-    [
-        ("org:manage", None),
-        ("org:update", None),
-        ("org:create", None),
-        ("people:assign_role", None),
-        ("person:place", None),
-        # an internal type needs rights on the parent, an external one not
-        ("org:create", "team"),
-        ("org:create", "gemeente"),
-    ],
-)
+# an internal type needs rights on the parent, an external one not
+@pytest.mark.parametrize(("action", "eenheid_type"), [
+    ("org:manage", None), ("org:update", None), ("org:create", None),
+    ("people:assign_role", None), ("person:place", None),
+    ("org:create", "team"), ("org:create", "gemeente"),
+])  # fmt: skip
 async def test_eenheden_endpoint_equals_the_evaluations(iw, action, eenheid_type):
     # a synced eenheid below the afdeling: read-only for org:update/manage
-    synced = OrganisatieEenheid(
-        naam="TOOI-team", type="team", parent_id=iw.org["afdeling"].id, bron="tooi"
-    )
-    await add(iw, synced)
+    synced = await add(iw, OrganisatieEenheid(naam="TOOI-team", type="team",
+                       parent_id=iw.org["afdeling"].id, bron="tooi"))  # fmt: skip
     eenheden = [*(o.id for o in iw.org.values()), synced.id]
-    params = {"action": action}
-    if eenheid_type:
-        params["eenheid_type"] = eenheid_type
+    params = {"action": action} | (
+        {"eenheid_type": eenheid_type} if eenheid_type else {}
+    )
     for who, person in iw.person.items():
         async with client_as(iw.db, person) as c:
             listed = await c.get("/api/authz/eenheden", params=params)
         assert listed.status_code == 200, listed.text
         body = listed.json()
-        asked = await evaluate(
-            iw, who, *(_per_eenheid(action, e, eenheid_type) for e in eenheden)
-        )
+        questions = (_per_eenheid(action, e, eenheid_type) for e in eenheden)
+        asked = await evaluate(iw, who, *questions)
         got = [body["all"] or str(e) in set(body["ids"]) for e in eenheden]
         assert got == asked, (who, action, eenheid_type)
 

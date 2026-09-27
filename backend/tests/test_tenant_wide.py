@@ -1,9 +1,9 @@
 """Tenant-wide operations need a system role; one resource is decided where it lives.
 
-Uses ``world`` from ``tests/authz_world.py``.  A role on an eenheid never
-does for a sync, an import or schema management, not even on the top
-eenheid and not even when the role carries the permission.  Pushing one
-opdracht to FCC or analysing one dossier is decided on that resource.
+A role on an eenheid never does for a sync, an import or schema management,
+not even on the top eenheid and not even when the role carries the
+permission.  Pushing one opdracht to FCC or analysing one dossier is decided
+on that resource.
 """
 
 import uuid
@@ -18,29 +18,28 @@ from bouwmeester.models.role import Role, RolePermission
 from tests.authz_world import World, add, opdracht, request
 from tests.factories import client_as, grant_role, make_person, place
 
-_TENANT_WIDE_PERMS = (
-    "fcc:sync",
-    "import_export:import",
-    "import_export:export",
-    "parlementair:import",
-    "org:manage",
-    "config:manage",
-)
+_TENANT_WIDE_PERMS = ("fcc:sync", "import_export:import", "import_export:export",
+                      "parlementair:import", "org:manage", "config:manage")  # fmt: skip
 
 
 async def _scoped_ops(w: World, eenheid: str) -> Person:
     """Someone holding every tenant-wide permission, on one eenheid only."""
-    role = Role(
-        id=f"ops_{uuid.uuid4().hex[:8]}", naam="Eenheidsbeheer", level="unit", rank=5
-    )
+    role = Role(id=f"ops_{uuid.uuid4().hex[:8]}", naam="Beheer", level="unit", rank=5)
     await add(w, role)
-    w.db.add_all(
-        RolePermission(role_id=role.id, permission_id=p) for p in _TENANT_WIDE_PERMS
-    )
+    w.db.add_all(RolePermission(role_id=role.id, permission_id=p)
+                 for p in _TENANT_WIDE_PERMS)  # fmt: skip
     person = await make_person(w.db, f"Beheer {eenheid}")
     await place(w.db, person, w.org[eenheid])
     await grant_role(w.db, person, role.id, w.org[eenheid])
     return person
+
+
+async def _statuses(w: World, callers: dict, method: str, path: str, **kw) -> dict:
+    got = {}
+    for who, person in callers.items():
+        async with client_as(w.db, person) as c:
+            got[who] = (await c.request(method, path, **kw)).status_code
+    return got
 
 
 @pytest.fixture
@@ -75,30 +74,22 @@ TENANT_WIDE_ROUTES = [
 ]  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    ("method", "path", "probe", "allowed", "platform_admin_may"),
-    TENANT_WIDE_ROUTES,
-    ids=[f"{r[0]} {r[1]}" for r in TENANT_WIDE_ROUTES],
-)
+_IDS = [f"{r[0]} {r[1]}" for r in TENANT_WIDE_ROUTES]
+
+
+@pytest.mark.parametrize(("method", "path", "probe", "allowed", "platform_may"),
+                         TENANT_WIDE_ROUTES, ids=_IDS)  # fmt: skip
 async def test_tenant_wide_needs_system_role(
-    world, stub_sync, method, path, probe, allowed, platform_admin_may
+    world, stub_sync, method, path, probe, allowed, platform_may
 ):
-    callers = {
-        "top_eenheid": await _scoped_ops(world, "ministerie"),
-        "manager": world.person["manager"],
-        "super_admin": world.person["super_admin"],
-        "platform_admin": world.person["platform_admin"],
+    callers = {"top_eenheid": await _scoped_ops(world, "ministerie")}
+    callers |= {
+        k: world.person[k] for k in ("manager", "super_admin", "platform_admin")
     }
-    got = {}
-    for who, person in callers.items():
-        async with client_as(world.db, person) as c:
-            got[who] = (await c.request(method, path, **probe)).status_code
-    assert got == {
-        "top_eenheid": 403,
-        "manager": 403,
-        "super_admin": allowed,
-        "platform_admin": allowed if platform_admin_may else 403,
-    }
+    assert await _statuses(world, callers, method, path, **probe) == {
+        "top_eenheid": 403, "manager": 403, "super_admin": allowed,
+        "platform_admin": allowed if platform_may else 403,
+    }  # fmt: skip
 
 
 # Settings trusted with credentials or data (secrets, addresses, and the
@@ -134,17 +125,14 @@ async def test_security_config_is_super_admin_only(
             resp = await c.patch(f"/api/admin/config/{key}", json={"value": "x"})
         got[who] = resp.status_code
         offered[who] = next(e for e in listing.json() if e["key"] == key)["editable"]
-    assert got == {
-        "platform_admin": 200 if platform_admin_may else 403,
-        "super_admin": 200,
-    }
+    assert got == {"platform_admin": 200 if platform_admin_may else 403,
+                   "super_admin": 200}  # fmt: skip
     # The listing offers editing exactly where the PATCH route allows it.
     assert offered == {who: status == 200 for who, status in got.items()}
 
 
-@pytest.mark.parametrize(
-    ("who", "expected"), [("platform_admin", 403), ("super_admin", 200)]
-)
+@pytest.mark.parametrize(("who", "expected"),
+                         [("platform_admin", 403), ("super_admin", 200)])  # fmt: skip
 async def test_database_dump_is_super_admin_only(world, who, expected):
     service = "bouwmeester.services.database_backup_service"
     with (
@@ -156,15 +144,12 @@ async def test_database_dump_is_super_admin_only(world, who, expected):
     assert (dump.status_code, info.status_code) == (expected, expected)
 
 
-@pytest.mark.parametrize(
-    ("who", "expected"), [("role_only", 403), ("viewer", 403), ("team_editor", 200)]
-)
+@pytest.mark.parametrize(("who", "expected"), [("role_only", 403), ("viewer", 403),
+                                               ("team_editor", 200)])  # fmt: skip
 async def test_suggest_tags_needs_a_node_writer(world, who, expected):
     """Tag suggestions spend LLM budget."""
-    with patch(
-        "bouwmeester.api.routes.llm.get_llm_service_for",
-        new=AsyncMock(return_value=None),
-    ):
+    llm = "bouwmeester.api.routes.llm.get_llm_service_for"
+    with patch(llm, new=AsyncMock(return_value=None)):
         resp = await request(
             world, who, "POST", "/api/llm/suggest-tags", {"title": "x"}
         )
@@ -172,15 +157,11 @@ async def test_suggest_tags_needs_a_node_writer(world, who, expected):
 
 
 @pytest.mark.parametrize("route", ["gap-analysis", "kompas-guidance"])
-@pytest.mark.parametrize(
-    ("dossier", "expected"),
-    [("{node_team}", 200), ("{node_elders}", 404), ("missing", 404), ("bad", 422)],
-)
+@pytest.mark.parametrize(("dossier", "expected"), [
+    ("{node_team}", 200), ("{node_elders}", 404), ("geen-uuid", 422),
+    ("00000000-0000-4000-8000-000000000000", 404)])  # fmt: skip
 async def test_llm_analysis_needs_a_visible_dossier(world, route, dossier, expected):
-    dossier_id = {"missing": str(uuid.uuid4()), "bad": "geen-uuid"}.get(
-        dossier, dossier
-    )
-    body = {"dossier_id": dossier_id, "step_node_types": ["doel"]}
+    body = {"dossier_id": dossier, "step_node_types": ["doel"]}
     resp = await request(world, "team_editor", "POST", f"/api/llm/{route}", body)
     assert resp.status_code == expected, resp.text
 
@@ -188,57 +169,32 @@ async def test_llm_analysis_needs_a_visible_dossier(world, route, dossier, expec
 async def test_fcc_push_is_decided_on_the_opdracht(world):
     """Push is disabled in tests, so 400 means the decision let it through."""
     opd = await add(world, opdracht(world, "Opdracht", "team"))
-    callers = {
-        "above": await _scoped_ops(world, "afdeling"),
-        "beside": await _scoped_ops(world, "elders"),
-        "manager": world.person["manager"],
-        "super_admin": world.person["super_admin"],
-    }
-    results = {}
-    for who, person in callers.items():
-        async with client_as(world.db, person) as c:
-            results[who] = (
-                await c.post(f"/api/fcc/opdrachten/{opd.id}/push")
-            ).status_code
-    missing = await request(
-        world, "super_admin", "POST", f"/api/fcc/opdrachten/{uuid.uuid4()}/push"
-    )
+    callers = {"above": await _scoped_ops(world, "afdeling"),
+               "beside": await _scoped_ops(world, "elders")}  # fmt: skip
+    callers |= {k: world.person[k] for k in ("manager", "super_admin")}
+    got = await _statuses(world, callers, "POST", f"/api/fcc/opdrachten/{opd.id}/push")
     # beside cannot see the opdracht, so a refusal does not reveal it (404)
-    assert results == {"above": 400, "beside": 404, "manager": 403, "super_admin": 400}
-    assert missing.status_code == 404
+    assert got == {"above": 400, "beside": 404, "manager": 403, "super_admin": 400}
+    missing = f"/api/fcc/opdrachten/{uuid.uuid4()}/push"
+    assert (await request(world, "super_admin", "POST", missing)).status_code == 404
 
 
 async def test_fcc_conflict_resolution_names_only_readable_nodes(world):
     """fcc:sync on the afdeling; the instrument and a koppeling lie elsewhere."""
-    opd = await add(
-        world,
-        opdracht(
-            world,
-            "Conflictopdracht",
-            "team",
-            instrument_id=world.res["node_elders"],
-            sync_status="conflict",
-        ),
-    )
-    await add(
-        world,
-        OpdrachtNode(opdracht_id=opd.id, node_id=world.res["node_elders"]),
-        OpdrachtNode(opdracht_id=opd.id, node_id=world.res["node_team"]),
-    )
+    elders, team = world.res["node_elders"], world.res["node_team"]
+    opd = await add(world, opdracht(world, "Conflict", "team", instrument_id=elders,
+                                     sync_status="conflict"))  # fmt: skip
+    await add(world, OpdrachtNode(opdracht_id=opd.id, node_id=elders),
+              OpdrachtNode(opdracht_id=opd.id, node_id=team))  # fmt: skip
     ops = await _scoped_ops(world, "afdeling")
-    with patch(
-        "bouwmeester.services.fcc_import_service.FccImportService.pull_single",
-        new=AsyncMock(),
-    ):
+    pull = "bouwmeester.services.fcc_import_service.FccImportService.pull_single"
+    with patch(pull, new=AsyncMock()):
         async with client_as(world.db, ops) as c:
-            resp = await c.post(
-                f"/api/fcc/conflicts/{opd.id}/resolve",
-                json={"resolution": "use_theirs"},
-            )
+            resp = await c.post(f"/api/fcc/conflicts/{opd.id}/resolve",
+                                json={"resolution": "use_theirs"})  # fmt: skip
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["instrument_id"] == str(world.res["node_elders"])  # on the record
+    assert body["instrument_id"] == str(elders)  # on the record
     assert body["instrument"] is None
-    koppelingen = [k["node_id"] for k in body["node_koppelingen"]]
-    assert koppelingen == [str(world.res["node_team"])]
+    assert [k["node_id"] for k in body["node_koppelingen"]] == [str(team)]
     assert "Dossier elders" not in resp.text

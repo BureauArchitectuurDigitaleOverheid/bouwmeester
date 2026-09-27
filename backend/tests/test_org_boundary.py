@@ -9,12 +9,6 @@
   evaluation and ``GET /api/authz/eenheden`` answer alike.
 - Merging, retyping, bringing in, dissolving and deleting do not carry an
   eigenaar's say over members into the organisation.
-
-``ob`` adds to ``world``: a gemeente at the top (with a wijkteam and its
-member), another gemeente whose child the first one's owner owns, an own
-root of the team editor with a trusted member, a partner stichting inside
-the team with a member, a root of the manager, a stichting inside the DG,
-another ministry's DG and an empty team with an active role.
 """
 
 import uuid
@@ -28,30 +22,24 @@ from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.person_organisatie import PersonOrganisatieEenheid
 from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.role import PersonRole
-from tests.authz_world import (
-    World,
-    ask,
-    assert_route_case,
-    evaluate,
-    make_node,
-    request,
-    route_case_id,
-    rp,
-)
+from tests import authz_world as aw
+from tests.authz_world import World, ask, evaluate, request, rp
 from tests.factories import client_as, grant_role, make_org, make_person, place
 
 
 @pytest.fixture
 async def ob(world: World) -> World:
+    """Gemeenten (one owned, with a wijkteam member; one with an owned child), own
+    roots of the team editor and the manager, a partner inside the team, a
+    stichting inside the DG, another ministry's DG, an empty team with a role."""
     db, org, res = world.db, world.org, world.res
 
     async def eenheid(key, naam, type_, parent=None, owner=None, member=None):
         e = await make_org(db, naam, type_, res[parent] if parent in res else parent)
         res[key] = e
         if owner:
-            db.add(
-                rp("organisatie_eenheid", e.id, "eigenaar", person=world.person[owner])
-            )
+            db.add(rp("organisatie_eenheid", e.id, "eigenaar",
+                      person=world.person[owner]))  # fmt: skip
         if member:
             world.person[member] = await make_person(db, member)
             await place(db, world.person[member], e)
@@ -74,7 +62,7 @@ async def ob(world: World) -> World:
     await eenheid("empty", "Leeg team", "team", org["afdeling"])
     await grant_role(db, world.person["viewer"], "editor", res["empty"])
     for key in ("gemeente", "partner", "own_root"):
-        res[f"{key}_node"] = (await make_node(db, f"Dossier {key}", res[key])).id
+        res[f"{key}_node"] = (await aw.make_node(db, f"Dossier {key}", res[key])).id
     for key, eenheid_key in (("team_admin", "team"), ("min_admin", "ministerie")):
         world.person[key] = await make_person(db, key)
         await grant_role(db, world.person[key], "ministry_admin", org[eenheid_key])
@@ -122,9 +110,9 @@ ROUTES = [
 ]  # fmt: skip
 
 
-@pytest.mark.parametrize("case", ROUTES, ids=[route_case_id(c) for c in ROUTES])
+@pytest.mark.parametrize("case", ROUTES, ids=[aw.route_case_id(c) for c in ROUTES])
 async def test_routes(ob, case):
-    await assert_route_case(ob, *case)
+    await aw.assert_route_case(ob, *case)
 
 
 async def test_external_members_get_no_implicit_viewer_at_the_top(ob):
@@ -178,13 +166,9 @@ async def test_create_route_evaluation_and_list_agree(ob, who, type_, parent, ex
         question = ask("org:create", "organisatie_eenheid", eenheid_id=parent_id,
                        eenheid_type=type_)  # fmt: skip
         assert await evaluate(ob, who, question) == [expected]
-        async with client_as(ob.db, ob.person[who]) as c:
-            listed = (
-                await c.get(
-                    "/api/authz/eenheden",
-                    params={"action": "org:create", "eenheid_type": type_},
-                )
-            ).json()
+        params = {"action": "org:create", "eenheid_type": type_}
+        resp = await request(ob, who, "GET", "/api/authz/eenheden", params=params)
+        listed = resp.json()
         assert (listed["all"] or parent_id in listed["ids"]) is expected
     resp = await request(ob, who, "POST", "/api/organisatie", body)
     assert resp.status_code == (201 if expected else 403), resp.text
@@ -207,14 +191,9 @@ MOVES = [
 @pytest.mark.parametrize(("who", "key", "parent", "expected"), MOVES)
 async def test_move_route_and_evaluation_agree(ob, who, key, parent, expected):
     parent_id = ob.values()[parent] if parent else None
-    question = {
-        "action": "eenheid:move",
-        "resource": {
-            "type": "organisatie_eenheid",
-            "id": str(ob.res[key]),
-            "properties": {"parent_id": parent_id},
-        },
-    }
+    resource = {"type": "organisatie_eenheid", "id": str(ob.res[key]),
+                "properties": {"parent_id": parent_id}}  # fmt: skip
+    question = {"action": "eenheid:move", "resource": resource}
     assert await evaluate(ob, who, question) == [expected]
     eenheid = await ob.db.get(OrganisatieEenheid, ob.res[key])
     before = eenheid.parent_id
@@ -224,34 +203,27 @@ async def test_move_route_and_evaluation_agree(ob, who, key, parent, expected):
     assert str(eenheid.parent_id) == str(parent_id if expected else before)
 
 
-# ---------------------------------------------------------------------------
 # Who holds a say over the members after a change
-# ---------------------------------------------------------------------------
+async def _all(w: World, column, *where) -> list:
+    return list((await w.db.scalars(select(column).where(*where))).all())
 
 
 async def _owner_grants(w: World, eenheid_id) -> list:
-    stmt = select(ResourcePermission.id).where(
-        ResourcePermission.resource_type == "organisatie_eenheid",
-        ResourcePermission.resource_id == eenheid_id,
-        ResourcePermission.rol == "eigenaar",
-    )
-    return list((await w.db.scalars(stmt)).all())
+    rp_ = ResourcePermission
+    return await _all(w, rp_.id, rp_.resource_type == "organisatie_eenheid",
+                      rp_.resource_id == eenheid_id, rp_.rol == "eigenaar")  # fmt: skip
 
 
 async def _open_bronnen(w: World, who: str) -> list[str]:
-    stmt = select(PersonOrganisatieEenheid.bron).where(
-        PersonOrganisatieEenheid.person_id == w.person[who].id,
-        PersonOrganisatieEenheid.eind_datum.is_(None),
-    )
-    return list((await w.db.scalars(stmt)).all())
+    poe = PersonOrganisatieEenheid
+    return await _all(w, poe.bron, poe.person_id == w.person[who].id,
+                      poe.eind_datum.is_(None))  # fmt: skip
 
 
 async def _pending(w: World, who: str) -> set:
-    stmt = select(OrgPlacementRequest.organisatie_eenheid_id).where(
-        OrgPlacementRequest.person_id == w.person[who].id,
-        OrgPlacementRequest.status == "pending",
-    )
-    return set((await w.db.scalars(stmt)).all())
+    opr = OrgPlacementRequest
+    return set(await _all(w, opr.organisatie_eenheid_id, opr.status == "pending",
+                          opr.person_id == w.person[who].id))  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -264,12 +236,10 @@ async def test_only_a_new_root_gets_an_eigenaar(ob, who, type_, parent, rename):
     body = {"naam": "Kind", "type": type_, "parent_id": ob.values()[parent]}
     created = await request(ob, who, "POST", "/api/organisatie", body)
     assert created.status_code == 201, created.text
-    child = created.json()["id"]
-    assert await _owner_grants(ob, uuid.UUID(child)) == []
+    ob.res["child"] = child = uuid.UUID(created.json()["id"])
+    assert await _owner_grants(ob, child) == []
     if rename:
-        renamed = await request(
-            ob, who, "PUT", f"/api/organisatie/{child}", {"naam": "K"}
-        )
+        renamed = await request(ob, who, "PUT", _ORG % "child", {"naam": "K"})
         assert renamed.status_code == rename, renamed.text
 
 
@@ -279,9 +249,8 @@ async def test_merging_an_own_root_drops_its_eigenaar_and_unconfirms(ob):
     ob.person["official"] = await make_person(ob.db, "Ambtenaar")
     await place(ob.db, ob.person["official"], official, bron="abd_scrape")
     body = {"source_id": str(ob.res["own_root"]), "target_id": str(official.id)}
-    resp = await request(
-        ob, "super_admin", "POST", "/api/admin/reconciliation/manual-merge", body
-    )
+    url = "/api/admin/reconciliation/manual-merge"
+    resp = await request(ob, "super_admin", "POST", url, body)
     assert resp.status_code == 200, resp.text
     assert resp.json()["eigenaarsrechten_verwijderd"] == 1
     assert resp.json()["plaatsingen_onbevestigd"] == 1
@@ -327,13 +296,10 @@ async def test_dissolving_ends_every_role_and_placement(world):
     resp = await request(world, "manager", "PUT", f"/api/organisatie/{team.id}",
                          _DISSOLVE)  # fmt: skip
     assert resp.status_code == 200, resp.text
-    role = await world.db.scalar(
-        select(PersonRole).where(
-            PersonRole.person_id == world.person["team_editor"].id,
-            PersonRole.organisatie_eenheid_id == team.id,
-        )
-    )
-    assert role.eind_datum is not None
+    [ended] = await _all(world, PersonRole.eind_datum,
+                         PersonRole.person_id == world.person["team_editor"].id,
+                         PersonRole.organisatie_eenheid_id == team.id)  # fmt: skip
+    assert ended is not None
     assert await _open_bronnen(world, "viewer") == []
 
 
@@ -345,28 +311,19 @@ async def test_deleting_an_eenheid_is_decided_like_dissolving_it(world):
         created = await request(world, "team_editor", "POST", "/api/organisatie", body)
         assert created.status_code == 201, created.text
         ids.append(created.json()["id"])
-    asked = await evaluate(
-        world,
-        "team_editor",
-        *(ask("eenheid:dissolve", "organisatie_eenheid", i) for i in ids),  # fmt: skip
-    )
-    deletes = [
-        (
-            await request(world, "team_editor", "DELETE", f"/api/organisatie/{i}")
-        ).status_code
-        for i in ids
-    ]
-    assert asked == [False, True]
-    assert deletes == [403, 204]
+    questions = (ask("eenheid:dissolve", "organisatie_eenheid", i) for i in ids)
+    assert await evaluate(world, "team_editor", *questions) == [False, True]
+    for i, status in zip(ids, (403, 204)):
+        resp = await request(world, "team_editor", "DELETE", f"/api/organisatie/{i}")
+        assert resp.status_code == status, resp.text
 
 
 async def test_staff_directory_is_minimal_without_people_read(ob):
     team, afdeling = ob.org["team"].id, ob.org["afdeling"].id
     async with client_as(ob.db, ob.person["root_member"]) as c:
         flat = (await c.get(f"/api/organisatie/{team}/personen")).json()
-        tree = (
-            await c.get(f"/api/organisatie/{afdeling}/personen?recursive=true")
-        ).json()
+        url = f"/api/organisatie/{afdeling}/personen?recursive=true"
+        tree = (await c.get(url)).json()
         directie = (await c.get(f"/api/organisatie/{ob.org['directie'].id}")).json()
     async with client_as(ob.db, ob.person["viewer"]) as c:
         full = (await c.get(f"/api/organisatie/{team}/personen")).json()

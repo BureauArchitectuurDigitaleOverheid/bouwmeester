@@ -1,9 +1,8 @@
 """Reviewing a parliamentary item is decided on the item's node.
 
-Uses ``world`` from ``tests/authz_world.py``; ``pw`` adds a ministry_admin
-scoped to the directie, who reviews there but writes no nodes.  A reviewer
-approves a suggestion whatever its target; a target they cannot read is
-left out of every answer.
+``pw`` adds a ministry_admin scoped to the directie, who reviews there but
+writes no nodes.  A reviewer approves a suggestion whatever its target; a
+target they cannot read is left out of every answer.
 """
 
 import uuid
@@ -19,45 +18,33 @@ from bouwmeester.models.task import Task
 from bouwmeester.services.parlementair_import_service import (
     ParlementairImportService,
 )
-from tests.authz_world import (
-    World,
-    add,
-    add_directie_admin,
-    ask,
-    evaluate,
-    make_item,
-    make_node,
-    perm_ctx,
-    request,
-    rp,
-)
+from tests import authz_world as aw
+from tests.authz_world import World, add, ask, evaluate, make_item, request, rp
 from tests.factories import make_person, place
 
 
 @pytest.fixture
 async def pw(world: World) -> World:
-    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    await aw.add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
     return world
 
 
-async def _suggest(
-    w: World, item: ParlementairItem, target: str, **kw
-) -> SuggestedEdge:
-    return await add(
-        w,
-        SuggestedEdge(
-            parlementair_item_id=item.id,
-            target_node_id=w.res[target],
-            edge_type_id=w.res["edge_type"],
-            confidence=0.9,
-            **kw,
-        ),
-    )
+async def _suggest(w: World, item: ParlementairItem, target: str, **kw):
+    return await add(w, SuggestedEdge(
+        parlementair_item_id=item.id, target_node_id=w.res[target],
+        edge_type_id=w.res["edge_type"], confidence=0.9, **kw))  # fmt: skip
+
+
+async def _put(w: World, who: str, url: str, body=None) -> int:
+    return (await request(w, who, "PUT", url, body)).status_code
+
+
+_EDGES = "/api/parlementair/edges"
 
 
 async def _item_on_fresh_node(w: World) -> ParlementairItem:
     """An imported item on a new node without eenheid, as the import makes it."""
-    node = await make_node(w.db, "Motie")
+    node = await aw.make_node(w.db, "Motie")
     node.node_type = "politieke_input"
     item = await make_item(w)
     item.corpus_node_id = node.id
@@ -80,10 +67,8 @@ REVIEW_CASES = [
 @pytest.mark.parametrize(("who", "node", "expected"), REVIEW_CASES)
 async def test_review_is_decided_on_the_item_node(world, who, node, expected):
     item = await make_item(world, node)
-    resp = await request(
-        world, who, "PUT", f"/api/parlementair/imports/{item.id}/reject"
-    )
-    assert resp.status_code == expected, resp.text
+    url = f"/api/parlementair/imports/{item.id}/reject"
+    assert await _put(world, who, url) == expected
 
 
 # (who, item node, target node, may review the suggestion?, approve too?).
@@ -101,27 +86,20 @@ SUGGESTION_CASES = [
 ]  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    ("who", "node", "target", "allowed", "approve"), SUGGESTION_CASES
-)
+@pytest.mark.parametrize(("who", "node", "target", "allowed", "approve"),
+                         SUGGESTION_CASES)  # fmt: skip
 async def test_suggestion_review_is_the_reviewers_mandate(
-    pw, who, node, target, allowed, approve
-):
+        pw, who, node, target, allowed, approve):  # fmt: skip
     item = await make_item(pw, node)
     suggested = await _suggest(pw, item, target)
     other = await _suggest(pw, item, "node_afdeling")
-    ctx = await perm_ctx(pw, who)
+    ctx, rtype = await aw.perm_ctx(pw, who), "suggested_edge"
     for verb in ("update", "delete"):
-        got = await can(
-            pw.db, ctx, f"suggested_edge:{verb}", "suggested_edge", suggested.id
-        )
-        assert got is allowed, verb
+        assert await can(pw.db, ctx, f"{rtype}:{verb}", rtype, suggested.id) is allowed
     if approve:
-        url = "/api/parlementair/edges"
-        approved = await request(pw, who, "PUT", f"{url}/{suggested.id}/approve")
         # rejecting creates nothing: reviewing the item is enough
-        reject = await request(pw, who, "PUT", f"{url}/{other.id}/reject")
-        assert (approved.status_code, reject.status_code) == (200, 200)
+        assert await _put(pw, who, f"{_EDGES}/{suggested.id}/approve") == 200
+        assert await _put(pw, who, f"{_EDGES}/{other.id}/reject") == 200
 
 
 async def test_suggestion_status_moves_one_way(world):
@@ -131,17 +109,13 @@ async def test_suggestion_status_moves_one_way(world):
     second = await _suggest(world, item, "node_free")
 
     async def put(suggestion, action):
-        url = f"/api/parlementair/edges/{suggestion.id}/{action}"
-        return (await request(world, "team_editor", "PUT", url)).status_code
+        return await _put(world, "team_editor", f"{_EDGES}/{suggestion.id}/{action}")
 
     assert await put(first, "approve") == 200
     assert [await put(first, "approve"), await put(first, "reject")] == [409, 409]
-    edges = await world.db.scalars(
-        select(Edge).where(
-            Edge.from_node_id == world.res["node_team"],
-            Edge.to_node_id == world.res["node_afdeling"],
-        )
-    )
+    edges = await world.db.scalars(select(Edge).where(
+        Edge.from_node_id == world.res["node_team"],
+        Edge.to_node_id == world.res["node_afdeling"]))  # fmt: skip
     assert len(edges.all()) == 1
     steps = ["reject", "approve", "reset", "approve"]
     assert [await put(second, s) for s in steps] == [200, 409, 200, 200]
@@ -149,20 +123,18 @@ async def test_suggestion_status_moves_one_way(world):
     assert second.status == "approved"
 
 
-@pytest.mark.parametrize(
-    ("method", "action"),
-    [("PUT", "reject"), ("PUT", "reset"), ("PATCH", ""), ("PUT", "approve")],
-)
-@pytest.mark.parametrize(
-    ("target", "shown"), [("node_elders", False), ("node_afdeling", True)]
-)
-async def test_suggestion_action_hides_an_unreadable_target(
-    world, method, action, target, shown
-):
+_ACTIONS = [("PUT", "reject"), ("PUT", "reset"), ("PATCH", ""), ("PUT", "approve")]
+
+
+@pytest.mark.parametrize(("method", "action"), _ACTIONS)
+@pytest.mark.parametrize(("target", "shown"),
+                         [("node_elders", False), ("node_afdeling", True)])  # fmt: skip
+async def test_suggestion_action_hides_an_unreadable_target(world, method, action,
+                                                            target, shown):  # fmt: skip
     item = await make_item(world, "node_team")
     reason = "Gaat over Dossier elders"
     suggested = await _suggest(world, item, target, reason=reason)
-    url = f"/api/parlementair/edges/{suggested.id}" + (f"/{action}" if action else "")
+    url = f"{_EDGES}/{suggested.id}" + (f"/{action}" if action else "")
     body = {"edge_type_id": world.res["edge_type"]} if method == "PATCH" else None
     resp = await request(world, "team_editor", method, url, body)
     assert resp.status_code == 200, resp.text
@@ -182,11 +154,8 @@ async def test_item_views_hide_targets_the_reader_cannot_see(world):
 
     async def targets(who: str) -> list[set]:
         views = []
-        for url in (
-            f"/api/parlementair/imports/{item.id}",
-            "/api/parlementair/imports",
-            "/api/parlementair/review-queue",
-        ):
+        for url in (f"/api/parlementair/imports/{item.id}", "/api/parlementair/imports",
+                    "/api/parlementair/review-queue"):  # fmt: skip
             resp = await request(world, who, "GET", url)
             assert resp.status_code == 200, resp.text
             body = resp.json()
@@ -203,14 +172,10 @@ async def test_item_views_hide_targets_the_reader_cannot_see(world):
 
 
 async def _owners(w: World, node_id: uuid.UUID) -> set[uuid.UUID]:
-    rows = await w.db.scalars(
-        select(ResourcePermission.person_id).where(
-            ResourcePermission.resource_type == "corpus_node",
-            ResourcePermission.resource_id == node_id,
-            ResourcePermission.rol == "eigenaar",
-        )
-    )
-    return set(rows)
+    rp_ = ResourcePermission
+    return set(await w.db.scalars(select(rp_.person_id).where(
+        rp_.resource_type == "corpus_node", rp_.resource_id == node_id,
+        rp_.rol == "eigenaar")))  # fmt: skip
 
 
 # (reviewer, item node or None for a fresh node, current eigenaars, named
@@ -239,48 +204,35 @@ async def test_review_names_the_eigenaar(pw, who, node, owners, named, expected)
     for owner in owners:
         await add(pw, rp("corpus_node", node_id, "eigenaar", person=pw.person[owner]))
     target = pw.person[named].id
-    question = ask(
-        "parlementair:name_owner", "corpus_node", node_id, target_person_id=target
-    )
+    name_owner = "parlementair:name_owner"
+    question = ask(name_owner, "corpus_node", node_id, target_person_id=target)
     assert await evaluate(pw, who, question) == [expected == 200]
-    resp = await request(
-        pw,
-        who,
-        "POST",
-        f"/api/parlementair/imports/{item.id}/complete",
-        {"eigenaar_id": str(target), "tasks": []},
-    )
+    url = f"/api/parlementair/imports/{item.id}/complete"
+    body = {"eigenaar_id": str(target), "tasks": []}
+    resp = await request(pw, who, "POST", url, body)
     assert resp.status_code == expected, resp.text
     kept = {pw.person[o].id for o in owners}
     assert await _owners(pw, node_id) == ({target} if expected == 200 else kept)
 
 
 @pytest.mark.parametrize(("tasks", "expected"), [([], 200), ([{"title": "x"}], 403)])
-async def test_review_follow_up_tasks_need_task_create(pw, tasks, expected):
-    """A ministry_admin reviews, but creates no tasks: POST /tasks refuses too."""
+async def test_completing_a_review(pw, tasks, expected):
+    """A ministry_admin reviews but creates no tasks (POST /tasks refuses too),
+    and closes only the review task: anyone may link a task to an item."""
     item = await make_item(pw, "node_directie")
+    service = ParlementairImportService(pw.db)
+    review = await service.create_review_task(item, affected_nodes=[])
+    elders = await pw.db.get(Task, pw.res["task_elders"])
+    elders.parlementair_item_id = item.id
+    await pw.db.flush()
     body = {"eigenaar_id": "{p_manager}", "tasks": tasks}
     url = f"/api/parlementair/imports/{item.id}/complete"
     resp = await request(pw, "ministry_admin", "POST", url, body)
     assert resp.status_code == expected, resp.text
-
-
-async def test_complete_review_leaves_other_units_tasks_open(pw):
-    """Anyone may link a task to an item; the reviewer closes only their own."""
-    item = await make_item(pw, "node_directie")
-    review = await ParlementairImportService(pw.db).create_review_task(
-        item, affected_nodes=[]
-    )
-    elders = await pw.db.get(Task, pw.res["task_elders"])
-    elders.parlementair_item_id = item.id
-    await pw.db.flush()
-    body = {"eigenaar_id": "{p_manager}", "tasks": []}
-    url = f"/api/parlementair/imports/{item.id}/complete"
-    resp = await request(pw, "ministry_admin", "POST", url, body)
-    assert resp.status_code == 200, resp.text
-    await pw.db.refresh(review)
-    await pw.db.refresh(elders)
-    assert (review.status, elders.status) == ("done", "open")
+    for row in (review, elders):
+        await pw.db.refresh(row)
+    assert elders.status == "open"
+    assert review.status == ("done" if expected == 200 else "open")
 
 
 @pytest.mark.parametrize("path", ["/approve", "/reject", "/reset", ""])
@@ -291,16 +243,13 @@ async def test_suggestion_routes_ask_on_the_suggestion(world, path):
     suggestion = await _suggest(world, item, "node_team")
     edge_id = None
     if path == "/reset":
-        url = f"/api/parlementair/edges/{suggestion.id}/approve"
+        url = f"{_EDGES}/{suggestion.id}/approve"
         edge_id = (await request(world, "manager", "PUT", url)).json()["edge_id"]
     method, body = ("PATCH", {"edge_type_id": "x"}) if not path else ("PUT", None)
-    base = "/api/parlementair/edges"
-    refused = await request(
-        world, "viewer", method, f"{base}/{suggestion.id}{path}", body
-    )
-    missing = await request(
-        world, "manager", method, f"{base}/{uuid.uuid4()}{path}", body
-    )
+    refused = await request(world, "viewer", method, f"{_EDGES}/{suggestion.id}{path}",
+                            body)  # fmt: skip
+    missing = await request(world, "manager", method, f"{_EDGES}/{uuid.uuid4()}{path}",
+                            body)  # fmt: skip
     assert (refused.status_code, missing.status_code) == (403, 404), refused.text
     await world.db.refresh(suggestion)
     if edge_id:
@@ -312,11 +261,8 @@ async def test_suggestion_routes_ask_on_the_suggestion(world, path):
 async def test_item_response_drops_a_stored_scope_judgement(world):
     """Items from before the fix carry one scope's judgement in extra_data."""
     item = await make_item(world, "node_team")
-    item.extra_data = {
-        "categorie": "overig",
-        "relevantie_reden": "geheim",
-        "actie": "x",
-    }
+    item.extra_data = {"categorie": "overig", "relevantie_reden": "geheim",
+                       "actie": "x"}  # fmt: skip
     await world.db.flush()
     resp = await request(world, "viewer", "GET", f"/api/parlementair/imports/{item.id}")
     assert resp.status_code == 200, resp.text
@@ -327,7 +273,7 @@ async def test_review_unit_follows_membership(world):
     """Informational and ended placements are no membership, however many."""
     from datetime import date, timedelta
 
-    node = await make_node(world.db, "Dossier", world.org["team"])
+    node = await aw.make_node(world.db, "Dossier", world.org["team"])
     owner = await make_person(world.db, "Eigenaar")
     others = [await make_person(world.db, f"Mede-eigenaar {i}") for i in range(2)]
     for person in (owner, *others):
