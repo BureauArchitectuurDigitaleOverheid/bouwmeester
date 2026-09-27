@@ -130,6 +130,30 @@ async def test_notification_goes_only_to_readers(world, send, receivers):
     assert sorted(n.person_id for n in sent) == want
 
 
+@pytest.mark.parametrize("lockout", ["deactivated", "off_whitelist"])
+async def test_notification_skips_who_may_no_longer_log_in(world, monkeypatch, lockout):
+    """Nor does its Mattermost DM go out.  An agent works through an API key:
+    being active is enough."""
+    from bouwmeester.core import whitelist
+
+    viewer, editor = world.person["viewer"], world.person["team_editor"]
+    await aw.make_agent(world, place_in="team")
+    if lockout == "deactivated":
+        viewer.is_active = False
+    else:
+        monkeypatch.setattr(whitelist, "_whitelist_active", True)
+        monkeypatch.setattr(whitelist, "_allowed_emails", {editor.oidc_email})
+    await _stakeholders(world, "node_team", "viewer", "team_editor", "agent")
+    service = NotificationService(world.db)
+    with patch.object(service, "_send_to_mattermost") as forward:
+        sent = await service.notify_node_updated(  # super_admin instructs agents
+            await _node(world, "node_team"), world.person["super_admin"]
+        )
+    got = {n.person_id for n in sent}
+    assert got == {editor.id, world.person["agent"].id}
+    assert forward.call_count == 2
+
+
 async def test_edge_notification_hides_an_unreadable_end(world):
     team_node, elders_node = [
         await _node(world, k) for k in ("node_team", "node_elders")

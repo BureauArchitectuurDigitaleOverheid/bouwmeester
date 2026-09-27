@@ -20,6 +20,7 @@ from bouwmeester.models.task import Task
 from bouwmeester.repositories.notification import NotificationRepository
 from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.services.agent_rules import sender_may_instruct
+from bouwmeester.services.caller import may_still_act
 
 logger = logging.getLogger(__name__)
 
@@ -121,17 +122,23 @@ class NotificationService:
         """Create a notification about an item and schedule Mattermost forwarding.
 
         *about* is the item the text names (default: read off the related
-        ids).  Returns ``None`` when the recipient may not read it, or is an
-        agent that *actor_id* (else the sender) may not instruct
-        (``agent_rules``).
+        ids).  Returns ``None`` when the recipient may no longer log in
+        (inactive or off the whitelist: ``caller.may_still_act``; an agent,
+        which works through an API key, only needs to be active), may not
+        read it, or is an agent that *actor_id* (else the sender) may not
+        instruct (``agent_rules``).
         """
+        recipient = await self.session.get(Person, data.person_id)
+        if not (
+            may_still_act(recipient)
+            or (recipient is not None and recipient.is_agent and recipient.is_active)
+        ):
+            return None
         about = about or _about_related(data)
         if about is not None and not await self.may_read(data.person_id, about):
             return None
         if not await sender_may_instruct(
-            self.session,
-            actor_id or data.sender_id,
-            await self.session.get(Person, data.person_id),
+            self.session, actor_id or data.sender_id, recipient
         ):
             return None
         return await self._create(data)
