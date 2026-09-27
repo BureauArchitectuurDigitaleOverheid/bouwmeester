@@ -271,6 +271,19 @@ async def test_merging_two_teams_changes_nobodys_say(world):
     assert await _open_bronnen(world, "oud") == ["leidinggevende"]
 
 
+@pytest.mark.parametrize(("target", "dropped"), [("team", True), ("gemeente", False)])
+async def test_merging_into_the_organisation_drops_eigenaars_below(ob, target, dropped):
+    """Merged into the organisation, the source's subtree comes in with it:
+    an eigenaar grant below the source ends too.  Elsewhere it stays."""
+    from bouwmeester.services.merge_organisatie_eenheden import merge_into
+
+    source = await ob.db.get(OrganisatieEenheid, ob.res["other"])
+    into = await ob.db.get(OrganisatieEenheid, ob.id(target))
+    result = await merge_into(ob.db, source=source, target=into)
+    assert result.owner_grants_removed == (1 if dropped else 0)
+    assert (await _owner_grants(ob, ob.res["other_child"]) == []) is dropped
+
+
 async def test_bringing_a_root_in_turns_its_placements_into_requests(ob):
     ob.person["m_member"] = await make_person(ob.db, "Stichtingslid")
     await place(ob.db, ob.person["m_member"], await ob.db.get(

@@ -492,19 +492,28 @@ async def merge_into(
     """Backfill *target* from *source*, then merge *source* into it; caller commits.
 
     The say over members does not carry over: the source's eigenaar grants
-    are dropped and placements confirmed by who no longer decides lose
-    their trust (``core.authority.distrust_lost_confirmations``).
+    are dropped (in its whole subtree when the target touches the
+    organisation, as ``bring_into_organisation`` does) and placements
+    confirmed by who no longer decides lose their trust
+    (``core.authority.distrust_lost_confirmations``).
     """
     from bouwmeester.core.authority import (
         distrust_lost_confirmations,
         drop_eenheid_owner_grants,
         snapshot_trust,
     )
+    from bouwmeester.repositories.org_tree import (
+        get_subtree_ids,
+        touches_organisation,
+    )
 
     _backfill_target_fields(target=target, source=source)
     await session.flush()
     snapshot = await snapshot_trust(session, source.id)
-    owners = await drop_eenheid_owner_grants(session, {source.id})
+    dropped = {source.id}
+    if await touches_organisation(session, target.id):
+        dropped = await get_subtree_ids(session, [source.id])
+    owners = await drop_eenheid_owner_grants(session, dropped)
     rewritten = await merge_organisatie_eenheden(session, source.id, target.id)
     unconfirmed = await distrust_lost_confirmations(
         session, snapshot, moved_into={source.id: target.id}
