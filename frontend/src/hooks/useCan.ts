@@ -25,10 +25,10 @@ function authzQueryKey(action: string, resource: AuthzResource) {
   return [...AUTHZ_KEY, action, resource.type, resource.id ?? null, authzProperties(resource)] as const;
 }
 
+// Decisions change rarely; the mutations that change them refresh them
+// (`syncAuthzDecisions`).
 const DECISION_STALE_TIME = 5 * 60_000;
 
-// Decisions change rarely; the mutations that change them refresh them (see
-// `syncAuthzDecisions`). Without a resource the query waits (skipToken).
 function decisionQuery(
   action: string,
   resource: AuthzResource | null | undefined,
@@ -40,32 +40,24 @@ function decisionQuery(
   };
 }
 
-export interface Decision {
-  /** The backend said yes. `false` while loading and when it could not be asked. */
+interface Decision {
+  /** The backend said yes; `false` while loading or when it could not be asked. */
   allowed: boolean;
   isLoading: boolean;
-  /** The decision could not be fetched (network, 5xx). */
   isError: boolean;
   /**
-   * Render a primary action (edit, delete, create): when allowed, and also
-   * when the decision failed, then disabled via `!allowed`. A failed request
-   * should not make the main buttons of a page vanish without a trace.
+   * Render a primary action when allowed, and also when the decision failed
+   * (then disabled via `!allowed`), so a failed request does not make the
+   * main buttons vanish without a trace.
    */
   showAction: boolean;
 }
 
 /**
- * May the current user do `action` on `resource`? Asked to the backend
- * (`POST /api/authz/evaluations`), so the answer is the same decision the
- * API makes on the write itself, including the dev-mode persona.
- *
- * All calls in one render tick share a single request. Pass `null` while the
- * resource is not known yet.
- *
- * While the decision loads, `allowed` is `false`: callers do not render the
- * control, so a button never flashes into view and then disappears for
- * someone who may not use it. On an error, primary actions use `showAction`
- * to stay visible but disabled; `AuthzErrorBanner` offers the retry.
+ * May the current user do `action` on `resource`? The backend's own decision
+ * (`POST /api/authz/evaluations`); all calls in one tick share one request.
+ * Pass `null` while the resource is unknown. `allowed` is `false` while
+ * loading, so a button never flashes into view for someone who may not use it.
  */
 export function useCan(action: string, resource: AuthzResource | null | undefined): Decision {
   const query = useQuery(decisionQuery(action, resource));
@@ -79,10 +71,8 @@ export function useCan(action: string, resource: AuthzResource | null | undefine
 }
 
 /**
- * The eenheden where the current user may do `action` (`org:manage`,
- * `people:assign_role`, ...): one question for the whole list. Cached with
- * the other decisions, so a mutation with `CHANGES_RIGHTS` refreshes it and
- * a failure shows in `useAuthzFailures`.
+ * The eenheden where the current user may do `action` (`org:manage`, ...):
+ * one question for a whole list, cached with the other decisions.
  */
 export function useEenhedenWith(action: string, eenheidType?: string) {
   const query = useQuery({
@@ -132,10 +122,9 @@ export function useCanAny(action: string, resources: AuthzResource[]): Combined 
 }
 
 /**
- * For a gesture that has no button to hide (a drop, a drag): ask the
- * decision when it happens, through the same cache and batch as `useCan`.
- * Runs `action` only when allowed on the resource (or on any of several);
- * otherwise a toast says why not.
+ * For a gesture without a button to hide (a drop): ask when it happens and
+ * run `action` only when allowed on the resource (or any of several);
+ * otherwise toast the refusal.
  */
 export function useIfAllowed() {
   const queryClient = useQueryClient();
@@ -171,10 +160,7 @@ export function useIfAllowed() {
 
 const isFailedDecision = (query: Query) => query.state.status === 'error';
 
-/**
- * Whether any decision on screen failed, and a way to ask those again.
- * One banner for the whole page instead of a retry next to every button.
- */
+/** Whether any decision on screen failed, and a retry: one banner per page. */
 export function useAuthzFailures(): { failed: boolean; retry: () => void } {
   const queryClient = useQueryClient();
   const cache = queryClient.getQueryCache();
@@ -189,16 +175,15 @@ export function useAuthzFailures(): { failed: boolean; retry: () => void } {
 }
 
 /** A resource whose decisions a mutation may have changed. */
-export interface AuthzTouched {
+interface AuthzTouched {
   type: AuthzResourceType;
   id: string;
 }
 
 /**
- * What a successful mutation does to the decisions (a mutation's
- * `meta.authz`): `'all'` for changes to who has access (grants, roles,
- * placements, the org tree), or the resources it changed. Without it the
- * mutation changes no decision: creating, commenting, moving on a board.
+ * A mutation's `meta.authz`: `'all'` when it changes who has access (grants,
+ * roles, placements, the org tree), or the resources it changed. Without it
+ * the mutation changes no decision.
  */
 export type AuthzEffect = 'all' | ((variables: unknown, data: unknown) => AuthzTouched[]);
 
@@ -211,21 +196,13 @@ declare module '@tanstack/react-query' {
 /** `meta` for a mutation that changes who may do what. */
 export const CHANGES_RIGHTS = { authz: 'all' } as const satisfies { authz: AuthzEffect };
 
-/**
- * `meta` for a mutation that edits resources: their decisions are asked
- * again, since an edit can move a resource to another eenheid or owner.
- */
+/** `meta` for a mutation that edits resources: an edit can move one to another eenheid or owner. */
 export function touches<TVariables, TData = unknown>(
   touched: (variables: TVariables, data: TData) => AuthzTouched | AuthzTouched[],
 ): { authz: AuthzEffect } {
   return {
     authz: (variables, data) => [touched(variables as TVariables, data as TData)].flat(),
   };
-}
-
-/** Drop every cached decision; active ones refetch in one batched request. */
-function invalidateAuthz(queryClient: QueryClient) {
-  return queryClient.invalidateQueries({ queryKey: AUTHZ_KEY });
 }
 
 function invalidateTouched(queryClient: QueryClient, touched: AuthzTouched[]) {
@@ -239,17 +216,17 @@ function invalidateTouched(queryClient: QueryClient, touched: AuthzTouched[]) {
 
 /**
  * Keep cached decisions in step with writes: after a successful mutation,
- * re-ask what its `meta.authz` names; after any 403, re-ask everything (the
- * UI offered something the backend refused, so its answers are stale).
+ * re-ask what its `meta.authz` names; after any 403 re-ask everything (the
+ * UI offered something the backend refused).
  */
 export function syncAuthzDecisions(queryClient: QueryClient): () => void {
   const stopMutations = queryClient.getMutationCache().subscribe((event) => {
     if (event.type !== 'updated' || event.action.type !== 'success') return;
     const effect = event.mutation.options.meta?.authz;
-    if (effect === 'all') void invalidateAuthz(queryClient);
+    if (effect === 'all') void queryClient.invalidateQueries({ queryKey: AUTHZ_KEY });
     else if (effect) void invalidateTouched(queryClient, effect(event.mutation.state.variables, event.action.data));
   });
-  const stopForbidden = onForbidden(() => void invalidateAuthz(queryClient));
+  const stopForbidden = onForbidden(() => void queryClient.invalidateQueries({ queryKey: AUTHZ_KEY }));
   return () => {
     stopMutations();
     stopForbidden();

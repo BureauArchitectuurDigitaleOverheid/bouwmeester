@@ -273,10 +273,8 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
       description: functieLabel(p.functie),
     }),
   );
-  // Whether the chosen eigenaar may be named is the backend's decision (it
-  // depends on who owns the node now and on the reviewer's own rights), so
-  // the choice is checked rather than the list filtered. One question for
-  // the chosen person instead of one per person in the whole list.
+  // The chosen eigenaar is checked rather than the list filtered: one
+  // question instead of one per person.
   const {
     allowed: mayNameOwner,
     isLoading: namingOwnerLoading,

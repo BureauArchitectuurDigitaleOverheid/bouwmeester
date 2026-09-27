@@ -24,11 +24,7 @@ const STAKEHOLDER_ROLLEN: SelectOption[] = Object.entries(STAKEHOLDER_ROL_LABELS
   ([value, label]) => ({ value, label }),
 );
 
-/**
- * What the backend is asked before a connection is offered: one action on
- * one or more resources, allowed when any of them allows it (an edge needs
- * write access on either end).
- */
+/** Asked before a connection is offered: allowed when any resource allows it (an edge needs either end). */
 function routeQuestion(
   route: ConnectionRoute | null,
   contactRol: string,

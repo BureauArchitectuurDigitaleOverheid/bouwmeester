@@ -124,12 +124,10 @@ export function NodeDetail({ nodeId }: NodeDetailProps) {
   const { allowed: canDelete, showAction: showDelete } = useCan('node:delete', nodeResource);
   // Linking or unlinking a tag edits the node; only a new tag is tenant-wide.
   const { allowed: canCreateTag } = useCan('tag:create', { type: 'tag' });
-  // Betrokkenen are resource roles: a grant, decided by core.authority. The
-  // default rol of the add form stands for the section; the backend decides
-  // each change on submit.
+  // Betrokkenen are resource roles (grants). The add form's default rol stands
+  // for the section; the backend decides each change on submit.
   const { allowed: canManageStakeholders } = useCan('resource_role:grant', { ...nodeResource, rol: 'betrokken' });
-  // Removing one is the backend's revoke decision per person: leaving
-  // yourself is allowed, the last eigenaar stays.
+  // Removing is the backend's revoke decision per person.
   const stakeholderRevokes = useMemo(
     () =>
       (stakeholders ?? []).map((s) => ({

@@ -124,10 +124,8 @@ function Members({
 }
 
 /**
- * One member, as the backend decides it. Removing is the revoke of the
- * current rol (it lets you leave yourself and keeps the last eigenaar,
- * counting eenheden that are eigenaar too). Changing the rol is that same
- * revoke plus the grant of the new rol to this person.
+ * One member. Removing is the revoke of the current rol; changing the rol is
+ * that revoke plus the grant of the new rol to this person.
  */
 function MemberRow({
   initiatiefId,

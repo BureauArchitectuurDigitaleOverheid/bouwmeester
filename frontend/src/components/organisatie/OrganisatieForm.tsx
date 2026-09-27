@@ -36,9 +36,7 @@ export function OrganisatieForm({
   const [type, setType] = useState('');
   const [parentId, setParentId] = useState<string>('');
   const [managerId, setManagerId] = useState<string>('');
-  // Naming a manager is a role assignment on this eenheid; the backend's
-  // grant authority decides (only asked when editing, the field is hidden
-  // on create).
+  // Naming a manager is a role assignment on this eenheid (asked when editing only).
   const { allowed: canSetManager } = useCan(
     'eenheid:set_manager',
     editData ? { type: 'organisatie_eenheid', id: editData.id } : null,
@@ -51,10 +49,9 @@ export function OrganisatieForm({
   const { data: flatList = [] } = useOrganisatieFlat();
   const { data: personen = [] } = useOrganisatiePersonen(editData?.id ?? null);
 
-  // A new eenheid goes where the caller may create one of this type: the
-  // backend knows which types are internal (org:create in the parent) and
-  // which are external (anywhere). Editing keeps every option: the current
-  // parent must stay selectable and the route decides a move.
+  // A new eenheid goes where the caller may create one of this type. Editing
+  // keeps every option: the current parent must stay selectable and the
+  // route decides a move.
   const { includes: mayCreateIn } = useEenhedenWith('org:create', type || undefined);
   const { allowed: mayCreateTop } = useCan(
     'org:create',

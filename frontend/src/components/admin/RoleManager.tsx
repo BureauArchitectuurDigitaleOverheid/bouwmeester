@@ -105,8 +105,7 @@ function PersonRolesPanel({
   const { data: assignments, isLoading } = usePersonRoleAssignments(personId);
   const { data: roles } = useRoles();
   const { data: orgUnits } = useOrganisatieFlat();
-  // Only eenheden where the caller may assign roles; which role fits there
-  // is still the per-role question below.
+  // Eenheden where the caller assigns roles; which role fits is asked per role.
   const { includes: mayAssignIn } = useEenhedenWith('people:assign_role');
   const assignRole = useAssignRole();
   const revokeRole = useRevokeRole();
@@ -125,9 +124,8 @@ function PersonRolesPanel({
   const selectedRole = roles?.find((r) => r.id === selectedRoleId);
   const isSystemLevel = selectedRole?.level === 'system';
 
-  // Offer the roles the backend would let this person assign here: to this
-  // person, in the chosen eenheid (a system role has none). An eenheid role
-  // is only asked once an eenheid is chosen.
+  // The roles the backend lets the caller assign to this person in the
+  // chosen eenheid; an eenheid role only once an eenheid is chosen.
   const roleOptions = useMemo(
     () => (roles ?? []).filter((r) => r.level === 'system' || selectedOrgId),
     [roles, selectedOrgId],
@@ -148,9 +146,7 @@ function PersonRolesPanel({
     [roleOptions, roleAllowed],
   );
 
-  // The form shows when some role may go to this person somewhere; the
-  // eenheid list is where the caller assigns roles, the role list says what
-  // fits there.
+  // The form shows when some role may go to this person somewhere.
   const { allowed: canAssignAny } = useCan('role:assign', {
     type: 'role',
     anywhere: true,
@@ -229,8 +225,7 @@ function PersonRolesPanel({
         <nldd-text size="sm" color="secondary">Geen rollen.</nldd-text>
       )}
 
-      {/* Add role button / form, directly after roles. The questions above
-          name this person, so assigning to yourself is refused there. */}
+      {/* The questions above name this person, so assigning to yourself is refused there. */}
       {!canAssignAny ? null : !showForm ? (
         <NlddButton
           text="Rol toewijzen"
