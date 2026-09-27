@@ -6,13 +6,22 @@ permission resolution.  ``world`` is the tree; ``iw`` adds the roles only
 initiatieven care about.  The fixtures are registered in ``conftest.py``;
 test modules import the helpers from here, never from each other.
 
+Placeholders: ``world.fill(value)`` fills ``{key}`` in a string, or in every
+string of a dict or list, from ``world.res`` (every eenheid is there too, as
+``eenheid_<key>``) and from the people, as ``p_<who>``.
+
 Table helpers:
 
 - ``assert_can_case(world, case)`` decides one ``can()`` case,
   ``(who, permission, resource type, resource key, eenheid key, expected)``;
 - ``assert_route_case(world, who, method, path, body, expected)`` sends one
-  request, with ``{key}`` in the path filled from ``world.res`` and a body
-  that may be a builder taking the world.
+  request; path and body are filled, a body may also be a builder taking
+  the world;
+- ``evaluate(world, who, *questions)`` answers AuthZEN questions (``ask``);
+- ``chat_refusal`` and ``chat_read`` call the chat tools as someone.
+
+Row factories: ``rp`` (a resource role), ``task``, ``opdracht``,
+``make_agent``, ``mm_account``; ``notifications`` reads what someone got.
 """
 
 import uuid
@@ -57,6 +66,24 @@ class World:
     def id(self, key: str) -> uuid.UUID:
         """The id of a resource, or of an eenheid when no resource has *key*."""
         return self.res[key] if key in self.res else self.org[key].id
+
+    def values(self) -> dict[str, str]:
+        """Everything a placeholder may name, as strings."""
+        values = {k: str(v) for k, v in self.res.items()}
+        values.update({f"eenheid_{k}": str(o.id) for k, o in self.org.items()})
+        values.update({f"p_{k}": str(p.id) for k, p in self.person.items()})
+        return values
+
+    def fill(self, value: Any, values: dict[str, str] | None = None) -> Any:
+        """Fill ``{key}`` placeholders in a string, dict or list."""
+        values = values if values is not None else self.values()
+        if isinstance(value, dict):
+            return {k: self.fill(v, values) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self.fill(v, values) for v in value]
+        if isinstance(value, str) and "{" in value:
+            return value.format(**values)
+        return value
 
 
 async def make_node(db: AsyncSession, title: str, eenheid=None) -> CorpusNode:
@@ -372,6 +399,21 @@ def route_case_id(case: RouteCase) -> str:
     return f"{case[0]}-{case[1]}-{case[2]}"
 
 
+async def request(
+    w: World,
+    who: str,
+    method: str,
+    path: str,
+    body: dict | Callable[[World], dict] | None = None,
+    **kwargs,
+):
+    """One request as *who*; path and body are filled from the world."""
+    if body is not None:
+        kwargs["json"] = w.fill(body(w) if callable(body) else body)
+    async with client_as(w.db, w.person[who]) as c:
+        return await c.request(method, w.fill(path), **kwargs)
+
+
 async def assert_route_case(
     w: World,
     who: str,
@@ -380,10 +422,145 @@ async def assert_route_case(
     body: dict | Callable[[World], dict] | None,
     expected: int,
 ) -> None:
-    url = path.format(**w.res)
-    kwargs = {}
-    if body is not None:
-        kwargs["json"] = body(w) if callable(body) else body
+    resp = await request(w, who, method, path, body)
+    assert resp.status_code == expected, (who, method, path, resp.text)
+
+
+async def get_json(w: World, who: str, path: str, **params) -> Any:
+    """The body of a GET that must succeed."""
     async with client_as(w.db, w.person[who]) as c:
-        resp = await c.request(method, url, **kwargs)
-    assert resp.status_code == expected, (who, method, url, resp.text)
+        resp = await c.get(w.fill(path), params=params)
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+async def evaluate(w: World, who: str, *questions: dict) -> list[bool]:
+    """The decisions of ``POST /api/authz/evaluations`` for *who*, in order."""
+    async with client_as(w.db, w.person[who]) as c:
+        resp = await c.post(
+            "/api/authz/evaluations", json={"evaluations": w.fill(list(questions))}
+        )
+    assert resp.status_code == 200, resp.text
+    return [e["decision"] for e in resp.json()["evaluations"]]
+
+
+async def chat_refusal(w: World, who: str, tool: str, args: dict) -> str | None:
+    """Why a chat write tool refuses *who*, or None when it may run."""
+    from bouwmeester.services.chat_service import _authorize_write_tool
+
+    return await _authorize_write_tool(tool, w.fill(args), w.db, w.person[who].id)
+
+
+async def chat_read(w: World, who: str, tool: str, **args) -> str:
+    """What a chat read tool answers *who*."""
+    from bouwmeester.services.chat_service import _execute_read_tool
+
+    args = {k: str(v) for k, v in w.fill(args).items()}
+    return await _execute_read_tool(tool, args, w.db, person_id=w.person[who].id)
+
+
+# ---------------------------------------------------------------------------
+# Row factories
+# ---------------------------------------------------------------------------
+
+
+def rp(
+    resource_type: str,
+    resource_id: uuid.UUID,
+    rol: str,
+    *,
+    person: Person | None = None,
+    eenheid: OrganisatieEenheid | None = None,
+) -> ResourcePermission:
+    """A resource role for a person or a whole eenheid."""
+    return ResourcePermission(
+        person_id=person.id if person else None,
+        organisatie_eenheid_id=eenheid.id if eenheid else None,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        rol=rol,
+    )
+
+
+async def add(w: World, *rows):
+    """Add and flush rows; returns the row, or all of them."""
+    w.db.add_all(rows)
+    await w.db.flush()
+    return rows[0] if len(rows) == 1 else rows
+
+
+def task(w: World, title: str, node: str, eenheid: str | None = None, **kw) -> Task:
+    """A task on one of the world's nodes, in one of its eenheden (or none)."""
+    kw.setdefault("status", "open")
+    return Task(
+        title=title,
+        node_id=w.res[node],
+        organisatie_eenheid_id=w.org[eenheid].id if eenheid else None,
+        **kw,
+    )
+
+
+def opdracht(w: World, titel: str, gever: str | None = None, **kw) -> Opdracht:
+    """An opdracht with one of the world's eenheden as opdrachtgever."""
+    kw.setdefault("begrotingsjaar", 2026)
+    return Opdracht(
+        type="opdracht",
+        titel=titel,
+        opdrachtgever_id=w.org[gever].id if gever else None,
+        **kw,
+    )
+
+
+async def make_agent(w: World, key: str = "agent", place_in: str | None = None):
+    """An agent (no login), optionally placed in one of the world's eenheden."""
+    agent = await make_person(w.db, "Agent", account=False)
+    agent.is_agent = True
+    if place_in:
+        await place(w.db, agent, w.org[place_in])
+    await w.db.flush()
+    w.person[key] = agent
+    return agent
+
+
+def mm_id() -> str:
+    return uuid.uuid4().hex[:26]
+
+
+async def mm_account(w: World, who: str) -> str:
+    """Link *who* to a new Mattermost account; returns its user id."""
+    from bouwmeester.models.mattermost_user import MattermostUser
+
+    user_id = mm_id()
+    await add(
+        w,
+        MattermostUser(
+            person_id=w.person[who].id,
+            mattermost_user_id=user_id,
+            mattermost_username=f"mm-{who}-{user_id[:4]}",
+        ),
+    )
+    return user_id
+
+
+async def notifications(w: World, person_id: uuid.UUID, type_: str | None = None):
+    """The notifications someone received, optionally of one type."""
+    from bouwmeester.models.notification import Notification
+
+    stmt = select(Notification).where(Notification.person_id == person_id)
+    if type_:
+        stmt = stmt.where(Notification.type == type_)
+    return list((await w.db.scalars(stmt)).all())
+
+
+def load_migration(name: str):
+    """A migration module from ``migrations/versions``, by file name."""
+    import importlib.util
+    from pathlib import Path
+
+    import bouwmeester.migrations
+
+    versions = Path(bouwmeester.migrations.__file__).parent / "versions"
+    spec = importlib.util.spec_from_file_location(name, versions / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
