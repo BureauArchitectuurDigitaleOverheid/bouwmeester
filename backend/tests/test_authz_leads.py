@@ -295,8 +295,8 @@ ROUTES = [
         lambda lw: {"stage": "verkennen"},
         200,
     ),
-    # a lead without initiatief moves with lead:update where it is and
-    # lead:create where it goes
+    # every move needs lead:delete where the lead is and lead:create where
+    # it goes: moving must not turn lead:update into deleting it there
     (
         "team_editor",  # updates lead_free, may not create in the initiatief
         "PUT",
@@ -305,10 +305,24 @@ ROUTES = [
         403,
     ),
     (
-        "afd_editor",  # updates lead_free and creates in the initiatief
+        "afd_editor",  # creates in the initiatief, but deletes no lead
         "PUT",
         "/api/leads/{lead_free}",
         lambda lw: {"initiatief_id": str(lw.id("initiatief")), "stage": "verkennen"},
+        403,
+    ),
+    (
+        "afd_editor",  # updates lead_team and creates in the afdeling
+        "PUT",
+        "/api/leads/{lead_team}",
+        lambda lw: {"organisatie_eenheid_id": str(lw.id("afdeling"))},
+        403,
+    ),
+    (
+        "manager",
+        "PUT",
+        "/api/leads/{lead_team}",
+        lambda lw: {"organisatie_eenheid_id": str(lw.id("afdeling"))},
         200,
     ),
     (
@@ -597,3 +611,23 @@ async def test_remove_contact_is_a_grant_change(lw, who, expected):
     async with client_as(lw.db, lw.person[who]) as c:
         resp = await c.delete(url)
     assert resp.status_code == expected, resp.text
+
+
+async def test_moving_a_lead_into_own_new_initiatief_needs_lead_delete(lw):
+    """An editor of the team may update its lead, not take it away.
+
+    Starting a personal initiatief makes you its eigenaar (lead:create
+    there), but moving the team's lead into it removes it from the team,
+    which is deleting it there: lead:delete, which an editor lacks.
+    """
+    async with client_as(lw.db, lw.person["team_editor"]) as c:
+        created = await c.post("/api/initiatieven", json={"naam": "Eigen initiatief"})
+        assert created.status_code == 201, created.text
+        moved = await c.put(
+            f"/api/leads/{lw.id('lead_team')}",
+            json={"initiatief_id": created.json()["id"], "stage": "verkennen"},
+        )
+    assert moved.status_code == 403, moved.text
+    lead = await lw.db.get(Lead, lw.id("lead_team"))
+    await lw.db.refresh(lead)
+    assert lead.initiatief_id is None
