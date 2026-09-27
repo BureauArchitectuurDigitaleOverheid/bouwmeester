@@ -5,10 +5,13 @@ Uses ``world`` from ``tests/authz_world.py``.
 
 import json
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import select
 
 from bouwmeester.core.authz import can
+from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.edge import Edge
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.opdracht import Opdracht
@@ -224,3 +227,42 @@ async def test_item_response_drops_a_stored_scope_judgement(world):
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["extra_data"] == {"categorie": "overig"}
+
+
+# ---------------------------------------------------------------------------
+# A node's financial overview only walks through visible nodes
+# ---------------------------------------------------------------------------
+
+
+async def _instrument_with_budget(w: World, budget: int) -> uuid.UUID:
+    node = CorpusNode(title=f"Instrument {budget}", node_type="instrument")
+    w.db.add(node)
+    await w.db.flush()
+    w.db.add(
+        Opdracht(
+            type="opdracht",
+            titel=f"Opdracht {budget}",
+            begrotingsjaar=2026,
+            instrument_id=node.id,
+            budget=Decimal(budget),
+        )
+    )
+    return node.id
+
+
+async def test_financieel_skips_instruments_behind_a_hidden_node(world):
+    """team -> instrument counts; team -> elders (hidden) -> instrument not."""
+    direct = await _instrument_with_budget(world, 7)
+    behind_hidden = await _instrument_with_budget(world, 5)
+    team, elders = world.res["node_team"], world.res["node_elders"]
+    for src, dst in ((team, direct), (team, elders), (elders, behind_hidden)):
+        world.db.add(
+            Edge(from_node_id=src, to_node_id=dst, edge_type_id=world.res["edge_type"])
+        )
+    await world.db.flush()
+
+    async with client_as(world.db, world.person["viewer"]) as c:
+        resp = await c.get(f"/api/nodes/{team}/financieel")
+
+    assert resp.status_code == 200, resp.text
+    assert Decimal(str(resp.json()["totaal_budget"])) == Decimal(7)
