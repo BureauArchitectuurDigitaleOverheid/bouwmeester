@@ -66,9 +66,8 @@ async def hw(world: World) -> World:
     elders_opdracht = opdracht(world, "Opdracht elders", "elders")
     await add(world, bridge, elders_opdracht)
     (await db.get(Task, res["task_team"])).opdracht_id = elders_opdracht.id
-    (await db.get(Opdracht, res["opdracht_directie"])).instrument_id = res[
-        "node_elders"
-    ]
+    opdracht_directie = await db.get(Opdracht, res["opdracht_directie"])
+    opdracht_directie.instrument_id = res["node_elders"]
     (await db.get(Lead, res["lead"])).assignee_id = p["viewer"].id
     res["init_naam"] = (await db.get(Initiatief, res["initiatief"])).naam
     lead, sub = res["lead"], {"parent_id": res["task_team"]}
@@ -215,12 +214,9 @@ async def test_subgraph_does_not_walk_through_hidden_nodes(hw, who):
 
 
 async def test_reordering_subtasks_covers_only_visible_ones(hw):
-    subs = {
-        t.title: str(t.id)
-        for t in await hw.db.scalars(
-            select(Task).where(Task.parent_id == hw.res["task_team"])
-        )
-    }
+    parent = hw.res["task_team"]
+    rows = await hw.db.scalars(select(Task).where(Task.parent_id == parent))
+    subs = {t.title: str(t.id) for t in rows}
     url = "/api/tasks/{task_team}/subtasks/reorder"
     ok = await request(hw, "team_editor", "PUT", url,
                        {"task_ids": [subs["Zichtbare subtaak"]]})  # fmt: skip
@@ -338,14 +334,11 @@ async def test_slash_commands_name_only_readable_things(
                               channel_display_name="kanaal", scope_type="initiatief",
                               scope_id=hw.res["initiatief"]),
     )  # fmt: skip
-    text = (
-        await MattermostSlashService(hw.db).handle_command(
-            await mm_account(hw, who),
-            command,
-            channel_id=channel if linked else uuid.uuid4().hex[:26],
-            channel_name="kanaal",
-        )
-    )["text"]
+    reply = await MattermostSlashService(hw.db).handle_command(
+        await mm_account(hw, who), command, channel_name="kanaal",
+        channel_id=channel if linked else uuid.uuid4().hex[:26],
+    )  # fmt: skip
+    text = reply["text"]
     assert all(t in text for t in hw.fill(list(shown))), text
     assert not [t for t in hw.fill(list(hidden)) if t in text], text
 
@@ -354,14 +347,8 @@ async def test_slash_commands_name_only_readable_things(
 async def test_inbox_names_only_readable_nodes(world, path):
     """An own task stays without its node; activity naming the node is left out."""
     viewer = world.person["viewer"].id
-    own = task(
-        world,
-        "Mijn verlopen taak",
-        "node_elders",
-        "team",
-        assignee_id=viewer,
-        deadline=date.today() - timedelta(days=3),
-    )
+    own = task(world, "Mijn verlopen taak", "node_elders", "team", assignee_id=viewer,
+               deadline=date.today() - timedelta(days=3))  # fmt: skip
     await add(
         world,
         own,
@@ -374,14 +361,14 @@ async def test_inbox_names_only_readable_nodes(world, path):
     assert HIDDEN not in resp.text
     assert str(world.res["node_elders"]) not in resp.text
     items = resp.json()["items"]
-    overdue = [
-        (i["related_task_id"], i["related_node_id"])
-        for i in items
-        if i["type"] == "overdue_task"
-    ]
-    assert overdue == [(str(own.id), None)]
-    changes = [i["related_node_id"] for i in items if i["type"] == "node_change"]
-    assert changes == [str(world.res["node_team"])]
+    by_type = {
+        t: [i for i in items if i["type"] == t] for t in ("overdue_task", "node_change")
+    }
+    assert [
+        (i["related_task_id"], i["related_node_id"]) for i in by_type["overdue_task"]
+    ] == [(str(own.id), None)]
+    assert [i["related_node_id"] for i in by_type["node_change"]] == [
+        str(world.res["node_team"])]  # fmt: skip
 
 
 async def test_person_summary_names_only_readable_tasks_and_nodes(world):
@@ -461,9 +448,7 @@ async def test_kompas_guidance_only_suggests_visible_nodes(world):
     class FakeLLM:
         async def score_edge_relevance(self, *, target_title, **_):
             prompted.append(target_title)
-            return EdgeRelevanceResult(
-                score=0.9, suggested_edge_type="verwijst_naar", reason="past"
-            )
+            return EdgeRelevanceResult(score=0.9, suggested_edge_type="x", reason="p")
 
     async def llm_for(*_a, **_k):
         return FakeLLM()
@@ -485,9 +470,7 @@ async def test_financieel_skips_instruments_behind_a_hidden_node(world):
     """team -> instrument counts; team -> elders (hidden) -> instrument not."""
     instruments = {}
     for budget in (7, 5):
-        node = await add(
-            world, CorpusNode(title=f"Instr {budget}", node_type="instrument")
-        )
+        node = await add(world, CorpusNode(title=f"I{budget}", node_type="instrument"))
         await add(world, opdracht(world, f"Opdracht {budget}", instrument_id=node.id,
                                   budget=Decimal(budget)))  # fmt: skip
         instruments[budget] = node.id

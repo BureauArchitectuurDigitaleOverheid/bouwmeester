@@ -101,10 +101,8 @@ async def ww(iw: World) -> World:
 @pytest.fixture(autouse=True)
 def linkable(monkeypatch):
     """Every Mattermost channel counts as one the caller may link."""
-    monkeypatch.setattr(
-        "bouwmeester.api.routes.mattermost_channels.channel_link_refusal",
-        AsyncMock(return_value=None),
-    )
+    route = "bouwmeester.api.routes.mattermost_channels.channel_link_refusal"
+    monkeypatch.setattr(route, AsyncMock(return_value=None))
 
 
 # Body builders; ``{key}`` placeholders are filled from the world.
@@ -173,17 +171,15 @@ def _share(source: str) -> dict:
 
 def _channel(_w) -> dict:
     """Every link needs its own channel id."""
-    return dict(
-        channel_id=uuid.uuid4().hex[:26], channel_name="k", channel_display_name="K"
-    )
+    return dict(channel_id=uuid.uuid4().hex[:26], channel_name="k",
+                channel_display_name="K")  # fmt: skip
 
 
 _OLD_TAG = {"tag_name": "{tag_name}"}
 _OPDR_DIRECTIE = _opdracht(opdrachtgever_id="directie")
 _OPDR_TEAM_TEAM = _opdracht(opdrachtgever_id="team", opdrachtnemer_eenheid_id="team")
-_OPDR_TEAM_ELDERS = _opdracht(
-    opdrachtgever_id="team", opdrachtnemer_eenheid_id="elders"
-)
+_OPDR_TEAM_ELDERS = _opdracht(opdrachtgever_id="team",
+                              opdrachtnemer_eenheid_id="elders")  # fmt: skip
 _TO_DIRECTIE = {"opdrachtgever_id": "{eenheid_directie}"}
 _INTO_INIT = {"initiatief_id": "{initiatief}", "stage": "verkennen"}
 _NEW_IN_DIRECTIE = _lead("inbox", organisatie_eenheid_id="{eenheid_directie}")
@@ -193,209 +189,191 @@ _PR = {"url": "https://github.com/foo/bar/pull/2"}
 _MODULE = {"module": "leads", "enabled": False}
 _WRONG_PARENT = f"/api/initiatieven/{_MISSING}/updates/{{init_post}}"
 
-# (who, method, path, body, expected status)
-ROUTES = [
+# (method, path, body, "who=status ...")
+TABLE = [
     # nodes: rights on the node's eenheid; unseen or missing is 404
-    ("viewer", "POST", "/api/nodes", _NODE, 403),
-    ("viewer", "PUT", "/api/nodes/{node_team}", {"title": "Nee"}, 403),
-    ("viewer", "DELETE", "/api/nodes/{node_team}", None, 403),
-    ("team_editor", "PUT", "/api/nodes/{node_team}", {"title": "Ja"}, 200),
-    ("team_editor", "PUT", "/api/nodes/{node_directie}", {"title": "Nee"}, 403),
-    ("team_editor", "PUT", "/api/nodes/{node_elders}", {"title": "Nee"}, 404),
-    ("team_editor", "DELETE", "/api/nodes/{node_elders}", None, 404),
-    ("team_editor", "PUT", f"/api/nodes/{_MISSING}", {"title": "?"}, 404),
+    ("POST", "/api/nodes", _NODE, "viewer=403"),
+    ("PUT", "/api/nodes/{node_team}", {"title": "Nee"}, "viewer=403"),
+    ("DELETE", "/api/nodes/{node_team}", None, "viewer=403"),
+    ("PUT", "/api/nodes/{node_team}", {"title": "Ja"}, "team_editor=200"),
+    ("PUT", "/api/nodes/{node_directie}", {"title": "Nee"}, "team_editor=403"),
+    ("PUT", "/api/nodes/{node_elders}", {"title": "Nee"}, "team_editor=404"),
+    ("DELETE", "/api/nodes/{node_elders}", None, "team_editor=404"),
+    ("PUT", f"/api/nodes/{_MISSING}", {"title": "?"}, "team_editor=404"),
     # linking a tag is editing the node; a new tag needs tag:create too
-    ("role_only", "POST", NT, _OLD_TAG, 201),
-    ("role_only", "POST", NT, {"tag_name": "Nieuw label"}, 403),
-    ("team_editor", "POST", NT, _OLD_TAG, 403),
+    ("POST", NT, _OLD_TAG, "role_only=201 team_editor=403"),
+    ("POST", NT, {"tag_name": "Nieuw label"}, "role_only=403"),
     # edges: one writable end, the other end must be visible
-    ("viewer", "POST", "/api/edges", _edge("node_team", "node_free"), 403),
-    ("team_editor", "POST", "/api/edges", _edge("node_directie", "node_team"), 201),
-    ("team_editor", "POST", "/api/edges", _edge("node_free", "node_team"), 201),
-    ("team_editor", "POST", "/api/edges", _edge("node_afdeling", "node_directie"), 403),
-    ("team_editor", "POST", "/api/edges", _edge("node_team", "node_elders"), 404),
-    ("team_editor", "POST", "/api/edges", _edge("node_elders", "node_team"), 404),
+    ("POST", "/api/edges", _edge("node_team", "node_free"), "viewer=403"),
+    ("POST", "/api/edges", _edge("node_directie", "node_team"), "team_editor=201"),
+    ("POST", "/api/edges", _edge("node_free", "node_team"), "team_editor=201"),
+    ("POST", "/api/edges", _edge("node_afdeling", "node_directie"), "team_editor=403"),
+    ("POST", "/api/edges", _edge("node_team", "node_elders"), "team_editor=404"),
+    ("POST", "/api/edges", _edge("node_elders", "node_team"), "team_editor=404"),
     # tasks: the eenheid they go into or are in; moving is update + create
-    ("viewer", "POST", "/api/tasks", _task("node_team", "team"), 403),
-    ("afd_editor", "POST", "/api/tasks", _task("node_directie", "team"), 201),
-    ("afd_editor", "POST", "/api/tasks", _task("node_team", "directie"), 403),
-    ("team_editor", "POST", "/api/tasks", _task("node_team", "elders"), 403),
-    ("team_editor", "PUT", "/api/tasks/{task_team}", {"title": "Ja"}, 200),
-    ("team_editor", "PUT", "/api/tasks/{task_team}", _in("afdeling"), 403),
-    ("afd_editor", "PUT", "/api/tasks/{task_team}", _in("afdeling"), 200),
-    ("afd_editor", "PUT", "/api/tasks/{task_team}", _in("elders"), 403),
-    ("afd_editor", "PUT", "/api/tasks/{task_team}", _in("directie"), 403),
-    ("team_editor", "PUT", "/api/tasks/{task_elders}", {"title": "Nee"}, 404),
-    ("team_editor", "DELETE", "/api/tasks/{task_elders}", None, 404),
-    ("team_editor", "DELETE", f"/api/tasks/{_MISSING}", None, 404),
+    ("POST", "/api/tasks", _task("node_team", "team"), "viewer=403"),
+    ("POST", "/api/tasks", _task("node_directie", "team"), "afd_editor=201"),
+    ("POST", "/api/tasks", _task("node_team", "directie"), "afd_editor=403"),
+    ("POST", "/api/tasks", _task("node_team", "elders"), "team_editor=403"),
+    ("PUT", "/api/tasks/{task_team}", {"title": "Ja"}, "team_editor=200"),
+    ("PUT", "/api/tasks/{task_team}", _in("afdeling"), "team_editor=403"),
+    ("PUT", "/api/tasks/{task_team}", _in("afdeling"), "afd_editor=200"),
+    ("PUT", "/api/tasks/{task_team}", _in("elders"), "afd_editor=403"),
+    ("PUT", "/api/tasks/{task_team}", _in("directie"), "afd_editor=403"),
+    ("PUT", "/api/tasks/{task_elders}", {"title": "Nee"}, "team_editor=404"),
+    ("DELETE", "/api/tasks/{task_elders}", None, "team_editor=404"),
+    ("DELETE", f"/api/tasks/{_MISSING}", None, "team_editor=404"),
     # leads in an initiatief: initiatief:update to create, lead:update to write
-    ("rp_viewer", "GET", L, None, 200),
-    ("rp_viewer", "PUT", L, {"title": "Nee"}, 403),
-    ("rp_viewer", "POST", "/api/leads", _lead(initiatief_id="{initiatief}"), 403),
-    ("role_only", "POST", "/api/leads", _lead(initiatief_id="{initiatief}"), 201),
-    ("team_editor", "POST", "/api/leads", _NEW_IN_DIRECTIE, 403),
-    ("opdrachtgever", "PUT", L, {"title": "Ja"}, 200),
-    ("opdrachtgever", "PUT", "/api/leads/{lead_other}", {"title": "Nee"}, 404),
-    ("opdrachtgever", "POST", L + "/move", {"stage": "verkennen"}, 200),
+    ("GET", L, None, "rp_viewer=200"),
+    ("PUT", L, {"title": "Nee"}, "rp_viewer=403"),
+    ("POST", "/api/leads", _lead(initiatief_id="{initiatief}"), "rp_viewer=403"),
+    ("POST", "/api/leads", _lead(initiatief_id="{initiatief}"), "role_only=201"),
+    ("POST", "/api/leads", _NEW_IN_DIRECTIE, "team_editor=403"),
+    ("PUT", L, {"title": "Ja"}, "opdrachtgever=200"),
+    ("PUT", "/api/leads/{lead_other}", {"title": "Nee"}, "opdrachtgever=404"),
+    ("POST", L + "/move", {"stage": "verkennen"}, "opdrachtgever=200"),
     # a move is lead:delete where it is and lead:create where it goes
-    ("team_editor", "PUT", LF, {"initiatief_id": "{initiatief}"}, 403),
-    ("afd_editor", "PUT", LF, _INTO_INIT, 403),
-    ("manager", "PUT", LF, _INTO_INIT, 200),
-    ("afd_editor", "PUT", "/api/leads/{lead_team}", _in("afdeling"), 403),
-    ("manager", "PUT", "/api/leads/{lead_team}", _in("afdeling"), 200),
-    ("elders_editor", "PUT", "/api/leads/{lead_elders}", _in(None), 403),
-    ("super_admin", "PUT", "/api/leads/{lead_elders}", _in(None), 200),
-    ("elders_editor", "PUT", "/api/leads/{lead_elders}", _in("team"), 403),
-    ("manager", "PUT", "/api/leads/{lead_elders}", _in("team"), 404),
-    ("manager", "PUT", L, {"initiatief_id": None}, 422),  # never back to none
-    ("role_only", "PUT", L, _in("team"), 200),  # in an initiatief: a label
+    ("PUT", LF, {"initiatief_id": "{initiatief}"}, "team_editor=403"),
+    ("PUT", LF, _INTO_INIT, "afd_editor=403 manager=200"),
+    ("PUT", "/api/leads/{lead_team}", _in("afdeling"), "afd_editor=403 manager=200"),
+    ("PUT", "/api/leads/{lead_elders}", _in(None), "elders_editor=403 super_admin=200"),
+    ("PUT", "/api/leads/{lead_elders}", _in("team"), "elders_editor=403 manager=404"),
+    ("PUT", L, {"initiatief_id": None}, "manager=422"),  # never back to none
+    ("PUT", L, _in("team"), "role_only=200"),  # in an initiatief: a label
     # deleting and merging need lead:delete (initiatief:delete)
-    ("role_only", "DELETE", "/api/leads/{lead_other}", None, 403),
-    ("manager", "DELETE", "/api/leads/{lead_other}", None, 204),
-    ("opdrachtgever", "POST", "/api/leads/merge", _merge("lead", "lead_other"), 403),
-    ("role_only", "POST", "/api/leads/merge", _merge("lead_other", "lead"), 403),
-    ("manager", "POST", "/api/leads/merge", _merge("lead_other", "lead"), 200),
-    ("opdrachtgever", "POST", "/api/leads/reorder", _REORDER, 404),
-    ("role_only", "POST", "/api/leads/reorder", _REORDER, 200),
-    ("team_editor", "POST", LF + "/nodes", {"node_id": "{node_sibling}"}, 404),
-    ("team_editor", "POST", LF + "/nodes", {"node_id": "{node_team}"}, 201),
+    ("DELETE", "/api/leads/{lead_other}", None, "role_only=403 manager=204"),
+    ("POST", "/api/leads/merge", _merge("lead", "lead_other"), "opdrachtgever=403"),
+    ("POST", "/api/leads/merge", _merge("lead_other", "lead"), "role_only=403"),
+    ("POST", "/api/leads/merge", _merge("lead_other", "lead"), "manager=200"),
+    ("POST", "/api/leads/reorder", _REORDER, "opdrachtgever=404 role_only=200"),
+    ("POST", LF + "/nodes", {"node_id": "{node_sibling}"}, "team_editor=404"),
+    ("POST", LF + "/nodes", {"node_id": "{node_team}"}, "team_editor=201"),
     # lead sub-records; the author deletes their own activity
-    ("role_only", "DELETE", L + "/activities/{activity}", None, 204),
-    ("opdrachtgever", "DELETE", L + "/activities/{activity}", None, 403),
-    ("manager", "DELETE", L + "/activities/{activity}", None, 204),
-    ("rp_viewer", "POST", L + "/activities", _NOTE, 403),
-    ("opdrachtgever", "POST", L + "/activities", _NOTE, 201),
-    ("rp_viewer", "GET", L + "/updates", None, 200),
-    ("rp_viewer", "POST", L + "/updates", {"titel": "Nee"}, 403),
-    ("opdrachtgever", "POST", L + "/updates", {"titel": "Ja"}, 201),
-    ("rp_viewer", "POST", L + "/updates/{post}/publish", None, 403),
-    ("opdrachtgever", "POST", L + "/updates/{post}/publish", None, 200),
-    ("rp_viewer", "DELETE", L + "/attachments/{attachment}", None, 403),
-    ("opdrachtgever", "DELETE", L + "/attachments/{attachment}", None, 204),
-    ("rp_viewer", "POST", L + "/github-links", _PR, 403),
-    ("opdrachtgever", "POST", L + "/github-links", _PR, 201),
-    ("rp_viewer", "DELETE", L + "/github-links/{github_link}", None, 403),
-    ("opdrachtgever", "DELETE", L + "/github-links/{github_link}", None, 204),
+    ("DELETE", L + "/activities/{activity}", None, "role_only=204"),
+    ("DELETE", L + "/activities/{activity}", None, "opdrachtgever=403"),
+    ("DELETE", L + "/activities/{activity}", None, "manager=204"),
+    ("POST", L + "/activities", _NOTE, "rp_viewer=403 opdrachtgever=201"),
+    ("GET", L + "/updates", None, "rp_viewer=200"),
+    ("POST", L + "/updates", {"titel": "Nee"}, "rp_viewer=403"),
+    ("POST", L + "/updates", {"titel": "Ja"}, "opdrachtgever=201"),
+    ("POST", L + "/updates/{post}/publish", None, "rp_viewer=403 opdrachtgever=200"),
+    ("DELETE", L + "/attachments/{attachment}", None, "rp_viewer=403"),
+    ("DELETE", L + "/attachments/{attachment}", None, "opdrachtgever=204"),
+    ("POST", L + "/github-links", _PR, "rp_viewer=403 opdrachtgever=201"),
+    ("DELETE", L + "/github-links/{github_link}", None, "rp_viewer=403"),
+    ("DELETE", L + "/github-links/{github_link}", None, "opdrachtgever=204"),
     # lead contacts are grants: an editor of the lead adds them, opdrachtgever
     # (lead:update) never to yourself; no write access, no grants
-    ("role_only", "POST", C, _grant("viewer", "contactpersoon"), 201),
-    ("role_only", "POST", C, _grant("role_only", "betrokken"), 201),
-    ("role_only", "POST", C, _grant("viewer", "opdrachtgever"), 201),
-    ("role_only", "POST", C, _grant("role_only", "opdrachtgever"), 403),
-    ("opdrachtgever", "POST", C, _grant("viewer", "opdrachtgever"), 201),
-    ("rp_viewer", "POST", C, _grant("viewer", "contactpersoon"), 403),
-    ("rp_viewer", "POST", C, _grant("rp_viewer", "opdrachtgever"), 403),
-    ("role_only", "POST", C, _grant("viewer", "eigenaar"), 422),
-    ("team_editor", "POST", CF, _grant("viewer", "opdrachtgever"), 201),
-    ("team_editor", "POST", CF, _grant("team_editor", "opdrachtgever"), 403),
-    ("viewer", "POST", CF, _grant("afd_editor", "contactpersoon"), 403),
-    ("rp_viewer", "POST", L + "/contacts", {"person_id": "{p_viewer}"}, 403),
-    ("role_only", "POST", L + "/contacts", {"person_id": "{p_viewer}"}, 201),
-    ("opdrachtgever", "DELETE", L + "/contacts/{opdrachtgever_grant}", None, 204),
-    ("role_only", "DELETE", L + "/contacts/{opdrachtgever_grant}", None, 204),
-    ("rp_viewer", "DELETE", L + "/contacts/{opdrachtgever_grant}", None, 403),
-    ("viewer", "DELETE", L + "/contacts/{opdrachtgever_grant}", None, 403),
-    ("rp_viewer", "POST", L + "/tags", {"tag_name": "x"}, 403),
-    ("opdrachtgever", "POST", L + "/tags", {"tag_name": "{tag_name}"}, 201),
-    ("opdrachtgever", "POST", L + "/tags", {"tag_name": "Gloednieuw"}, 403),
-    ("role_only", "POST", L + "/tags", {"tag_name": "Ook nieuw"}, 403),
-    ("team_editor", "POST", LF + "/tags", {"tag_name": "Nieuw"}, 201),
+    ("POST", C, _grant("viewer", "contactpersoon"), "role_only=201 rp_viewer=403"),
+    ("POST", C, _grant("role_only", "betrokken"), "role_only=201"),
+    ("POST", C, _grant("viewer", "opdrachtgever"), "role_only=201 opdrachtgever=201"),
+    ("POST", C, _grant("role_only", "opdrachtgever"), "role_only=403"),
+    ("POST", C, _grant("rp_viewer", "opdrachtgever"), "rp_viewer=403"),
+    ("POST", C, _grant("viewer", "eigenaar"), "role_only=422"),
+    ("POST", CF, _grant("viewer", "opdrachtgever"), "team_editor=201"),
+    ("POST", CF, _grant("team_editor", "opdrachtgever"), "team_editor=403"),
+    ("POST", CF, _grant("afd_editor", "contactpersoon"), "viewer=403"),
+    ("POST", L + "/contacts", {"person_id": "{p_viewer}"}, "rp_viewer=403"),
+    ("POST", L + "/contacts", {"person_id": "{p_viewer}"}, "role_only=201"),
+    ("DELETE", L + "/contacts/{opdrachtgever_grant}", None, "opdrachtgever=204"),
+    ("DELETE", L + "/contacts/{opdrachtgever_grant}", None, "role_only=204"),
+    ("DELETE", L + "/contacts/{opdrachtgever_grant}", None, "rp_viewer=403"),
+    ("DELETE", L + "/contacts/{opdrachtgever_grant}", None, "viewer=403"),
+    ("POST", L + "/tags", {"tag_name": "x"}, "rp_viewer=403"),
+    ("POST", L + "/tags", {"tag_name": "{tag_name}"}, "opdrachtgever=201"),
+    ("POST", L + "/tags", {"tag_name": "Gloednieuw"}, "opdrachtgever=403"),
+    ("POST", L + "/tags", {"tag_name": "Ook nieuw"}, "role_only=403"),
+    ("POST", LF + "/tags", {"tag_name": "Nieuw"}, "team_editor=201"),
     # internal lead edits stay lead:update (public ones: test below)
-    ("opdrachtgever", "PUT", L, {"title": "Ander", "public_visible": False}, 200),
-    ("opdrachtgever", "POST", L + "/updates", {"titel": "In", "publish": True}, 201),
-    ("opdrachtgever", "PUT", L + "/updates/{published}", {"mail_subject": "M"}, 200),
+    ("PUT", L, {"title": "Ander", "public_visible": False}, "opdrachtgever=200"),
+    ("POST", L + "/updates", {"titel": "In", "publish": True}, "opdrachtgever=201"),
+    ("PUT", L + "/updates/{published}", {"mail_subject": "M"}, "opdrachtgever=200"),
     # the initiatief itself, its posts, columns, subscriptions and channels
-    ("rp_viewer", "GET", INIT, None, 200),
-    ("platform_admin", "GET", INIT, None, 404),
-    ("team_editor", "PUT", INIT, {"naam": "Nee"}, 403),
-    ("rp_viewer", "PUT", INIT, {"naam": "Nee"}, 403),
-    ("role_only", "PUT", INIT, {"beschrijving": "Ja"}, 200),
-    ("partner_member", "PUT", INIT, {"beschrijving": "Ja"}, 200),
-    ("afd_editor", "PUT", INIT, {"beschrijving": "Ja"}, 200),
-    ("partner_member", "PUT", INIT + "/settings", {"funnel_enabled": True}, 403),
-    ("manager", "PUT", INIT + "/settings", {"funnel_enabled": True}, 200),
-    ("role_only", "DELETE", INIT, None, 403),
-    ("rp_viewer", "POST", INIT + "/updates", {"titel": "Nee"}, 403),
-    ("team_editor", "POST", INIT + "/updates", {"titel": "Nee"}, 403),
-    ("role_only", "POST", INIT + "/updates", {"titel": "Ja"}, 201),
-    ("team_editor", "POST", INIT + "/updates/{init_post}/publish", None, 403),
-    ("afd_editor", "POST", INIT + "/updates/{init_post}/publish", None, 200),
-    ("afd_editor", "PUT", _WRONG_PARENT, {"titel": "X"}, 404),
-    ("afd_editor", "DELETE", INIT + "/updates/{init_post}", None, 204),
-    ("rp_viewer", "POST", INIT + "/columns", _COLUMN, 403),
-    ("team_editor", "POST", INIT + "/columns", _COLUMN, 403),
-    ("role_only", "POST", INIT + "/columns", _COLUMN, 201),
-    ("team_editor", "POST", INIT + "/columns/reorder", {"column_ids": []}, 403),
-    ("rp_viewer", "POST", INIT + "/abonnementen", {"term": "Nee maar"}, 403),
-    ("role_only", "POST", INIT + "/abonnementen", {"term": "Wel degelijk"}, 201),
-    ("rp_viewer", "PUT", INIT + "/signaalcontext", {"tekst": "Nee"}, 403),
-    ("afd_editor", "PUT", INIT + "/signaalcontext", {"tekst": "Ja"}, 200),
-    ("rp_viewer", "POST", INIT + "/mattermost-channels", _channel, 403),
-    ("role_only", "POST", INIT + "/mattermost-channels", _channel, 201),
-    ("team_editor", "POST", L + "/mattermost-channels", _channel, 403),
-    ("afd_editor", "POST", L + "/mattermost-channels", _channel, 201),
-    ("rp_viewer", "PATCH", "/api/mattermost-channels/{channel_link}", {}, 403),
-    ("afd_editor", "PATCH", "/api/mattermost-channels/{channel_link}", {}, 200),
-    ("rp_viewer", "DELETE", "/api/mattermost-channels/{channel_link}", None, 403),
-    ("role_only", "DELETE", "/api/mattermost-channels/{channel_link}", None, 204),
+    ("GET", INIT, None, "rp_viewer=200 platform_admin=404"),
+    ("PUT", INIT, {"naam": "Nee"}, "team_editor=403 rp_viewer=403"),
+    ("PUT", INIT, {"beschrijving": "Ja"}, "role_only=200"),
+    ("PUT", INIT, {"beschrijving": "Ja"}, "partner_member=200"),
+    ("PUT", INIT, {"beschrijving": "Ja"}, "afd_editor=200"),
+    ("PUT", INIT + "/settings", {"funnel_enabled": True}, "partner_member=403"),
+    ("PUT", INIT + "/settings", {"funnel_enabled": True}, "manager=200"),
+    ("DELETE", INIT, None, "role_only=403"),
+    ("POST", INIT + "/updates", {"titel": "Nee"}, "rp_viewer=403 team_editor=403"),
+    ("POST", INIT + "/updates", {"titel": "Ja"}, "role_only=201"),
+    ("POST", INIT + "/updates/{init_post}/publish", None, "team_editor=403"),
+    ("POST", INIT + "/updates/{init_post}/publish", None, "afd_editor=200"),
+    ("PUT", _WRONG_PARENT, {"titel": "X"}, "afd_editor=404"),
+    ("DELETE", INIT + "/updates/{init_post}", None, "afd_editor=204"),
+    ("POST", INIT + "/columns", _COLUMN, "rp_viewer=403 team_editor=403 role_only=201"),
+    ("POST", INIT + "/columns/reorder", {"column_ids": []}, "team_editor=403"),
+    ("POST", INIT + "/abonnementen", {"term": "Nee maar"}, "rp_viewer=403"),
+    ("POST", INIT + "/abonnementen", {"term": "Wel degelijk"}, "role_only=201"),
+    ("PUT", INIT + "/signaalcontext", {"tekst": "Nee"}, "rp_viewer=403"),
+    ("PUT", INIT + "/signaalcontext", {"tekst": "Ja"}, "afd_editor=200"),
+    ("POST", INIT + "/mattermost-channels", _channel, "rp_viewer=403 role_only=201"),
+    ("POST", L + "/mattermost-channels", _channel, "team_editor=403 afd_editor=201"),
+    ("PATCH", "/api/mattermost-channels/{channel_link}", {}, "rp_viewer=403"),
+    ("PATCH", "/api/mattermost-channels/{channel_link}", {}, "afd_editor=200"),
+    ("DELETE", "/api/mattermost-channels/{channel_link}", None, "rp_viewer=403"),
+    ("DELETE", "/api/mattermost-channels/{channel_link}", None, "role_only=204"),
     # seeing is not writing: every sub-resource reads
-    ("rp_viewer", "GET", INIT + "/columns", None, 200),
-    ("rp_viewer", "GET", INIT + "/updates", None, 200),
-    ("rp_viewer", "GET", INIT + "/abonnementen", None, 200),
-    ("rp_viewer", "GET", INIT + "/signaalcontext", None, 200),
-    ("rp_viewer", "GET", INIT + "/mattermost-channels", None, 200),
-    ("platform_admin", "GET", INIT + "/abonnementen", None, 404),
+    ("GET", INIT + "/columns", None, "rp_viewer=200"),
+    ("GET", INIT + "/updates", None, "rp_viewer=200"),
+    ("GET", INIT + "/abonnementen", None, "rp_viewer=200 platform_admin=404"),
+    ("GET", INIT + "/signaalcontext", None, "rp_viewer=200"),
+    ("GET", INIT + "/mattermost-channels", None, "rp_viewer=200"),
     # sharing: org:manage on every source eenheid, system roles for the rest
-    ("org_admin", "POST", "/api/sharing", _share("afdeling"), 200),  # below own
-    ("org_admin", "POST", "/api/sharing", _share("dg"), 403),  # above it
-    ("org_admin", "POST", "/api/sharing", _share("node_team"), 200),
-    ("org_admin", "POST", "/api/sharing", _share("node_free"), 403),
-    ("super_admin", "POST", "/api/sharing", _share("node_free"), 200),
-    ("afd_editor", "POST", "/api/sharing", _share("afdeling"), 403),
-    ("org_admin", "DELETE", "/api/sharing/{share}", None, 403),
-    ("super_admin", "DELETE", "/api/sharing/{share}", None, 200),
+    ("POST", "/api/sharing", _share("afdeling"), "org_admin=200"),  # below own
+    ("POST", "/api/sharing", _share("afdeling"), "afd_editor=403"),
+    ("POST", "/api/sharing", _share("dg"), "org_admin=403"),  # above it
+    ("POST", "/api/sharing", _share("node_team"), "org_admin=200"),
+    ("POST", "/api/sharing", _share("node_free"), "org_admin=403 super_admin=200"),
+    ("DELETE", "/api/sharing/{share}", None, "org_admin=403 super_admin=200"),
     # opdrachten: every eenheid named, and every one that changes
-    ("afd_editor", "POST", "/api/opdrachten", _opdracht(opdrachtgever_id="team"), 201),
-    ("afd_editor", "POST", "/api/opdrachten", _OPDR_DIRECTIE, 403),
-    ("team_editor", "POST", "/api/opdrachten", _OPDR_TEAM_ELDERS, 403),
-    ("team_editor", "POST", "/api/opdrachten", _OPDR_TEAM_TEAM, 201),
-    ("afd_editor", "POST", "/api/opdrachten", _koppeling("node_elders"), 404),
-    ("afd_editor", "POST", "/api/opdrachten", _koppeling("node_team"), 201),
-    ("viewer", "GET", "/api/opdrachten/{opdracht_voor_team}", None, 200),
-    ("afd_editor", "PUT", "/api/opdrachten/{opdracht_afdeling}", _TO_DIRECTIE, 403),
-    ("afd_editor", "PUT", OD, {"titel": "Nee"}, 403),  # visible, not writable
-    ("afd_editor", "POST", "/api/opdrachten/match-contacts-bulk", None, 403),
-    ("manager", "PUT", OD, {"opdrachtgever_id": "{eenheid_team}"}, 200),
-    ("manager", "PUT", OD, {"opdrachtgever_id": "{eenheid_elders}"}, 403),
-    ("manager", "PUT", OD, {"opdrachtnemer_eenheid_id": "{eenheid_elders}"}, 403),
-    ("manager", "PUT", OD, {"opdrachtgever_id": None}, 403),  # unscoping: system
-    ("super_admin", "PUT", OD, {"opdrachtgever_id": None}, 200),
-    ("afd_editor", "PUT", OD, {"opdrachtgever_id": "{eenheid_team}"}, 403),
+    ("POST", "/api/opdrachten", _opdracht(opdrachtgever_id="team"), "afd_editor=201"),
+    ("POST", "/api/opdrachten", _OPDR_DIRECTIE, "afd_editor=403"),
+    ("POST", "/api/opdrachten", _OPDR_TEAM_ELDERS, "team_editor=403"),
+    ("POST", "/api/opdrachten", _OPDR_TEAM_TEAM, "team_editor=201"),
+    ("POST", "/api/opdrachten", _koppeling("node_elders"), "afd_editor=404"),
+    ("POST", "/api/opdrachten", _koppeling("node_team"), "afd_editor=201"),
+    ("GET", "/api/opdrachten/{opdracht_voor_team}", None, "viewer=200"),
+    ("PUT", "/api/opdrachten/{opdracht_afdeling}", _TO_DIRECTIE, "afd_editor=403"),
+    ("PUT", OD, {"titel": "Nee"}, "afd_editor=403"),  # visible, not writable
+    ("POST", "/api/opdrachten/match-contacts-bulk", None, "afd_editor=403"),
+    ("PUT", OD, {"opdrachtgever_id": "{eenheid_team}"}, "manager=200 afd_editor=403"),
+    ("PUT", OD, {"opdrachtgever_id": "{eenheid_elders}"}, "manager=403"),
+    ("PUT", OD, {"opdrachtnemer_eenheid_id": "{eenheid_elders}"}, "manager=403"),
+    ("PUT", OD, {"opdrachtgever_id": None}, "manager=403"),  # unscoping: system
+    ("PUT", OD, {"opdrachtgever_id": None}, "super_admin=200"),
     # eenheden: org:update (a manager below), org:manage for the modules
-    ("manager", "PUT", ORG + "/{eenheid_team}", {"beschrijving": "Ja"}, 200),
-    ("manager", "PUT", ORG + "/{eenheid_elders}", {"beschrijving": "Nee"}, 403),
-    ("org_admin", "PUT", ORG + "/{eenheid_afdeling}", {"naam": "Nieuw"}, 200),
-    ("org_admin", "PUT", ORG + "/{eenheid_dg}", {"naam": "Nee"}, 403),
-    ("team_editor", "PUT", ORG + "/{eenheid_team}", {"naam": "Nee"}, 403),
-    ("team_editor", "DELETE", ORG + "/{eenheid_team}", None, 403),
-    ("eenheid_eigenaar", "PUT", ORG + "/{eenheid_elders}", {"naam": "Eigen"}, 200),
-    ("org_admin", "PUT", "/api/eenheid-modules/{eenheid_team}", _MODULE, 200),
-    ("org_admin", "PUT", "/api/eenheid-modules/{eenheid_elders}", _MODULE, 403),
-    ("manager", "PUT", "/api/eenheid-modules/{eenheid_team}", _MODULE, 403),
+    ("PUT", ORG + "/{eenheid_team}", {"beschrijving": "Ja"}, "manager=200"),
+    ("PUT", ORG + "/{eenheid_elders}", {"beschrijving": "Nee"}, "manager=403"),
+    ("PUT", ORG + "/{eenheid_afdeling}", {"naam": "Nieuw"}, "org_admin=200"),
+    ("PUT", ORG + "/{eenheid_dg}", {"naam": "Nee"}, "org_admin=403"),
+    ("PUT", ORG + "/{eenheid_team}", {"naam": "Nee"}, "team_editor=403"),
+    ("DELETE", ORG + "/{eenheid_team}", None, "team_editor=403"),
+    ("PUT", ORG + "/{eenheid_elders}", {"naam": "Eigen"}, "eenheid_eigenaar=200"),
+    ("PUT", "/api/eenheid-modules/{eenheid_team}", _MODULE, "org_admin=200"),
+    ("PUT", "/api/eenheid-modules/{eenheid_team}", _MODULE, "manager=403"),
+    ("PUT", "/api/eenheid-modules/{eenheid_elders}", _MODULE, "org_admin=403"),
     # tenant-wide vocabularies and people
-    ("team_editor", "PUT", "/api/tags/{tag}", {"name": "hernoemd"}, 200),
-    ("viewer", "PUT", "/api/tags/{tag}", {"name": "nee"}, 403),
-    ("viewer", "POST", "/api/tags", {"name": "nee"}, 403),
-    ("team_editor", "PUT", SWV, {"naam": "Ja"}, 200),
-    ("team_editor", "DELETE", SWV, None, 403),
-    ("viewer", "POST", SWV + "/leden", {"person_id": "{p_viewer}"}, 403),
-    ("role_only", "POST", "/api/people", {"naam": "Geen rol"}, 403),
+    ("PUT", "/api/tags/{tag}", {"name": "hernoemd"}, "team_editor=200"),
+    ("PUT", "/api/tags/{tag}", {"name": "nee"}, "viewer=403"),
+    ("POST", "/api/tags", {"name": "nee"}, "viewer=403"),
+    ("PUT", SWV, {"naam": "Ja"}, "team_editor=200"),
+    ("DELETE", SWV, None, "team_editor=403"),
+    ("POST", SWV + "/leden", {"person_id": "{p_viewer}"}, "viewer=403"),
+    ("POST", "/api/people", {"naam": "Geen rol"}, "role_only=403"),
     # stakeholder assessments follow their scope
-    ("team_editor", "POST", SA, _assessment("node_team"), 201),
-    ("team_editor", "POST", SA, _assessment("node_directie"), 403),
-    ("team_editor", "PUT", SA + "/{sa_directie}", {"belang": 1}, 403),
-    ("team_editor", "DELETE", SA + "/{sa_team}", None, 204),
+    ("POST", SA, _assessment("node_team"), "team_editor=201"),
+    ("POST", SA, _assessment("node_directie"), "team_editor=403"),
+    ("PUT", SA + "/{sa_directie}", {"belang": 1}, "team_editor=403"),
+    ("DELETE", SA + "/{sa_team}", None, "team_editor=204"),
 ]  # fmt: skip
+ROUTES = [
+    (who, method, path, body, int(status))
+    for method, path, body, whos in TABLE
+    for who, status in (w.split("=") for w in whos.split())
+]
 
 
 @pytest.mark.parametrize("case", ROUTES, ids=[f"{c[0]}-{c[1]}-{c[2]}" for c in ROUTES])
@@ -447,21 +425,16 @@ async def test_task_body_links_are_checked(ww, extra, expected):
 
 
 async def test_refused_new_tag_is_not_created(ww):
-    resp = await request(
-        ww, "opdrachtgever", "POST", L + "/tags", {"tag_name": "Gloed"}
-    )
+    body = {"tag_name": "Gloed"}
+    resp = await request(ww, "opdrachtgever", "POST", L + "/tags", body)
     assert resp.status_code == 403, resp.text
     assert "Gloed" not in set((await ww.db.scalars(select(Tag.name))).all())
 
 
-# (who, eenheid the new lead lands in, None when refused)
-WITHOUT_PLACE = [
-    ("team_editor", "team"),
-    ("afd_editor", "afdeling"),
-    ("viewer", None),  # an implicit viewer creates no leads
-    ("role_only", None),  # a contributor creates leads in the initiatief only
-    ("super_admin", "tenant-wide"),  # no placement: a system role may
-]
+# (who, eenheid the new lead lands in, None when refused); an implicit viewer
+# creates no leads, a contributor only in the initiatief, a system role anywhere
+WITHOUT_PLACE = [("team_editor", "team"), ("afd_editor", "afdeling"), ("viewer", None),
+                 ("role_only", None), ("super_admin", "tenant-wide")]  # fmt: skip
 
 
 @pytest.mark.parametrize(("who", "lands_in"), WITHOUT_PLACE)
@@ -478,14 +451,11 @@ async def test_new_lead_without_place_lands_in_own_eenheid(world, who, lands_in)
     assert created.json()["organisatie_eenheid_id"] == expected
 
 
-@pytest.mark.parametrize(
-    ("team_start", "sibling_start", "lands_in"),
-    [
-        (date(2020, 1, 1), date(2024, 1, 1), "team"),  # longest-running first
-        (date(2024, 1, 1), date(2020, 1, 1), "sibling_team"),
-        (date(2022, 1, 1), date(2022, 1, 1), "sibling_team"),  # tie: by naam
-    ],
-)
+@pytest.mark.parametrize(("team_start", "sibling_start", "lands_in"), [
+    (date(2020, 1, 1), date(2024, 1, 1), "team"),  # longest-running first
+    (date(2024, 1, 1), date(2020, 1, 1), "sibling_team"),
+    (date(2022, 1, 1), date(2022, 1, 1), "sibling_team"),  # tie: by naam
+])  # fmt: skip
 async def test_new_lead_lands_in_longest_running_placement(
     world, team_start, sibling_start, lands_in
 ):
@@ -511,9 +481,8 @@ async def test_moving_a_lead_into_own_new_initiatief_needs_lead_delete(ww):
     Starting a personal initiatief makes you its eigenaar (lead:create
     there), but moving the team's lead into it deletes it from the team.
     """
-    created = await request(
-        ww, "team_editor", "POST", "/api/initiatieven", {"naam": "Eigen initiatief"}
-    )
+    created = await request(ww, "team_editor", "POST", "/api/initiatieven",
+                            {"naam": "Eigen initiatief"})  # fmt: skip
     assert created.status_code == 201, created.text
     body = {"initiatief_id": created.json()["id"], "stage": "verkennen"}
     moved = await request(ww, "team_editor", "PUT", "/api/leads/{lead_team}", body)
@@ -532,6 +501,15 @@ async def test_merge_moves_a_grant_to_an_agent_only_for_super_admin(ww, who, exp
     await assert_route_case(ww, who, "POST", "/api/leads/merge", body, expected)
 
 
+async def _grants(w: World, resource_type: str, resource_id, *columns) -> list:
+    cols = [getattr(ResourcePermission, c) for c in columns]
+    rows = await w.db.execute(select(*cols).where(
+        ResourcePermission.resource_type == resource_type,
+        ResourcePermission.resource_id == resource_id,
+    ))  # fmt: skip
+    return [r[0] if len(columns) == 1 else tuple(r) for r in rows.all()]
+
+
 async def test_merge_keeps_an_eenheid_grant_next_to_other_grants(ww):
     """Only the same holder with the same rol is a duplicate."""
     await add(
@@ -541,14 +519,8 @@ async def test_merge_keeps_an_eenheid_grant_next_to_other_grants(ww):
     )
     body = _merge("lead_other", "lead")
     await assert_route_case(ww, "manager", "POST", "/api/leads/merge", body, 200)
-    holders = await ww.db.scalars(
-        select(ResourcePermission.organisatie_eenheid_id).where(
-            ResourcePermission.resource_type == "lead",
-            ResourcePermission.resource_id == ww.res["lead"],
-            ResourcePermission.organisatie_eenheid_id.isnot(None),
-        )
-    )
-    assert set(holders.all()) == {ww.org["team"].id, ww.org["elders"].id}
+    holders = await _grants(ww, "lead", ww.res["lead"], "organisatie_eenheid_id")
+    assert set(holders) - {None} == {ww.org["team"].id, ww.org["elders"].id}
 
 
 async def test_create_initiatief_grants_only_the_creator(world):
@@ -565,17 +537,9 @@ async def test_create_initiatief_grants_only_the_creator(world):
     body = resp.json()
     assert body["slug"] != "gekaapt"
     assert body["public_page_enabled"] is False and body["funnel_enabled"] is False
-    grants = await world.db.execute(
-        select(
-            ResourcePermission.person_id,
-            ResourcePermission.organisatie_eenheid_id,
-            ResourcePermission.rol,
-        ).where(
-            ResourcePermission.resource_type == "initiatief",
-            ResourcePermission.resource_id == uuid.UUID(body["id"]),
-        )
-    )
-    assert grants.all() == [(world.person["viewer"].id, None, "eigenaar")]
+    cols = ("person_id", "organisatie_eenheid_id", "rol")
+    grants = await _grants(world, "initiatief", uuid.UUID(body["id"]), *cols)
+    assert grants == [(world.person["viewer"].id, None, "eigenaar")]
 
 
 async def test_initiatief_detail_does_not_expose_access_level(iw):
@@ -597,17 +561,8 @@ async def test_bijlage_needs_node_update_on_the_node(ww, method, node, expected)
     assert resp.status_code == expected, resp.text
 
 
-# Chat write tools ask the same question: (tool, args, allowed for team_editor)
-CHAT = [
-    ("update_node", {"node_id": "{node_directie}", "title": "Nee"}, False),
-    ("update_node", {"node_id": "{node_team}", "title": "Ja"}, True),
-    ("create_edge", {"from_node_id": "{node_directie}", "to_node_id": "{node_team}",
-                     "edge_type_id": "x"}, True),
-    ("create_task", {"node_id": "{node_directie}", "title": "Nee"}, False),
-]  # fmt: skip
-
-
-@pytest.mark.parametrize(("tool", "args", "allowed"), CHAT)
-async def test_chat_write_tools_ask_authz(world, tool, args, allowed):
-    refusal = await chat_refusal(world, "team_editor", tool, args)
-    assert (refusal is None) is allowed, refusal
+async def test_chat_create_edge_needs_one_writable_end(world):
+    """update_node and create_task: test_chat_mattermost_authz.py (PARITY)."""
+    args = {"from_node_id": "{node_directie}", "to_node_id": "{node_team}",
+            "edge_type_id": "x"}  # fmt: skip
+    assert await chat_refusal(world, "team_editor", "create_edge", args) is None

@@ -66,12 +66,8 @@ async def cw(iw: World) -> World:
                                        opdrachtnemer_eenheid_id=team.id),
         "tag": Tag(name=f"authz-{uuid.uuid4().hex[:8]}"),
     }  # fmt: skip
-    for key, scope in (
-        ("sa_team", "node_team"),
-        ("sa_directie", "node_directie"),
-        ("sa_free", "node_free"),
-        ("sa_initiatief", "initiatief"),
-    ):
+    for scope in ("node_team", "node_directie", "node_free", "initiatief"):
+        key = "sa_" + scope.removeprefix("node_")
         rows[key] = StakeholderAssessment(
             person_id=w.person["viewer"].id, scope_id=w.res[scope], belang=3,
             scope_type="initiatief" if scope == "initiatief" else "corpus_node",
@@ -109,171 +105,127 @@ def _resource_type(w: World, permission: str, key: str | None) -> str:
     return _KEY_TYPES[key.split("_")[0]]
 
 
-# (who, permission, resource key or None, eenheid key for a new one, expected)
-CASES = [
+# (permission, resource key, "@eenheid" for a new one there or None for a new
+# one anywhere, who; "!who" expects a refusal)
+TABLE = [
     # 1. super_admin and the system roles
-    ("super_admin", "node:delete", "node_directie", None, True),
-    ("platform_admin", "org:read", "elders", None, True),
-    ("platform_admin", "node:update", "node_elders", None, False),
-    ("platform_admin", "node:update", "node_free", None, False),
-    ("platform_admin", "opdracht:update", "opdracht_afdeling", None, False),
+    ("node:delete", "node_directie", "super_admin"),
+    ("org:read", "elders", "platform_admin"),
+    ("node:update", "node_elders", "!platform_admin"),
+    ("node:update", "node_free", "!platform_admin"),
+    ("opdracht:update", "opdracht_afdeling", "!platform_admin"),
     # 2. a resource role on the resource itself
-    ("role_only", "node:update", "node_directie", None, True),
-    ("role_only", "node:delete", "node_directie", None, False),
-    ("role_only", "node:update", "node_afdeling", None, False),
-    ("role_only", "initiatief:update", "initiatief", None, True),
-    ("role_only", "opdracht:update", "opdracht_directie", None, True),
-    ("role_only", "opdracht:delete", "opdracht_directie", None, True),
-    ("role_only", "opdracht:update", "opdracht_afdeling", None, False),
-    ("eenheid_eigenaar", "org:manage", "elders", None, True),
-    ("eenheid_eigenaar", "org:manage", "dg", None, False),
+    ("node:update", "node_directie", "role_only"),
+    ("node:delete", "node_directie", "!role_only"),
+    ("node:update", "node_afdeling", "!role_only"),
+    ("initiatief:update", "initiatief", "role_only"),
+    ("opdracht:update", "opdracht_directie", "role_only"),
+    ("opdracht:delete", "opdracht_directie", "role_only"),
+    ("opdracht:update", "opdracht_afdeling", "!role_only"),
+    ("org:manage", "elders", "eenheid_eigenaar"),
+    ("org:manage", "dg", "!eenheid_eigenaar"),
     # 3. parent delegation: a lead's sub-records, edges, tasks
-    ("role_only", "lead:update", "lead", None, True),  # contributor
-    ("role_only", "lead:delete", "lead", None, False),
-    ("role_only", "lead_column:update", "lead_column", None, True),
-    ("viewer", "lead:update", "lead", None, False),
-    ("rp_viewer", "lead:read", "lead", None, True),
-    ("rp_viewer", "lead:update", "lead", None, False),
-    ("rp_viewer", "lead:create", "initiatief", None, False),
-    ("manager", "lead:delete", "lead", None, True),  # initiatief:delete
-    ("team_editor", "lead:update", "lead", None, False),
+    ("lead:update", "lead", "role_only !viewer !rp_viewer !team_editor"),
+    ("lead:delete", "lead", "!role_only manager"),
+    ("lead_column:update", "lead_column", "role_only"),
+    ("lead:read", "lead", "rp_viewer"),
+    ("lead:create", "initiatief", "!rp_viewer"),
     # the opdrachtgever writes their own lead only
-    ("opdrachtgever", "lead:update", "lead", None, True),
-    ("opdrachtgever", "lead:delete", "lead", None, False),
-    ("opdrachtgever", "lead:update", "lead_other", None, False),
-    ("opdrachtgever", "lead:update", "lead_free", None, False),
-    ("opdrachtgever", "lead_update:update", "post", None, True),
-    ("rp_viewer", "lead_update:update", "post", None, False),
-    ("opdrachtgever", "lead_activity:delete", "activity", None, True),
-    ("viewer", "lead_activity:delete", "activity", None, False),
-    ("role_only", "lead_attachment:delete", "attachment", None, True),
-    ("rp_viewer", "lead_attachment:delete", "attachment", None, False),
-    ("opdrachtgever", "github_link:delete", "github_link", None, True),
-    ("team_editor", "github_link:delete", "github_link", None, False),
-    ("opdrachtgever", "github_link:create", "lead", None, True),
-    ("rp_viewer", "github_link:create", "lead", None, False),
-    ("team_editor", "edge:update", "edge_team_directie", None, True),
-    ("team_editor", "edge:update", "edge_directie_elders", None, False),
-    ("team_editor", "edge:delete", "edge_team_directie", None, False),
-    ("manager", "edge:delete", "edge_directie_elders", None, True),
-    ("role_only", "edge:update", "edge_directie_elders", None, True),
-    ("afd_editor", "task:update", "task_on_team_node", None, True),
-    ("team_editor", "task:update", "task_on_team_node", None, True),
-    ("role_only", "task:update", "task_team", None, False),  # the team's task
+    ("lead:update", "lead", "opdrachtgever"),
+    ("lead:delete", "lead", "!opdrachtgever"),
+    ("lead:update", "lead_other", "!opdrachtgever"),
+    ("lead:update", "lead_free", "!opdrachtgever"),
+    ("lead_update:update", "post", "opdrachtgever !rp_viewer"),
+    ("lead_activity:delete", "activity", "opdrachtgever !viewer"),
+    ("lead_attachment:delete", "attachment", "role_only !rp_viewer"),
+    ("github_link:delete", "github_link", "opdrachtgever !team_editor"),
+    ("github_link:create", "lead", "opdrachtgever !rp_viewer"),
+    ("edge:update", "edge_team_directie", "team_editor"),
+    ("edge:update", "edge_directie_elders", "!team_editor role_only"),
+    ("edge:delete", "edge_team_directie", "!team_editor"),
+    ("edge:delete", "edge_directie_elders", "manager"),
+    ("task:update", "task_on_team_node", "afd_editor team_editor"),
+    ("task:update", "task_team", "!role_only"),
     # a child permission asked on its parent
-    ("team_editor", "edge:create", "node_team", None, True),
-    ("team_editor", "edge:create", "node_directie", None, False),
-    ("role_only", "task:create", "node_directie", None, True),
-    ("role_only", "lead:create", "initiatief", None, True),
-    ("afd_editor", "stakeholder_assessment:create", "initiatief", None, True),
-    ("team_editor", "stakeholder_assessment:create", "initiatief", None, False),
-    ("team_editor", "stakeholder_assessment:create", "node_team", None, True),
-    ("team_editor", "stakeholder_assessment:create", "node_directie", None, False),
+    ("edge:create", "node_team", "team_editor"),
+    ("edge:create", "node_directie", "!team_editor"),
+    ("task:create", "node_directie", "role_only"),
+    ("lead:create", "initiatief", "role_only"),
+    ("stakeholder_assessment:create", "initiatief", "afd_editor !team_editor"),
+    ("stakeholder_assessment:create", "node_team", "team_editor"),
+    ("stakeholder_assessment:create", "node_directie", "!team_editor"),
     # stakeholder assessments: write access on their scope
-    ("team_editor", "stakeholder_assessment:update", "sa_team", None, True),
-    ("afd_editor", "stakeholder_assessment:delete", "sa_team", None, True),
-    ("team_editor", "stakeholder_assessment:update", "sa_directie", None, False),
-    ("viewer", "stakeholder_assessment:delete", "sa_team", None, False),
-    ("role_only", "stakeholder_assessment:update", "sa_directie", None, True),
-    ("role_only", "stakeholder_assessment:update", "sa_initiatief", None, True),
-    ("team_editor", "stakeholder_assessment:update", "sa_initiatief", None, False),
-    ("team_editor", "stakeholder_assessment:update", "sa_free", None, True),
+    ("stakeholder_assessment:update", "sa_team", "team_editor"),
+    ("stakeholder_assessment:delete", "sa_team", "afd_editor !viewer"),
+    ("stakeholder_assessment:update", "sa_directie", "!team_editor role_only"),
+    ("stakeholder_assessment:update", "sa_initiatief", "role_only !team_editor"),
+    ("stakeholder_assessment:update", "sa_free", "team_editor"),
     # 4. rights on the eenheid, inherited downward only
-    ("afd_editor", "node:update", "node_afdeling", None, True),
-    ("afd_editor", "node:update", "node_team", None, True),
-    ("afd_editor", "node:update", "node_directie", None, False),
-    ("team_editor", "node:update", "node_directie", None, False),
-    ("team_editor", "node:read", "node_directie", None, True),  # seen above
-    ("team_editor", "node:update", "node_afdeling", None, False),
-    ("viewer", "node:update", "node_team", None, False),
-    ("viewer", "node:read", "node_team", None, True),
-    ("manager", "node:delete", "node_team", None, True),
-    ("afd_editor", "task:update", "task_team", None, True),
-    ("team_editor", "task:delete", "task_team", None, True),
-    ("viewer", "task:update", "task_team", None, False),
-    ("afd_editor", "initiatief:update", "initiatief", None, True),
-    ("team_editor", "initiatief:update", "initiatief", None, False),
-    ("afd_editor", "lead:update", "lead", None, True),
+    ("node:update", "node_afdeling", "afd_editor !team_editor"),
+    ("node:update", "node_team", "afd_editor !viewer"),
+    ("node:update", "node_directie", "!afd_editor !team_editor"),
+    ("node:read", "node_directie", "team_editor"),
+    ("node:read", "node_team", "viewer"),
+    ("node:delete", "node_team", "manager"),
+    ("task:update", "task_team", "afd_editor !viewer"),
+    ("task:delete", "task_team", "team_editor"),
+    ("initiatief:update", "initiatief", "afd_editor !team_editor"),
+    ("lead:update", "lead", "afd_editor"),
     # a lead without initiatief but with an eenheid follows that eenheid
-    ("team_editor", "lead:update", "lead_team", None, True),
-    ("afd_editor", "lead:update", "lead_team", None, True),
-    ("viewer", "lead:update", "lead_team", None, False),
+    ("lead:update", "lead_team", "team_editor afd_editor !viewer"),
     # opdrachten: rights on the client or on the team doing the work
-    ("afd_editor", "opdracht:update", "opdracht_afdeling", None, True),
-    ("afd_editor", "opdracht:update", "opdracht_directie", None, False),
-    ("team_editor", "opdracht:update", "opdracht_voor_team", None, True),
-    ("viewer", "opdracht:update", "opdracht_voor_team", None, False),
-    ("viewer", "opdracht:read", "opdracht_voor_team", None, True),
-    ("manager", "opdracht:delete", "opdracht_afdeling", None, True),
-    ("afd_editor", "opdracht:delete", "opdracht_afdeling", None, False),
-    ("team_editor", "opdracht:update", "opdracht_directie", None, False),
-    ("manager", "opdracht:update", "opdracht_directie", None, True),
+    ("opdracht:update", "opdracht_afdeling", "afd_editor"),
+    ("opdracht:update", "opdracht_directie", "!afd_editor !team_editor manager"),
+    ("opdracht:update", "opdracht_voor_team", "team_editor !viewer"),
+    ("opdracht:read", "opdracht_voor_team", "viewer"),
+    ("opdracht:delete", "opdracht_afdeling", "manager !afd_editor"),
     # creating: the eenheid it goes into
-    ("afd_editor", "task:create", None, "team", True),
-    ("afd_editor", "task:create", None, "directie", False),
-    ("team_editor", "node:create", None, "afdeling", False),
-    ("team_editor", "lead:create", None, "team", True),
-    ("team_editor", "lead:create", None, "directie", False),
-    ("afd_editor", "opdracht:create", None, "team", True),
-    ("afd_editor", "opdracht:create", None, "directie", False),
-    ("team_editor", "opdracht:create", None, "directie", False),
+    ("task:create", "@team", "afd_editor"),
+    ("task:create", "@directie", "!afd_editor"),
+    ("node:create", "@afdeling", "!team_editor"),
+    ("lead:create", "@team", "team_editor"),
+    ("lead:create", "@directie", "!team_editor"),
+    ("opdracht:create", "@team", "afd_editor"),
+    ("opdracht:create", "@directie", "!afd_editor !team_editor"),
     # eenheden: a manager edits below, org:manage from ministry_admin down
-    ("manager", "org:update", "team", None, True),
-    ("manager", "org:update", "elders", None, False),
-    ("team_editor", "org:update", "team", None, False),
-    ("super_admin", "org:update", "team", None, True),
-    ("org_admin", "org:manage", "directie", None, True),
-    ("org_admin", "org:manage", "team", None, True),
-    ("org_admin", "org:manage", "dg", None, False),
-    ("org_admin", "org:manage", "elders", None, False),
-    ("team_editor", "org:manage", "team", None, False),
-    ("manager", "org:manage", "directie", None, False),
-    ("manager", "org:update", "tooi_team", None, False),  # synced: read-only
-    ("manager", "org:read", "tooi_team", None, True),
-    ("super_admin", "org:update", "tooi_team", None, True),
+    ("org:update", "team", "manager !team_editor super_admin"),
+    ("org:update", "elders", "!manager"),
+    ("org:manage", "directie", "org_admin !manager"),
+    ("org:manage", "team", "org_admin !team_editor"),
+    ("org:manage", "dg", "!org_admin"),
+    ("org:manage", "elders", "!org_admin"),
+    ("org:update", "tooi_team", "!manager super_admin"),
+    ("org:read", "tooi_team", "manager"),
     # 5. tenant-wide fallbacks, only for resources without eenheid
-    ("team_editor", "node:update", "node_free", None, True),
-    ("team_editor", "node:create", None, None, True),
-    ("viewer", "node:update", "node_free", None, False),
-    ("role_only", "node:update", "node_free", None, False),
-    ("team_editor", "lead:update", "lead_free", None, True),
-    ("viewer", "lead:update", "lead_free", None, False),
-    ("rp_viewer", "lead:update", "lead_free", None, False),
-    ("team_editor", "lead:delete", "lead_free", None, False),
-    ("manager", "lead:delete", "lead_free", None, True),
+    ("node:update", "node_free", "team_editor !viewer !role_only"),
+    ("node:create", None, "team_editor"),
+    ("lead:update", "lead_free", "team_editor !viewer !rp_viewer"),
+    ("lead:delete", "lead_free", "!team_editor manager"),
     # a new lead living nowhere: system roles only (the route places it)
-    ("team_editor", "lead:create", None, None, False),
-    ("viewer", "lead:create", None, None, False),
-    ("super_admin", "lead:create", None, None, True),
-    ("team_editor", "tag:create", None, None, True),
-    ("viewer", "tag:create", None, None, False),
-    ("role_only", "tag:create", None, None, False),
-    ("team_editor", "tag:update", "tag", None, True),
-    ("afd_editor", "tag:delete", "tag", None, False),
-    ("manager", "tag:delete", "tag", None, True),
-    ("viewer", "tag:update", "tag", None, False),
-    ("team_editor", "people:create", None, None, True),
-    ("platform_admin", "people:create", None, None, False),
-    ("role_only", "people:create", None, None, False),
-    ("team_editor", "samenwerkingsverband:update", "swv", None, True),
-    ("viewer", "samenwerkingsverband:update", "swv", None, False),
-    ("manager", "samenwerkingsverband:delete", "swv", None, True),
-    ("team_editor", "samenwerkingsverband:delete", "swv", None, False),
-    ("team_editor", "samenwerkingsverband:create", None, None, True),
-    ("role_only", "samenwerkingsverband:create", None, None, False),
-    ("team_editor", "opdracht:update", "opdracht_free", None, True),
-    ("viewer", "opdracht:update", "opdracht_free", None, False),
-    ("team_editor", "opdracht:create", None, None, True),
+    ("lead:create", None, "!team_editor !viewer super_admin"),
+    ("tag:create", None, "team_editor !viewer !role_only"),
+    ("tag:update", "tag", "team_editor !viewer"),
+    ("tag:delete", "tag", "!afd_editor manager"),
+    ("people:create", None, "team_editor !platform_admin !role_only"),
+    ("samenwerkingsverband:update", "swv", "team_editor !viewer"),
+    ("samenwerkingsverband:delete", "swv", "manager !team_editor"),
+    ("samenwerkingsverband:create", None, "team_editor !role_only"),
+    ("opdracht:update", "opdracht_free", "team_editor !viewer"),
+    ("opdracht:create", None, "team_editor"),
     # no tenant-wide fallback for tasks
-    ("team_editor", "task:create", None, None, False),
+    ("task:create", None, "!team_editor"),
 ]  # fmt: skip
+CASES = [
+    (who.lstrip("!"), permission, target, not who.startswith("!"))
+    for permission, target, whos in TABLE
+    for who in whos.split()
+]
 
 
-@pytest.mark.parametrize(
-    "case", CASES, ids=[f"{c[0]}-{c[1]}-{c[2] or c[3] or 'new'}" for c in CASES]
-)
+@pytest.mark.parametrize("case", CASES, ids=[f"{c[0]}-{c[1]}-{c[2]}" for c in CASES])
 async def test_can(cw, case):
-    who, permission, key, eenheid, expected = case
+    who, permission, target, expected = case
+    key, eenheid = (None, target[1:]) if target and target[0] == "@" else (target, None)
     resource_type = _resource_type(cw, permission, key)
     await assert_can_case(cw, (who, permission, resource_type, key, eenheid, expected))
 
@@ -319,15 +271,10 @@ async def test_require_raises_404_403_401(world):
 @pytest.mark.parametrize(("level", "expected"), [("edit", True), ("read", False)])
 async def test_edit_share_grants_write_with_own_rights(world, level, expected):
     """An edit share of the directie to the team lets team editors write there."""
-    await add(
-        world,
-        SharedAccess(
-            source_eenheid_id=world.org["directie"].id,
-            target_eenheid_id=world.org["team"].id,
-            access_level=level,
-            geldig_van=date.today(),
-        ),
-    )
+    await add(world, SharedAccess(
+        source_eenheid_id=world.org["directie"].id, access_level=level,
+        target_eenheid_id=world.org["team"].id, geldig_van=date.today(),
+    ))  # fmt: skip
     node = world.res["node_directie"]
     for who, may in (("team_editor", expected), ("viewer", False)):
         ctx = await perm_ctx(world, who)
@@ -365,22 +312,17 @@ async def _evaluation_queries(w: World, who: str, asks: list, expected: bool) ->
 
 async def _leads(w: World, n: int) -> list[uuid.UUID]:
     init = w.res["initiatief"]
-    rows = [
-        Lead(title=f"L{i}", stage="verkennen", initiatief_id=init) for i in range(n)
-    ]
+    rows = [Lead(title=f"L{i}", stage="verkennen", initiatief_id=init)
+            for i in range(n)]  # fmt: skip
     await add(w, *rows)
     return [lead.id for lead in rows]
 
 
 async def _edges(w: World, n: int) -> list[uuid.UUID]:
-    edges = [
-        Edge(
-            from_node_id=w.res["node_team"],
-            to_node_id=(await make_node(w.db, f"Buur {i}", w.org["team"])).id,
-            edge_type_id=w.res["edge_type"],
-        )
-        for i in range(n)
-    ]
+    team, et = w.org["team"], w.res["edge_type"]
+    edges = [Edge(from_node_id=w.res["node_team"], edge_type_id=et,
+                  to_node_id=(await make_node(w.db, f"Buur {i}", team)).id)
+             for i in range(n)]  # fmt: skip
     await add(w, *edges)
     return [edge.id for edge in edges]
 

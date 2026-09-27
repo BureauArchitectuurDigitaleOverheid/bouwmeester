@@ -62,17 +62,16 @@ async def rw(iw: World) -> World:
     ):
         lead = Lead(title=title, stage="verkennen", initiatief_id=res[init])
         res[key] = (await add(iw, lead)).id
-    budget = {"status": "actief", "begrotingsjaar": 2025}
-    budget["instrument_id"] = res["node_team"]
+    kw = {"status": "actief", "begrotingsjaar": 2025, "instrument_id": res["node_team"]}
     rows = {
-        "opdracht_team": opdracht(
-            iw, "Zichtbaar", "team", budget=Decimal(100_000),
-            gerealiseerd=Decimal(25_000), **budget,
-        ),
-        "opdracht_elders": opdracht(
-            iw, "Onzichtbaar", "elders", budget=Decimal(200_000),
-            gerealiseerd=Decimal(50_000), **budget,
-        ),
+        "opdracht_team": opdracht(iw, "Zichtbaar", "team", budget=Decimal(100_000),
+                                  gerealiseerd=Decimal(25_000), **kw),
+        "opdracht_elders": opdracht(iw, "Onzichtbaar", "elders", **kw,
+                                    budget=Decimal(200_000),
+                                    gerealiseerd=Decimal(50_000)),
+        # client elsewhere, visible to the team only as opdrachtnemer
+        "opdracht_voor_team": opdracht(iw, "Voor team", "elders",
+                                       opdrachtnemer_eenheid_id=org["team"].id),
         "task_sibling_node": task(iw, "Losse taak", "node_sibling"),
     }  # fmt: skip
     await add(iw, *rows.values())
@@ -101,12 +100,9 @@ async def cw(world: World) -> World:
         "task_assigned": task(
             world, "Toegewezen", "node_elders", "elders", assignee_id=viewer.id
         ),
-        "lead_elders": Lead(
-            title="Lead elders",
-            stage="verkennen",
-            organisatie_eenheid_id=world.org["elders"].id,
-        ),
-    }
+        "lead_elders": Lead(title="Lead elders", stage="verkennen",
+                            organisatie_eenheid_id=world.org["elders"].id),
+    }  # fmt: skip
     await add(world, *rows.values())
     res.update({k: v.id for k, v in rows.items()})
     await add(
@@ -116,12 +112,9 @@ async def cw(world: World) -> World:
         # role_only holds no role anywhere, so no opdrachten module
         rp("opdracht", res["opdracht_elders"], "eigenaar",
            person=world.person["role_only"]),
-        SharedAccess(
-            source_node_id=res["node_sibling"],
-            target_eenheid_id=world.org["team"].id,
-            access_level="edit",
-            geldig_van=date.today() - timedelta(days=1),
-        ),
+        SharedAccess(source_node_id=res["node_sibling"], access_level="edit",
+                     target_eenheid_id=world.org["team"].id,
+                     geldig_van=date.today() - timedelta(days=1)),
     )  # fmt: skip
     return world
 
@@ -178,14 +171,14 @@ async def _write_without_read(w: World) -> list:
     for who in w.person:
         ctx = await perm_ctx(w, who)
         for resource_type, _, _, _, prefixes in SURFACES:
-            if resource_type == "edge":  # written from one end, see test_authz
+            if resource_type == "edge":  # written from one end: a product question
                 continue
             domain = {"corpus_node": "node"}.get(resource_type, resource_type)
             for key in _keys(w, prefixes):
                 rid = w.res[key]
-                if await can(
-                    w.db, ctx, f"{domain}:update", resource_type, rid
-                ) and not await can(w.db, ctx, f"{domain}:read", resource_type, rid):
+                if not await can(w.db, ctx, f"{domain}:update", resource_type, rid):
+                    continue
+                if not await can(w.db, ctx, f"{domain}:read", resource_type, rid):
                     offenders.append((who, key))
     return offenders
 
@@ -217,9 +210,8 @@ async def test_sub_records_read_through_their_parent(rw):
         column = await can(
             rw.db, ctx, "lead_column:read", "lead_column", rw.res["lead_column"]
         )
-        parent = await can(
-            rw.db, ctx, "initiatief:read", "initiatief", rw.res["initiatief"]
-        )
+        parent = await can(rw.db, ctx, "initiatief:read", "initiatief",
+                           rw.res["initiatief"])  # fmt: skip
         assert column is parent, who
 
 
@@ -243,6 +235,7 @@ LISTS = [
     ("viewer", "/api/opdrachten", "opdracht_team", True),
     ("viewer", "/api/opdrachten", "opdracht_free", True),  # no eenheid: everyone
     ("viewer", "/api/opdrachten", "opdracht_elders", False),
+    ("viewer", "/api/opdrachten", "opdracht_voor_team", True),  # as opdrachtnemer
     ("viewer", "/api/nodes/{node_team}/opdrachten", "opdracht_team", True),
     ("viewer", "/api/nodes/{node_team}/opdrachten", "opdracht_elders", False),
 ]  # fmt: skip
@@ -295,8 +288,8 @@ async def test_details_follow_the_org_chart(rw, who, path, expected):
 
 async def test_summary_counts_only_visible_opdrachten(rw):
     summary = await get_json(rw, "viewer", "/api/opdrachten/summary")
-    # opdracht_team, plus opdracht_free and opdracht_directie without budget
-    assert int(summary["count"]) == 3
+    # opdracht_team, plus opdracht_free, _directie and _voor_team without budget
+    assert int(summary["count"]) == 4
     assert Decimal(str(summary["totaal_budget"])) == Decimal(100_000)
     assert Decimal(str(summary["totaal_gerealiseerd"])) == Decimal(25_000)
 
