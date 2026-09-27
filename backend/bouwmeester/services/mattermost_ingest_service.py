@@ -375,6 +375,7 @@ class MattermostIngestService:
                 channel_id=channel_id,
                 post=post,
                 message=message,
+                author_person_id=person_id,
             )
             if suggested_lead_id is None:
                 skipped_reason = suggest_reason
@@ -867,6 +868,7 @@ class MattermostIngestService:
         channel_id: str,
         post: dict,
         message: str,
+        author_person_id: UUID | None = None,
     ) -> tuple[UUID | None, str | None]:
         """Vraag VLAM of dit een lead is en maak — bij ja — een SuggestedLead
         plus een bot-reply met approval-knoppen in de thread.
@@ -942,6 +944,7 @@ class MattermostIngestService:
                             channel_link_initiatief_id, row.stage
                         )
                         matched_lead = {
+                            "id": row.id,
                             "title": row.title,
                             "stage": row.stage,
                             "stage_label": stage_label,
@@ -978,6 +981,7 @@ class MattermostIngestService:
                 suggested=suggested,
                 initiatief=initiatief,
                 matched_lead=matched_lead,
+                author_person_id=author_person_id,
             )
         except Exception:
             logger.exception(
@@ -1078,6 +1082,7 @@ class MattermostIngestService:
         suggested: SuggestedLead,
         initiatief: Initiatief,
         matched_lead: dict | None,
+        author_person_id: UUID | None = None,
     ) -> None:
         """Plaats een bot-reply met emoji-reactions als trigger.
 
@@ -1088,9 +1093,12 @@ class MattermostIngestService:
         websocket binnen die we al gebruiken voor het meelezen, en zijn
         daarmee robuust tegen die platformbeperkingen.
 
-        Bij ``matched_lead`` (titel + stage van een door de LLM herkende
-        bestaande lead) gebruiken we andere copy en zetten we :link: als
-        eerste/aanbevolen actie boven :white_check_mark:.
+        Bij ``matched_lead`` (een door de LLM herkende bestaande lead)
+        gebruiken we andere copy en zetten we :link: als eerste/aanbevolen
+        actie boven :white_check_mark:.  Het kanaal hoort niet welke lead:
+        niet iedereen die daar leest mag die lead zien.  Titel en stage gaan
+        alleen per DM naar de schrijver van het bericht, en alleen als die
+        de lead mag lezen (``_dm_matched_lead``).
         """
         from bouwmeester.services.mattermost_service import MattermostService
 
@@ -1102,11 +1110,9 @@ class MattermostIngestService:
             pct = int((suggested.confidence or 0) * 100)
 
             if matched_lead is not None:
-                stage_label = matched_lead.get("stage_label") or ""
                 text = (
                     f":link: Dit lijkt te gaan over een bestaande lead voor "
-                    f"**{initiatief.naam}**: **{matched_lead['title']}**"
-                    f"{f' ({stage_label})' if stage_label else ''}.\n"
+                    f"**{initiatief.naam}**.\n"
                     f"_Vertrouwen:_ {pct}%\n\n"
                     "_Reageer met:_\n"
                     ":link: om dit bericht aan die lead te koppelen "
@@ -1116,14 +1122,10 @@ class MattermostIngestService:
                 )
                 attachment = {
                     "color": "#3B82F6",
-                    "title": matched_lead["title"],
-                    "text": (
-                        f"Bestaande lead in stage _{stage_label}_. "
-                        if stage_label
-                        else ""
-                    )
-                    + "Bij koppelen wordt dit Mattermost-bericht als notitie "
-                    "aan de lead toegevoegd.",
+                    "title": "Bestaande lead herkend",
+                    "text": "Bij koppelen wordt dit Mattermost-bericht als notitie "
+                    "aan de lead toegevoegd. Welke lead het is, zie je in "
+                    "Bouwmeester als je die lead mag zien.",
                     "footer": "Bouwmeester · bestaande lead herkend",
                 }
             else:
@@ -1163,8 +1165,42 @@ class MattermostIngestService:
             else:
                 await service.add_reaction(mm_thread_post_id, "white_check_mark")
             await service.add_reaction(mm_thread_post_id, "x")
+
+            if matched_lead is not None and author_person_id is not None:
+                await self._dm_matched_lead(
+                    service, author_person_id, initiatief, matched_lead
+                )
         finally:
             await service.close()
+
+    async def _dm_matched_lead(
+        self,
+        service,
+        person_id: UUID,
+        initiatief: Initiatief,
+        matched_lead: dict,
+    ) -> None:
+        """Name the recognised lead to its author, if they may read it."""
+        from bouwmeester.core.authz import can, perm_ctx_for
+        from bouwmeester.services.mattermost_utils import escape_mattermost_md
+
+        lead_id = matched_lead.get("id")
+        if lead_id is None or not await can(
+            self.session,
+            await perm_ctx_for(self.session, person_id),
+            "lead:read",
+            "lead",
+            lead_id,
+        ):
+            return
+        stage_label = matched_lead.get("stage_label") or ""
+        await service.send_dm(
+            person_id,
+            f":link: Je bericht voor **{escape_mattermost_md(initiatief.naam)}** "
+            f"lijkt te gaan over de lead "
+            f"**{escape_mattermost_md(matched_lead['title'])}**"
+            f"{f' ({stage_label})' if stage_label else ''}.",
+        )
 
     def _build_permalink(self, channel_id: str, post_id: str) -> str | None:
         """Best-effort permalink: ``{mm_base}/_redirect/pl/{post_id}``.

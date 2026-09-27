@@ -23,7 +23,6 @@ This starts all regular services plus a local Mattermost on http://localhost:806
    - Request URL: `http://backend:8000/api/mattermost/slash`
    - Request Method: POST
    - Copy the **token**
-5. (Optional) Create a channel for broadcast notifications, copy its ID from the channel URL
 
 ## 3. Configure Bouwmeester
 
@@ -34,7 +33,6 @@ MATTERMOST_ENABLED=true
 MATTERMOST_URL=http://mattermost:8065
 MATTERMOST_BOT_TOKEN=<bot access token from step 3>
 MATTERMOST_WEBHOOK_TOKEN=<slash command token from step 4>
-MATTERMOST_NOTIFICATION_CHANNEL_ID=<channel ID from step 5>
 ```
 
 Then add these to `docker-compose.yml` backend env (or they'll be picked up from `.env`):
@@ -46,7 +44,6 @@ backend:
     MATTERMOST_URL: ${MATTERMOST_URL:-http://mattermost:8065}
     MATTERMOST_BOT_TOKEN: ${MATTERMOST_BOT_TOKEN:-}
     MATTERMOST_WEBHOOK_TOKEN: ${MATTERMOST_WEBHOOK_TOKEN:-}
-    MATTERMOST_NOTIFICATION_CHANNEL_ID: ${MATTERMOST_NOTIFICATION_CHANNEL_ID:-}
 ```
 
 Restart the backend:
@@ -79,7 +76,7 @@ Bouwmeester Frontend  →  Bouwmeester API  →  Mattermost API
                           Mattermost API  ←  Slash commands/actions
 ```
 
-- **Notification mirror**: When a notification is created in Bouwmeester, it's also sent as a Mattermost DM (or channel post for broadcasts)
+- **Notification mirror**: When a notification is created in Bouwmeester, it's also sent as a Mattermost DM to its recipient
 - **Account linking**: Users link via a short-lived code (generated in Bouwmeester, sent as DM to bot)
 - **Slash commands**: `/bouwmeester taken|zoek|status|help` — processed by the backend
 - **Interactive buttons**: "Bekijken" (deep link) and "Taak afronden" (completes via API)

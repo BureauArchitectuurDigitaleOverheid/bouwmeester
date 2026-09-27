@@ -184,7 +184,6 @@ async def test_format_notification(db_session: AsyncSession, sample_person):
         mock_settings.return_value.MATTERMOST_URL = "http://localhost:8065"
         mock_settings.return_value.FRONTEND_URL = "http://localhost:5173"
         mock_settings.return_value.BACKEND_URL = "http://localhost:8000"
-        mock_settings.return_value.MATTERMOST_NOTIFICATION_CHANNEL_ID = ""
         mock_settings.return_value.MATTERMOST_WEBHOOK_TOKEN = ""
 
         service = MattermostService(db_session)
@@ -220,7 +219,10 @@ async def test_slash_taken_unlinked(db_session: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_slash_taken_linked(db_session: AsyncSession, sample_person, sample_task):
-    """Linked user can list their tasks."""
+    """Linked user can list their tasks (a placement lets them read tasks)."""
+    from tests.factories import make_org, place
+
+    await place(db_session, sample_person, await make_org(db_session, "Team", "team"))
     repo = MattermostUserRepository(db_session)
     await repo.create_mapping(
         person_id=sample_person.id,

@@ -9,7 +9,6 @@ import {
   importDatabase,
   resetDatabase,
 } from '@/api/import-export';
-import { usePermissions } from '@/hooks/usePermissions';
 import type { DatabaseBackupInfo, DatabaseResetResult, DatabaseRestoreResult } from '@/types';
 
 /**
@@ -46,9 +45,13 @@ function SectionHeader({
   );
 }
 
+/**
+ * The database tab, for super_admin only (AdminPage shows it to nobody else):
+ * a dump holds everything past every visibility rule, and restoring or
+ * wiping can create and remove rights.
+ */
 export function DatabaseBackup() {
   const { showError, showSuccess } = useToast();
-  const { isSuperAdmin } = usePermissions();
   const [info, setInfo] = useState<DatabaseBackupInfo | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -175,10 +178,6 @@ export function DatabaseBackup() {
         </nldd-container>
       </nldd-card>
 
-      {/* Terugzetten en wissen kunnen rechten aanmaken en wegnemen, dus
-          alleen een systeembeheerder ziet ze. */}
-      {isSuperAdmin && (
-        <>
         {/* Importeren. De waarschuwing stond hier boven het uploadveld, dus je
             las een alarm over iets wat je nog niet gekozen had. Nu verschijnt
             hij bij het bestand dat je daadwerkelijk gaat terugzetten, waar hij
@@ -331,8 +330,6 @@ export function DatabaseBackup() {
             )}
           </nldd-container>
         </nldd-card>
-        </>
-      )}
     </nldd-container>
   );
 }

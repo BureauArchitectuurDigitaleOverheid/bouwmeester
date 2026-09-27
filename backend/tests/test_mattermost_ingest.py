@@ -337,6 +337,17 @@ async def test_lead_channel_renders_at_mentions_as_markdown(
 
     anne = await create_person(naam="Anne Schuth", prefix="anne.schuth")
     daan = await create_person(naam="Daan Wijnhorst", prefix="daan")
+    # A mention notification only reaches who may read the lead.
+    from bouwmeester.models.resource_permission import ResourcePermission
+
+    db_session.add(
+        ResourcePermission(
+            person_id=anne.id,
+            resource_type="initiatief",
+            resource_id=sample_lead.initiatief_id,
+            rol="viewer",
+        )
+    )
     cid = _id()
     daan_mm_uid = _id()
     db_session.add_all(

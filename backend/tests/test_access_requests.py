@@ -36,13 +36,36 @@ def _reset_rate_limiter():
     _access_request_rate_limiter.clear()
 
 
+@pytest.fixture
+def login_denied(client, _test_app):
+    """Give the client a session whose login the whitelist refused.
+
+    What ``GET /api/auth/status`` leaves behind for an address that logged in
+    but is not on the whitelist: the access-request endpoints answer for
+    that address only.
+    """
+    from bouwmeester.middleware.session import COOKIE_NAME
+    from tests.conftest import _find_session_middleware
+
+    mw = _find_session_middleware(_test_app)
+
+    async def _login(email: str) -> None:
+        # Into the client's own session: it also holds the CSRF token.
+        sid = mw.signer.unsign(client.cookies[COOKIE_NAME]).decode()
+        data = await mw.store.get(sid) or {}
+        await mw.store.set(sid, {**data, "access_denied_email": email})
+
+    return _login
+
+
 # ---------------------------------------------------------------------------
 # POST /api/auth/request-access
 # ---------------------------------------------------------------------------
 
 
-async def test_request_access_creates_pending(client, db_session):
+async def test_request_access_creates_pending(client, db_session, login_denied):
     """Submitting an access request creates a pending record."""
+    await login_denied("new@example.com")
     resp = await client.post(
         "/api/auth/request-access",
         json={"email": "new@example.com", "naam": "New User"},
@@ -61,8 +84,11 @@ async def test_request_access_creates_pending(client, db_session):
     assert req.naam == "New User"
 
 
-async def test_request_access_duplicate_returns_already_pending(client, db_session):
+async def test_request_access_duplicate_returns_already_pending(
+    client, db_session, login_denied
+):
     """Submitting a second request for the same email returns already_pending."""
+    await login_denied("dup@example.com")
     # First request
     resp1 = await client.post(
         "/api/auth/request-access",
@@ -79,8 +105,9 @@ async def test_request_access_duplicate_returns_already_pending(client, db_sessi
     assert resp2.json()["status"] == "already_pending"
 
 
-async def test_request_access_already_allowed(client):
+async def test_request_access_already_allowed(client, login_denied):
     """If email is already on whitelist, returns already_allowed."""
+    await login_denied("existing@example.com")
     resp = await client.post(
         "/api/auth/request-access",
         json={"email": "existing@example.com", "naam": "Existing"},
@@ -90,7 +117,7 @@ async def test_request_access_already_allowed(client):
     assert resp.json()["has_pending"] is False
 
 
-async def test_request_access_notifies_admins(client, db_session):
+async def test_request_access_notifies_admins(client, db_session, login_denied):
     """Submitting an access request sends notifications to admin users."""
     admin_id = uuid.uuid4()
     admin = Person(
@@ -109,6 +136,7 @@ async def test_request_access_notifies_admins(client, db_session):
     )
     await db_session.flush()
 
+    await login_denied("notifier@example.com")
     resp = await client.post(
         "/api/auth/request-access",
         json={"email": "notifier@example.com", "naam": "Notifier"},
@@ -126,8 +154,9 @@ async def test_request_access_notifies_admins(client, db_session):
     assert "Notifier" in notif.title
 
 
-async def test_request_access_email_normalized(client, db_session):
+async def test_request_access_email_normalized(client, db_session, login_denied):
     """Email should be lowercased and stripped."""
+    await login_denied("upper@example.com")
     resp = await client.post(
         "/api/auth/request-access",
         json={"email": "  Upper@Example.COM  ", "naam": "Upper"},
@@ -140,9 +169,10 @@ async def test_request_access_email_normalized(client, db_session):
     assert result.scalar_one() is not None
 
 
-async def test_request_access_rate_limit(client):
+async def test_request_access_rate_limit(client, login_denied):
     """After exceeding the rate limit, returns 429."""
     for i in range(5):
+        await login_denied(f"rate{i}@example.com")
         resp = await client.post(
             "/api/auth/request-access",
             json={"email": f"rate{i}@example.com", "naam": f"Rate {i}"},
@@ -150,6 +180,7 @@ async def test_request_access_rate_limit(client):
         assert resp.status_code == 200
 
     # 6th request should be rate limited
+    await login_denied("rate5@example.com")
     resp = await client.post(
         "/api/auth/request-access",
         json={"email": "rate5@example.com", "naam": "Rate 5"},
@@ -157,52 +188,146 @@ async def test_request_access_rate_limit(client):
     assert resp.status_code == 429
 
 
+async def test_request_access_only_for_the_refused_login(client, login_denied):
+    """Nobody requests access for (or probes the whitelist with) another address."""
+    body = {"email": "existing@example.com", "naam": "X"}
+    anonymous = await client.post("/api/auth/request-access", json=body)
+    await login_denied("me@example.com")
+    other = await client.post("/api/auth/request-access", json=body)
+
+    assert anonymous.status_code == 401
+    assert other.status_code == 403
+    assert "allowed" not in other.text
+
+
+async def test_auth_status_binds_the_refused_login_to_the_session(
+    client, monkeypatch, _test_app
+):
+    """``/status`` remembers the address the whitelist refused, and only that."""
+    import bouwmeester.api.routes.auth as auth_routes
+    from bouwmeester.core.config import get_settings
+    from bouwmeester.middleware.session import COOKIE_NAME
+    from tests.conftest import _find_session_middleware
+
+    monkeypatch.setattr(get_settings(), "OIDC_ISSUER", "https://idp.example")
+
+    async def _valid(session, settings):
+        return True
+
+    monkeypatch.setattr(auth_routes, "validate_session_token", _valid)
+    mw = _find_session_middleware(_test_app)
+    sid = uuid.uuid4().hex
+    await mw.store.set(
+        sid, {"access_token": "t", "person_email": "Refused@Example.com"}
+    )
+    client.cookies.set(COOKIE_NAME, mw.signer.sign(sid).decode())
+
+    status = await client.get("/api/auth/status")
+    polled = await client.get("/api/auth/access-request-status")
+
+    assert status.json()["access_denied"] is True
+    assert polled.status_code == 200
+    assert polled.json()["status"] is None
+
+
 # ---------------------------------------------------------------------------
 # GET /api/auth/access-request-status
 # ---------------------------------------------------------------------------
 
 
-async def test_access_request_status_no_request(client):
-    """Status check for unknown email returns no pending, null status."""
+async def test_access_request_status_without_a_refused_login(client, db_session):
+    """No refused login in this session: nothing to report, for any address."""
+    db_session.add(
+        AccessRequest(
+            email="denied@example.com",
+            naam="Denied User",
+            status="denied",
+            deny_reason="Not eligible",
+        )
+    )
+    await db_session.flush()
+
     resp = await client.get(
         "/api/auth/access-request-status",
-        params={"email": "nobody@example.com"},
+        params={"email": "denied@example.com"},
     )
+    assert resp.status_code == 401
+    assert "Not eligible" not in resp.text
+
+
+async def test_access_request_status_ignores_the_email_parameter(
+    client, db_session, login_denied
+):
+    """The status is the session's own, whatever address is asked for."""
+    db_session.add(
+        AccessRequest(
+            email="denied@example.com",
+            naam="Denied User",
+            status="denied",
+            deny_reason="Not eligible",
+        )
+    )
+    await db_session.flush()
+    await login_denied("me@example.com")
+
+    resp = await client.get(
+        "/api/auth/access-request-status",
+        params={"email": "denied@example.com"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] is None
+    assert "Not eligible" not in resp.text
+
+
+async def test_access_request_status_is_rate_limited(client, login_denied):
+    from bouwmeester.api.routes.auth import _access_status_rate_limiter
+
+    _access_status_rate_limiter.clear()
+    await login_denied("poller@example.com")
+    codes = [
+        (await client.get("/api/auth/access-request-status")).status_code
+        for _ in range(_access_status_rate_limiter.max_requests + 1)
+    ]
+    _access_status_rate_limiter.clear()
+    assert codes[-1] == 429
+    assert set(codes[:-1]) == {200}
+
+
+async def test_access_request_status_no_request(client, login_denied):
+    """Status check for unknown email returns no pending, null status."""
+    await login_denied("nobody@example.com")
+    resp = await client.get("/api/auth/access-request-status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["has_pending"] is False
     assert data["status"] is None
 
 
-async def test_access_request_status_pending(client, db_session):
+async def test_access_request_status_pending(client, db_session, login_denied):
     """Status check for a pending request returns pending."""
     req = AccessRequest(email="pending@example.com", naam="Pending User")
     db_session.add(req)
     await db_session.flush()
 
-    resp = await client.get(
-        "/api/auth/access-request-status",
-        params={"email": "pending@example.com"},
-    )
+    await login_denied("pending@example.com")
+    resp = await client.get("/api/auth/access-request-status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["has_pending"] is True
     assert data["status"] == "pending"
 
 
-async def test_access_request_status_already_allowed(client):
+async def test_access_request_status_already_allowed(client, login_denied):
     """Status check for a whitelisted email returns approved."""
-    resp = await client.get(
-        "/api/auth/access-request-status",
-        params={"email": "existing@example.com"},
-    )
+    await login_denied("existing@example.com")
+    resp = await client.get("/api/auth/access-request-status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "approved"
     assert data["has_pending"] is False
 
 
-async def test_access_request_status_denied(client, db_session):
+async def test_access_request_status_denied(client, db_session, login_denied):
     """Status check for a denied request returns denied with reason."""
     req = AccessRequest(
         email="denied@example.com",
@@ -213,10 +338,8 @@ async def test_access_request_status_denied(client, db_session):
     db_session.add(req)
     await db_session.flush()
 
-    resp = await client.get(
-        "/api/auth/access-request-status",
-        params={"email": "denied@example.com"},
-    )
+    await login_denied("denied@example.com")
+    resp = await client.get("/api/auth/access-request-status")
     assert resp.status_code == 200
     data = resp.json()
     assert data["has_pending"] is False
