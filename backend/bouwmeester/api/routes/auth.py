@@ -7,7 +7,7 @@ import time
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -246,6 +246,9 @@ async def auth_status(
         if not is_email_allowed(email):
             logger.warning("Access denied for %s — not on whitelist", email)
             request.session.clear()
+            # The login proved this address: the access-request endpoints
+            # answer for it, and for no other.
+            request.session[_DENIED_EMAIL] = normalize_email(email)
             return {
                 "authenticated": False,
                 "oidc_configured": oidc_configured,
@@ -640,6 +643,25 @@ async def dismiss_onboarding_feature(
 
 # Stricter rate limiter for access requests.
 _access_request_rate_limiter = InMemoryRateLimiter(window=300, max_requests=5)
+# The status check is polled (every 5 s) while a request is pending; keyed
+# per address, since behind the ingress everyone shares one IP.
+_access_status_rate_limiter = InMemoryRateLimiter(window=60, max_requests=20)
+
+# Session key: the address a login proved but the whitelist refused.  Set by
+# ``/status``; the access-request endpoints only answer for this address, so
+# nobody learns another address's whitelist status or deny reason.
+_DENIED_EMAIL = "access_denied_email"
+
+
+def _denied_email(request: Request) -> str:
+    """The refused address of this session, or 401."""
+    email = request.session.get(_DENIED_EMAIL)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Log eerst in om toegang aan te vragen",
+        )
+    return email
 
 
 @router.post("/request-access", response_model=AccessRequestStatusResponse)
@@ -648,10 +670,19 @@ async def request_access(
     body: AccessRequestCreate,
     db: AsyncSession = Depends(get_db),
 ) -> AccessRequestStatusResponse:
-    """Submit an access request. Public endpoint (no auth required)."""
+    """Submit an access request for the address this session logged in with.
+
+    Public (the requester has no access yet) but bound to the refused login:
+    a request for any other address is refused.
+    """
     _access_request_rate_limiter.check(request)
 
     email = normalize_email(body.email)
+    if email != _denied_email(request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Je kunt alleen toegang aanvragen voor je eigen e-mailadres",
+        )
 
     # If already on whitelist, tell the user
     if is_email_allowed(email):
@@ -703,11 +734,16 @@ async def request_access(
 
 @router.get("/access-request-status", response_model=AccessRequestStatusResponse)
 async def access_request_status(
-    email: str = Query(...),
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> AccessRequestStatusResponse:
-    """Check the status of the latest access request for an email."""
-    email = normalize_email(email)
+    """The status of this session's latest access request.
+
+    Only for the address the session's login proved (``_DENIED_EMAIL``);
+    an ``email`` query parameter is ignored.
+    """
+    email = _denied_email(request)
+    _access_status_rate_limiter.check_key(email)
 
     # If already on whitelist, they're allowed now
     if is_email_allowed(email):
