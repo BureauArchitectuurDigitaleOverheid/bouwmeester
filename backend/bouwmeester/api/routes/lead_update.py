@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from bouwmeester.api.deps import get_child_or_404, require_found
+from bouwmeester.api.routes.initiatief_update import apply_post_edit
 from bouwmeester.api.routes.leads import (
     MAX_LLM_UPLOAD_BYTES,
     MAX_LLM_UPLOADS,
@@ -468,10 +469,7 @@ async def edit_update(
         and any(f in payload and payload[f] != getattr(post, f) for f in _PUBLIC)
     ):
         await require_may_publish(db, perm_ctx, await _initiatief_of(db, lead_id))
-    for key, value in payload.items():
-        if key in {"mail_to", "mail_cc"} and value is not None:
-            value = list(value)
-        setattr(post, key, value)
+    apply_post_edit(post, payload, current_user.id if current_user else None)
     await db.flush()
     await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])

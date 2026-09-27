@@ -1,6 +1,7 @@
 """API routes for InitiatiefUpdatePost (publication posts on an initiatief)."""
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -33,6 +34,22 @@ _UPDATE_POST = requires(
 _DELETE_POST = requires(
     "initiatief_update:delete", "initiatief", path_param="initiatief_id"
 )
+
+
+def apply_post_edit(post: Any, changes: dict[str, Any], actor_id: UUID | None) -> None:
+    """Write *changes* into an update post (initiatief or lead).
+
+    A published post names who published it (on the public page too).  When
+    its content changes, that is whoever put the current text there, so the
+    editor becomes its publisher; ``published_at`` stays the first moment.
+    """
+    changed = False
+    for key, value in changes.items():
+        if getattr(post, key) != value:
+            setattr(post, key, value)
+            changed = True
+    if changed and post.published_at is not None:
+        post.published_by_id = actor_id
 
 
 def _to_response(post: InitiatiefUpdatePost) -> InitiatiefUpdatePostResponse:
@@ -119,13 +136,16 @@ async def edit_update(
     initiatief_id: UUID,
     post_id: UUID,
     data: InitiatiefUpdatePostEdit,
+    current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     _authz=Depends(_UPDATE_POST),
 ) -> InitiatiefUpdatePostResponse:
     post = await _load_post(db, initiatief_id, post_id)
-    payload = data.model_dump(exclude_unset=True)
-    for key, value in payload.items():
-        setattr(post, key, value)
+    apply_post_edit(
+        post,
+        data.model_dump(exclude_unset=True),
+        current_user.id if current_user else None,
+    )
     await db.flush()
     await db.refresh(post)
     await db.refresh(post, attribute_names=["published_by"])

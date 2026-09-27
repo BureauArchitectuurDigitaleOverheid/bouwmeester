@@ -2,6 +2,8 @@
 
 import uuid
 
+import pytest
+
 
 async def _create_initiatief(db_session, *, naam: str = "Init"):
     from bouwmeester.models.initiatief import Initiatief
@@ -108,3 +110,37 @@ async def test_list_updates_returns_drafts_and_published(client, db_session):
     assert resp.status_code == 200
     titles = {u["titel"] for u in resp.json()}
     assert titles == {"Draft 1", "Live 1"}
+
+
+@pytest.mark.parametrize("kind", ["initiatief", "lead"])
+async def test_editing_a_published_post_makes_the_editor_its_publisher(
+    db_session, kind
+):
+    """The public page names the publisher: after an edit, the editor."""
+    from bouwmeester.models.lead import Lead
+    from tests.factories import client_as, grant_role, make_person
+
+    init = await _create_initiatief(db_session)
+    base = f"/api/initiatieven/{init.id}"
+    if kind == "lead":
+        lead = Lead(title="Lead", stage="verkennen", initiatief_id=init.id)
+        db_session.add(lead)
+        await db_session.flush()
+        base = f"/api/leads/{lead.id}"
+    publisher = await make_person(db_session, "Publicist")
+    editor = await make_person(db_session, "Redacteur")
+    for person in (publisher, editor):
+        await grant_role(db_session, person, "super_admin")
+
+    async with client_as(db_session, publisher) as c:
+        created = await c.post(
+            f"{base}/updates", json={"titel": "Oud", "publish": True}
+        )
+    post = f"{base}/updates/{created.json()['id']}"
+    async with client_as(db_session, editor) as c:
+        unchanged = await c.put(post, json={"titel": "Oud"})
+        edited = await c.put(post, json={"titel": "Nieuw"})
+    assert unchanged.json()["published_by_id"] == str(publisher.id)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["published_by_id"] == str(editor.id)
+    assert edited.json()["published_by_naam"] == "Redacteur"
