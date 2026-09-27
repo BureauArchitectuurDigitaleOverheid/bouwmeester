@@ -184,7 +184,6 @@ async def test_format_notification(db_session: AsyncSession, sample_person):
         mock_settings.return_value.MATTERMOST_URL = "http://localhost:8065"
         mock_settings.return_value.FRONTEND_URL = "http://localhost:5173"
         mock_settings.return_value.BACKEND_URL = "http://localhost:8000"
-        mock_settings.return_value.MATTERMOST_NOTIFICATION_CHANNEL_ID = ""
         mock_settings.return_value.MATTERMOST_WEBHOOK_TOKEN = ""
 
         service = MattermostService(db_session)
