@@ -56,9 +56,13 @@ class Initiatief(Base):
 
     # Relationships
     created_by: Mapped["Person"] = relationship("Person", foreign_keys=[created_by_id])  # noqa: F821
+    # Deleting an initiatief removes its leads (ON DELETE CASCADE, decided
+    # by core.deletion).  "all" keeps the ORM from nulling lead.initiatief_id
+    # instead, which would leave the leads behind without a scope.
     leads: Mapped[list["Lead"]] = relationship(  # noqa: F821
         "Lead",
         back_populates="initiatief",
+        passive_deletes="all",
     )
     updates: Mapped[list["InitiatiefUpdatePost"]] = relationship(  # noqa: F821
         "InitiatiefUpdatePost",
