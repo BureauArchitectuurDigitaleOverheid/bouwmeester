@@ -11,7 +11,8 @@ from bouwmeester.schema.corpus_node import CorpusNodeResponse
 class SuggestedEdgeResponse(BaseModel):
     id: UUID
     parlementair_item_id: UUID
-    target_node_id: UUID
+    # None when the caller cannot read the target node (see the routes).
+    target_node_id: UUID | None
     target_node: CorpusNodeResponse | None = None
     edge_type_id: str
     confidence: float

@@ -10,7 +10,11 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.org_context import OrgContext, apply_org_filter
+from bouwmeester.core.org_context import (
+    OrgContext,
+    apply_node_filter,
+    apply_org_filter,
+)
 from bouwmeester.core.query_utils import escape_like
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.edge import Edge
@@ -160,11 +164,14 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
     async def get_beleidskompas_progress(
         self,
         dossier_ids: list[UUID],
+        *,
+        org_ctx: OrgContext | None = None,
     ) -> dict[UUID, tuple[int, int]]:
         """Return beleidskompas progress for a list of dossier node IDs.
 
         For each dossier, counts child node types connected via
-        ``onderdeel_van`` edges and checks against the 5 KCBR steps.
+        ``onderdeel_van`` edges and checks against the 5 KCBR steps.  Only
+        the children *org_ctx* sees count.
 
         Returns a dict mapping dossier_id → (completed_steps, total_steps).
         """
@@ -197,6 +204,7 @@ class CorpusNodeRepository(BaseRepository[CorpusNode]):
             )
             .distinct()
         )
+        stmt = apply_node_filter(stmt, org_ctx)
         result = await self.session.execute(stmt)
         rows = result.all()
 

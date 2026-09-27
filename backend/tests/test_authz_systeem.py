@@ -220,18 +220,21 @@ async def test_approving_a_suggested_edge_is_the_reviewers_mandate(
 ):
     await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
     item = await make_item(world, node)
-    suggested = SuggestedEdge(
-        parlementair_item_id=item.id,
-        target_node_id=world.res[target],
-        edge_type_id=world.res["edge_type"],
-        confidence=0.9,
+    suggested, other = (
+        SuggestedEdge(
+            parlementair_item_id=item.id,
+            target_node_id=world.res[t],
+            edge_type_id=world.res["edge_type"],
+            confidence=0.9,
+        )
+        for t in (target, "node_afdeling")
     )
-    world.db.add(suggested)
+    world.db.add_all([suggested, other])
     await world.db.flush()
     async with client_as(world.db, world.person[who]) as c:
         approve = await c.put(f"/api/parlementair/edges/{suggested.id}/approve")
         # rejecting creates nothing: reviewing the item is enough
-        reject = await c.put(f"/api/parlementair/edges/{suggested.id}/reject")
+        reject = await c.put(f"/api/parlementair/edges/{other.id}/reject")
     assert approve.status_code == expected, approve.text
     assert reject.status_code == 200, reject.text
 

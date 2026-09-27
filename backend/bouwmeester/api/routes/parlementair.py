@@ -8,6 +8,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import require_found
@@ -106,14 +107,33 @@ def _item_response(
 
 
 def _edge_response(edge: SuggestedEdge, org_ctx: OrgContext) -> SuggestedEdgeResponse:
-    """One suggestion, its target node left out when the caller cannot see it.
+    """One suggestion, all about its target left out when the caller cannot see it.
 
-    A reviewer acts on the item's node; the target may lie elsewhere.
+    A reviewer acts on the item's node; the target may lie elsewhere.  Its
+    id and the reason (which describes the target) go as well.
     """
     response = SuggestedEdgeResponse.model_validate(edge)
     if not _sees_target(edge, org_ctx):
         response.target_node = None
+        response.target_node_id = None
+        response.reason = None
     return response
+
+
+def _require_status(edge: SuggestedEdge, *allowed: str) -> None:
+    """409 unless the suggestion is in one of the *allowed* statuses.
+
+    Approving and rejecting are decisions on an open suggestion; to change
+    a decision, reset the suggestion first.
+    """
+    if edge.status not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Over deze suggestie is al besloten; zet haar eerst terug "
+                "om opnieuw te beslissen"
+            ),
+        )
 
 
 # Reviewing a suggestion is parlementair:review on its item's node; core.authz
@@ -445,8 +465,9 @@ async def approve_edge(
     _authz=Depends(_REVIEW_EDGE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
-    """Approve a suggested edge, creating the actual edge in the graph."""
+    """Approve an open suggested edge, creating the actual edge in the graph."""
     suggested_edge = require_found(await db.get(SuggestedEdge, edge_id), "Suggestie")
+    _require_status(suggested_edge, "pending")
     suggested_edge_repo = SuggestedEdgeRepository(db)
     item = await db.get(ParlementairItem, suggested_edge.parlementair_item_id)
     if item is None or item.corpus_node_id is None:
@@ -472,8 +493,15 @@ async def approve_edge(
         edge_type_id=suggested_edge.edge_type_id,
         description=SUGGESTED_EDGE_DESCRIPTION,
     )
-    db.add(edge)
-    await db.flush()
+    try:
+        async with db.begin_nested():
+            db.add(edge)
+            await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Deze relatie bestaat al",
+        ) from None
 
     # Update suggested edge status
     suggested_edge.status = "approved"
@@ -502,7 +530,10 @@ async def reject_edge(
     _authz=Depends(_REVIEW_EDGE),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> SuggestedEdgeResponse:
-    """Reject a suggested edge (sets status to rejected)."""
+    """Reject an open suggested edge (sets status to rejected)."""
+    _require_status(
+        require_found(await db.get(SuggestedEdge, edge_id), "Suggestie"), "pending"
+    )
     repo = SuggestedEdgeRepository(db)
     updated = require_found(
         await repo.update_status(edge_id, "rejected", reviewed_at=datetime.now(UTC)),

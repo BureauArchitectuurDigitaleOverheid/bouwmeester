@@ -13,6 +13,7 @@ from bouwmeester.core.initiatief_context import (
     get_initiatief_context,
 )
 from bouwmeester.core.org_context import OrgContext, get_org_context
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.repositories.graph import GraphRepository
 from bouwmeester.schema.community_graph import CommunityGraphResponse
 from bouwmeester.schema.corpus_node import CorpusNodeResponse, NodeType
@@ -74,17 +75,20 @@ async def get_community_graph(
     init_ctx: InitiatiefContext = Depends(get_initiatief_context),
     initiatief_id: UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> CommunityGraphResponse:
     """Return a community graph of leads, people, organisations and corpus nodes.
 
     Builds a unified graph starting from leads (filtered by the caller's
     initiatief context for visibility, and optionally narrowed to a single
     ``initiatief_id``) and transitively includes all related persons,
-    external organisations, samenwerkingsverbanden and corpus nodes.
+    external organisations, samenwerkingsverbanden and corpus nodes.  People
+    only for whoever holds ``people:read``, as ``GET /people`` asks.
     """
     repo = GraphRepository(db)
     return await repo.get_community_graph(
         org_ctx=org_ctx,
         init_ctx=init_ctx,
         initiatief_id=initiatief_id,
+        include_people=perm_ctx.has_permission("people:read"),
     )

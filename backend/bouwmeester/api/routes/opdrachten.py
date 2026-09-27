@@ -7,7 +7,7 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_deleted, require_found, validate_list
+from bouwmeester.api.deps import require_deleted, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authority import (
     require_can_change_grants,
@@ -45,6 +45,10 @@ from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.notification_service import NotificationService
 from bouwmeester.services.opdracht_matching_service import OpdrachtMatchingService
 from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
+from bouwmeester.services.visibility_filters import (
+    opdracht_response,
+    opdracht_responses,
+)
 from bouwmeester.utils.financieel import calculate_uitnutting
 
 router = APIRouter(prefix="/opdrachten", tags=["opdrachten"])
@@ -69,6 +73,7 @@ async def list_opdrachten(
     skip: int = Query(0, ge=0),
     limit: int = Query(10_000, ge=1, le=10_000),
     db: AsyncSession = Depends(get_db),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     org_ctx: OrgContext = Depends(get_org_context),
 ) -> list[OpdrachtResponse]:
     repo = OpdrachtRepository(db)
@@ -84,7 +89,7 @@ async def list_opdrachten(
         verantwoordelijke_id=verantwoordelijke_id,
         org_ctx=org_ctx,
     )
-    return validate_list(OpdrachtResponse, items)
+    return await opdracht_responses(db, perm_ctx, items)
 
 
 @router.get("/summary", response_model=OpdrachtenSummary)
@@ -164,7 +169,10 @@ async def create_opdracht(
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
 ) -> OpdrachtResponse:
-    await require(db, perm_ctx, "node:read", "corpus_node", data.instrument_id)
+    for node_id in [data.instrument_id] + [
+        k.node_id for k in data.node_koppelingen or []
+    ]:
+        await require(db, perm_ctx, "node:read", "corpus_node", node_id)
     await require(db, perm_ctx, "opdracht:create", "opdracht", place=data)
     repo = OpdrachtRepository(db)
     opdracht = await repo.create(data)
@@ -192,7 +200,7 @@ async def create_opdracht(
     # Auto-generate tasks
     await OpdrachtTaskService(db).on_opdracht_created(opdracht)
 
-    return OpdrachtResponse.model_validate(opdracht)
+    return await opdracht_response(db, perm_ctx, opdracht)
 
 
 @router.get("/{id}", response_model=OpdrachtResponse)
@@ -200,7 +208,7 @@ async def get_opdracht(
     id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_READ_OPDRACHT),
+    perm_ctx: PermissionContext = Depends(_READ_OPDRACHT),
 ) -> OpdrachtResponse:
     repo = OpdrachtRepository(db)
     opdracht = require_found(await repo.get(id), "Opdracht")
@@ -242,7 +250,7 @@ async def get_opdracht(
         if rp.organisatie_eenheid_id is not None
     ]
 
-    resp = OpdrachtResponse.model_validate(opdracht)
+    resp = await opdracht_response(db, perm_ctx, opdracht)
     return resp.model_copy(update={"members": members, "eenheden": eenheden})
 
 
@@ -315,7 +323,7 @@ async def update_opdracht(
         opdracht.sync_status = SyncStatus.pending_push
         await db.flush()
 
-    return OpdrachtResponse.model_validate(opdracht)
+    return await opdracht_response(db, perm_ctx, opdracht)
 
 
 @router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)

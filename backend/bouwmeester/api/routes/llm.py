@@ -68,6 +68,7 @@ async def gap_analysis(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     perm_ctx: PermissionContext = Depends(get_permission_context),
+    org_ctx: OrgContext = Depends(get_org_context),
 ) -> GapAnalysisResponse:
     """Analyze completeness of a dossier against the Beleidskompas model."""
     # The analysis reads the dossier: ask what ``GET /nodes/{id}`` asks.
@@ -77,7 +78,7 @@ async def gap_analysis(
     llm_service = await get_llm_service_for(DataSensitivity.INTERNAL, db)
     gap_service = GapDetectionService(db, llm_service)
     gaps, completed, total, llm_result = await gap_service.analyze_dossier(
-        str(request.dossier_id)
+        str(request.dossier_id), org_ctx
     )
 
     return GapAnalysisResponse(

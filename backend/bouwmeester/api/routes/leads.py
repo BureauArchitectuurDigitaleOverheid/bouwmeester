@@ -76,6 +76,7 @@ from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.lead_rules import require_lead_create
 from bouwmeester.services.mention_helper import sync_and_notify_mentions
 from bouwmeester.services.notification_service import NotificationService
+from bouwmeester.services.visibility_filters import redact_lead_detail
 
 router = APIRouter(prefix="/leads", tags=["leads"])
 
@@ -333,7 +334,7 @@ async def get_lead(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_READ_LEAD),
+    perm_ctx: PermissionContext = Depends(_READ_LEAD),
 ) -> LeadDetailResponse:
     """Get lead detail including activities, contacts, and linked nodes."""
     repo = LeadRepository(db)
@@ -359,7 +360,9 @@ async def get_lead(
         for rp in rp_contacts
     ]
 
-    response = LeadDetailResponse.model_validate(lead)
+    response = await redact_lead_detail(
+        db, perm_ctx, LeadDetailResponse.model_validate(lead)
+    )
     response.contacts = contacts
 
     gh_repo = GitHubLinkRepository(db)
