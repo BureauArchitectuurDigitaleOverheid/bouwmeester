@@ -31,6 +31,7 @@ from bouwmeester.core.text import unescape_html
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.models.pending_reconciliation import PendingReconciliation
 from bouwmeester.models.tooi_sync_log import TooiSyncLog
+from bouwmeester.services.auto_merge_ministeries import merge_ministries
 
 log = logging.getLogger(__name__)
 
@@ -713,8 +714,6 @@ async def sync_tooi(
     # uniek). Idempotent: bij volgende runs zijn er geen open conflicten meer
     # voor type=ministerie en doet de helper niks.
     if stats.conflicts > 0 and commit:
-        from bouwmeester.services.auto_merge_ministries import merge_ministries
-
         n_merged = await merge_ministries(session)
         if n_merged:
             log.info("Auto-merge ministeries: %d rijen samengevoegd", n_merged)

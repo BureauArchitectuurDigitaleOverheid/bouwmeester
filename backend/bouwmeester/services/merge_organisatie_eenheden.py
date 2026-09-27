@@ -32,6 +32,8 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
+
 log = logging.getLogger(__name__)
 
 
@@ -460,3 +462,29 @@ async def merge_organisatie_eenheden(
 
     log.info("Merge %s -> %s klaar: %s", source_id, target_id, rewritten)
     return rewritten
+
+
+def _backfill_target_fields(
+    *, target: OrganisatieEenheid, source: OrganisatieEenheid
+) -> None:
+    """Fill empty target fields from the source before the merge.
+
+    TOOI supplies no afkorting/website/kvk/beschrijving, a manual row often
+    does; without a backfill that data would vanish with the source row.
+    """
+    for field in ("afkorting", "website", "kvk_nummer", "beschrijving"):
+        if not getattr(target, field) and getattr(source, field):
+            setattr(target, field, getattr(source, field))
+
+
+async def merge_into(
+    session: AsyncSession, *, source: OrganisatieEenheid, target: OrganisatieEenheid
+) -> dict[str, int]:
+    """Backfill *target* from *source*, then merge *source* into it.
+
+    The one merge of two eenheden that the admin routes and the automatic
+    ministerie merge share.  Caller commits.
+    """
+    _backfill_target_fields(target=target, source=source)
+    await session.flush()
+    return await merge_organisatie_eenheden(session, source.id, target.id)
