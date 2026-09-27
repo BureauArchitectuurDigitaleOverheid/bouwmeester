@@ -2,8 +2,12 @@
 
 An agent acts on what it is handed with its own rights, not the sender's,
 so handing it work lets the sender borrow those rights.  A DM or reply, a
-task or lead assigned to it, and an @mention all hand it work; every path
-asks the one rule here.
+task or lead assigned to it, an @mention, a role, a grant or a placement
+all hand it work or power; every path asks the one rule here.
+
+Work the system generates (worker jobs, follow-up tasks, notifications
+without a sender) comes from ``SYSTEM_ACTOR``, which is no super_admin: the
+system never instructs an agent, so whoever triggers it cannot either.
 """
 
 from uuid import UUID
@@ -17,10 +21,26 @@ from bouwmeester.models.person import Person
 
 AGENT_INSTRUCTION_REFUSED = "Alleen systeembeheerders mogen een agent aansturen"
 
+# The system as actor: authenticated, but no super_admin.
+SYSTEM_ACTOR = PermissionContext(is_authenticated=True)
+
 
 def may_instruct(perm_ctx: PermissionContext, target: Person | None) -> bool:
     """May the caller hand *target* work?  Anyone but an agent: yes."""
     return target is None or not target.is_agent or perm_ctx.is_super_admin
+
+
+async def sender_may_instruct(
+    db: AsyncSession, sender_id: UUID | None, target: Person | None
+) -> bool:
+    """:func:`may_instruct` for a sender known by id; None is the system."""
+    if target is None or not target.is_agent:
+        return True
+    if sender_id is None:
+        return may_instruct(SYSTEM_ACTOR, target)
+    from bouwmeester.core.authz import perm_ctx_for
+
+    return may_instruct(await perm_ctx_for(db, sender_id), target)
 
 
 def require_may_instruct(perm_ctx: PermissionContext, target: Person | None) -> None:

@@ -8,7 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.opdracht import Opdracht
+from bouwmeester.models.person import Person
 from bouwmeester.models.task import Task
+from bouwmeester.services.agent_rules import SYSTEM_ACTOR, may_instruct
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +164,17 @@ class OpdrachtTaskService:
             )
             return False
 
+        # The system generates this task, and the system instructs no agent:
+        # an agent verantwoordelijke would take its orders from whoever may
+        # edit the opdracht's title or status.  Such a task stays unassigned.
+        verantwoordelijke = await self.session.get(
+            Person, opdracht.verantwoordelijke_id
+        )
+        assignee_id = (
+            opdracht.verantwoordelijke_id
+            if may_instruct(SYSTEM_ACTOR, verantwoordelijke)
+            else None
+        )
         task = Task(
             node_id=opdracht.instrument_id,
             opdracht_id=opdracht.id,
@@ -169,7 +182,7 @@ class OpdrachtTaskService:
             priority=priority,
             status="open",
             work_type=work_type,
-            assignee_id=opdracht.verantwoordelijke_id,
+            assignee_id=assignee_id,
             deadline=deadline,
         )
         self.session.add(task)
