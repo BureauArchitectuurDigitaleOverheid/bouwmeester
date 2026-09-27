@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCan } from '@/hooks/useCan';
 import { useDebounce } from '@/hooks/useDebounce';
 import {
   getLeads,
@@ -404,4 +405,19 @@ export function useLeadTimeline(params?: {
     queryKey: [...queryKeys.leads.all, 'timeline', params],
     queryFn: () => getLeadTimeline(params),
   });
+}
+
+/**
+ * May the current user put lead content on the public page of `initiatiefId`
+ * (public fields, a published post with a public text)? That page is the
+ * initiatief's, as in the backend's `lead_rules.require_may_publish`:
+ * `lead:update` alone does not reach it. A lead without initiatief shows on
+ * no page.
+ */
+export function useCanPublishLead(initiatiefId: string | null | undefined): boolean {
+  const { allowed } = useCan(
+    'initiatief:update',
+    initiatiefId ? { type: 'initiatief', id: initiatiefId } : null,
+  );
+  return !initiatiefId || allowed;
 }

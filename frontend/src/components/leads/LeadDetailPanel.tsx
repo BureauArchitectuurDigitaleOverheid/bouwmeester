@@ -34,6 +34,7 @@ import {
   useLeadTags,
   useAddTagToLead,
   useRemoveTagFromLead,
+  useCanPublishLead,
 } from '@/hooks/useLeads';
 import { useCurrentPerson } from '@/contexts/CurrentPersonContext';
 import { useCan } from '@/hooks/useCan';
@@ -130,6 +131,8 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
   const leadResource = leadId ? ({ type: 'lead', id: leadId } as const) : null;
   const { allowed: canUpdate, showAction: showUpdate } = useCan('lead:update', leadResource);
   const { allowed: canDelete, showAction: showDelete } = useCan('lead:delete', leadResource);
+  // What the lead shows on the initiatief's public page is the initiatief's.
+  const canPublish = useCanPublishLead(lead?.initiatief_id);
   const removeContact = useRemoveLeadContact();
   const unlinkNode = useUnlinkLeadNode();
   const uploadAttachment = useUploadLeadAttachment();
@@ -216,9 +219,11 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
       score_strategisch: editScoreStrategisch === '' ? null : editScoreStrategisch,
       score_politiek: editScorePolitiek === '' ? null : editScorePolitiek,
       score_positie: editScorePositie === '' ? null : editScorePositie,
-      public_visible: editPublicVisible,
-      public_title: editPublicTitle.trim() || null,
-      public_summary: editPublicSummary.trim() || null,
+      ...(canPublish && {
+        public_visible: editPublicVisible,
+        public_title: editPublicTitle.trim() || null,
+        public_summary: editPublicSummary.trim() || null,
+      }),
     };
 
     // Update lead fields
@@ -433,7 +438,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
           })()}
           {(() => {
             const linkedInit = initiatieven?.find((i) => i.id === editInitiatiefId);
-            if (!linkedInit?.public_page_enabled) return null;
+            if (!canPublish || !linkedInit?.public_page_enabled) return null;
             const status = publicationStatus({
               publicVisible: editPublicVisible,
               publicTitle: editPublicTitle,
@@ -678,7 +683,7 @@ export function LeadDetailPanel({ leadId, open, onClose }: LeadDetailPanelProps)
             );
           })()}
 
-          <LeadUpdatesSection leadId={lead.id} />
+          <LeadUpdatesSection leadId={lead.id} initiatiefId={lead.initiatief_id} />
 
           {/* Tags */}
           {(leadTags ?? []).length > 0 && (
