@@ -523,9 +523,14 @@ async def require_can_move_eenheid(
     decision about its members from the organisation's managers to its
     eigenaar, so that also needs a manager of the parent it leaves.
     Contact placements in it stay informational: moving never confirms them.
+
+    Editing the eenheid at all needs ``org:update`` on it, as the update
+    route asks; checked here too so the evaluation ``eenheid:move`` is this
+    guard alone.
     """
     if perm_ctx.is_super_admin:
         return
+    await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
     if new_parent_id == eenheid.parent_id and new_type == eenheid.type:
         return
     # Where it ends up internal, it is placed like a new internal eenheid

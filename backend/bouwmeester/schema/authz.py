@@ -36,6 +36,8 @@ class AuthzResourceProperties(BaseModel):
     # ``eenheid_id`` the permission on it decides; at the top an internal
     # type is system-only).
     eenheid_type: str | None = Field(default=None, max_length=100)
+    # ``eenheid:move``: the new parent (None: the top).
+    parent_id: UUID | None = None
 
 
 class AuthzResource(BaseModel):

@@ -147,6 +147,20 @@ async def _dissolve(
     await require_can_end_eenheid(db, perm_ctx, await _eenheid(db, ev))
 
 
+async def _move(
+    db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
+) -> None:
+    props = ev.resource.properties or _NO_PROPERTIES
+    eenheid = await _eenheid(db, ev)
+    await authority.require_can_move_eenheid(
+        db,
+        perm_ctx,
+        eenheid,
+        new_parent_id=props.parent_id,
+        new_type=props.eenheid_type or eenheid.type,
+    )
+
+
 async def _place(
     db: AsyncSession, perm_ctx: PermissionContext, ev: AuthzEvaluation
 ) -> None:
@@ -231,6 +245,7 @@ GRANT_ACTIONS: dict[str, Guard] = {
     "role:revoke": _revoke_role,
     "eenheid:set_manager": _set_manager,
     "eenheid:dissolve": _dissolve,
+    "eenheid:move": _move,
     "person:place": _place,
     "parlementair:name_owner": _name_owner,
     "eenheid:share": _share,
@@ -308,11 +323,12 @@ async def evaluate(
       ``corpus_node``, ``lead:create`` on an ``initiatief``.
     - A new eenheid: ``org:create`` on ``organisatie_eenheid`` with
       ``properties.eenheid_type`` and optional ``properties.eenheid_id``
-      (the parent).  Below a parent ``org:create`` on that parent decides,
-      for any type; without a parent an external type is free for anyone
-      holding ``org:create`` somewhere and an internal type is for system
-      roles only.  Without ``eenheid_type`` and with ``eenheid_id``: an
-      eenheid below it.
+      (the parent).  Below a parent ``org:create`` on that parent decides;
+      without a parent an external type is free for anyone holding
+      ``org:create`` somewhere.  An internal type only below an internal
+      parent; a ministerie, an internal root or an internal eenheid below an
+      external one only for super_admin.  Without ``eenheid_type`` and with
+      ``eenheid_id``: an eenheid below it.
     - ``properties.anywhere: true`` (no id): is there any eenheid where the
       caller may create this?  For generic create buttons (a task, a lead
       without initiatief).  For ``lead:create`` on ``lead`` this is exactly
@@ -343,6 +359,11 @@ async def evaluate(
       else).
     - ``eenheid:dissolve``, resource ``{type: "organisatie_eenheid", id}``:
       ending it (``geldig_tot``) or deleting it, the same guard.
+    - ``eenheid:move``, resource ``{type: "organisatie_eenheid", id}``,
+      ``properties.parent_id`` (the new parent; omitted or null: the top),
+      optional ``properties.eenheid_type`` (retyping it as well): moving it
+      there, into or out of the organisation (``require_can_move_eenheid``,
+      the guard ``PUT /api/organisatie/{id}`` calls).
     - ``person:place``, resource ``{type: "person", id?}``,
       ``properties.eenheid_id``, optional ``properties.ending`` (end the
       placement) and ``properties.contact`` (no id: a contact without

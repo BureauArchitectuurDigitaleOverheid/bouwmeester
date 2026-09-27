@@ -700,3 +700,52 @@ async def test_organogram_scrape_ignores_user_ministeries(world: World):
             )
         )
         assert child is None
+
+
+# ---------------------------------------------------------------------------
+# 6. Moving an eenheid: the evaluation is the route's guard (round 6)
+# ---------------------------------------------------------------------------
+
+
+async def test_move_evaluation_equals_the_route(world: World):
+    """Move-in, move-out and move below someone else's root, asked and done."""
+    editor = world.person["team_editor"]
+    gemeente, _, _ = await _gemeente(world)
+    own_root = await make_org(world.db, "Eigen root", "stichting")
+    own_root_2 = await make_org(world.db, "Eigen root 2", "stichting")
+    inside = await make_org(world.db, "Partner binnen", "stichting", world.org["team"])
+    for eenheid in (own_root, own_root_2, inside):
+        world.db.add(_owned_by(editor, eenheid))
+    await world.db.flush()
+    cases = {
+        "move-in": (own_root, world.org["team"].id),
+        "move-out": (inside, None),
+        "under-foreign-root": (own_root_2, gemeente.id),
+    }
+    async with client_as(world.db, editor) as c:
+        evaluations = [
+            ask("eenheid:move", "organisatie_eenheid", e.id, parent_id=parent)
+            if parent is not None
+            else {
+                "action": "eenheid:move",
+                "resource": {
+                    "type": "organisatie_eenheid",
+                    "id": str(e.id),
+                    "properties": {"parent_id": None},
+                },
+            }
+            for e, parent in cases.values()
+        ]
+        decisions = (
+            await c.post("/api/authz/evaluations", json={"evaluations": evaluations})
+        ).json()["evaluations"]
+        asked = dict(zip(cases, (d["decision"] for d in decisions)))
+        done = {}
+        for name, (eenheid, parent) in cases.items():
+            resp = await c.put(
+                f"/api/organisatie/{eenheid.id}",
+                json={"parent_id": str(parent) if parent else None},
+            )
+            done[name] = resp.status_code == 200
+    assert asked == done
+    assert asked == {"move-in": True, "move-out": False, "under-foreign-root": False}
