@@ -241,6 +241,8 @@ class GraphRepository:
         org_ctx: OrgContext | None = None,
         init_ctx: InitiatiefContext | None = None,
         initiatief_id: UUID | None = None,
+        *,
+        include_people: bool = True,
     ) -> CommunityGraphResponse:
         """Build a unified graph of leads, persons, organisations and corpus nodes.
 
@@ -248,6 +250,9 @@ class GraphRepository:
         when ``initiatief_id`` is given, narrowed to that single initiatief.
         It then transitively collects every person, external organisation,
         samenwerkingsverband and corpus node connected to those leads.
+        People (and what only they connect) are left out unless
+        *include_people*.  A role held by an eenheid instead of a person
+        connects to that eenheid.
 
         Returns a ``CommunityGraphResponse`` with deduplicated nodes and edges.
         """
@@ -349,8 +354,22 @@ class GraphRepository:
         person_ids = set[UUID]()
         internal_person_ids = set[UUID]()
         external_person_ids = set[UUID]()
+        # Eenheden holding a role on a lead or corpus node themselves.
+        grant_eenheid_ids = set[UUID]()
+
+        def _grant_target(grant: ResourcePermission, persons: set[UUID]) -> str | None:
+            """The graph key a role points to, collecting its holder; None: skip."""
+            if grant.person_id is None:
+                grant_eenheid_ids.add(grant.organisatie_eenheid_id)
+                return f"oe-{grant.organisatie_eenheid_id}"
+            if not include_people:
+                return None
+            person_ids.add(grant.person_id)
+            persons.add(grant.person_id)
+            return f"person-{grant.person_id}"
+
         for lead in leads:
-            if lead.assignee_id is not None:
+            if include_people and lead.assignee_id is not None:
                 person_ids.add(lead.assignee_id)
                 internal_person_ids.add(lead.assignee_id)
                 graph_edges.append(
@@ -377,13 +396,14 @@ class GraphRepository:
         )
         contacts_result = await self.session.execute(contacts_stmt)
         for contact in contacts_result.scalars().all():
-            person_ids.add(contact.person_id)
-            external_person_ids.add(contact.person_id)
+            target = _grant_target(contact, external_person_ids)
+            if target is None:
+                continue
             graph_edges.append(
                 CommunityGraphEdge(
                     id=_next_edge_id(),
                     source=f"lead-{contact.resource_id}",
-                    target=f"person-{contact.person_id}",
+                    target=target,
                     edge_type="contact",
                     label=contact_label_map.get(contact.rol, contact.rol),
                 )
@@ -470,13 +490,14 @@ class GraphRepository:
             )
             stakeholders_result = await self.session.execute(stakeholders_stmt)
             for sh in stakeholders_result.scalars().all():
-                person_ids.add(sh.person_id)
-                internal_person_ids.add(sh.person_id)
+                target = _grant_target(sh, internal_person_ids)
+                if target is None:
+                    continue
                 graph_edges.append(
                     CommunityGraphEdge(
                         id=_next_edge_id(),
                         source=f"node-{sh.resource_id}",
-                        target=f"person-{sh.person_id}",
+                        target=target,
                         edge_type=sh.rol,
                         label=sh.rol,
                     )
@@ -504,7 +525,10 @@ class GraphRepository:
                     person_role=role,
                 )
 
-        # -- 9. Person → OrganisatieEenheid (active plaatsingen) --
+        # -- 9. Person → OrganisatieEenheid (active plaatsingen), and the
+        # eenheden holding a role themselves --
+        oe_ids = set(grant_eenheid_ids)
+        plaatsing_rows: list[PersonOrganisatieEenheid] = []
         if person_ids:
             today = date.today()
             plaatsingen_stmt = select(PersonOrganisatieEenheid).where(
@@ -516,38 +540,36 @@ class GraphRepository:
                 ),
             )
             plaatsingen_result = await self.session.execute(plaatsingen_stmt)
-            oe_ids = set[UUID]()
             plaatsing_rows = list(plaatsingen_result.scalars().all())
-            for pl in plaatsing_rows:
-                oe_ids.add(pl.organisatie_eenheid_id)
+            oe_ids |= {pl.organisatie_eenheid_id for pl in plaatsing_rows}
 
-            if oe_ids:
-                oe_stmt = select(OrganisatieEenheid).where(
-                    OrganisatieEenheid.id.in_(oe_ids)
+        if oe_ids:
+            oe_stmt = select(OrganisatieEenheid).where(
+                OrganisatieEenheid.id.in_(oe_ids)
+            )
+            oe_result = await self.session.execute(oe_stmt)
+            for oe in oe_result.scalars().all():
+                oe_key = f"oe-{oe.id}"
+                graph_nodes[oe_key] = CommunityGraphNode(
+                    id=oe_key,
+                    node_type="organisation",
+                    label=oe.naam,
+                    org_type=oe.type,
                 )
-                oe_result = await self.session.execute(oe_stmt)
-                for oe in oe_result.scalars().all():
-                    oe_key = f"oe-{oe.id}"
-                    graph_nodes[oe_key] = CommunityGraphNode(
-                        id=oe_key,
-                        node_type="organisation",
-                        label=oe.naam,
-                        org_type=oe.type,
-                    )
 
-                for pl in plaatsing_rows:
-                    oe_key = f"oe-{pl.organisatie_eenheid_id}"
-                    if pl.person_id in internal_person_ids:
-                        internal_org_keys.add(oe_key)
-                    graph_edges.append(
-                        CommunityGraphEdge(
-                            id=_next_edge_id(),
-                            source=f"person-{pl.person_id}",
-                            target=oe_key,
-                            edge_type="lid_van",
-                            label="lid van",
-                        )
-                    )
+        for pl in plaatsing_rows:
+            oe_key = f"oe-{pl.organisatie_eenheid_id}"
+            if pl.person_id in internal_person_ids:
+                internal_org_keys.add(oe_key)
+            graph_edges.append(
+                CommunityGraphEdge(
+                    id=_next_edge_id(),
+                    source=f"person-{pl.person_id}",
+                    target=oe_key,
+                    edge_type="lid_van",
+                    label="lid van",
+                )
+            )
 
         # -- 10. Person → Samenwerkingsverband (active lidmaatschappen) --
         if person_ids:
