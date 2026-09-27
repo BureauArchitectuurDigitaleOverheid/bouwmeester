@@ -141,9 +141,10 @@ TABLE = [
     ("github_link:delete", "github_link", "opdrachtgever !team_editor"),
     ("github_link:create", "lead", "opdrachtgever !rp_viewer"),
     ("edge:update", "edge_team_directie", "team_editor"),
-    ("edge:update", "edge_directie_elders", "!team_editor role_only"),
+    # one end hidden: whoever may write one end still cannot change it
+    ("edge:update", "edge_directie_elders", "!team_editor !role_only"),
     ("edge:delete", "edge_team_directie", "!team_editor"),
-    ("edge:delete", "edge_directie_elders", "manager"),
+    ("edge:delete", "edge_directie_elders", "!manager"),
     ("task:update", "task_on_team_node", "afd_editor team_editor"),
     ("task:update", "task_team", "!role_only"),
     # a child permission asked on its parent
@@ -387,4 +388,6 @@ async def test_prefetch_loads_chains_in_one_query(world, count):
         for node in ids:
             assert await can(world.db, ctx, "node:update", "corpus_node", node)
     assert after_prefetch <= 2  # locations, chains
-    assert queries[0] - after_prefetch <= 1  # the edit shares, once
+    # the caller's visibility (a write needs a read too) and the edit
+    # shares, each built once: the same for 3 nodes as for 30
+    assert queries[0] - after_prefetch <= 9

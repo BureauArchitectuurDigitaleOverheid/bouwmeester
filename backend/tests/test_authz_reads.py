@@ -171,8 +171,6 @@ async def _write_without_read(w: World) -> list:
     for who in w.person:
         ctx = await perm_ctx(w, who)
         for resource_type, _, _, _, prefixes in SURFACES:
-            if resource_type == "edge":  # written from one end: a product question
-                continue
             domain = {"corpus_node": "node"}.get(resource_type, resource_type)
             for key in _keys(w, prefixes):
                 rid = w.res[key]

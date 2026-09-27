@@ -697,6 +697,8 @@ class _Delegation:
     write_permission: str | None = None
     # Reading needs every parent (an edge), not any.
     read_needs_all_parents: bool = False
+    # Without any parent, this permission reads it (else nobody does).
+    read_without_parent: str | None = None
 
 
 # The delegation table; see the module docstring for the same in prose.
@@ -716,7 +718,10 @@ _DELEGATIONS: dict[str, _Delegation] = {
     "github_link": _Delegation(("initiatief", "lead")),
     "stakeholder_assessment": _Delegation(("corpus_node", "initiatief")),
     "suggested_edge": _Delegation(
-        ("corpus_node",), write_permission="parlementair:review"
+        ("corpus_node",),
+        write_permission="parlementair:review",
+        # an item without node yet is read like the item itself
+        read_without_parent="parlementair:read",
     ),
     "suggested_lead": _Delegation(("initiatief",)),
 }
@@ -946,12 +951,13 @@ async def _read_decision(
             return seen
         # A task without eenheid is read through its node (below).
     if resource_type in _DELEGATIONS:
-        if not loc.parents:
-            return False
+        parents = [(pt, pid) for pt, pid in loc.parents if pid is not None]
+        if not parents:
+            fallback = _DELEGATIONS[resource_type].read_without_parent
+            return fallback is not None and perm_ctx.has_permission(fallback)
         reads = [
             bool(await _decide(db, perm_ctx, read_permission(pt), pt, pid, None))
-            for pt, pid in loc.parents
-            if pid is not None
+            for pt, pid in parents
         ]
         delegation = _DELEGATIONS.get(resource_type)
         if delegation is not None and delegation.read_needs_all_parents:
@@ -1132,6 +1138,13 @@ async def _resolve(
         decision = await _read_decision(db, perm_ctx, resource_type, resource_id, loc)
         if decision is not None:
             return decision
+
+    # Writing implies seeing: an edge is written from one end, so without this
+    # its other, hidden end could be changed by someone who cannot read it.
+    if own_domain and verb != "read" and resource_id is not None:
+        seen = await _read_decision(db, perm_ctx, resource_type, resource_id, loc)
+        if seen is False:
+            return False
 
     # Synced eenheden belong to their sync.
     if own_domain and verb != "read" and loc.read_only and not perm_ctx.is_super_admin:
