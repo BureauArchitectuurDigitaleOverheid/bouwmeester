@@ -39,6 +39,7 @@ from bouwmeester.core.database import Base
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.core.storage import delete_blob
 from bouwmeester.models.bron_bijlage import BronBijlage
+from bouwmeester.models.edge import Edge
 from bouwmeester.models.github_link import GitHubLink
 from bouwmeester.models.lead_attachment import LeadAttachment
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
@@ -382,11 +383,15 @@ async def delete_if_unclaimed(
     A job has no caller to check, so the delete goes ahead only when every
     independent record it would remove or change is the job's own (*own*:
     resource type -> ids).  Otherwise nothing is deleted and False returned.
+    Edges count as someone's work here: under the delete rule they are parts
+    of a node, but a job did not draw them.
     """
     table = _tables()[resource_type]
     plan = _Plan()
     await _walk(db, plan, table, {resource_id})
-    for resource_type_, _perm, ids in _pending_checks(plan):
+    claims = [(t, ids) for t, _perm, ids in _pending_checks(plan)]
+    claims.append(("edge", plan.removed.get(Edge.__tablename__, set())))
+    for resource_type_, ids in claims:
         if ids - own.get(resource_type_, set()):
             return False
     await _execute(db, table, resource_id, plan)

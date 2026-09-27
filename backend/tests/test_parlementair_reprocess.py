@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.edge import Edge
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.politieke_input import PolitiekeInput
 from bouwmeester.models.tag import NodeTag, Tag
@@ -414,6 +415,24 @@ async def test_detach_corpus_node_only_when_unclaimed(
     assert (item.corpus_node_id is None) is deleted
     assert (await db_session.get(CorpusNode, node.id) is None) is deleted
     assert (await db_session.get(Task, task.id) is None) is deleted
+
+
+async def test_detach_corpus_node_keeps_node_with_edge(db_session, sample_edge_type):
+    """An edge someone drew to the node is work built on it: the node stays."""
+    item, node = await _make_item(db_session)
+    other = CorpusNode(id=uuid.uuid4(), title="Dossier", node_type="dossier")
+    db_session.add(other)
+    await db_session.flush()
+    edge = Edge(
+        from_node_id=node.id, to_node_id=other.id, edge_type_id=sample_edge_type.id
+    )
+    db_session.add(edge)
+    await db_session.flush()
+
+    await ParlementairImportService(db_session)._detach_corpus_node(item)
+
+    assert item.corpus_node_id == node.id
+    assert await db_session.get(Edge, edge.id) is not None
 
 
 async def test_detach_corpus_node_no_node_is_noop(db_session):
