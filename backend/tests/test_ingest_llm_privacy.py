@@ -15,19 +15,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import select
 
+import tests.authz_world as aw
 from bouwmeester.api.routes import leads as leads_module
 from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.lead import Lead
-from bouwmeester.models.mattermost_channel_link import (
-    SCOPE_INITIATIEF,
-    MattermostChannelLink,
-)
+from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.suggested_lead import SuggestedLead
 from bouwmeester.services.llm import DataSensitivity
 from bouwmeester.services.llm.base import LeadCandidateClassification
 from bouwmeester.services.mattermost_ingest_service import MattermostIngestService
 from bouwmeester.services.mattermost_slash_service import MattermostSlashService
-from tests.authz_world import World, add, mm_account, mm_id, request, rp
 from tests.factories import make_person
 
 SECRET_TITLE = "Geheime Onderhandeling Waterschap"
@@ -36,9 +33,7 @@ MODEL_DESCRIPTION = "Modelbeschrijving met vrije tekst"
 _DRAFT = '{"titel": "T", "body_internal": "B", "body_public": "P"}'
 _INTAKE = '{"title": "Lead", "contact_email": "geheim@example.org"}'
 
-# ---------------------------------------------------------------------------
-# Lead routes that prompt a model
-# ---------------------------------------------------------------------------
+# Lead routes that prompt a model --------------------------------------------
 
 
 @pytest.fixture
@@ -57,29 +52,28 @@ async def llm(monkeypatch):
 
 
 @pytest.fixture
-async def lw(world: World) -> World:
+async def lw(world) -> aw.World:
     """An opdrachtgever placed nowhere (writes the lead, reads neither the
     initiatief nor the people directory) and a contact on the lead."""
-    opdrachtgever = await make_person(world.db, "Opdrachtgever")
-    contact = await make_person(world.db, "Contact")
-    lead = world.res["lead"]
-    await add(
-        world,
-        rp("lead", lead, "opdrachtgever", person=opdrachtgever),
-        rp("lead", lead, "contactpersoon", person=contact),
-    )
-    world.person.update(opdrachtgever=opdrachtgever, contact=contact)
-    return world
+    for who, naam, rol in (
+        ("opdrachtgever", "Opdrachtgever", "opdrachtgever"),
+        ("contact", "Contact", "contactpersoon"),
+    ):
+        world.person[who] = await make_person(world.db, naam)
+        await aw.add(
+            world, aw.rp("lead", world.res["lead"], rol, person=world.person[who])
+        )
+    return world  # fmt: skip
 
 
-async def _parse_update(w: World, who: str):
-    return await request(
+async def _parse_update(w, who: str):
+    return await aw.request(
         w, who, "POST", "/api/leads/{lead}/updates/parse", data={"raw_text": "Kort"}
     )
 
 
-async def _intake(w: World, who: str, **data):
-    return await request(
+async def _intake(w, who: str, **data):
+    return await aw.request(
         w, who, "POST", "/api/leads/parse-intake", data={"raw_text": "Mail", **data}
     )
 
@@ -109,16 +103,13 @@ async def test_lead_prompts_only_go_to_a_confidential_model(lw, llm, monkeypatch
     assert (await _parse_update(lw, "afd_editor")).status_code == 503
 
 
-@pytest.mark.parametrize(
-    ("who", "with_initiatief", "expected"),
-    [
-        ("team_editor", False, 200),  # creates leads in the own team
-        ("viewer", False, 403),  # creates leads nowhere
-        ("role_only", False, 403),  # only in the initiatief
-        ("role_only", True, 200),
-        ("team_editor", True, 403),  # sees the initiatief, may not add to it
-    ],
-)
+@pytest.mark.parametrize(("who", "with_initiatief", "expected"), [
+    ("team_editor", False, 200),  # creates leads in the own team
+    ("viewer", False, 403),  # creates leads nowhere
+    ("role_only", False, 403),  # only in the initiatief
+    ("role_only", True, 200),
+    ("team_editor", True, 403),  # sees the initiatief, may not add to it
+])  # fmt: skip
 async def test_parse_intake_is_for_who_may_create_a_lead(
     lw, llm, who, with_initiatief, expected
 ):
@@ -134,7 +125,7 @@ async def test_parse_intake_limits_uploads(lw, llm, too_many):
     else:
         n, size = 1, leads_module.MAX_LLM_UPLOAD_BYTES + 1
     files = [("files", (f"f{i}.txt", b"x" * size, "text/plain")) for i in range(n)]
-    resp = await request(
+    resp = await aw.request(
         lw, "team_editor", "POST", "/api/leads/parse-intake", files=files
     )
     assert resp.status_code == 400, resp.text
@@ -152,30 +143,25 @@ async def test_parse_intake_does_not_log_the_model_output(lw, llm, caplog):
     assert "geheim@example.org" not in caplog.text
 
 
-# ---------------------------------------------------------------------------
-# Mattermost lead suggestions
-# ---------------------------------------------------------------------------
+# Mattermost lead suggestions -------------------------------------------------
 
 
 @pytest.fixture
-async def channel(world: World) -> MattermostChannelLink:
+async def channel(world) -> MattermostChannelLink:
     """A suggesting channel of the initiatief, which holds a secret lead."""
+    init = world.res["initiatief"]
     secret = Lead(
         title=SECRET_TITLE,
         organization="Waterschap Geheim",
         stage="lead",
-        initiatief_id=world.res["initiatief"],
+        initiatief_id=init,
     )
     link = MattermostChannelLink(
-        channel_id=mm_id(),
-        channel_name="alg",
-        channel_display_name="Algemeen",
-        scope_type=SCOPE_INITIATIEF,
-        scope_id=world.res["initiatief"],
-        auto_note_enabled=False,
+        channel_id=aw.mm_id(), channel_name="alg", channel_display_name="Algemeen",
+        scope_type="initiatief", scope_id=init, auto_note_enabled=False,
         suggest_leads_enabled=True,
-    )
-    await add(world, secret, link)
+    )  # fmt: skip
+    await aw.add(world, secret, link)
     world.res["secret_lead"] = secret.id
     return link
 
@@ -184,49 +170,37 @@ def _llm():
     llm = AsyncMock()
     llm.classify_mattermost_lead_candidate = AsyncMock(
         return_value=LeadCandidateClassification(
-            is_lead=True,
-            confidence=0.8,
-            proposed_title=MODEL_TITLE,
-            proposed_description=MODEL_DESCRIPTION,
-            reasoning="nieuw",
+            is_lead=True, confidence=0.8, proposed_title=MODEL_TITLE,
+            proposed_description=MODEL_DESCRIPTION, reasoning="nieuw",
         )
-    )
+    )  # fmt: skip
     return llm
 
 
 def _mm_stub():
     stub = AsyncMock()
-    stub.is_enabled = AsyncMock(return_value=True)
-    stub.reply_to_post = AsyncMock(return_value={"id": "thread-post"})
-    stub.add_reaction = AsyncMock(return_value=True)
-    stub.send_dm = AsyncMock(return_value=True)
-    stub.update_post = AsyncMock(return_value=True)
-    stub.close = AsyncMock(return_value=None)
-    return stub
+    for name, value in (
+        ("is_enabled", True),
+        ("reply_to_post", {"id": "thread-post"}),
+        ("add_reaction", True),
+        ("send_dm", True),
+        ("update_post", True),
+        ("close", None),
+    ):
+        setattr(stub, name, AsyncMock(return_value=value))
+    return stub  # fmt: skip
 
 
-def _patched(stub, llm=None):
-    patches = [
-        patch(
-            "bouwmeester.services.mattermost_service.MattermostService",
-            return_value=stub,
-        )
-    ]
-    if llm is not None:
-        patches.append(
-            patch(
-                "bouwmeester.services.llm.factory.get_llm_service_for",
-                new=AsyncMock(return_value=llm),
-            )
-        )
-    return patches
+def _mm(stub):
+    service = "bouwmeester.services.mattermost_service.MattermostService"
+    return patch(service, return_value=stub)
 
 
-async def _ingest(w: World, channel, message: str, llm, stub):
-    p1, p2 = _patched(stub, llm)
-    with p1, p2:
+async def _ingest(w, channel, message: str, llm, stub):
+    factory = "bouwmeester.services.llm.factory.get_llm_service_for"
+    with _mm(stub), patch(factory, new=AsyncMock(return_value=llm)):
         await MattermostIngestService(w.db).ingest_post(
-            {"id": mm_id(), "channel_id": channel.channel_id, "user_id": mm_id(),
+            {"id": aw.mm_id(), "channel_id": channel.channel_id, "user_id": aw.mm_id(),
              "create_at": 1_700_000_000_000, "message": message}
         )  # fmt: skip
 
@@ -260,24 +234,17 @@ async def test_existing_lead_is_matched_without_the_model(world, channel):
 
 # (matched a lead?, author, DM): readers of the initiatief get the proposal
 # or the recognised lead by DM; the channel never names either.
-DM_CASES = [
-    (False, "role_only", True),
-    (False, "outsider", False),
-    (True, "role_only", True),
-    (True, "outsider", False),
-]
-
-
-@pytest.mark.parametrize(("matched", "author", "dm"), DM_CASES)
+@pytest.mark.parametrize("matched", [False, True])
+@pytest.mark.parametrize(("author", "dm"), [("role_only", True), ("outsider", False)])
 async def test_proposal_is_named_only_by_dm_to_a_reader(world, matched, author, dm):
     world.person["outsider"] = await make_person(world.db, "Buitenstaander")
     initiatief = await world.db.get(Initiatief, world.res["initiatief"])
     lead = await world.db.get(Lead, world.res["lead"])
     lead.title = "Geheime gemeente"
-    suggested = await add(
+    suggested = await aw.add(
         world,
         SuggestedLead(
-            source_post_id=mm_id(), source_channel_id="c" * 26,
+            source_post_id=aw.mm_id(), source_channel_id="c" * 26,
             initiatief_id=initiatief.id, proposed_title=MODEL_TITLE,
             proposed_description=MODEL_DESCRIPTION, raw_text="x", confidence=0.8,
             status="pending",
@@ -290,7 +257,7 @@ async def test_proposal_is_named_only_by_dm_to_a_reader(world, matched, author, 
     )  # fmt: skip
     stub = _mm_stub()
     person_id = world.person[author].id
-    with _patched(stub)[0]:
+    with _mm(stub):
         await MattermostIngestService(world.db)._post_suggestion_reply(
             channel_id="c" * 26, root_post_id="root", suggested=suggested,
             initiatief=initiatief, matched_lead=matched_lead,
@@ -311,17 +278,17 @@ async def test_proposal_is_named_only_by_dm_to_a_reader(world, matched, author, 
 async def test_approving_posts_no_model_title_in_the_channel(world):
     """Approving from Mattermost: neutral text in the channel, title to the
     clicker (a contributor, so initiatief:update)."""
-    mm_uid = await mm_account(world, "role_only")
-    suggested = await add(
+    mm_uid = await aw.mm_account(world, "role_only")
+    suggested = await aw.add(
         world,
         SuggestedLead(
-            source_post_id=mm_id(), source_channel_id=mm_id(),
+            source_post_id=aw.mm_id(), source_channel_id=aw.mm_id(),
             initiatief_id=world.res["initiatief"], proposed_title=MODEL_TITLE,
             raw_text="x", status="pending", mm_thread_post_id="thread-post",
         ),
     )  # fmt: skip
     stub = _mm_stub()
-    with _patched(stub)[0]:
+    with _mm(stub):
         result = await MattermostSlashService(world.db).handle_action(
             mattermost_user_id=mm_uid,
             action="create_lead_from_suggestion",

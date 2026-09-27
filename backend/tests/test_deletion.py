@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import ONETOMANY
 
+import tests.authz_world as aw
 from bouwmeester.core.database import Base
 from bouwmeester.core.deletion import (
     _FK_RULES,
@@ -36,14 +37,11 @@ from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.models.signaalcontext import Signaalcontext
 from bouwmeester.models.stakeholder_assessment import StakeholderAssessment
 from bouwmeester.models.task import Task
-from tests.authz_world import World, add, make_item, mm_id, opdracht, request, rp, task
 
 ROOTS = ("corpus_node", "task", "opdracht", "initiatief", "lead")
 
 
-# ---------------------------------------------------------------------------
-# Inventory: every cascade and SET NULL is decided, and matches the schema
-# ---------------------------------------------------------------------------
+# Inventory: every cascade and SET NULL is decided, and matches the schema ----
 
 _DELETE_RULE = {"c": "CASCADE", "n": "SET NULL", "a": None, "r": None, "d": None}
 
@@ -126,29 +124,30 @@ def test_orm_relationships_follow_the_database():
     assert not wrong, wrong
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 async def _count(db, model, *where) -> int:
     return await db.scalar(select(func.count()).select_from(model).where(*where))
 
 
-async def _delete(w: World, who: str, path: str):
-    return await request(w, who, "DELETE", path)
+async def _delete(w, who: str, path: str):
+    return await aw.request(w, who, "DELETE", path)
+
+
+def _assert_blocked(resp, *counts: str) -> None:
+    assert resp.status_code == 409, resp.text
+    for count in counts:
+        assert count in resp.json()["detail"]
 
 
 def _scoped_rows(scope_type: str, scope_id: uuid.UUID) -> list:
     """One row of every polymorphic table that points at an initiatief/lead."""
-    key = mm_id()
+    key = aw.mm_id()
     return [
         MattermostChannelLink(
-            channel_id=mm_id(), channel_name="kanaal", channel_display_name="Kanaal",
+            channel_id=aw.mm_id(), channel_name="kanaal", channel_display_name="Kanaal",
             scope_type=scope_type, scope_id=scope_id,
         ),
         MattermostPostLink(
-            post_id=key, channel_id=mm_id(), scope_type=scope_type, scope_id=scope_id
+            post_id=key, channel_id=aw.mm_id(), scope_type=scope_type, scope_id=scope_id
         ),
         ParlementairAbonnement(
             scope_type=scope_type, scope_id=scope_id, term="Regelrecht",
@@ -162,143 +161,104 @@ def _scoped_rows(scope_type: str, scope_id: uuid.UUID) -> list:
     ]  # fmt: skip
 
 
-_SCOPED = (
-    MattermostChannelLink,
-    MattermostPostLink,
-    ParlementairAbonnement,
-    GitHubLink,
-    Signaalcontext,
-)
+_SCOPED = (MattermostChannelLink, MattermostPostLink, ParlementairAbonnement,
+           GitHubLink, Signaalcontext)  # fmt: skip
 
 
 async def _scoped_left(db, scope_type: str, scope_id: uuid.UUID) -> dict[str, int]:
     """What still points at a deleted record: scoped rows and grants."""
     left = {}
     for model in (*_SCOPED, ResourcePermission):
-        typ, rid = (
-            (model.resource_type, model.resource_id)
-            if model is ResourcePermission
-            else (model.scope_type, model.scope_id)
-        )
+        rp_ = model is ResourcePermission
+        typ = model.resource_type if rp_ else model.scope_type
+        rid = model.resource_id if rp_ else model.scope_id
         if n := await _count(db, model, typ == scope_type, rid == scope_id):
             left[model.__tablename__] = n
     return left
 
 
-# ---------------------------------------------------------------------------
-# Node: tasks, opdrachten and links elsewhere block
-# ---------------------------------------------------------------------------
+# Node: tasks, opdrachten and links elsewhere block ---------------------------
 
 
 @pytest.mark.parametrize(("who", "expected"), [("manager", 409), ("super_admin", 204)])
-async def test_node_delete_keeps_work_of_other_units(world: World, who, expected):
+async def test_node_delete_keeps_work_of_other_units(world, who, expected):
     """The directie manager holds node:delete, tenant-wide for a node without
     eenheid, but no rights in ``elders``: its task and opdracht block."""
-    t = task(world, "Taak elders op vrije node", "node_free", "elders")
-    o = opdracht(
+    t = aw.task(world, "Taak elders op vrije node", "node_free", "elders")
+    o = aw.opdracht(
         world, "Opdracht elders", "elders", instrument_id=world.res["node_free"]
     )
-    await add(world, t, o)
+    await aw.add(world, t, o)
     t_id, o_id = t.id, o.id
     resp = await _delete(world, who, "/api/nodes/{node_free}")
-    assert resp.status_code == expected, resp.text
     if expected == 409:
-        assert "1 taak" in resp.json()["detail"]
-        assert "1 opdracht" in resp.json()["detail"]
+        _assert_blocked(resp, "1 taak", "1 opdracht")
+    assert resp.status_code == expected, resp.text
     world.db.expire_all()
     kept = int(expected == 409)
     assert await _count(world.db, Task, Task.id == t_id) == kept
     assert await _count(world.db, Opdracht, Opdracht.id == o_id) == kept
 
 
-async def test_node_delete_takes_own_work_and_removes_grants(world: World):
+async def test_node_delete_takes_own_work_and_removes_what_points_at_it(world):
     """Tasks the caller may delete go with the node; grants, assessments and
-    mentions of the node are removed, not orphaned."""
+    mentions are removed, not orphaned.  An item's suggestions would fall to
+    anyone holding parlementair:review: they go too, the item stays."""
     db, node_id = world.db, world.res["node_directie"]
-    await add(
+    item = await aw.make_item(world, "node_directie")
+    await aw.add(
         world,
-        StakeholderAssessment(
-            person_id=world.person["viewer"].id, scope_type="corpus_node",
-            scope_id=node_id,
-        ),
-        Mention(
-            source_type="task", source_id=world.res["task_team"], mention_type="node",
-            target_id=node_id,
-        ),
+        StakeholderAssessment(person_id=world.person["viewer"].id,
+                              scope_type="corpus_node", scope_id=node_id),
+        Mention(source_type="task", source_id=world.res["task_team"],
+                mention_type="node", target_id=node_id),
+        SuggestedEdge(parlementair_item_id=item.id, confidence=0.9,
+                      target_node_id=world.res["node_elders"],
+                      edge_type_id=world.res["edge_type"]),
     )  # fmt: skip
+    item_id = item.id
     resp = await _delete(world, "manager", "/api/nodes/{node_directie}")
     assert resp.status_code == 204, resp.text
     db.expire_all()
+    sa, se, pi = StakeholderAssessment, SuggestedEdge, ParlementairItem
     assert await _count(db, Task, Task.id == world.res["task_team"]) == 0
     assert await _scoped_left(db, "corpus_node", node_id) == {}
-    sa = StakeholderAssessment
     assert await _count(db, sa, sa.scope_id == node_id) == 0
     assert await _count(db, Mention, Mention.target_id == node_id) == 0
+    assert await _count(db, se, se.parlementair_item_id == item_id) == 0
+    assert await db.scalar(select(pi.corpus_node_id).where(pi.id == item_id)) is None
 
 
 async def test_node_delete_refuses_links_of_records_the_caller_may_not_change(
-    world: World,
+    world,
 ):
     """A lead's or opdracht's link to the node is theirs to lose."""
-    other = await add(world, Initiatief(id=uuid.uuid4(), naam=f"Ander {mm_id()}"))
+    other = await aw.add(world, Initiatief(id=uuid.uuid4(), naam=f"Ander {aw.mm_id()}"))
     lead = Lead(title="Lead elders", stage="verkennen", initiatief_id=other.id)
-    o = opdracht(world, "Opdracht elders", "elders")
-    await add(world, lead, o)
+    o = aw.opdracht(world, "Opdracht elders", "elders")
+    await aw.add(world, lead, o)
     node = world.res["node_directie"]
-    await add(
-        world,
-        LeadNode(lead_id=lead.id, node_id=node),
-        OpdrachtNode(opdracht_id=o.id, node_id=node),
-    )
+    await aw.add(world, LeadNode(lead_id=lead.id, node_id=node),
+              OpdrachtNode(opdracht_id=o.id, node_id=node))  # fmt: skip
     resp = await _delete(world, "manager", "/api/nodes/{node_directie}")
-    assert resp.status_code == 409, resp.text
-    assert "1 lead" in resp.json()["detail"]
-    assert "1 opdracht" in resp.json()["detail"]
+    _assert_blocked(resp, "1 lead", "1 opdracht")
     assert await _count(world.db, LeadNode, LeadNode.lead_id == lead.id) == 1
 
 
-async def test_node_delete_takes_the_suggested_edges_of_its_item(world: World):
-    """Without its node an item's suggestions would fall to anyone holding
-    parlementair:review: they go with the node, the item stays."""
-    item = await make_item(world, "node_team")
-    await add(
-        world,
-        SuggestedEdge(
-            parlementair_item_id=item.id, target_node_id=world.res["node_elders"],
-            edge_type_id=world.res["edge_type"], confidence=0.9,
-        ),
-    )  # fmt: skip
-    item_id = item.id
-    resp = await _delete(world, "manager", "/api/nodes/{node_team}")
-    assert resp.status_code == 204, resp.text
-    world.db.expire_all()
-    se = SuggestedEdge
-    assert await _count(world.db, se, se.parlementair_item_id == item_id) == 0
-    kept = await world.db.execute(
-        select(ParlementairItem.corpus_node_id).where(ParlementairItem.id == item_id)
-    )
-    assert kept.one() == (None,)
+# Initiatief: its leads and everything scoped to it go with it ----------------
 
 
-# ---------------------------------------------------------------------------
-# Initiatief: its leads and everything scoped to it go with it
-# ---------------------------------------------------------------------------
-
-
-async def test_initiatief_delete_leaves_nothing_behind(iw: World):
+async def test_initiatief_delete_leaves_nothing_behind(iw):
     db, init_id, lead_id = iw.db, iw.res["initiatief"], iw.res["lead"]
     viewer = iw.person["viewer"]
-    await add(
-        iw,
-        *_scoped_rows("initiatief", init_id),
-        *_scoped_rows("lead", lead_id),
-        StakeholderAssessment(
-            person_id=viewer.id, scope_type="initiatief", scope_id=init_id
-        ),
+    await aw.add(
+        iw, *_scoped_rows("initiatief", init_id), *_scoped_rows("lead", lead_id),
+        StakeholderAssessment(person_id=viewer.id, scope_type="initiatief",
+                              scope_id=init_id),
         InitiatiefUpdatePost(initiatief_id=init_id, titel="Update", body="x"),
         LeadActivity(lead_id=lead_id, content="Gesprek", activity_type="note"),
-        rp("lead", lead_id, "contactpersoon", person=viewer),
-    )
+        aw.rp("lead", lead_id, "contactpersoon", person=viewer),
+    )  # fmt: skip
     # It still needs initiatief:delete.
     refused = await _delete(iw, "viewer", "/api/initiatieven/{initiatief}")
     assert refused.status_code in (403, 404)
@@ -307,8 +267,10 @@ async def test_initiatief_delete_leaves_nothing_behind(iw: World):
     resp = await _delete(iw, "afd_editor", "/api/initiatieven/{initiatief}")
     assert resp.status_code == 204, resp.text
     # A team viewer gains nothing from it.
-    assert (await request(iw, "viewer", "GET", "/api/leads/{lead}")).status_code == 404
-    listed = await request(iw, "viewer", "GET", "/api/leads")
+    assert (
+        await aw.request(iw, "viewer", "GET", "/api/leads/{lead}")
+    ).status_code == 404
+    listed = await aw.request(iw, "viewer", "GET", "/api/leads")
     assert str(lead_id) not in {i["id"] for i in listed.json()}
     db.expire_all()
     # The lead is gone, not left behind without initiatief; no alert keeps
@@ -317,17 +279,13 @@ async def test_initiatief_delete_leaves_nothing_behind(iw: World):
     assert await _count(db, LeadActivity, LeadActivity.lead_id == lead_id) == 0
     assert await _scoped_left(db, "initiatief", init_id) == {}
     assert await _scoped_left(db, "lead", lead_id) == {}
-    for column in (
-        LeadColumn.initiatief_id,
-        InitiatiefUpdatePost.initiatief_id,
-        StakeholderAssessment.scope_id,
-    ):
+    columns = (LeadColumn.initiatief_id, InitiatiefUpdatePost.initiatief_id,
+               StakeholderAssessment.scope_id)  # fmt: skip
+    for column in columns:
         assert await _count(db, column.class_, column == init_id) == 0
 
 
-# ---------------------------------------------------------------------------
-# Task, opdracht and lead
-# ---------------------------------------------------------------------------
+# Task, opdracht and lead -----------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -338,27 +296,24 @@ async def test_initiatief_delete_leaves_nothing_behind(iw: World):
         ("node_directie", "team", "team_editor", 204),  # own subtask goes along
     ],
 )
-async def test_task_delete_and_its_subtasks(world: World, node, eenheid, who, expected):
-    sub = await add(
-        world, task(world, "Subtaak", node, eenheid, parent_id=world.res["task_team"])
-    )
-    sub_id = sub.id
+async def test_task_delete_and_its_subtasks(world, node, eenheid, who, expected):
+    sub = aw.task(world, "Subtaak", node, eenheid, parent_id=world.res["task_team"])
+    sub_id = (await aw.add(world, sub)).id
     resp = await _delete(world, who, "/api/tasks/{task_team}")
-    assert resp.status_code == expected, resp.text
     if expected == 409:
-        assert "1 taak" in resp.json()["detail"]
+        _assert_blocked(resp, "1 taak")
+    assert resp.status_code == expected, resp.text
     world.db.expire_all()
     assert await _count(world.db, Task, Task.id == sub_id) == int(expected == 409)
 
 
-async def test_opdracht_delete_removes_grants_and_koppelingen(world: World):
+async def test_opdracht_delete_removes_grants_and_koppelingen(world):
     db, opdracht_id = world.db, world.res["opdracht_directie"]
-    t = task(world, "Taak", "node_directie", "directie", opdracht_id=opdracht_id)
-    await add(
-        world,
-        t,
-        OpdrachtNode(opdracht_id=opdracht_id, node_id=world.res["node_elders"]),
-        rp("opdracht", opdracht_id, "betrokken", person=world.person["viewer"]),
+    t = aw.task(world, "Taak", "node_directie", "directie", opdracht_id=opdracht_id)
+    koppeling = OpdrachtNode(opdracht_id=opdracht_id, node_id=world.res["node_elders"])
+    viewer = world.person["viewer"]
+    await aw.add(
+        world, t, koppeling, aw.rp("opdracht", opdracht_id, "betrokken", person=viewer)
     )
     task_id = t.id
     resp = await _delete(world, "manager", "/api/opdrachten/{opdracht_directie}")
@@ -367,27 +322,24 @@ async def test_opdracht_delete_removes_grants_and_koppelingen(world: World):
     assert await _count(db, OpdrachtNode, OpdrachtNode.opdracht_id == opdracht_id) == 0
     assert await _scoped_left(db, "opdracht", opdracht_id) == {}
     # The task lives on its node and eenheid: it stays, without the opdracht.
-    kept = await db.execute(select(Task.opdracht_id).where(Task.id == task_id))
-    assert kept.one() == (None,)
+    assert await db.scalar(select(Task.opdracht_id).where(Task.id == task_id)) is None
 
 
 @pytest.mark.parametrize("how", ["delete", "merge"])
-async def test_lead_delete_and_merge_leave_nothing_scoped_to_it(iw: World, how):
+async def test_lead_delete_and_merge_leave_nothing_scoped_to_it(iw, how):
     """Merging deletes the source: its channel links and abonnementen go too."""
     db, lead_id = iw.db, iw.res["lead"]
     target = Lead(title="Doel", stage="verkennen", initiatief_id=iw.res["initiatief"])
-    await add(
-        iw,
-        target,
-        *_scoped_rows("lead", lead_id),
+    await aw.add(
+        iw, target, *_scoped_rows("lead", lead_id),
         LeadActivity(lead_id=lead_id, content="Gesprek", activity_type="note"),
-        rp("lead", lead_id, "contactpersoon", person=iw.person["viewer"]),
-    )
+        aw.rp("lead", lead_id, "contactpersoon", person=iw.person["viewer"]),
+    )  # fmt: skip
     if how == "delete":
         resp = await _delete(iw, "afd_editor", "/api/leads/{lead}")
     else:
         body = {"source_id": str(lead_id), "target_id": str(target.id)}
-        resp = await request(iw, "afd_editor", "POST", "/api/leads/merge", body)
+        resp = await aw.request(iw, "afd_editor", "POST", "/api/leads/merge", body)
     assert resp.status_code == (204 if how == "delete" else 200), resp.text
     db.expire_all()
     assert await _count(db, Lead, Lead.id == lead_id) == 0

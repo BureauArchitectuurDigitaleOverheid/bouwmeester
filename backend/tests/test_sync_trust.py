@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select, text
@@ -47,29 +48,27 @@ NAAM = "Aangekondigde Benoemde"
 async def bzk(db_session: AsyncSession) -> OrganisatieEenheid:
     await db_session.execute(text("DELETE FROM person_organisatie_eenheid"))
     await db_session.execute(text("DELETE FROM organisatie_eenheid WHERE bron='tooi'"))
-    eenheid = OrganisatieEenheid(
-        naam=BZK, type="ministerie", bron="tooi", tooi_uri=BZK_URI
+    return await _add(
+        db_session,
+        OrganisatieEenheid(naam=BZK, type="ministerie", bron="tooi", tooi_uri=BZK_URI),
     )
-    db_session.add(eenheid)
-    await db_session.flush()
-    return eenheid
+
+
+async def _add(db: AsyncSession, row):
+    db.add(row)
+    await db.flush()
+    return row
 
 
 async def _account(db: AsyncSession) -> Person:
     """A logged-in user who renamed themselves to the appointee."""
-    person = Person(naam=NAAM, oidc_subject=f"sub-{uuid.uuid4()}")
-    db.add(person)
-    await db.flush()
-    return person
+    return await _add(db, Person(naam=NAAM, oidc_subject=f"sub-{uuid.uuid4()}"))
 
 
 async def _contact_with_address(db: AsyncSession) -> Person:
     """A plain contact carrying the attacker's address, renamed likewise."""
-    person = Person(naam=NAAM)
-    db.add(person)
-    await db.flush()
-    db.add(PersonEmail(person_id=person.id, email="aanvaller@example.org"))
-    await db.flush()
+    person = await _add(db, Person(naam=NAAM))
+    await _add(db, PersonEmail(person_id=person.id, email="aanvaller@example.org"))
     return person
 
 
@@ -106,17 +105,11 @@ def _yaml(tmp_path, kind: str):
 async def _run(kind: str, db: AsyncSession, tmp_path):
     if kind == "abd":
         benoeming = AbdBenoeming(
-            naam=NAAM,
-            functietitel="directeur-generaal",
-            organisatie_hint="BZK",
+            naam=NAAM, functietitel="directeur-generaal", organisatie_hint="BZK",
             nieuws_url="https://example.com/benoeming",
-            publicatiedatum=date(2026, 5, 9),
-            ingangsdatum=date(2026, 6, 1),
-        )
-
-        async def fetch():
-            return [benoeming]
-
+            publicatiedatum=date(2026, 5, 9), ingangsdatum=date(2026, 6, 1),
+        )  # fmt: skip
+        fetch = AsyncMock(return_value=[benoeming])
         return await sync_abd(db, fetcher=fetch, commit=False)
     if kind == "kabinet":
         return await sync_kabinet(db, _yaml(tmp_path, kind))
@@ -165,24 +158,17 @@ async def test_ambiguous_name_is_refused(db_session: AsyncSession, bzk, tmp_path
     assert len(await _synced_persons(db_session, _BRON[kind])) == 2
 
 
-@pytest.mark.parametrize(
-    ("naam", "account", "placed"),
-    [
-        (NAAM, False, True),  # an ex-Kamerlid synced from TK: reused by key
-        ("Aangekondigde Tussen Benoemde", True, False),  # surname match, account
-    ],
-)
+@pytest.mark.parametrize(("naam", "account", "placed"), [
+    (NAAM, False, True),  # an ex-Kamerlid synced from TK: reused by key
+    ("Aangekondigde Tussen Benoemde", True, False),  # surname match, account
+])  # fmt: skip
 async def test_kabinet_and_tk_persons(
     db_session: AsyncSession, bzk, tmp_path, naam, account, placed
 ):
-    tk = Person(
-        naam=naam,
-        bron="tk_odata",
-        tk_persoon_id=str(uuid.uuid4()),
+    tk = await _add(db_session, Person(
+        naam=naam, bron="tk_odata", tk_persoon_id=str(uuid.uuid4()),
         oidc_subject=f"sub-{uuid.uuid4()}" if account else None,
-    )
-    db_session.add(tk)
-    await db_session.flush()
+    ))  # fmt: skip
 
     await _run("kabinet", db_session, tmp_path)
 
@@ -205,9 +191,7 @@ async def test_resolver_trusts_only_one_official_literal_match(
         assert await _resolveer_organisatie(db_session, hint) is None, hint
 
 
-# ---------------------------------------------------------------------------
-# The ministerie merge after a TOOI sync, and the organogram scrape
-# ---------------------------------------------------------------------------
+# The ministerie merge after a TOOI sync, and the organogram scrape -----------
 
 TESTZAKEN = "Ministerie van Testzaken"
 
@@ -221,17 +205,11 @@ async def _tooi_row(db) -> OrganisatieEenheid:
 
 
 async def _reconcile(db, handmatig, kandidaat) -> PendingReconciliation:
-    rec = PendingReconciliation(
-        resource_type="organisatie_eenheid",
-        handmatige_id=handmatig.id,
-        kandidaat_id=kandidaat.id,
-        kandidaat_bron="tooi",
-        match_reden="naam_normalized",
-        status="open",
-    )
-    db.add(rec)
-    await db.flush()
-    return rec
+    return await _add(db, PendingReconciliation(
+        resource_type="organisatie_eenheid", handmatige_id=handmatig.id,
+        kandidaat_id=kandidaat.id, kandidaat_bron="tooi",
+        match_reden="naam_normalized", status="open",
+    ))  # fmt: skip
 
 
 async def _owned_root(db, type_: str) -> OrganisatieEenheid:
@@ -298,10 +276,8 @@ async def test_organogram_scrape_ignores_user_ministeries(db_session):
     below_root = await make_org(db_session, BZK, "ministerie", root)
     manual_top = await make_org(db_session, BZK, "ministerie")
 
-    async def fake_fetch(slug: str):
-        return [DgInfo(naam="DG Overname", detail_url="x")], {}
-
-    await sync_organogram(db_session, fetcher=fake_fetch)
+    fetch = AsyncMock(return_value=([DgInfo(naam="DG Overname", detail_url="x")], {}))
+    await sync_organogram(db_session, fetcher=fetch)
     for ministerie in (below_root, manual_top):
         child = await db_session.scalar(
             select(OrganisatieEenheid.id).where(

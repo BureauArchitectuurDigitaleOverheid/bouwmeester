@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy import select
 
+import tests.authz_world as aw
 from bouwmeester.core.authz import can
 from bouwmeester.models.corpus_node import CorpusNode
 from bouwmeester.models.initiatief import Initiatief
@@ -32,30 +33,20 @@ from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
 from bouwmeester.services.parlementair_import_service import (
     ParlementairImportService,
 )
-from tests.authz_world import (
-    World,
-    add,
-    make_item,
-    notifications,
-    opdracht,
-    perm_ctx,
-    request,
-    rp,
-)
 from tests.factories import make_org, make_person, place
 
 
-async def _stakeholders(w: World, node: str, *holders: str) -> None:
+async def _stakeholders(w, node: str, *holders: str) -> None:
     """betrokken on a node for people, or for an eenheid as ``@<key>``."""
-    await add(w, *(
-        rp("corpus_node", w.res[node], "betrokken", eenheid=w.org[h[1:]])
+    await aw.add(w, *(
+        aw.rp("corpus_node", w.res[node], "betrokken", eenheid=w.org[h[1:]])
         if h.startswith("@")
-        else rp("corpus_node", w.res[node], "betrokken", person=w.person[h])
+        else aw.rp("corpus_node", w.res[node], "betrokken", person=w.person[h])
         for h in holders
     ))  # fmt: skip
 
 
-async def _outsider(w: World):
+async def _outsider(w):
     """Someone placed far away: sees none of the world's items."""
     far = await make_org(w.db, "Ver weg", "ministerie")
     person = await make_person(w.db, "Buitenstaander")
@@ -64,7 +55,7 @@ async def _outsider(w: World):
     return person
 
 
-async def _node(w: World, key: str) -> CorpusNode:
+async def _node(w, key: str) -> CorpusNode:
     return await w.db.get(CorpusNode, w.res[key])
 
 
@@ -94,8 +85,9 @@ async def _opdracht_assigned(w):
 
 async def _opdracht_status(w):
     row = await _opdracht_on_directie_node(w)
-    svc = NotificationService(w.db)
-    return await svc.notify_opdracht_status_changed(row, "concept")
+    return await NotificationService(w.db).notify_opdracht_status_changed(
+        row, "concept"
+    )
 
 
 async def _import_with_eenheid_grant(w):
@@ -116,19 +108,17 @@ async def _import_of_unreadable_item(w):
 async def _node_updated(w):
     await _stakeholders(w, "node_team", "viewer", "@team")
     node = await _node(w, "node_team")
-    svc = NotificationService(w.db)
-    return await svc.notify_node_updated(node, w.person["super_admin"])
+    return await NotificationService(w.db).notify_node_updated(
+        node, w.person["super_admin"]
+    )
 
 
 # (builder, who receives it)
 SENDS = [
-    (_task_completed, {"super_admin"}),
-    (_opdracht_assigned, {"super_admin"}),
-    (_opdracht_status, {"super_admin"}),
-    (_import_with_eenheid_grant, {"viewer"}),
-    (_import_of_unreadable_item, set()),
-    (_node_updated, {"viewer"}),
-]
+    (_task_completed, {"super_admin"}), (_opdracht_assigned, {"super_admin"}),
+    (_opdracht_status, {"super_admin"}), (_import_with_eenheid_grant, {"viewer"}),
+    (_import_of_unreadable_item, set()), (_node_updated, {"viewer"}),
+]  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -141,8 +131,9 @@ async def test_notification_goes_only_to_readers(world, send, receivers):
 
 
 async def test_edge_notification_hides_an_unreadable_end(world):
-    team_node = await _node(world, "node_team")
-    elders_node = await _node(world, "node_elders")
+    team_node, elders_node = [
+        await _node(world, k) for k in ("node_team", "node_elders")
+    ]
     viewer, admin = world.person["viewer"], world.person["super_admin"]
     # the viewer does not see the elders node, super_admin sees both
     await _stakeholders(world, "node_team", "viewer", "@team")
@@ -164,18 +155,11 @@ async def test_assigning_a_lead_notifies_only_an_assignee_who_can_read_it(world)
     reader = world.person["role_only"]  # contributor on the lead's initiatief
     for person in (outsider, reader):
         body = {"assignee_id": str(person.id)}
-        resp = await request(world, "super_admin", "PUT", "/api/leads/{lead}", body)
+        resp = await aw.request(world, "super_admin", "PUT", "/api/leads/{lead}", body)
         assert resp.is_success, resp.text
-    lead_notes = Notification.related_lead_id == world.res["lead"]
-
-    async def got(person) -> int:
-        stmt = select(Notification).where(
-            Notification.person_id == person.id, lead_notes
-        )
-        return len((await world.db.scalars(stmt)).all())
-
-    assert await got(outsider) == 0
-    assert await got(reader) == 1
+    for person, count in ((outsider, 0), (reader, 1)):
+        got = await aw.notifications(world, person.id)
+        assert len([n for n in got if n.related_lead_id == world.res["lead"]]) == count
 
 
 async def test_mention_needs_read_access_and_carries_the_caller(world):
@@ -201,20 +185,18 @@ async def test_mention_needs_read_access_and_carries_the_caller(world):
         "organisatie_eenheid_id": "{eenheid_team}",
         "assignee_id": "{p_viewer}",
     }
-    resp = await request(world, "team_editor", "POST", "/api/tasks", body)
+    resp = await aw.request(world, "team_editor", "POST", "/api/tasks", body)
     assert resp.status_code == 201, resp.text
-    [note] = await notifications(world, mentioned.id, "mention")
+    [note] = await aw.notifications(world, mentioned.id, "mention")
     assert note.sender_id == world.person["team_editor"].id
 
 
 async def test_parlementair_notification_is_a_dm_not_a_channel_post(world):
     notification = Notification(
-        id=uuid.uuid4(),
-        person_id=world.person["viewer"].id,
-        type="politieke_input_imported",
-        title="Nieuw(e) motie: X",
+        id=uuid.uuid4(), person_id=world.person["viewer"].id,
+        type="politieke_input_imported", title="Nieuw(e) motie: X",
         message="Motie 'X' is mogelijk relevant voor 'Teamdossier'.",
-    )
+    )  # fmt: skip
     service = MattermostService(world.db)
     with (
         patch.object(service, "is_enabled", AsyncMock(return_value=True)),
@@ -227,9 +209,7 @@ async def test_parlementair_notification_is_a_dm_not_a_channel_post(world):
     assert send_dm.await_args.args[0] == world.person["viewer"].id
 
 
-# ---------------------------------------------------------------------------
-# Parliamentary alerts: each scope sees only its own context and terms
-# ---------------------------------------------------------------------------
+# Parliamentary alerts: each scope sees only its own context and terms --------
 
 
 class _FakeLLM:
@@ -242,11 +222,9 @@ class _FakeLLM:
         self.calls.append(kwargs)
         ctx = kwargs["signaalcontext"]
         return KamerstukAlertResult(
-            samenvatting=f"Samenvatting: {ctx}",
-            relevantie_score=80,
-            reden=f"Reden: {ctx}",
-            actie=f"Actie: {ctx}",
-        )
+            samenvatting=f"Samenvatting: {ctx}", relevantie_score=80,
+            reden=f"Reden: {ctx}", actie=f"Actie: {ctx}",
+        )  # fmt: skip
 
 
 async def test_parlementair_alert_keeps_each_scope_to_itself(world, monkeypatch):
@@ -254,7 +232,7 @@ async def test_parlementair_alert_keeps_each_scope_to_itself(world, monkeypatch)
     and channel."""
     other = Initiatief(id=uuid.uuid4(), naam=f"Ander {uuid.uuid4().hex[:6]}")
     world.db.add(other)
-    item = await make_item(world)
+    item = await aw.make_item(world)
     item.llm_samenvatting = "Algemene samenvatting."
     item.extra_data = {"categorie": "overig"}
     abonnementen = []
@@ -282,34 +260,25 @@ async def test_parlementair_alert_keeps_each_scope_to_itself(world, monkeypatch)
     llm = _FakeLLM()
     sent: dict[str, str] = {}
 
-    async def _llm_for(_sensitivity, _db):
-        return llm
-
-    async def _enabled(_self):
-        return True
-
     async def _send(_self, channel_id, text, props):
         sent[channel_id] = json.dumps(props)
         return True
 
     monkeypatch.setattr(
         "bouwmeester.services.parlementair_import_service.get_llm_service_for",
-        _llm_for,
+        AsyncMock(return_value=llm),
     )
-    monkeypatch.setattr(MattermostService, "is_enabled", _enabled)
+    monkeypatch.setattr(MattermostService, "is_enabled", AsyncMock(return_value=True))
     monkeypatch.setattr(MattermostService, "send_channel_message", _send)
 
     assert await ParlementairImportService(world.db)._alert_kamerstuk(item.id) == 2
     # One prompt per scope, with only that scope's term and context.
-    assert sorted((c["zoektermen"], c["signaalcontext"]) for c in llm.calls) == [
-        (["term-0"], "geheim-0"),
-        (["term-1"], "geheim-1"),
-    ]
+    asked = sorted((c["zoektermen"], c["signaalcontext"]) for c in llm.calls)
+    assert asked == [(["term-0"], "geheim-0"), (["term-1"], "geheim-1")]
     for own, other_n in ((0, 1), (1, 0)):
         message = sent[f"{own}" * 26]
         assert f"geheim-{own}" in message and f"term-{own}" in message
-        assert f"geheim-{other_n}" not in message
-        assert f"term-{other_n}" not in message
+        assert f"geheim-{other_n}" not in message and f"term-{other_n}" not in message
     # Nothing of either scope is stored on the shared item.
     await world.db.refresh(item)
     assert item.llm_samenvatting == "Algemene samenvatting."
@@ -317,9 +286,7 @@ async def test_parlementair_alert_keeps_each_scope_to_itself(world, monkeypatch)
     assert "geheim" not in stored and "relevantie" not in stored
 
 
-# ---------------------------------------------------------------------------
-# Opdracht worker tasks live where the opdracht lives
-# ---------------------------------------------------------------------------
+# Opdracht worker tasks live where the opdracht lives -------------------------
 
 
 @pytest.mark.parametrize(
@@ -334,15 +301,12 @@ async def test_opdracht_task_lives_in_the_opdracht_eenheid(
     world, gever, nemer, lands_in, title
 ):
     """The instrument's readers and editors do not get the opdracht's task."""
-    row = opdracht(
-        world,
-        "Geheime opdracht",
-        gever,
-        instrument_id=world.res["node_team"],
+    row = aw.opdracht(
+        world, "Geheime opdracht", gever, instrument_id=world.res["node_team"],
         verantwoordelijke_id=world.person["viewer"].id,
         opdrachtnemer_eenheid_id=world.org[nemer].id if nemer else None,
-    )
-    await add(world, row)
+    )  # fmt: skip
+    await aw.add(world, row)
     await OpdrachtTaskService(world.db).on_opdracht_created(row)
     (task,) = (
         await world.db.scalars(select(Task).where(Task.opdracht_id == row.id))
@@ -351,6 +315,6 @@ async def test_opdracht_task_lives_in_the_opdracht_eenheid(
     if title:
         assert task.title == title
     if lands_in:
-        ctx = await perm_ctx(world, "team_editor")
+        ctx = await aw.perm_ctx(world, "team_editor")
         assert not await can(world.db, ctx, "task:read", "task", task.id)
         assert not await can(world.db, ctx, "task:update", "task", task.id)
