@@ -83,7 +83,6 @@ class LeadCandidateClassification(BaseModel):
     confidence: float
     proposed_title: str
     proposed_description: str
-    match_existing_lead_id: str | None
     reasoning: str
     failed: bool = False
     """True als de LLM-call zelf mislukte (netwerk, parse-fout).
@@ -462,12 +461,13 @@ class BaseLLMService(ABC):
         message: str,
         initiatief_naam: str,
         channel_display_name: str,
-        recent_leads: list[dict],
     ) -> LeadCandidateClassification:
         """Classificeer een Mattermost-bericht als (mogelijke) lead.
 
         Wordt aangeroepen voor berichten in een aan een initiatief gekoppeld
-        kanaal. CONFIDENTIAL: alleen door VLAM uitvoerbaar.
+        kanaal. CONFIDENTIAL: alleen door VLAM uitvoerbaar.  De LLM krijgt
+        alleen het bericht, geen andere leads: een match met een bestaande
+        lead zoekt de ingest zelf.
         """
         from bouwmeester.services.llm.prompts import (
             build_classify_mattermost_lead_prompt,
@@ -477,7 +477,6 @@ class BaseLLMService(ABC):
             message=message,
             initiatief_naam=initiatief_naam,
             channel_display_name=channel_display_name,
-            recent_leads=recent_leads,
         )
         try:
             text = await self._complete(prompt, max_tokens=512)
@@ -490,18 +489,12 @@ class BaseLLMService(ABC):
                 confidence=0.0,
                 proposed_title="",
                 proposed_description="",
-                match_existing_lead_id=None,
                 reasoning="LLM-call mislukt",
                 failed=True,
             )
 
         try:
             result = self._parse_json(text)
-            match_id = result.get("match_existing_lead_id")
-            if isinstance(match_id, str):
-                match_id = match_id.strip() or None
-            else:
-                match_id = None
             try:
                 raw_confidence = float(result.get("confidence") or 0.0)
             except (TypeError, ValueError):
@@ -512,7 +505,6 @@ class BaseLLMService(ABC):
                 confidence=confidence,
                 proposed_title=str(result.get("proposed_title") or "")[:500],
                 proposed_description=str(result.get("proposed_description") or ""),
-                match_existing_lead_id=match_id,
                 reasoning=str(result.get("reasoning") or ""),
             )
         except Exception:
@@ -527,6 +519,5 @@ class BaseLLMService(ABC):
                 confidence=0.0,
                 proposed_title="",
                 proposed_description="",
-                match_existing_lead_id=None,
                 reasoning="LLM-antwoord niet te lezen",
             )

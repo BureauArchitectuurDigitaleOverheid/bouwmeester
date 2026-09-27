@@ -851,42 +851,18 @@ def build_chat_context_message(context: dict | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-MAX_RECENT_LEADS_IN_PROMPT = 60
-
-
 def build_classify_mattermost_lead_prompt(
     *,
     message: str,
     initiatief_naam: str,
     channel_display_name: str,
-    recent_leads: list[dict],
 ) -> str:
     """Bouw een prompt voor het classificeren van een Mattermost-bericht
     als (potentiële) lead binnen een initiatief.
 
-    ``recent_leads`` is een lijst dicts ``{id, title, organization, stage}``
-    van leads binnen hetzelfde initiatief, zodat de LLM duplicaten kan
-    voorstellen. De caller bepaalt de selectie (recency + trigram-
-    similarity); deze functie cap't alleen op ``MAX_RECENT_LEADS_IN_PROMPT``.
+    Bewust zonder bestaande leads: wat de LLM terugschrijft komt bij mensen
+    die die leads niet per se mogen zien.
     """
-    leads_block = ""
-    if recent_leads:
-        items = []
-        for lead in recent_leads[:MAX_RECENT_LEADS_IN_PROMPT]:
-            org = lead.get("organization")
-            org_part = f', organisatie: "{org}"' if org else ""
-            items.append(
-                f"- id: {lead['id']}, "
-                f'titel: "{lead["title"]}"'
-                f"{org_part}, "
-                f"stage: {lead.get('stage', '?')}"
-            )
-        leads_block = (
-            "\nBESTAANDE LEADS in dit initiatief (kandidaten voor 'koppelen'):\n"
-            + "\n".join(items)
-            + "\n"
-        )
-
     return (
         "Je bent een medewerker van team Regelrecht bij het ministerie van BZK.\n"
         f'Het Mattermost-kanaal "{channel_display_name}" is gekoppeld aan'
@@ -897,8 +873,7 @@ def build_classify_mattermost_lead_prompt(
         " beschrijft. Een lead is een concreet contactmoment of signaal"
         " van een externe organisatie/persoon — niet een collega die"
         " intern iets meldt of een algemene update.\n\n"
-        f"BERICHT:\n{message[:MAX_TEXT_IN_PROMPT]}\n"
-        f"{leads_block}\n"
+        f"BERICHT:\n{message[:MAX_TEXT_IN_PROMPT]}\n\n"
         "Antwoord met JSON (en ALLEEN JSON):\n"
         "{\n"
         '  "is_lead": true|false,\n'
@@ -906,7 +881,6 @@ def build_classify_mattermost_lead_prompt(
         '  "proposed_title": "korte titel (organisatie of '
         'onderwerp), max 80 chars",\n'
         '  "proposed_description": "1-2 zinnen samenvatting wat ze willen",\n'
-        '  "match_existing_lead_id": "uuid van bestaande lead of null",\n'
         '  "reasoning": "kort waarom je dit denkt (max 1 zin)"\n'
         "}\n"
         "Regels:\n"
@@ -914,10 +888,8 @@ def build_classify_mattermost_lead_prompt(
         " dan ruis.\n"
         '- Triviale berichten ("ok", "👍", "morgen even bellen")'
         ' krijgen "is_lead": false.\n'
-        "- Als het overduidelijk over een bestaande lead uit de lijst"
-        ' gaat, vul "match_existing_lead_id" met die UUID en houd'
-        ' "is_lead": true.\n'
-        '- Als geen match: "match_existing_lead_id": null.'
+        "- Ook een bericht over een lead die al bekend lijkt is een lead:"
+        ' "is_lead": true.'
     )
 
 

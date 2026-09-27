@@ -26,7 +26,7 @@ import time
 from collections import OrderedDict
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -131,17 +131,12 @@ def message_mentions_bot(message: str, bot_username: str | None) -> bool:
     return re.search(pattern, message, re.IGNORECASE) is not None
 
 
-# Selectie van bestaande leads die meegaan in de LLM-prompt voor
-# duplicate-detection. We nemen een unie van twee groepen, dedupliceren op
-# id en cappen op MAX_LEADS_FOR_LLM:
-#   1. de N nieuwste leads (vangt kwesties op die nog actief gespeeld worden)
-#   2. de M leads waarvan titel/organisatie het meest lijkt op het
-#      bericht via pg_trgm word_similarity (vangt oude leads waarvan de
-#      naam expliciet genoemd wordt)
-RECENT_LEADS_FOR_LLM = 25
-SIMILAR_LEADS_FOR_LLM = 50
-SIMILAR_LEAD_THRESHOLD = 0.3
-MAX_LEADS_FOR_LLM = 60
+# Een bericht gaat over een bestaande lead als titel of organisatie van die
+# lead er vrijwel letterlijk in staat (pg_trgm word_similarity, 0..1).  De
+# ingest zoekt dat zelf: de LLM krijgt geen andere leads te zien, want wat
+# die terugschrijft belandt bij mensen die ze niet per se mogen lezen.  Een
+# verkeerde match kost weinig: wie reageert kiest tussen koppelen en nieuw.
+LEAD_MATCH_THRESHOLD = 0.7
 
 
 # Fallback labels voor de 7 default-stages. De echte naam komt sinds
@@ -901,24 +896,10 @@ class MattermostIngestService:
             )
             return None, "stale_initiatief"
 
-        rows = await self._collect_lead_candidates_for_llm(
-            channel_link_initiatief_id, message
-        )
-        recent = [
-            {
-                "id": str(row.id),
-                "title": row.title,
-                "organization": row.organization,
-                "stage": row.stage,
-            }
-            for row in rows
-        ]
-
         result = await llm.classify_mattermost_lead_candidate(
             message=message,
             initiatief_naam=initiatief.naam,
             channel_display_name=channel_display_name,
-            recent_leads=recent,
         )
         if result.failed:
             # Onbereikbare of stukke LLM is geen oordeel. Als "no_lead"
@@ -929,27 +910,17 @@ class MattermostIngestService:
         if not result.is_lead:
             return None, "no_lead"
 
-        match_lead_uuid: UUID | None = None
         matched_lead: dict | None = None
-        if result.match_existing_lead_id:
-            try:
-                candidate = UUID(result.match_existing_lead_id)
-            except ValueError:
-                candidate = None
-            if candidate is not None:
-                for row in rows:
-                    if str(row.id) == str(candidate):
-                        match_lead_uuid = candidate
-                        stage_label = await self._resolve_stage_label(
-                            channel_link_initiatief_id, row.stage
-                        )
-                        matched_lead = {
-                            "id": row.id,
-                            "title": row.title,
-                            "stage": row.stage,
-                            "stage_label": stage_label,
-                        }
-                        break
+        row = await self._find_matching_lead(channel_link_initiatief_id, message)
+        if row is not None:
+            matched_lead = {
+                "id": row.id,
+                "title": row.title,
+                "stage": row.stage,
+                "stage_label": await self._resolve_stage_label(
+                    channel_link_initiatief_id, row.stage
+                ),
+            }
 
         suggested = SuggestedLead(
             source_type="mattermost",
@@ -964,7 +935,7 @@ class MattermostIngestService:
             raw_text=message,
             confidence=result.confidence,
             reasoning=result.reasoning or None,
-            match_existing_lead_id=match_lead_uuid,
+            match_existing_lead_id=matched_lead["id"] if matched_lead else None,
             status=STATUS_PENDING,
         )
         self.session.add(suggested)
@@ -990,62 +961,28 @@ class MattermostIngestService:
 
         return suggested.id, None
 
-    async def _collect_lead_candidates_for_llm(
-        self, initiatief_id: UUID, message: str
-    ) -> list:
-        """Selecteer bestaande leads die mogelijk relevant zijn voor de
-        LLM-duplicate-check.
+    async def _find_matching_lead(self, initiatief_id: UUID, message: str):
+        """The lead of this initiatief the message names, or None.
 
-        Twee groepen, gededupliceerd op id en gecapped:
-
-        1. ``RECENT_LEADS_FOR_LLM`` nieuwste leads voor dit initiatief
-           (recency, vangt actieve kwesties zonder expliciete naam in
-           het bericht).
-        2. ``SIMILAR_LEADS_FOR_LLM`` leads die het meest lijken op het
-           bericht via ``pg_trgm.word_similarity`` op titel of
-           organisatie (vangt oude leads waarvan de naam expliciet
-           genoemd wordt; bv. "HHNK" matcht een lead "HHNK
-           (Hoogheemraadschap...)" ook al staat die niet in de top-25).
-
-        Recente leads krijgen voorrang in de dedup zodat hun ``stage``
-        consistent is. ``SIMILAR_LEAD_THRESHOLD`` is een ruime default;
-        ``word_similarity`` retourneert 0..1 en 0.3 vangt afkortingen +
-        kleine spelvariaties zonder te veel ruis.
+        The lead whose title or organisation best appears as words in the
+        message (``pg_trgm.word_similarity``), at ``LEAD_MATCH_THRESHOLD``
+        or above.  Old leads count as much as new ones: "HHNK" in a message
+        finds the lead "HHNK (Hoogheemraadschap...)" however long ago it
+        was made.
         """
-        recent_stmt = (
-            select(Lead.id, Lead.title, Lead.organization, Lead.stage)
-            .where(Lead.initiatief_id == initiatief_id)
-            .order_by(Lead.created_at.desc())
-            .limit(RECENT_LEADS_FOR_LLM)
-        )
-        recent_rows = (await self.session.execute(recent_stmt)).all()
-
-        # Pre-filter ruwweg op een ondergrens om geen full-table-scan op te
-        # eten in initiatieven met veel leads. word_similarity is symmetrisch:
-        # we zoeken leads waar TITEL of ORG voorkomt als "woord" in MESSAGE.
         title_sim = func.word_similarity(Lead.title, message)
-        org_sim = func.word_similarity(Lead.organization, message)
-        max_sim = func.greatest(title_sim, func.coalesce(org_sim, 0.0))
-        similar_stmt = (
-            select(Lead.id, Lead.title, Lead.organization, Lead.stage)
+        org_sim = func.coalesce(func.word_similarity(Lead.organization, message), 0.0)
+        best = func.greatest(title_sim, org_sim)
+        stmt = (
+            select(Lead.id, Lead.title, Lead.stage)
             .where(
                 Lead.initiatief_id == initiatief_id,
-                or_(
-                    title_sim > SIMILAR_LEAD_THRESHOLD,
-                    org_sim > SIMILAR_LEAD_THRESHOLD,
-                ),
+                best >= LEAD_MATCH_THRESHOLD,
             )
-            .order_by(max_sim.desc())
-            .limit(SIMILAR_LEADS_FOR_LLM)
+            .order_by(best.desc(), Lead.created_at.desc(), Lead.id)
+            .limit(1)
         )
-        similar_rows = (await self.session.execute(similar_stmt)).all()
-
-        merged: dict = {}
-        for row in recent_rows:
-            merged[row.id] = row
-        for row in similar_rows:
-            merged.setdefault(row.id, row)
-        return list(merged.values())[:MAX_LEADS_FOR_LLM]
+        return (await self.session.execute(stmt)).first()
 
     async def _resolve_stage_label(
         self, initiatief_id: UUID | None, stage: str | None
@@ -1093,12 +1030,14 @@ class MattermostIngestService:
         websocket binnen die we al gebruiken voor het meelezen, en zijn
         daarmee robuust tegen die platformbeperkingen.
 
-        Bij ``matched_lead`` (een door de LLM herkende bestaande lead)
-        gebruiken we andere copy en zetten we :link: als eerste/aanbevolen
-        actie boven :white_check_mark:.  Het kanaal hoort niet welke lead:
-        niet iedereen die daar leest mag die lead zien.  Titel en stage gaan
-        alleen per DM naar de schrijver van het bericht, en alleen als die
-        de lead mag lezen (``_dm_matched_lead``).
+        Bij ``matched_lead`` (een herkende bestaande lead) gebruiken we
+        andere copy en zetten we :link: als eerste/aanbevolen actie boven
+        :white_check_mark:.  Het kanaal hoort niet welke lead: niet iedereen
+        die daar leest mag die lead zien.  Titel en stage gaan alleen per DM
+        naar de schrijver van het bericht, en alleen als die de lead mag
+        lezen (``_dm_matched_lead``).  Evenmin komt vrije tekst van het model
+        in het kanaal: het voorstel voor een nieuwe lead gaat per DM naar de
+        schrijver, als die het initiatief mag lezen (``_dm_proposal``).
         """
         from bouwmeester.services.mattermost_service import MattermostService
 
@@ -1129,9 +1068,10 @@ class MattermostIngestService:
                     "footer": "Bouwmeester · bestaande lead herkend",
                 }
             else:
+                # Geen vrije tekst van het model in het kanaal: het voorstel
+                # (titel en beschrijving) gaat per DM naar de schrijver.
                 text = (
                     f":dart: Nieuwe lead voor **{initiatief.naam}**?\n"
-                    f"_Voorstel:_ {suggested.proposed_title}\n"
                     f"_Vertrouwen:_ {pct}%\n\n"
                     "_Reageer met:_\n"
                     ":white_check_mark: om de lead aan te maken\n"
@@ -1139,8 +1079,9 @@ class MattermostIngestService:
                 )
                 attachment = {
                     "color": "#3B82F6",
-                    "title": suggested.proposed_title,
-                    "text": suggested.proposed_description or "",
+                    "title": "Mogelijke nieuwe lead",
+                    "text": "Titel en beschrijving van het voorstel krijgt de "
+                    "schrijver van het bericht per DM.",
                     "footer": "Bouwmeester · suggestie vanuit Mattermost",
                 }
 
@@ -1166,10 +1107,15 @@ class MattermostIngestService:
                 await service.add_reaction(mm_thread_post_id, "white_check_mark")
             await service.add_reaction(mm_thread_post_id, "x")
 
-            if matched_lead is not None and author_person_id is not None:
-                await self._dm_matched_lead(
-                    service, author_person_id, initiatief, matched_lead
-                )
+            if author_person_id is not None:
+                if matched_lead is not None:
+                    await self._dm_matched_lead(
+                        service, author_person_id, initiatief, matched_lead
+                    )
+                else:
+                    await self._dm_proposal(
+                        service, author_person_id, initiatief, suggested
+                    )
         finally:
             await service.close()
 
@@ -1200,6 +1146,34 @@ class MattermostIngestService:
             f"lijkt te gaan over de lead "
             f"**{escape_mattermost_md(matched_lead['title'])}**"
             f"{f' ({stage_label})' if stage_label else ''}.",
+        )
+
+    async def _dm_proposal(
+        self,
+        service,
+        person_id: UUID,
+        initiatief: Initiatief,
+        suggested: SuggestedLead,
+    ) -> None:
+        """Send the proposed lead to its author, if they may read the initiatief."""
+        from bouwmeester.core.authz import can, perm_ctx_for
+        from bouwmeester.services.mattermost_utils import escape_mattermost_md
+
+        if not await can(
+            self.session,
+            await perm_ctx_for(self.session, person_id),
+            "initiatief:read",
+            "initiatief",
+            initiatief.id,
+        ):
+            return
+        description = suggested.proposed_description
+        await service.send_dm(
+            person_id,
+            f":dart: Voorstel voor een nieuwe lead in "
+            f"**{escape_mattermost_md(initiatief.naam)}**: "
+            f"**{escape_mattermost_md(suggested.proposed_title)}**"
+            + (f"\n{escape_mattermost_md(description)}" if description else ""),
         )
 
     def _build_permalink(self, channel_id: str, post_id: str) -> str | None:
