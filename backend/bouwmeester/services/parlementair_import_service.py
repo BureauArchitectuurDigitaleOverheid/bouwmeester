@@ -48,6 +48,10 @@ from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
 
+# Marks the review task an import creates, so completing the review closes
+# that task and not every task someone linked to the item.
+REVIEW_WORK_TYPE = "Parlementaire review"
+
 
 def _draagt_treffers(strategy: ImportStrategy) -> bool:
     """Komt dit stuk van een zoekterm van een gebruiker?
@@ -958,6 +962,7 @@ class ParlementairImportService:
             organisatie_eenheid_id=review_unit_id,
             assignee_id=None,
             parlementair_item_id=parlementair_item.id,
+            work_type=REVIEW_WORK_TYPE,
         )
         self.session.add(task)
         await self.session.flush()

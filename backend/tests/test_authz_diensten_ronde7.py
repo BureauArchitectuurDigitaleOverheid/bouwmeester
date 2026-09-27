@@ -25,7 +25,8 @@ from bouwmeester.services.opdracht_task_service import OpdrachtTaskService
 from bouwmeester.services.parlementair_import_service import (
     ParlementairImportService,
 )
-from tests.authz_world import World, make_item, perm_ctx
+from tests.authz_world import World, add_directie_admin, make_item, perm_ctx
+from tests.factories import client_as
 
 # ---------------------------------------------------------------------------
 # Opdracht worker tasks live where the opdracht lives
@@ -177,3 +178,49 @@ async def test_parlementair_alert_keeps_each_scope_to_itself(world, monkeypatch)
     assert item.llm_samenvatting == "Algemene samenvatting."
     stored = json.dumps(item.extra_data)
     assert "geheim" not in stored and "relevantie" not in stored
+
+
+# ---------------------------------------------------------------------------
+# Completing a review closes the review task, not every linked task
+# ---------------------------------------------------------------------------
+
+
+async def test_complete_review_leaves_other_units_tasks_open(world):
+    """Anyone may link a task to an item; the reviewer closes only their own."""
+    await add_directie_admin(world, "ministry_admin", "Ministeriebeheerder")
+    item = await make_item(world, "node_directie")
+    review = await ParlementairImportService(world.db).create_review_task(
+        item, affected_nodes=[]
+    )
+    elders = await world.db.get(Task, world.res["task_elders"])
+    elders.parlementair_item_id = item.id
+    await world.db.flush()
+
+    async with client_as(world.db, world.person["ministry_admin"]) as c:
+        resp = await c.post(
+            f"/api/parlementair/imports/{item.id}/complete",
+            json={"eigenaar_id": str(world.person["manager"].id), "tasks": []},
+        )
+
+    assert resp.status_code == 200, resp.text
+    await world.db.refresh(review)
+    await world.db.refresh(elders)
+    assert review.status == "done"
+    assert elders.status == "open"
+
+
+async def test_item_response_drops_a_stored_scope_judgement(world):
+    """Items from before the fix carry one scope's judgement in extra_data."""
+    item = await make_item(world, "node_team")
+    item.extra_data = {
+        "categorie": "overig",
+        "relevantie_reden": "geheim",
+        "actie": "x",
+    }
+    await world.db.flush()
+
+    async with client_as(world.db, world.person["viewer"]) as c:
+        resp = await c.get(f"/api/parlementair/imports/{item.id}")
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["extra_data"] == {"categorie": "overig"}
