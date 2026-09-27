@@ -131,11 +131,9 @@ def message_mentions_bot(message: str, bot_username: str | None) -> bool:
     return re.search(pattern, message, re.IGNORECASE) is not None
 
 
-# Een bericht gaat over een bestaande lead als titel of organisatie van die
-# lead er vrijwel letterlijk in staat (pg_trgm word_similarity, 0..1).  De
-# ingest zoekt dat zelf: de LLM krijgt geen andere leads te zien, want wat
-# die terugschrijft belandt bij mensen die ze niet per se mogen lezen.  Een
-# verkeerde match kost weinig: wie reageert kiest tussen koppelen en nieuw.
+# A message is about an existing lead when its title or organisation appears
+# almost literally (pg_trgm word_similarity, 0..1).  Matched here, not by the
+# LLM: its output reaches people who may not read the other leads.
 LEAD_MATCH_THRESHOLD = 0.7
 
 
@@ -284,9 +282,7 @@ class MattermostIngestService:
         if existing is not None and not reprocess:
             return
 
-        # Author match through an explicit mattermost_user link only.  A
-        # deactivated person or one off the whitelist counts as unlinked: no
-        # authorship, no DMs (``caller.may_still_act``).
+        # Author only through an explicit link to a person still allowed in.
         person_id: UUID | None = (
             await linked_person_id(self.session, mm_user_id) if mm_user_id else None
         )
@@ -593,10 +589,8 @@ class MattermostIngestService:
     async def _may_feed_lead(self, lead_id: UUID, author_id: UUID | None) -> bool:
         """May this post become a note on the lead?
 
-        A note on a lead assigned to an agent hands that agent work, so it
-        only comes from an author who may instruct agents or who may add
-        activity to the lead anyway (``agent_rules``; editors keep updating
-        work already assigned).  Any other lead takes every post.
+        A note on an agent's lead hands it work (``agent_rules``), so only
+        from an author who may instruct agents or add activity to the lead.
         """
         from bouwmeester.core.authz import can, perm_ctx_for
         from bouwmeester.models.person import Person
@@ -992,11 +986,8 @@ class MattermostIngestService:
     async def _find_matching_lead(self, initiatief_id: UUID, message: str):
         """The lead of this initiatief the message names, or None.
 
-        The lead whose title or organisation best appears as words in the
-        message (``pg_trgm.word_similarity``), at ``LEAD_MATCH_THRESHOLD``
-        or above.  Old leads count as much as new ones: "HHNK" in a message
-        finds the lead "HHNK (Hoogheemraadschap...)" however long ago it
-        was made.
+        Best ``word_similarity`` of title or organisation, at
+        ``LEAD_MATCH_THRESHOLD`` or above; age does not count.
         """
         title_sim = func.word_similarity(Lead.title, message)
         org_sim = func.coalesce(func.word_similarity(Lead.organization, message), 0.0)
@@ -1058,14 +1049,10 @@ class MattermostIngestService:
         websocket binnen die we al gebruiken voor het meelezen, en zijn
         daarmee robuust tegen die platformbeperkingen.
 
-        Bij ``matched_lead`` (een herkende bestaande lead) gebruiken we
-        andere copy en zetten we :link: als eerste/aanbevolen actie boven
-        :white_check_mark:.  Het kanaal hoort niet welke lead: niet iedereen
-        die daar leest mag die lead zien.  Titel en stage gaan alleen per DM
-        naar de schrijver van het bericht, en alleen als die de lead mag
-        lezen (``_dm_matched_lead``).  Evenmin komt vrije tekst van het model
-        in het kanaal: het voorstel voor een nieuwe lead gaat per DM naar de
-        schrijver, als die het initiatief mag lezen (``_dm_proposal``).
+        With ``matched_lead`` the card offers :link: first.  The channel
+        never hears which lead nor any model text (not every reader may see
+        them): those go by DM to the author, if they may read them
+        (``_dm_matched_lead``, ``_dm_proposal``).
         """
         from bouwmeester.services.mattermost_service import MattermostService
 
@@ -1096,8 +1083,6 @@ class MattermostIngestService:
                     "footer": "Bouwmeester · bestaande lead herkend",
                 }
             else:
-                # Geen vrije tekst van het model in het kanaal: het voorstel
-                # (titel en beschrijving) gaat per DM naar de schrijver.
                 text = (
                     f":dart: Nieuwe lead voor **{initiatief.naam}**?\n"
                     f"_Vertrouwen:_ {pct}%\n\n"

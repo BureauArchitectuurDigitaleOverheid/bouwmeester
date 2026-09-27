@@ -489,17 +489,11 @@ class MergeResult:
 async def merge_into(
     session: AsyncSession, *, source: OrganisatieEenheid, target: OrganisatieEenheid
 ) -> MergeResult:
-    """Backfill *target* from *source*, then merge *source* into it.
+    """Backfill *target* from *source*, then merge *source* into it; caller commits.
 
-    The one merge of two eenheden that the admin routes and the automatic
-    ministerie merge share.  Caller commits.
-
-    Merging must not carry the say over members from the source onto the
-    target (typically a user's own external root onto an official TOOI
-    row): the eigenaar grants of the source are dropped, and manager
-    placements in the source and below it that someone who does not decide
-    about the members of the target (after the merge) may have confirmed
-    lose their trust (``core.authority.distrust_lost_confirmations``).
+    The say over members does not carry over: the source's eigenaar grants
+    are dropped and placements confirmed by who no longer decides lose
+    their trust (``core.authority.distrust_lost_confirmations``).
     """
     from bouwmeester.core.authority import (
         distrust_lost_confirmations,

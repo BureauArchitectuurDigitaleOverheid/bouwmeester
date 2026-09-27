@@ -65,12 +65,7 @@ def _draagt_treffers(strategy: ImportStrategy) -> bool:
 
 
 async def _internal_llm(session: AsyncSession):
-    """The LLM for prompts that carry our own data.
-
-    Tag names, search terms and a scope's signaalcontext are internal: they
-    say what the organisation follows and why, so they only go to a
-    provider cleared for internal data.
-    """
+    """The LLM for prompts that carry internal data (terms, signaalcontext)."""
     return await get_llm_service_for(DataSensitivity.INTERNAL, session)
 
 
@@ -414,18 +409,10 @@ class ParlementairImportService:
         """Judge the item for each scope that follows it.
 
         One LLM call per scope, with only that scope's terms and
-        signaalcontext.  The result (summary, relevance score, reason,
-        action) belongs to that scope and only goes to its channels: it is
-        never stored on the shared item, which everyone with
-        ``parlementair:read`` reads, so one dossier's context never reaches
-        another dossier's channel or the web app.
-
-        The inhaalslag needs the same judgement as a single alert: without a
-        score ``minimum_relevantie`` has nothing to weigh (the first
-        inhaalslag in production posted 47 items unfiltered).
-
-        Fails soft: a scope without a judgement falls back to the default
-        threshold, which errs on the side of showing the item.
+        signaalcontext.  The result goes only to that scope's channels and is
+        never stored on the shared item (everyone with ``parlementair:read``
+        reads that).  Fails soft: a scope without a judgement falls back to
+        the default threshold, which shows the item.
         """
         groepen = per_scope(abonnementen)
         if not groepen:

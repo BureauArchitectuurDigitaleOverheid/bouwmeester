@@ -1,12 +1,9 @@
 """Handlers for Mattermost slash commands and interactive button actions.
 
-Identity: a slash command arrives on a webhook authenticated by the
-command's token, which Mattermost shares for every user; the ``user_id``
-in the payload is Mattermost's word for who typed it.  So that token acts
-as every linked user's identity.  That is how Mattermost slash commands
-work, not a gap here: keep the token secret and rotate it when it leaks.
-Every command and reaction still resolves the linked person and refuses
-one who is deactivated or off the whitelist (``caller.may_still_act``).
+Identity: the command token is shared by every user and the payload's
+``user_id`` is Mattermost's word for who typed it, so the token acts as every
+linked user's identity (keep it secret, rotate it when it leaks).  The linked
+person must still be allowed in (``caller.may_still_act``).
 """
 
 import logging
@@ -76,11 +73,7 @@ async def channel_link_refusal(
     """Why *person_id* may not link this channel, or ``None`` when they may.
 
     A linked channel's posts are ingested, so only someone who can read
-    them may link it: for an open channel a member of its team, for any
-    other channel one of its members (``MattermostService.may_link_channel``).
-    Fails closed without a linked Mattermost account and when Mattermost
-    cannot confirm.  The REST link routes and ``/bouwmeester koppel`` ask
-    this after ``mattermost_channel_link:create``.
+    them may link it (``MattermostService.may_link_channel``).  Fails closed.
     """
     from bouwmeester.services.mattermost_service import (
         MattermostService,
@@ -117,19 +110,12 @@ class MattermostSlashService:
         self.session = session
 
     async def _resolve_person_id(self, mattermost_user_id: str) -> UUID | None:
-        """The linked person, or ``None`` when unlinked or no longer allowed in.
-
-        A deactivated person or one taken off the whitelist is refused like
-        an unlinked account (``caller.may_still_act``).
-        """
+        """The linked person, or ``None`` when unlinked or no longer allowed in."""
         return await linked_person_id(self.session, mattermost_user_id)
 
     async def _caller(self, person_id: UUID) -> Caller | None:
-        """Rights and visibility of *person_id*; ``None`` for an unknown person.
-
-        Unlike the chat, a command always comes from a linked person: an
-        unknown id is refused, never treated as anonymous (dev mode).
-        """
+        """Rights and visibility of *person_id*; ``None`` for an unknown person
+        (never anonymous, which dev mode would let see everything)."""
         if await self.session.get(Person, person_id) is None:
             return None
         return await caller_for(self.session, person_id)

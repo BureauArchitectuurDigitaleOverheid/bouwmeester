@@ -337,10 +337,8 @@ class LeadRepository(BaseRepository[Lead]):
     ) -> tuple[list[ResourcePermission], list[ResourcePermission]]:
         """The source's resource roles a merge moves, and those it drops.
 
-        A grant is dropped when the target already has the same one: the
-        same holder (a person, or an eenheid) with the same rol.  The
-        route checks the moved person grants before merging (an agent may
-        only be handed power by super_admin).
+        A grant is dropped when the target already has the same holder
+        with the same rol.
         """
         rows = await self.session.execute(
             select(ResourcePermission)

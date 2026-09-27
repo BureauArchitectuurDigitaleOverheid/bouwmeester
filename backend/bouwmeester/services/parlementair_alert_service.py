@@ -204,12 +204,9 @@ class ParlementairAlertService:
     ) -> int:
         """Post the item in the channels of every scope that follows it.
 
-        One message per scope: its channels see only that scope's own
-        search terms and its own judgement from *beoordelingen* (summary,
-        relevance, action), never another scope's.  The item is imported
-        and visible in the web app either way; a scope that switched this
-        category off, or whose threshold the item does not reach, gets no
-        message.
+        One message per scope, with only that scope's own terms and
+        judgement from *beoordelingen*.  A scope that switched the category
+        off, or whose threshold the item misses, gets no message.
 
         Returns the number of channels posted to.  Zero is a valid outcome:
         a scope need not have a channel.

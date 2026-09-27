@@ -388,12 +388,8 @@ class MattermostService:
         return ("", props)
 
     async def send_notification(self, notification: Notification) -> bool:
-        """Send a notification as a DM to its recipient.
-
-        Always a DM, never a channel post: a notification names an item its
-        recipient may read (``NotificationService``), and a channel's members
-        are not all such readers.
-        """
+        """Send a notification as a DM (never a channel: it names an item only
+        its recipient is known to read)."""
         if not await self.is_enabled():
             return False
 
@@ -759,19 +755,11 @@ class MattermostService:
     async def search_channels(
         self, query: str, *, member_user_id: str | None
     ) -> list[dict]:
-        """Zoek kanalen waar de bot in zit, gefilterd op naam.
+        """The bot's channels matching *query* that *member_user_id* may link.
 
-        Returns een lijst van dicts met channel_id, channel_name,
-        channel_display_name, team_id, team_name, member_count,
-        is_bot_member.
-
-        We zoeken alleen binnen de kanalen waarvan de bot lid is — pas
-        wanneer de bot toegevoegd wordt aan een kanaal kunnen we daar
-        meelezen.  A channel is only listed when *member_user_id* (the
-        caller's Mattermost account) may link it (``may_link_channel``): a
-        member of an open channel's team, a member of a private channel.
-        Its name is not for others to see.  When membership cannot be
-        confirmed the channel is left out.
+        Only channels the bot is in (it can only read those), and only those
+        the caller may link (``may_link_channel``): a channel's name is not
+        for others to see.  Unconfirmed membership leaves a channel out.
         """
         bot_user_id = await self.get_bot_user_id()
         if not bot_user_id:

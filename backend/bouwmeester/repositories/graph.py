@@ -251,12 +251,8 @@ class GraphRepository:
         when ``initiatief_id`` is given, narrowed to that single initiatief.
         It then transitively collects every person, external organisation,
         samenwerkingsverband and corpus node connected to those leads.
-        People (and what only they connect) are left out unless
-        *include_people*, samenwerkingsverbanden unless
-        *include_samenwerkingsverbanden*.  A role held by an eenheid instead of a person
-        connects to that eenheid.
-
-        Returns a ``CommunityGraphResponse`` with deduplicated nodes and edges.
+        A role held by an eenheid instead of a person connects to that
+        eenheid.  Returns deduplicated nodes and edges.
         """
         graph_nodes: dict[str, CommunityGraphNode] = {}
         graph_edges: list[CommunityGraphEdge] = []

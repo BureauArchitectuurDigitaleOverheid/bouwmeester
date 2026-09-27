@@ -24,10 +24,8 @@ PLACEMENT_BRON_HANDMATIG = "handmatig"
 # who works where, never access.
 PLACEMENT_BRON_DETACHERING = "detachering"
 
-# Trusted placements: confirmed by someone with authority over the members
-# of the eenheid, or brought by an official sync.  Only these give access
-# (visibility, implicit viewer, grants to the eenheid); every other bron is
-# informational.  ``repositories.org_tree`` holds the SQL form.
+# Trusted placements (see ``core.authz``): confirmed by who decides about
+# the members, or brought by an official sync.  Only these give access.
 TRUSTED_PLACEMENT_BRONNEN = frozenset(
     {
         PLACEMENT_BRON_LEIDINGGEVENDE,

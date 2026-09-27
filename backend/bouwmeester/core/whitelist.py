@@ -78,14 +78,10 @@ async def _get_person_ids_by_emails(
 ) -> set[UUID]:
     """Return the people the admin seed may promote for the given emails.
 
-    Only ``PersonEmail`` counts: it is unique, while the legacy
-    ``Person.email`` column is free text.  And a person who has logged in
-    only qualifies when the address is the one their IdP vouched for
-    (``oidc_email``): anyone may add an address to their own profile, so
-    holding it proves nothing.  A person who never logged in qualifies only
-    when the seeded address is its sole address (the seed created it, or
-    nobody added another): the first login links on any verified address of
-    the record, so an address someone else added would take the promotion.
+    Only ``PersonEmail`` counts (unique; ``Person.email`` is free text).
+    A person who logged in qualifies only when it is the address their IdP
+    vouched for (``oidc_email``); one who never did only when it is their
+    sole address, since the first login links on any of them.
     """
     from sqlalchemy.orm import aliased
 
