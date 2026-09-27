@@ -42,6 +42,7 @@ from bouwmeester.schema.lead_update import (
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.document_extract import extract_text_from_bytes
 from bouwmeester.services.eml_builder import build_outlook_draft_eml
+from bouwmeester.services.lead_rules import require_may_publish
 from bouwmeester.services.markdown_min import markdown_to_html
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,15 @@ def _to_response(post: LeadUpdatePost) -> LeadUpdatePostResponse:
         created_at=post.created_at,
         updated_at=post.updated_at,
     )
+
+
+# What the public page of the initiatief shows of a published post (the
+# public text, under its titel); see ``lead_rules.require_may_publish``.
+_PUBLIC = ("titel", "body_public")
+
+
+async def _initiatief_of(db: AsyncSession, lead_id: UUID) -> UUID | None:
+    return await db.scalar(select(Lead.initiatief_id).where(Lead.id == lead_id))
 
 
 async def _load_post(db: AsyncSession, lead_id: UUID, post_id: UUID) -> LeadUpdatePost:
@@ -395,9 +405,11 @@ async def create_update(
     data: LeadUpdatePostCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_CREATE_POST),
+    perm_ctx: PermissionContext = Depends(_CREATE_POST),
 ) -> LeadUpdatePostResponse:
     lead = require_found(await db.get(Lead, lead_id), "Lead")
+    if data.publish and data.body_public:
+        await require_may_publish(db, perm_ctx, lead.initiatief_id)
 
     actor_id = current_user.id if current_user else None
     post = LeadUpdatePost(
@@ -445,10 +457,17 @@ async def edit_update(
     data: LeadUpdatePostEdit,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_POST),
+    perm_ctx: PermissionContext = Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = await _load_post(db, lead_id, post_id)
     payload = data.model_dump(exclude_unset=True)
+    body_public = payload.get("body_public", post.body_public)
+    if (
+        post.published_at is not None
+        and body_public
+        and any(f in payload and payload[f] != getattr(post, f) for f in _PUBLIC)
+    ):
+        await require_may_publish(db, perm_ctx, await _initiatief_of(db, lead_id))
     for key, value in payload.items():
         if key in {"mail_to", "mail_cc"} and value is not None:
             value = list(value)
@@ -468,9 +487,11 @@ async def publish_update(
     post_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(_UPDATE_POST),
+    perm_ctx: PermissionContext = Depends(_UPDATE_POST),
 ) -> LeadUpdatePostResponse:
     post = await _load_post(db, lead_id, post_id)
+    if post.body_public:
+        await require_may_publish(db, perm_ctx, await _initiatief_of(db, lead_id))
     post.published_at = datetime.now(UTC)
     post.published_by_id = current_user.id if current_user else None
     await db.flush()

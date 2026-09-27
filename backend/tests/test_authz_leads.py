@@ -6,7 +6,7 @@ directie above holds unit_manager.  Added here: a person who may only read
 the initiatief, a lead opdrachtgever, and sub-records of the lead.
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import select
@@ -611,6 +611,60 @@ async def test_remove_contact_is_a_grant_change(lw, who, expected):
     async with client_as(lw.db, lw.person[who]) as c:
         resp = await c.delete(url)
     assert resp.status_code == expected, resp.text
+
+
+@pytest.mark.parametrize(
+    ("who", "expected"),
+    [
+        ("opdrachtgever", 403),  # writes the lead, not the initiatief's page
+        ("role_only", None),  # a contributor updates the initiatief
+    ],
+)
+async def test_only_the_initiatief_puts_a_lead_on_its_public_page(lw, who, expected):
+    """Public fields and public post texts need initiatief:update."""
+    lead = lw.id("lead")
+    db = lw.db
+    public_post = LeadUpdatePost(lead_id=lead, titel="Openbaar", body_public="Tekst")
+    published = LeadUpdatePost(
+        lead_id=lead,
+        titel="Al gepubliceerd",
+        body_public="Oud",
+        published_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    db.add_all([public_post, published])
+    await db.flush()
+    base = f"/api/leads/{lead}"
+    async with client_as(db, lw.person[who]) as c:
+        got = {
+            "visible": await c.put(base, json={"public_visible": True}),
+            "title": await c.put(base, json={"public_title": "Casus"}),
+            "summary": await c.put(base, json={"public_summary": "Kort"}),
+            "new post": await c.post(
+                f"{base}/updates",
+                json={"titel": "Nieuw", "body_public": "Publiek", "publish": True},
+            ),
+            "publish": await c.post(f"{base}/updates/{public_post.id}/publish"),
+            "edit": await c.put(
+                f"{base}/updates/{published.id}", json={"body_public": "Nieuw"}
+            ),
+        }
+        # the same values again, an internal post, internal edits: lead:update
+        allowed = {
+            "unchanged": await c.put(
+                base, json={"title": "Ander", "public_visible": False}
+            ),
+            "internal post": await c.post(
+                f"{base}/updates", json={"titel": "Intern", "publish": True}
+            ),
+            "internal edit": await c.put(
+                f"{base}/updates/{published.id}", json={"mail_subject": "Mail"}
+            ),
+        }
+    for name, resp in got.items():
+        want = expected or (201 if name == "new post" else 200)
+        assert resp.status_code == want, (name, resp.text)
+    for name, resp in allowed.items():
+        assert resp.status_code in (200, 201), (name, resp.text)
 
 
 async def test_moving_a_lead_into_own_new_initiatief_needs_lead_delete(lw):

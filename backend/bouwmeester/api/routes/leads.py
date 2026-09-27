@@ -81,7 +81,10 @@ from bouwmeester.schema.notification import NotificationCreate
 from bouwmeester.schema.tag import LeadTagCreate, LeadTagResponse
 from bouwmeester.services.activity_service import log_activity
 from bouwmeester.services.agent_rules import require_may_assign
-from bouwmeester.services.lead_rules import require_lead_create
+from bouwmeester.services.lead_rules import (
+    require_lead_create,
+    require_may_publish_lead,
+)
 from bouwmeester.services.llm import (
     BaseLLMService,
     DataSensitivity,
@@ -487,9 +490,9 @@ async def update_lead(
 
     # Capture old state before update
     old_lead = require_found(await db.get(Lead, lead_id), "Lead")
-    await require_move(
-        db, perm_ctx, "lead", old_lead, data.model_dump(exclude_unset=True)
-    )
+    changes = data.model_dump(exclude_unset=True)
+    await require_move(db, perm_ctx, "lead", old_lead, changes)
+    await require_may_publish_lead(db, perm_ctx, changes, old_lead)
     await require_may_assign(db, perm_ctx, data, current=old_lead.assignee_id)
     old_assignee_id = old_lead.assignee_id
     old_stage = old_lead.stage
