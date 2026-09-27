@@ -9,7 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.core.authz import can
+from bouwmeester.core.authz import can, prefetch
 from bouwmeester.core.config import get_settings
 from bouwmeester.core.initiatief_context import (
     apply_initiatief_filter,
@@ -165,9 +165,14 @@ class MattermostSlashService:
     async def _handle_taken(
         self, mattermost_user_id: str, args: str, _ch: _ChannelCtx
     ) -> dict:
-        """List the user's open tasks, optionally filtered by deadline."""
+        """List the user's open tasks, optionally filtered by deadline.
+
+        Like ``GET /tasks``: only tasks the user may read, and a task's node
+        is only named when they may read that node too.
+        """
         person_id = await self._resolve_person_id(mattermost_user_id)
-        if not person_id:
+        caller = await self._caller(person_id) if person_id else None
+        if caller is None:
             return _ephemeral(
                 "Je Mattermost-account is niet gekoppeld aan Bouwmeester. "
                 "Ga naar Instellingen in Bouwmeester om te koppelen."
@@ -194,7 +199,21 @@ class MattermostSlashService:
         # "alles" = no deadline filter
 
         result = await self.session.execute(stmt)
-        tasks = result.scalars().all()
+        ctx = caller.perm_ctx
+        candidates = result.scalars().all()
+        await prefetch(self.session, ctx, "task", [t.id for t in candidates])
+        tasks = [
+            t
+            for t in candidates
+            if await can(self.session, ctx, "task:read", "task", t.id)
+        ]
+        node_ids = list({t.node_id for t in tasks if t.node_id})
+        await prefetch(self.session, ctx, "corpus_node", node_ids)
+        readable_nodes = {
+            nid
+            for nid in node_ids
+            if await can(self.session, ctx, "node:read", "corpus_node", nid)
+        }
 
         if not tasks:
             return _ephemeral("Geen open taken gevonden.")
@@ -210,7 +229,11 @@ class MattermostSlashService:
                 if t.deadline and t.deadline < today
                 else ":large_blue_circle:"
             )
-            node_name = _escape_md(t.node.title) if t.node else ""
+            node_name = (
+                _escape_md(t.node.title)
+                if t.node and t.node_id in readable_nodes
+                else ""
+            )
             link = f"{frontend_url}/taken?task={t.id}"
             lines.append(
                 f"{status_icon} [{_escape_md(t.title)}]({link}) — {deadline_str}"
@@ -855,7 +878,7 @@ class MattermostSlashService:
 
         await self._update_thread_post(
             suggested,
-            text=f":link: Gekoppeld aan lead **{_escape_md(lead.title)}**",
+            text=":link: Gekoppeld aan de herkende lead.",
             color="#3B82F6",
         )
         return _action_msg("Bericht gekoppeld als notitie aan de lead.")

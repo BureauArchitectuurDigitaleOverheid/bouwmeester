@@ -76,7 +76,6 @@ async def _load_mattermost_config(db: AsyncSession) -> dict[str, str]:
                         "MATTERMOST_URL",
                         "MATTERMOST_BOT_TOKEN",
                         "MATTERMOST_WEBHOOK_TOKEN",
-                        "MATTERMOST_NOTIFICATION_CHANNEL_ID",
                     ]
                 )
             )
@@ -112,9 +111,6 @@ _NOTIFICATION_COLORS: dict[str, str] = {
     "placement_approved": "#22C55E",  # green
     "placement_denied": "#EF4444",  # red
 }
-
-# Types that should go to the channel (broadcast) instead of DM.
-_CHANNEL_NOTIFICATION_TYPES = frozenset({"politieke_input_imported"})
 
 # Re-export for backwards compatibility within this module.
 _escape_md = escape_mattermost_md
@@ -392,19 +388,16 @@ class MattermostService:
         return ("", props)
 
     async def send_notification(self, notification: Notification) -> bool:
-        """Route a notification to DM or channel based on type."""
+        """Send a notification as a DM to its recipient.
+
+        Always a DM, never a channel post: a notification names an item its
+        recipient may read (``NotificationService``), and a channel's members
+        are not all such readers.
+        """
         if not await self.is_enabled():
             return False
 
         text, props = self.format_notification(notification)
-
-        if notification.type in _CHANNEL_NOTIFICATION_TYPES:
-            channel_id = self._cfg("MATTERMOST_NOTIFICATION_CHANNEL_ID")
-            if not channel_id:
-                logger.debug("No notification channel configured, skipping broadcast")
-                return False
-            return await self.send_channel_message(channel_id, text, props)
-
         return await self.send_dm(notification.person_id, text, props)
 
     async def get_bot_dm_posts(

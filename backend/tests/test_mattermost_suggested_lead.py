@@ -761,8 +761,8 @@ async def test_post_suggestion_reply_new_lead_copy(
 async def test_post_suggestion_reply_existing_lead_copy(
     db_session, sample_initiatief, sample_channel
 ):
-    """Met match: copy noemt bestaande lead + stage-label, :link: staat
-    boven :white_check_mark: en is aanbevolen."""
+    """Met match: copy meldt een bestaande lead zonder die te noemen, :link:
+    staat boven :white_check_mark: en is aanbevolen."""
     suggested = SuggestedLead(
         source_post_id=_id(),
         source_channel_id=sample_channel.channel_id,
@@ -801,14 +801,14 @@ async def test_post_suggestion_reply_existing_lead_copy(
     attachment = call.kwargs["props"]["attachments"][0]
 
     assert "bestaande lead" in posted_text.lower()
-    assert "HHNK (Hoogheemraadschap Hollands Noorderkwartier)" in posted_text
-    assert "Verkennen" in posted_text  # stage-label, niet de raw key
-    assert "verkennen" not in posted_text.replace("Verkennen", "")  # geen raw key
+    # Het kanaal hoort niet welke lead: titel en stage staan er niet in.
+    assert "Hoogheemraadschap" not in posted_text + str(attachment)
+    assert "erkennen" not in posted_text + str(attachment)
     assert "95%" in posted_text
     assert "_(aanbevolen)_" in posted_text
     # :link: moet vóór :white_check_mark: staan in de instructie
     assert posted_text.index(":link:") < posted_text.index(":white_check_mark:")
-    assert attachment["title"] == "HHNK (Hoogheemraadschap Hollands Noorderkwartier)"
+    assert attachment["title"] == "Bestaande lead herkend"
     assert attachment["footer"] == "Bouwmeester · bestaande lead herkend"
     assert "gemeld als nieuwe lead" not in attachment["text"].lower()
 

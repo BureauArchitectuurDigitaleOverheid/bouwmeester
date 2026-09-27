@@ -593,6 +593,22 @@ async def test_list_notifications_includes_reply_count(
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+async def placed(db_session, sample_person, second_person):
+    """Place the test persons in a team.
+
+    A notification about a task only reaches who may read the task, and the
+    tasks module needs a role somewhere: a placement gives the implicit
+    viewer role.  A person without any role reads no tasks at all.
+    """
+    from tests.factories import make_org, place
+
+    team = await make_org(db_session, "Team", "team")
+    for person in (sample_person, second_person):
+        await place(db_session, person, team)
+
+
+@pytest.mark.usefixtures("placed")
 async def test_create_task_notifies_assignee(client, sample_node, second_person):
     """POST /api/tasks with assignee → assignee gets task_assigned notification."""
     payload = {
@@ -641,6 +657,7 @@ async def test_create_task_with_org_unit_notifies_manager(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("placed")
 async def test_update_task_reassignment_notifies_both(
     client, sample_task, sample_person, second_person
 ):
@@ -666,6 +683,7 @@ async def test_update_task_reassignment_notifies_both(
     assert len(assign_notifs) >= 1
 
 
+@pytest.mark.usefixtures("placed")
 async def test_update_task_first_assignment_notifies_new(
     client, db_session, sample_node, second_person
 ):
@@ -698,6 +716,7 @@ async def test_update_task_first_assignment_notifies_new(
     assert len(reassign_notifs) == 0
 
 
+@pytest.mark.usefixtures("placed")
 async def test_update_task_completion_notifies_stakeholders(
     client, db_session, sample_task, sample_node, second_person
 ):

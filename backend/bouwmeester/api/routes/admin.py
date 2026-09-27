@@ -395,12 +395,6 @@ _DEFAULT_CONFIG = [
         "description": "Token voor slash-commando verificatie",
         "is_secret": True,
     },
-    {
-        "key": "MATTERMOST_NOTIFICATION_CHANNEL_ID",
-        "value": "",
-        "description": "Kanaal-ID voor broadcast-notificaties",
-        "is_secret": False,
-    },
     # FCC (Fortes Change Cloud) integration
     {
         "key": "FCC_ODATA_URL",
