@@ -1,17 +1,12 @@
-"""API routes for per-initiatief funnel-kolommen.
-
-Kolommen are part of the initiatief: whoever may update the initiatief may
-shape its board (``core.authz`` delegates ``lead_column:*`` to
-``initiatief:update``).
-"""
+"""API routes for per-initiatief funnel-kolommen (decided on the initiatief)."""
 
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import on_initiatief
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
 from bouwmeester.repositories.lead_column import LeadColumnRepository
 from bouwmeester.schema.lead_column import (
@@ -25,16 +20,10 @@ from bouwmeester.services.activity_service import log_activity
 router = APIRouter(prefix="/initiatieven", tags=["lead-columns"])
 
 # Columns are sub-records of the initiatief in the path.
-_READ_INITIATIEF = requires("initiatief:read", "initiatief", path_param="initiatief_id")
-_CREATE_COLUMN = requires(
-    "lead_column:create", "initiatief", path_param="initiatief_id"
-)
-_UPDATE_COLUMN = requires(
-    "lead_column:update", "initiatief", path_param="initiatief_id"
-)
-_DELETE_COLUMN = requires(
-    "lead_column:delete", "initiatief", path_param="initiatief_id"
-)
+_READ_INITIATIEF = on_initiatief("initiatief:read")
+_CREATE_COLUMN = on_initiatief("lead_column:create")
+_UPDATE_COLUMN = on_initiatief("lead_column:update")
+_DELETE_COLUMN = on_initiatief("lead_column:delete")
 
 
 def _to_response(column, lead_count: int = 0) -> LeadColumnResponse:

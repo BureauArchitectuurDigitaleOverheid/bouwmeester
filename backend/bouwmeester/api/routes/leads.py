@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.api.deps import (
+    on_lead,
     require_deleted,
     require_found,
     resolve_tag_to_link,
@@ -26,7 +27,6 @@ from bouwmeester.core.authz import (
     prefetch,
     require,
     require_move,
-    requires,
 )
 from bouwmeester.core.database import get_db
 from bouwmeester.core.deletion import delete_guarded
@@ -204,8 +204,8 @@ async def complete_lead_prompt(
 
 # Sub-records ask their own permission ("lead_attachment:create") so the
 # delegation table in core.authz applies.
-_READ_LEAD = requires("lead:read", "lead", path_param="lead_id")
-_UPDATE_LEAD = requires("lead:update", "lead", path_param="lead_id")
+_READ_LEAD = on_lead("lead:read")
+_UPDATE_LEAD = on_lead("lead:update")
 
 
 # ---------------------------------------------------------------------------
@@ -533,9 +533,7 @@ async def delete_lead(
     lead_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        requires("lead:delete", "lead", path_param="lead_id")
-    ),
+    perm_ctx: PermissionContext = Depends(on_lead("lead:delete")),
 ) -> None:
     """Delete a lead with its activities, updates, links and grants
     (``core.deletion``)."""
@@ -630,7 +628,7 @@ async def add_activity(
     data: LeadActivityCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_activity:create", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("lead_activity:create")),
 ) -> LeadActivityResponse:
     """Add an activity (note, meeting, call, email) to a lead."""
     # Verify lead exists and get it for notification
@@ -700,9 +698,7 @@ async def delete_activity(
     activity_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    perm_ctx: PermissionContext = Depends(
-        requires("lead_activity:delete", "lead", path_param="lead_id")
-    ),
+    perm_ctx: PermissionContext = Depends(on_lead("lead_activity:delete")),
 ) -> None:
     """Delete a lead activity: your own, or anyone's with ``lead:delete``."""
     lead = require_found(await db.get(Lead, lead_id), "Lead")
@@ -1021,7 +1017,7 @@ async def upload_attachment(
     file: UploadFile,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_attachment:create", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("lead_attachment:create")),
 ) -> LeadAttachmentResponse:
     """Upload a file attachment to a lead."""
     lead = require_found(await db.get(Lead, lead_id), "Lead")
@@ -1103,7 +1099,7 @@ async def delete_attachment(
     attachment_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead_attachment:delete", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("lead_attachment:delete")),
 ) -> None:
     """Delete a lead attachment (DB record and stored file)."""
     lead = require_found(await db.get(Lead, lead_id), "Lead")
@@ -1166,7 +1162,7 @@ async def create_github_link(
     payload: GitHubLinkCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("github_link:create", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("github_link:create")),
 ) -> GitHubLinkResponse:
     lead = require_found(await db.get(Lead, lead_id), "Lead")
 
@@ -1227,7 +1223,7 @@ async def update_github_link(
     payload: GitHubLinkUpdate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("github_link:update", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("github_link:update")),
 ) -> GitHubLinkResponse:
     repo = GitHubLinkRepository(db)
     link = await repo.get(link_id)
@@ -1247,7 +1243,7 @@ async def delete_github_link(
     link_id: UUID,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("github_link:delete", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("github_link:delete")),
 ) -> None:
     lead = require_found(await db.get(Lead, lead_id), "Lead")
 

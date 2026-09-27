@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.authority import require_can_dissolve_eenheid
-from bouwmeester.core.authz import require
+from bouwmeester.core.authz import require, requires
 from bouwmeester.core.permissions import PermissionContext
 from bouwmeester.models.organisatie_eenheid import OrganisatieEenheid
 from bouwmeester.repositories.tag import TagRepository
@@ -88,6 +88,16 @@ async def require_can_end_eenheid(
     """Guard dissolving (``geldig_tot``) or deleting an eenheid, alike."""
     await require(db, perm_ctx, "org:update", "organisatie_eenheid", eenheid.id)
     await require_can_dissolve_eenheid(db, perm_ctx, eenheid)
+
+
+def on_initiatief(permission: str):
+    """``requires(permission)`` on the initiatief in the ``initiatief_id`` path."""
+    return requires(permission, "initiatief", path_param="initiatief_id")
+
+
+def on_lead(permission: str):
+    """``requires(permission)`` on the lead in the ``lead_id`` path."""
+    return requires(permission, "lead", path_param="lead_id")
 
 
 def require_deleted(deleted: bool, name: str = "Resource") -> None:

@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.api.deps import require_found
+from bouwmeester.api.deps import on_initiatief, on_lead, require_found
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
@@ -85,9 +85,7 @@ async def _met_teamnaam(db, links: list) -> list[MattermostChannelLinkResponse]:
 async def list_initiatief_channels(
     initiatief_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("initiatief:read", "initiatief", path_param="initiatief_id")
-    ),
+    _authz=Depends(on_initiatief("initiatief:read")),
 ) -> list[MattermostChannelLinkResponse]:
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_INITIATIEF, initiatief_id)
@@ -104,11 +102,7 @@ async def create_initiatief_channel(
     data: MattermostChannelLinkCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires(
-            "mattermost_channel_link:create", "initiatief", path_param="initiatief_id"
-        )
-    ),
+    _authz=Depends(on_initiatief("mattermost_channel_link:create")),
 ) -> MattermostChannelLinkResponse:
     await _require_may_link(db, data.channel_id, current_user)
     repo = MattermostChannelLinkRepository(db)
@@ -166,7 +160,7 @@ async def create_initiatief_channel(
 async def list_lead_channels(
     lead_id: UUID,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(requires("lead:read", "lead", path_param="lead_id")),
+    _authz=Depends(on_lead("lead:read")),
 ) -> list[MattermostChannelLinkResponse]:
     repo = MattermostChannelLinkRepository(db)
     links = await repo.list_for_scope(SCOPE_LEAD, lead_id)
@@ -183,9 +177,7 @@ async def create_lead_channel(
     data: MattermostChannelLinkCreate,
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
-    _authz=Depends(
-        requires("mattermost_channel_link:create", "lead", path_param="lead_id")
-    ),
+    _authz=Depends(on_lead("mattermost_channel_link:create")),
 ) -> MattermostChannelLinkResponse:
     await _require_may_link(db, data.channel_id, current_user)
     repo = MattermostChannelLinkRepository(db)

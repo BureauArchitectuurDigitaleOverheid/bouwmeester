@@ -16,8 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.deps import on_initiatief
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
 from bouwmeester.core.rate_limit import InMemoryRateLimiter
 from bouwmeester.models.initiatief import Initiatief
@@ -53,21 +53,11 @@ router = APIRouter(prefix="/initiatieven", tags=["parlementair-abonnement"])
 # iemand die zoektermen zit in te stellen in de weg te zitten: twintig per
 # vijf minuten haalt niemand bij de hand, en begrenst het ergste geval nog
 # steeds tot ~36 verzoeken per minuut.
-# Abonnementen are sub-records of the initiatief in the path; handlers load
-# them scoped by that initiatief (``_hoort_bij``).
-_READ_INITIATIEF = requires("initiatief:read", "initiatief", path_param="initiatief_id")
-_UPDATE_INITIATIEF = requires(
-    "initiatief:update", "initiatief", path_param="initiatief_id"
-)
-_CREATE_ABONNEMENT = requires(
-    "parlementair_abonnement:create", "initiatief", path_param="initiatief_id"
-)
-_UPDATE_ABONNEMENT = requires(
-    "parlementair_abonnement:update", "initiatief", path_param="initiatief_id"
-)
-_DELETE_ABONNEMENT = requires(
-    "parlementair_abonnement:delete", "initiatief", path_param="initiatief_id"
-)
+_READ_INITIATIEF = on_initiatief("initiatief:read")
+_UPDATE_INITIATIEF = on_initiatief("initiatief:update")
+_CREATE_ABONNEMENT = on_initiatief("parlementair_abonnement:create")
+_UPDATE_ABONNEMENT = on_initiatief("parlementair_abonnement:update")
+_DELETE_ABONNEMENT = on_initiatief("parlementair_abonnement:delete")
 _suggestie_limiter = InMemoryRateLimiter(window=300, max_requests=20)
 
 

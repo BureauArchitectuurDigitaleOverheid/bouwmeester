@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.api.deps import get_child_or_404, require_found
+from bouwmeester.api.deps import get_child_or_404, on_lead, require_found
 from bouwmeester.api.routes.initiatief_update import apply_post_edit
 from bouwmeester.api.routes.leads import (
     MAX_LLM_UPLOAD_BYTES,
@@ -23,7 +23,7 @@ from bouwmeester.api.routes.leads import (
     read_llm_uploads,
 )
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import can, requires
+from bouwmeester.core.authz import can
 from bouwmeester.core.blob_store import InvalidKeyError, get_blob_store
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import PermissionContext
@@ -57,11 +57,10 @@ _MAX_ATTACHMENTS_FOR_PARSE = MAX_LLM_UPLOADS
 _MAX_ATTACHMENT_BYTES = MAX_LLM_UPLOAD_BYTES  # per file
 
 
-# Update posts are sub-records of the lead in the path (``core.authz``).
-_READ_LEAD = requires("lead:read", "lead", path_param="lead_id")
-_CREATE_POST = requires("lead_update:create", "lead", path_param="lead_id")
-_UPDATE_POST = requires("lead_update:update", "lead", path_param="lead_id")
-_DELETE_POST = requires("lead_update:delete", "lead", path_param="lead_id")
+_READ_LEAD = on_lead("lead:read")
+_CREATE_POST = on_lead("lead_update:create")
+_UPDATE_POST = on_lead("lead_update:update")
+_DELETE_POST = on_lead("lead_update:delete")
 
 
 def _to_response(post: LeadUpdatePost) -> LeadUpdatePostResponse:
@@ -115,9 +114,8 @@ async def _build_lead_context(
     Pulls in initiatief metadata, lead title/organisatie/description, recent
     activity bodies and the contact name list so the model has enough to
     write a coherent update even when the user pastes only a one-liner.
-    *initiatief* is the lead's initiatief only when the caller may read it,
-    and contact emails only go in *with_emails* (``people:read``): the
-    draft comes back to the caller, so the prompt holds what they may see.
+    The draft comes back to the caller, so it holds only what they may see:
+    *initiatief* only when readable, emails only *with_emails*.
     """
     parts: list[str] = []
     if initiatief is not None:

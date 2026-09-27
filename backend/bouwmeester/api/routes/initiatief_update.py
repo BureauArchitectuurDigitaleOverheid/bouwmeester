@@ -9,9 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bouwmeester.api.deps import get_child_or_404
+from bouwmeester.api.deps import get_child_or_404, on_initiatief
 from bouwmeester.core.auth import OptionalUser
-from bouwmeester.core.authz import requires
 from bouwmeester.core.database import get_db
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost
 from bouwmeester.schema.initiatief_update import (
@@ -24,24 +23,17 @@ router = APIRouter(prefix="/initiatieven", tags=["initiatief-updates"])
 
 # Posts are sub-records of the initiatief in the path; each handler loads the
 # post scoped by that initiatief (``_load_post``).
-_READ_INITIATIEF = requires("initiatief:read", "initiatief", path_param="initiatief_id")
-_CREATE_POST = requires(
-    "initiatief_update:create", "initiatief", path_param="initiatief_id"
-)
-_UPDATE_POST = requires(
-    "initiatief_update:update", "initiatief", path_param="initiatief_id"
-)
-_DELETE_POST = requires(
-    "initiatief_update:delete", "initiatief", path_param="initiatief_id"
-)
+_READ_INITIATIEF = on_initiatief("initiatief:read")
+_CREATE_POST = on_initiatief("initiatief_update:create")
+_UPDATE_POST = on_initiatief("initiatief_update:update")
+_DELETE_POST = on_initiatief("initiatief_update:delete")
 
 
 def apply_post_edit(post: Any, changes: dict[str, Any], actor_id: UUID | None) -> None:
     """Write *changes* into an update post (initiatief or lead).
 
-    A published post names who published it (on the public page too).  When
-    its content changes, that is whoever put the current text there, so the
-    editor becomes its publisher; ``published_at`` stays the first moment.
+    Whoever changes a published post's text becomes its publisher, since the
+    post names who put the current text there; ``published_at`` stays.
     """
     changed = False
     for key, value in changes.items():
