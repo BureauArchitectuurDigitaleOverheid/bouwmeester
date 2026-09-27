@@ -1114,14 +1114,15 @@ async def require_can_change_resource_role(
 ) -> None:
     """Guard changing (``new_rol``) or removing (``None``) an existing grant.
 
-    A resource never loses its last eigenaar this way (409).  Otherwise
-    giving up rights yourself (leaving, or stepping down to a rol that gives
+    Giving up rights yourself (leaving, or stepping down to a rol that gives
     no more) is always allowed; anything else needs the authority to hand
-    out both the current and the new rol.  The evaluation endpoint asks this
-    as ``resource_role:revoke`` on the grant.
+    out both the current and the new rol.  Even then a resource never loses
+    its last eigenaar this way (409).  Authority is checked first, so
+    someone without it learns nothing about the owners.  The evaluation
+    endpoint asks this as ``resource_role:revoke`` on the grant.
     """
-    await _require_keeps_an_owner(db, grant, new_rol)
     await _require_change_authority(db, perm_ctx, grant, new_rol=new_rol)
+    await _require_keeps_an_owner(db, grant, new_rol)
 
 
 async def _require_change_authority(

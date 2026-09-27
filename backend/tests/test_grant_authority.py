@@ -644,6 +644,37 @@ async def test_last_owner_cannot_leave(tree: Tree):
     assert resp.status_code == 409
 
 
+async def test_reader_without_authority_does_not_learn_the_last_owner(tree: Tree):
+    """Authority comes first: a mere reader gets 403, not "last eigenaar"."""
+    initiatief = await _initiatief(tree.db)
+    owner = ResourcePermission(
+        person_id=tree.member.id,
+        resource_type="initiatief",
+        resource_id=initiatief.id,
+        rol="eigenaar",
+    )
+    tree.db.add_all(
+        [
+            owner,
+            ResourcePermission(
+                person_id=tree.editor.id,
+                resource_type="initiatief",
+                resource_id=initiatief.id,
+                rol="viewer",
+            ),
+        ]
+    )
+    await tree.db.flush()
+    async with client_as(tree.db, tree.editor) as c:
+        seen = await c.get(f"/api/initiatieven/{initiatief.id}")
+        removed = await c.delete(f"/api/resource-permissions/{owner.id}")
+    assert seen.status_code == 200, seen.text
+    assert removed.status_code == 403, removed.text
+    async with client_as(tree.db, tree.member) as c:
+        own = await c.delete(f"/api/resource-permissions/{owner.id}")
+    assert own.status_code == 409, own.text
+
+
 async def test_owner_hands_out_roles(tree: Tree):
     initiatief = await _initiatief(tree.db)
     tree.db.add(
