@@ -493,6 +493,14 @@ class MattermostWebsocketService:
         # wordt gecommit vóór `add_reaction`. Hetzelfde patroon als in
         # `mattermost_ingest_service`, dat overal `if bot_user_id and ...`
         # schrijft.
+        #
+        # `is None` en niet `not self._bot_user_id`, omdat het verschil
+        # hier nergens uit deze functie blijkt: `get_bot_identity()`
+        # normaliseert een lege id naar `None` (`data.get("id") or None`),
+        # dus een lege string komt hier niet aan. `get_bot_user_id()` op de
+        # regel ernaast doet dat níet en geeft bij dezelfde respons wél
+        # `""`. Verdwijnt die normalisatie, dan valt de bot samen met een
+        # onbekende gebruiker en klikt elk alert zichzelf weg.
         if self._bot_user_id is None or user_id == self._bot_user_id:
             return
 

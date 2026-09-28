@@ -216,7 +216,12 @@ class ParlementairAlertService:
             # Daarboven begint het echte werk pas bij 40. De standaard
             # staat daarom op 20, en is per abonnement bij te stellen
             # omdat een brede term iets anders vraagt dan een smalle.
-            and score >= (a.minimum_relevantie or 0)
+            # Geen `or 0` eromheen: de kolom is `nullable=False`, dus dat
+            # idioom vangt niets en maskeert juist de keuze "Alles tonen".
+            # Die zet de drempel op 0, en 0 is falsy: elke fout in de
+            # rechterhelft zou dan stil de scherpste stand opleveren voor
+            # wie juist alles wil zien.
+            and score >= a.minimum_relevantie
         ]
         if not abonnementen:
             logger.info(

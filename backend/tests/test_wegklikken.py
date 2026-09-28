@@ -225,6 +225,22 @@ class TestPostAlertLegtVast:
 
         assert gepost == 1
 
+    async def test_een_strengere_drempel_wordt_ook_gelezen(self):
+        """Anders is 20 hardcoderen in de service niet te onderscheiden.
+
+        Instelbaarheid is de helft van deze PR: twee tests die allebei op
+        20 staan bewijzen alleen dat er ergens een 20 staat.
+        """
+        mm = _Mattermost(post_id="post-abc")
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=40)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=25, categorie="bijlage"))
+
+        assert gepost == 0
+        assert mm.berichten == []
+
     async def test_net_onder_de_drempel_komt_niet_door_post_alert(self):
         mm = _Mattermost(post_id="post-abc")
         sessie = _Sessie()
@@ -235,6 +251,23 @@ class TestPostAlertLegtVast:
 
         assert gepost == 0
         assert mm.berichten == []
+
+    async def test_alles_tonen_laat_ook_score_nul_door(self):
+        """De keuze "Alles tonen" zet de drempel op 0, en 0 is falsy.
+
+        Dat maakt deze stand kwetsbaar voor elk `or`-idioom in de
+        vergelijking: `(drempel or 0)` gaf toevallig het goede antwoord,
+        maar `(drempel or 40)` zou wie álles wil zien juist de scherpste
+        stand geven. Zonder deze test blijft dat groen.
+        """
+        mm = _Mattermost(post_id="post-abc")
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=0)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=0, categorie="bijlage"))
+
+        assert gepost == 1
 
     async def test_mislukte_post_levert_geen_rij_op(self):
         """Een rij zonder post zou naar een bericht wijzen dat er niet is."""
@@ -460,6 +493,37 @@ class TestWebsocketTeltDeWegklik:
 
         assert geteld == []
         assert afgehandeld is False
+
+    async def test_dispatch_routeert_het_reaction_added_event(self, monkeypatch):
+        """De bovenste schakel: komt het event überhaupt aan.
+
+        Dit is hetzelfde faalmodel als de PR zelf oplost, een laag hoger.
+        `markeer_niet_relevant` werkte, `_verwerk_kamerstuk_reactie` werkte,
+        en de teller stond op nul omdat er een schakel ontbrak. Zonder deze
+        test is `if event == "reaction_added"` te vervangen door een naam
+        die nooit voorkomt, en blijft alles groen.
+
+        De eventnaam staat hier voluit en niet als constante: hij komt van
+        Mattermost, dus een test die 'm uit dezelfde bron leest als de code
+        zou een hernoeming aan beide kanten missen.
+        """
+        from bouwmeester.services import mattermost_websocket_service as mod
+
+        gezien: list = []
+
+        async def _reactie(self, msg):
+            gezien.append(msg)
+
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService, "_dispatch_reaction_added", _reactie
+        )
+
+        svc = mod.MattermostWebsocketService.__new__(mod.MattermostWebsocketService)
+        msg = {"event": "reaction_added", "data": {}}
+
+        await svc._dispatch(msg)
+
+        assert gezien == [msg]
 
     async def test_zonder_bekend_bot_id_verwerken_we_niets(self, monkeypatch):
         """Weten we niet wie de bot is, dan houdt de guard niets tegen.
