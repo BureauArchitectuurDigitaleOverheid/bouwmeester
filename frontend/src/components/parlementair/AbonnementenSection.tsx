@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Select } from '@/components/common/Select';
 import { Icon } from '@/components/nldd/Icon';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
@@ -612,39 +613,34 @@ function DrempelKeuze({
   term: string;
   onKies: (waarde: number) => void;
 }) {
-  // Zoals in Header.tsx: een web component neemt geen React-prop aan, en
-  // `defaultValue` bevriest op de eerste render. De waarde wordt daarom
-  // op de <select> gezet zodra hij er staat.
-  const selectRef = useRef<HTMLSelectElement>(null);
-  const huidig = String(dichtstbijzijnde(waarde));
-  useEffect(() => {
-    const select = selectRef.current;
-    if (select && select.value !== huidig) {
-      select.value = huidig;
-    }
-  }, [huidig]);
-
+  // `Select` en niet een kale `nldd-dropdown`: de dropdown roept
+  // `stopPropagation()` aan op het native change-event en stuurt een eigen
+  // CustomEvent, die React niet op `onChange` mapt. Een handler direct op
+  // de geslotte `<select>` vuurt daardoor nooit — het vakje verandert wel,
+  // maar er wordt niets opgeslagen. `Select.tsx` relayed dat event en legt
+  // in zijn eigen docstring uit waarom.
   return (
-    <nldd-dropdown size="xs" accessible-label={`Drempel voor ${term}`} disabled={orUndef(bezig)}>
-      <select
-        ref={selectRef}
-        onChange={(e) => onKies(Number((e.target as HTMLSelectElement).value))}
-      >
-        {DREMPELS.map((d) => (
-          <option key={d.waarde} value={d.waarde}>
-            {d.label}
-          </option>
-        ))}
-      </select>
-    </nldd-dropdown>
+    <Select
+      size="xs"
+      width="140px"
+      aria-label={`Drempel voor ${term}`}
+      disabled={bezig}
+      value={String(dichtstbijzijnde(waarde))}
+      options={DREMPELS.map((d) => ({ value: String(d.waarde), label: d.label }))}
+      onChange={(e) => onKies(Number(e.target.value))}
+    />
   );
 }
 
-/** De keuze die het dichtst bij de opgeslagen waarde ligt.
-
-    De database kan elk getal 0-100 dragen (de API accepteert dat, en
-    oude rijen stonden op 10). Zonder deze afronding zou de dropdown leeg
-    staan bij een waarde die niet exact in de lijst voorkomt. */
+/**
+ * De keuze die het dichtst bij de opgeslagen waarde ligt.
+ *
+ * De database kan elk getal 0-100 dragen (de API accepteert dat), dus de
+ * dropdown zou leeg staan bij een waarde die niet exact in de lijst
+ * voorkomt. Puur voor de weergave: er wordt alleen iets opgeslagen als de
+ * gebruiker zelf kiest, dus een bewust gezette 35 blijft 35 tot iemand
+ * hem aanraakt.
+ */
 function dichtstbijzijnde(waarde: number): number {
   return DREMPELS.reduce((beste, d) =>
     Math.abs(d.waarde - waarde) < Math.abs(beste.waarde - waarde) ? d : beste,

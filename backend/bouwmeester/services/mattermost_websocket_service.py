@@ -414,38 +414,52 @@ class MattermostWebsocketService:
         if emoji_name != REACTIE_NIET_RELEVANT:
             return False
 
-        async with async_session() as session:
-            try:
-                from bouwmeester.models.parlementair_alert_post import (
-                    ParlementairAlertPost,
-                )
-                from bouwmeester.services.parlementair_alert_service import (
-                    ParlementairAlertService,
-                )
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+        from bouwmeester.services.parlementair_alert_service import (
+            ParlementairAlertService,
+        )
 
+        async with async_session() as session:
+            # De lookup staat apart van het tellen, en dat is het verschil
+            # tussen "dit is geen kamerstuk" en "dit ging mis". Zaten ze in
+            # één try, dan zou een databasefout tijdens het zoeken ook
+            # `True` opleveren — en dan slikt deze functie een reactie op
+            # een suggested-lead op die daarna nergens meer terechtkomt.
+            try:
                 stmt = select(ParlementairAlertPost.parlementair_item_id).where(
                     ParlementairAlertPost.post_id == post_id
                 )
                 row = (await session.execute(stmt)).first()
-                if row is None:
-                    return False
+            except Exception:
+                logger.exception(
+                    "Kon niet opzoeken of post %s bij een kamerstuk hoort", post_id
+                )
+                # Niet afgehandeld: we weten het simpelweg niet, dus het
+                # andere pad mag het alsnog proberen.
+                return False
 
-                item_id = row[0]
+            if row is None:
+                return False
+
+            item_id = row[0]
+            try:
                 await ParlementairAlertService(session).markeer_niet_relevant(item_id)
                 await session.commit()
-                logger.info(
-                    "Kamerstuk %s weggeklikt via reactie op post %s",
-                    item_id,
-                    post_id,
-                )
-                return True
             except Exception:
                 await session.rollback()
-                logger.exception("Wegklik op post %s kon niet worden verwerkt", post_id)
-                # Wél als afgehandeld melden: de post hoort bij een
-                # kamerstuk, dus het suggested-lead-pad zou hem toch niet
-                # vinden en alleen een verwarrende melding opleveren.
+                logger.exception(
+                    "Wegklik op kamerstuk %s kon niet worden geteld", item_id
+                )
+                # Hier wél afgehandeld: de post hóórt bij een kamerstuk,
+                # dus het suggested-lead-pad zou hem toch niet vinden.
                 return True
+
+            logger.info(
+                "Kamerstuk %s weggeklikt via reactie op post %s",
+                item_id,
+                post_id,
+            )
+            return True
 
     async def _dispatch_reaction_added(self, msg: dict) -> None:
         """Verwerk een ``reaction_added`` event als trigger voor een

@@ -157,17 +157,219 @@ class TestPostOnthouden:
         await svc._onthoud_post(uuid4(), "kanaal1", "post123")
 
 
-class TestBerichtZonderPostId:
-    """Een mislukte post telt niet mee en levert geen lege rij op."""
+class TestPostAlertLegtVast:
+    """De bedrading, niet alleen de bouwsteen.
 
-    async def test_geen_post_id_geen_rij(self):
-        sessie = _Sessie()
-        mm = _Mattermost(post_id=None)
+    De eerste versie van deze tests riep `_onthoud_post` rechtstreeks aan.
+    Daardoor bleven ze groen toen de aanroep uit `post_alert` werd
+    gesloopt: precies de schakel die de PR beloofde te herstellen. Deze
+    tests draaien `post_alert` zelf.
+    """
+
+    def _svc_met_kanaal(self, mm: _Mattermost, sessie: _Sessie, abo):
         svc = _svc(mattermost=mm, sessie=sessie)
-        svc.abonnement_repo = SimpleNamespace()
 
-        # `post_alert` heeft meer omheen nodig; dit test het contract van
-        # de lus: zonder id wordt er niets onthouden.
-        post_id = await mm.send_channel_message("kanaal1", "tekst", {})
-        assert post_id is None
+        async def _lijst(_item_id):
+            return [abo]
+
+        svc.abonnement_repo = SimpleNamespace(list_abonnementen_voor_item=_lijst)
+
+        async def _execute(_stmt):
+            return SimpleNamespace(
+                scalars=lambda: SimpleNamespace(
+                    all=lambda: [SimpleNamespace(channel_id="kanaal-1")]
+                )
+            )
+
+        sessie.execute = _execute
+        return svc
+
+    async def test_post_alert_onthoudt_het_bericht(self):
+        """Zonder deze rij kan een wegklik nergens aan worden toegewezen."""
+        mm = _Mattermost(post_id="post-abc")
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=20)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=85, categorie="bijlage"))
+
+        assert gepost == 1
+        assert [r.post_id for r in sessie.toegevoegd] == ["post-abc"]
+
+    async def test_onder_de_drempel_geen_bericht_en_geen_rij(self):
+        """Score 12 bij drempel 20: het gemeten geval van 28 september."""
+        mm = _Mattermost(post_id="post-abc")
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=20)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=12, categorie="bijlage"))
+
+        assert gepost == 0
+        assert mm.berichten == []
         assert sessie.toegevoegd == []
+
+    async def test_mislukte_post_levert_geen_rij_op(self):
+        """Een rij zonder post zou naar een bericht wijzen dat er niet is."""
+        mm = _Mattermost(post_id=None)
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=20)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=85, categorie="bijlage"))
+
+        assert gepost == 0
+        assert sessie.toegevoegd == []
+
+
+class TestPostIdUitDeRespons:
+    """`send_channel_message` geeft het post-id terug, niet `True`.
+
+    Dat was de ontbrekende schakel: met een bool is een reactie nergens
+    aan toe te wijzen. Een mutatie die `return True` terugzet moet hier
+    omvallen.
+    """
+
+    async def _post(self, antwoord: dict, status: int = 200) -> str | None:
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        class _Resp:
+            status_code = status
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return antwoord
+
+        class _Client:
+            async def post(self, _url, json=None):
+                return _Resp()
+
+        svc = MattermostService.__new__(MattermostService)
+
+        async def _get_client():
+            return _Client()
+
+        svc._get_client = _get_client
+        return await svc.send_channel_message("kanaal-1", "tekst", None)
+
+    async def test_geeft_het_id_uit_de_respons(self):
+        assert await self._post({"id": "post-xyz"}) == "post-xyz"
+
+    async def test_respons_zonder_id_telt_als_mislukt(self):
+        assert await self._post({}) is None
+
+    async def test_leeg_id_telt_als_mislukt(self):
+        """Anders zou een lege string als post-id worden opgeslagen."""
+        assert await self._post({"id": ""}) is None
+
+
+class TestWebsocketTeltDeWegklik:
+    """De laatste schakel: een "x" op een alert moet meetellen."""
+
+    def _svc(self, rij, geteld: list):
+        from bouwmeester.services.mattermost_websocket_service import (
+            MattermostWebsocketService,
+        )
+
+        svc = MattermostWebsocketService.__new__(MattermostWebsocketService)
+        svc._bot_user_id = "bot1"
+        return svc
+
+    async def test_x_op_een_alert_telt(self, monkeypatch):
+        geteld: list = []
+        item_id = uuid4()
+
+        await _draai_reactie(monkeypatch, geteld, rij=(item_id,), emoji="x")
+
+        assert geteld == [item_id]
+
+    async def test_onbekende_post_telt_niet(self, monkeypatch):
+        """Dan is het geen kamerstuk en mag het lead-pad het proberen."""
+        geteld: list = []
+
+        afgehandeld = await _draai_reactie(monkeypatch, geteld, rij=None, emoji="x")
+
+        assert geteld == []
+        assert afgehandeld is False
+
+    async def test_dispatch_roept_de_kamerstuk_lookup_aan(self, monkeypatch):
+        """Via `_dispatch_reaction_added`, niet via de losse methode.
+
+        De eerste versie testte alleen `_verwerk_kamerstuk_reactie` zelf.
+        Daardoor bleef alles groen toen de aanroep uit `_dispatch_reaction_added`
+        werd gesloopt: de methode werkte, maar niets riep hem nog aan.
+        """
+        from bouwmeester.services import mattermost_websocket_service as mod
+
+        gezien: list = []
+
+        async def _verwerk(self, post_id, emoji_name):
+            gezien.append((post_id, emoji_name))
+            return True
+
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService, "_verwerk_kamerstuk_reactie", _verwerk
+        )
+
+        svc = mod.MattermostWebsocketService.__new__(mod.MattermostWebsocketService)
+        svc._bot_user_id = "bot1"
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService,
+            "_parse_reaction",
+            lambda self, msg: {
+                "user_id": "mens1",
+                "post_id": "post-abc",
+                "emoji_name": "x",
+            },
+        )
+
+        await svc._dispatch_reaction_added({})
+
+        assert gezien == [("post-abc", "x")]
+
+    async def test_andere_emoji_telt_niet(self):
+        """Alleen "x" is wegklikken; "eyes" heeft nog geen actie."""
+        from bouwmeester.services.mattermost_websocket_service import (
+            MattermostWebsocketService,
+        )
+
+        svc = MattermostWebsocketService.__new__(MattermostWebsocketService)
+        assert await svc._verwerk_kamerstuk_reactie("post-abc", "eyes") is False
+
+
+async def _draai_reactie(monkeypatch, geteld: list, rij, emoji: str) -> bool:
+    """Draai `_verwerk_kamerstuk_reactie` met een vervangen sessie."""
+    from contextlib import asynccontextmanager
+
+    from bouwmeester.services import mattermost_websocket_service as mod
+    from bouwmeester.services import parlementair_alert_service as alert_mod
+
+    class _Sess:
+        async def execute(self, _stmt):
+            return SimpleNamespace(first=lambda: rij)
+
+        async def commit(self):
+            pass
+
+        async def rollback(self):
+            pass
+
+    @asynccontextmanager
+    async def _sessie():
+        yield _Sess()
+
+    monkeypatch.setattr(mod, "async_session", _sessie)
+
+    class _Alert:
+        def __init__(self, _session):
+            pass
+
+        async def markeer_niet_relevant(self, item_id):
+            geteld.append(item_id)
+
+    monkeypatch.setattr(alert_mod, "ParlementairAlertService", _Alert)
+
+    svc = mod.MattermostWebsocketService.__new__(mod.MattermostWebsocketService)
+    return await svc._verwerk_kamerstuk_reactie("post-abc", emoji)
