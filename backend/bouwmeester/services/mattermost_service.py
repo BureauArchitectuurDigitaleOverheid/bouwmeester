@@ -341,7 +341,11 @@ class MattermostService:
             # altijd terug. Maar `or None` voorkomt dat een lege string
             # als "gelukt" telt bij de aanroeper die hem opslaat.
             return (resp.json() or {}).get("id") or None
-        except httpx.HTTPError:
+        except (httpx.HTTPError, ValueError):
+            # `ValueError` dekt de `JSONDecodeError` van een 200 zonder
+            # JSON — een proxy die een foutpagina teruggeeft. Toen dit nog
+            # een bool was kon dat niet gebeuren; nu lezen we de body, dus
+            # hoort die fout hier thuis en niet bij de aanroeper.
             logger.exception("Failed to send channel message to %s", channel_id)
             return None
 

@@ -329,6 +329,78 @@ class TestWebsocketTeltDeWegklik:
 
         assert gezien == [("post-abc", "x")]
 
+    async def test_de_bot_klikt_zichzelf_niet_weg(self, monkeypatch):
+        """De guard op `_bot_user_id` draagt sinds deze PR het hele mechanisme.
+
+        De bot plaatst de "x" zelf, als knop. Valt deze guard weg, dan
+        markeert elk alert zichzelf als niet-relevant op het moment van
+        posten: stil, met de teller oplopend en zonder dat er iemand
+        geklikt heeft. Daarom staat hij hier vast, en niet alleen in de
+        code.
+        """
+        from bouwmeester.services import mattermost_websocket_service as mod
+
+        gezien: list = []
+
+        async def _verwerk(self, post_id, emoji_name):
+            gezien.append((post_id, emoji_name))
+            return True
+
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService, "_verwerk_kamerstuk_reactie", _verwerk
+        )
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService,
+            "_parse_reaction",
+            lambda self, msg: {
+                "user_id": "bot1",
+                "post_id": "post-abc",
+                "emoji_name": "x",
+            },
+        )
+
+        svc = mod.MattermostWebsocketService.__new__(mod.MattermostWebsocketService)
+        svc._bot_user_id = "bot1"
+
+        await svc._dispatch_reaction_added({})
+
+        assert gezien == []
+
+    async def test_een_kapotte_lookup_blokkeert_het_lead_pad_niet(self, monkeypatch):
+        """Weten we het niet, dan mag het suggested-lead-pad het proberen.
+
+        "x" zit in beide tabellen. Een databasefout tijdens het zoeken zegt
+        niets over waar deze post bij hoort, dus `True` teruggeven zou een
+        wegklik op een lead opslokken die daarna nergens terechtkomt.
+        """
+        geteld: list = []
+
+        afgehandeld = await _draai_reactie(
+            monkeypatch, geteld, rij=None, emoji="x", lookup_faalt=True
+        )
+
+        assert geteld == []
+        assert afgehandeld is False
+
+    async def test_een_kapotte_telling_gaat_niet_alsnog_naar_het_lead_pad(
+        self, monkeypatch
+    ):
+        """Hier weten we het wél: de post hoort bij een kamerstuk.
+
+        Het lead-pad zou hem toch niet vinden, dus doorgeven levert alleen
+        een tweede vergeefse lookup op. Andersom dan de test hierboven, en
+        dat verschil is precies waarom de lookup en het tellen elk hun
+        eigen try hebben.
+        """
+        geteld: list = []
+
+        afgehandeld = await _draai_reactie(
+            monkeypatch, geteld, rij=(uuid4(),), emoji="x", tellen_faalt=True
+        )
+
+        assert geteld == []
+        assert afgehandeld is True
+
     async def test_andere_emoji_telt_niet(self):
         """Alleen "x" is wegklikken; "eyes" heeft nog geen actie."""
         from bouwmeester.services.mattermost_websocket_service import (
@@ -339,7 +411,14 @@ class TestWebsocketTeltDeWegklik:
         assert await svc._verwerk_kamerstuk_reactie("post-abc", "eyes") is False
 
 
-async def _draai_reactie(monkeypatch, geteld: list, rij, emoji: str) -> bool:
+async def _draai_reactie(
+    monkeypatch,
+    geteld: list,
+    rij,
+    emoji: str,
+    lookup_faalt: bool = False,
+    tellen_faalt: bool = False,
+) -> bool:
     """Draai `_verwerk_kamerstuk_reactie` met een vervangen sessie."""
     from contextlib import asynccontextmanager
 
@@ -348,6 +427,8 @@ async def _draai_reactie(monkeypatch, geteld: list, rij, emoji: str) -> bool:
 
     class _Sess:
         async def execute(self, _stmt):
+            if lookup_faalt:
+                raise RuntimeError("database weg")
             return SimpleNamespace(first=lambda: rij)
 
         async def commit(self):
@@ -367,6 +448,8 @@ async def _draai_reactie(monkeypatch, geteld: list, rij, emoji: str) -> bool:
             pass
 
         async def markeer_niet_relevant(self, item_id):
+            if tellen_faalt:
+                raise RuntimeError("tellen ging mis")
             geteld.append(item_id)
 
     monkeypatch.setattr(alert_mod, "ParlementairAlertService", _Alert)

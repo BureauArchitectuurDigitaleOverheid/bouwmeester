@@ -209,12 +209,12 @@ class ParlementairAlertService:
             if categorie not in (a.uitgezette_categorieen or [])
             # Onder de drempel geen bericht. Het stuk is wél geïmporteerd
             # en staat in de webapp: een drempel hoort ruis te schelen,
-            # geen dekking. Een meting over zeven stukken gaf een scherpe
-            # scheiding: alles met inhoud op 15 of hoger, en alleen een
-            # procedureel verslag zonder inhoud op 0. De standaard staat
-            # daarom laag genoeg om een stuk waarin de term als gewoon
-            # woord valt nog door te laten; of dat ruis is, is een oordeel
-            # van de lezer en niet van het model.
+            # geen dekking. Een meting over 146 beoordeelde stukken liet
+            # een gat zien tussen 19 en 40: de twintig stukken daaronder
+            # gingen over batterijsystemen, waterstof en eigenwoningforfait
+            # — termen die als gewoon woord vielen. De standaard staat
+            # daarom op 20, en is per abonnement bij te stellen omdat een
+            # brede term iets anders vraagt dan een smalle.
             and score >= (a.minimum_relevantie or 0)
         ]
         if not abonnementen:

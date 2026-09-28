@@ -75,17 +75,30 @@ def upgrade() -> None:
             "parlementair_item_id", "channel_id", name="uq_alert_post_item_kanaal"
         ),
     )
+    # De namen zijn die van SQLAlchemy's eigen conventie voor
+    # `index=True` op het model. Wijken ze af, dan ziet een volgende
+    # `alembic revision --autogenerate` de modelindexen als ontbrekend
+    # en stelt hij voor ze er nóg een keer bij te maken.
     op.create_index(
-        "ix_alert_post_item", "parlementair_alert_post", ["parlementair_item_id"]
+        "ix_parlementair_alert_post_parlementair_item_id",
+        "parlementair_alert_post",
+        ["parlementair_item_id"],
     )
     # De leesrichting is van reactie naar stuk: de websocket krijgt een
     # post-id binnen en moet weten welk item daarbij hoort.
-    op.create_index("ix_alert_post_post_id", "parlementair_alert_post", ["post_id"])
+    op.create_index(
+        "ix_parlementair_alert_post_post_id", "parlementair_alert_post", ["post_id"]
+    )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_alert_post_post_id", table_name="parlementair_alert_post")
-    op.drop_index("ix_alert_post_item", table_name="parlementair_alert_post")
+    op.drop_index(
+        "ix_parlementair_alert_post_post_id", table_name="parlementair_alert_post"
+    )
+    op.drop_index(
+        "ix_parlementair_alert_post_parlementair_item_id",
+        table_name="parlementair_alert_post",
+    )
     op.drop_table("parlementair_alert_post")
 
     op.alter_column(
