@@ -98,11 +98,16 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     // zonder die vlag zou `onChange` een waarde wegschrijven die de
     // gebruiker niet heeft gekozen.
     //
-    // Hier ligt geen test onder, en dat is geen vergeetachtigheid. In jsdom
-    // verwerkt de dropdown zijn `slotchange` ná de waarde die React zet, en
-    // dan klopt het label vanzelf; een test bleef daar groen met deze regels
-    // eruit gesloopt. In Chrome is die volgorde omgekeerd. Een test die het
-    // wél vangt vraagt een echte browser.
+    // Het event is niet stil voor de buitenwereld: alleen onze eigen relay
+    // slaat het over. Een listener op de select of een `onChange` op een
+    // omliggend `<form>` ziet het wel. Geen enkele aanroeper doet dat nu,
+    // maar wie er een toevoegt moet erop rekenen.
+    //
+    // De volgorde is hier het hele correctheidsargument: `useNlddValue`
+    // hierboven schrijft de waarde, en pas daarna mag dit effect hem
+    // melden. React draait effecten in declaratievolgorde, dus dat klopt
+    // zolang die aanroep bóven deze blijft staan. Draai ze om en de guard
+    // hieronder keert stil terug zonder dat er iets faalt.
     const eigenSchrijfactie = useRef(false);
     useEffect(() => {
       const select = selectRef.current;
