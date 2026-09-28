@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Select } from '@/components/common/Select';
 import { Icon } from '@/components/nldd/Icon';
 import { eventValue, orUndef, useNlddEvent, useNlddValue } from '@/components/nldd/events';
 import {
@@ -167,6 +168,25 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
     [bezigeRij, initiatiefId, laden],
   );
 
+  const zetDrempel = useCallback(
+    async (abonnement: ParlementairAbonnement, waarde: number) => {
+      if (bezigeRij) return;
+      setBezigeRij(abonnement.id);
+      setFout(null);
+      try {
+        await updateAbonnement(initiatiefId, abonnement.id, {
+          minimum_relevantie: waarde,
+        });
+        await laden();
+      } catch {
+        setFout(`Kon de drempel van '${abonnement.term}' niet aanpassen.`);
+      } finally {
+        setBezigeRij(null);
+      }
+    },
+    [bezigeRij, initiatiefId, laden],
+  );
+
   const verwijder = useCallback(
     async (abonnement: ParlementairAbonnement) => {
       if (bezigeRij) return;
@@ -246,9 +266,9 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
           </nldd-text>
         ) : (
           <nldd-table
-            columns="minmax(160px,2fr) 90px 110px 120px 140px"
-            sm-columns="1fr 70px 140px"
-            md-columns="minmax(160px,2fr) 90px 110px 140px"
+            columns="minmax(150px,2fr) 80px 100px 150px 110px 130px"
+            sm-columns="1fr 70px 130px"
+            md-columns="minmax(150px,2fr) 80px 100px 150px 130px"
             accessible-label="Gevolgde zoektermen"
           >
             <nldd-table-row slot="header">
@@ -259,6 +279,7 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
                 horizontal-alignment="right"
                 hide-below="md"
               />
+              <nldd-text-cell text="Drempel" hide-below="md" />
               <nldd-text-cell text="Laatste" hide-below="lg" />
               <nldd-text-cell />
             </nldd-table-row>
@@ -269,6 +290,7 @@ export function AbonnementenSection({ initiatiefId }: { initiatiefId: string }) 
                 bezig={bezigeRij === a.id}
                 onToggle={() => schakel(a)}
                 onDelete={() => verwijder(a)}
+                onDrempel={(waarde) => zetDrempel(a, waarde)}
               />
             ))}
           </nldd-table>
@@ -495,11 +517,13 @@ function AbonnementRow({
   bezig,
   onToggle,
   onDelete,
+  onDrempel,
 }: {
   abonnement: ParlementairAbonnement;
   bezig: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onDrempel: (waarde: number) => void;
 }) {
   const laatste = abonnement.laatste_treffer_op
     ? new Date(abonnement.laatste_treffer_op).toLocaleDateString('nl-NL')
@@ -524,6 +548,14 @@ function AbonnementRow({
         horizontal-alignment="right"
         hide-below="md"
       />
+      <nldd-cell hide-below="md">
+        <DrempelKeuze
+          waarde={abonnement.minimum_relevantie}
+          bezig={bezig}
+          term={abonnement.term}
+          onKies={onDrempel}
+        />
+      </nldd-cell>
       <nldd-text-cell text={laatste} hide-below="lg" />
       <nldd-cell>
         <nldd-container layout="row" gap="4" horizontal-alignment="right">
@@ -551,4 +583,66 @@ function AbonnementRow({
       </nldd-cell>
     </nldd-table-row>
   );
+}
+
+/**
+ * Hoe streng een term filtert, in woorden in plaats van in een getal.
+ *
+ * De schaal is 0-100 en niemand kan daar een zinnig getal bij bedenken.
+ * Drie keuzes dekken wat er in de praktijk nodig is: een smalle term wil
+ * je ongefilterd, een brede term als "Fundament" (90 treffers) juist niet.
+ *
+ * De waarden komen uit een meting over 146 beoordeelde stukken: twintig
+ * stukken scoorden tussen 10 en 19 en geen van alle ging over de NLDD,
+ * en het echte werk begint pas bij 40.
+ */
+const DREMPELS = [
+  { waarde: 0, label: 'Alles tonen' },
+  { waarde: 20, label: 'Normaal' },
+  { waarde: 40, label: 'Alleen relevante' },
+] as const;
+
+function DrempelKeuze({
+  waarde,
+  bezig,
+  term,
+  onKies,
+}: {
+  waarde: number;
+  bezig: boolean;
+  term: string;
+  onKies: (waarde: number) => void;
+}) {
+  // `Select` en niet een kale `nldd-dropdown`: de dropdown roept
+  // `stopPropagation()` aan op het native change-event en stuurt een eigen
+  // CustomEvent, die React niet op `onChange` mapt. Een handler direct op
+  // de geslotte `<select>` vuurt daardoor nooit — het vakje verandert wel,
+  // maar er wordt niets opgeslagen. `Select.tsx` relayed dat event en legt
+  // in zijn eigen docstring uit waarom.
+  return (
+    <Select
+      size="xs"
+      width="140px"
+      aria-label={`Drempel voor ${term}`}
+      disabled={bezig}
+      value={String(dichtstbijzijnde(waarde))}
+      options={DREMPELS.map((d) => ({ value: String(d.waarde), label: d.label }))}
+      onChange={(e) => onKies(Number(e.target.value))}
+    />
+  );
+}
+
+/**
+ * De keuze die het dichtst bij de opgeslagen waarde ligt.
+ *
+ * De database kan elk getal 0-100 dragen (de API accepteert dat), dus de
+ * dropdown zou leeg staan bij een waarde die niet exact in de lijst
+ * voorkomt. Puur voor de weergave: er wordt alleen iets opgeslagen als de
+ * gebruiker zelf kiest, dus een bewust gezette 35 blijft 35 tot iemand
+ * hem aanraakt.
+ */
+function dichtstbijzijnde(waarde: number): number {
+  return DREMPELS.reduce((beste, d) =>
+    Math.abs(d.waarde - waarde) < Math.abs(beste.waarde - waarde) ? d : beste,
+  ).waarde;
 }

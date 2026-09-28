@@ -126,18 +126,19 @@ class ParlementairAbonnement(Base):
     minimum_relevantie: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
-        default=10,
-        server_default="10",
+        default=20,
+        server_default="20",
         comment=(
             "Onder deze relevantiescore (0-100) verschijnt een treffer niet "
             "in Mattermost. Hij wordt wél geïmporteerd en blijft in de "
             "webapp zichtbaar: een drempel mag ruis schelen, geen dekking. "
-            "De standaard van 10 komt uit een meting over zeven stukken: "
-            "alles met inhoud scoorde 15 of hoger, en alleen een "
-            "procedureel verslag zonder inhoud kwam op 0. Een stuk waarin "
-            "de term als gewoon woord valt (score 15) blijft daarmee "
-            "zichtbaar als grijze regel, want het oordeel of dat ruis is "
-            "hoort bij de lezer."
+            "De standaard stond eerst op 10, gekozen uit een meting over "
+            "zeven stukken. Een tweede meting over 146 beoordeelde stukken "
+            "(28 september 2026) liet zien dat dat te laag was: 20 stukken "
+            "scoorden tussen 10 en 19 en geen van alle ging over het "
+            "dossier — batterijsystemen, waterstof, eigenwoningforfait, "
+            "markttoezicht. Tussen 19 en 40 zat een gat, dus 20 snijdt op "
+            "een echte grens en niet op een gekozen getal."
         ),
     )
     ingehaald_op: Mapped[datetime | None] = mapped_column(

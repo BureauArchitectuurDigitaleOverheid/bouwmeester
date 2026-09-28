@@ -916,6 +916,58 @@ async def test_read_loop_propagates_connection_closed(monkeypatch):
         await svc._read_loop(fake_ws)
 
 
+async def test_read_loop_dispatches_a_real_frame(monkeypatch):
+    """De bovenste schakel: een binnengekomen frame moet `_dispatch` halen.
+
+    De twee tests hierboven duwen nooit een bericht door `recv()` — de een
+    stuurt alleen `TimeoutError`, de ander alleen `ConnectionClosedError`.
+    Daardoor kon de `_dispatch`-aanroep uit deze lus gesloopt worden zonder
+    dat één van 1707 tests omviel, terwijl er dan geen enkel event meer
+    ergens aankomt. Hetzelfde faalmodel als de reactieketen eronder had:
+    elke functie werkt, en niets roept ze aan.
+    """
+    import asyncio
+    import json
+    from unittest.mock import AsyncMock
+
+    from bouwmeester.services import mattermost_websocket_service as ws_mod
+
+    svc = MattermostWebsocketService()
+    frame = {"event": "reaction_added", "data": {}}
+
+    gezien: list = []
+
+    async def _dispatch(msg):
+        gezien.append(msg)
+        svc._stop = True
+
+    svc._dispatch = _dispatch
+
+    # De lus stopt hier zelf na een paar frames, en niet alleen doordat
+    # `_dispatch` `_stop` zet. Anders draait hij eindeloos rond zodra die
+    # aanroep wegvalt, en dan hángt de test in plaats van te falen — wat
+    # bij een mutatietest het verschil is tussen een bevinding en een
+    # vastloper die je zelf moet gaan opruimen.
+    frames = 0
+
+    async def _recv():
+        nonlocal frames
+        frames += 1
+        if frames > 3:
+            svc._stop = True
+        return json.dumps(frame)
+
+    fake_ws = AsyncMock()
+    fake_ws.recv = _recv
+
+    monkeypatch.setattr(ws_mod, "_HEARTBEAT_INTERVAL", 0.05)
+    monkeypatch.setattr(ws_mod, "health_tick", AsyncMock(return_value=None))
+
+    await asyncio.wait_for(svc._read_loop(fake_ws), timeout=5)
+
+    assert gezien == [frame]
+
+
 # ---------------------------------------------------------------------------
 # reaction_added: emoji-trigger voor suggested-lead approvals
 # ---------------------------------------------------------------------------

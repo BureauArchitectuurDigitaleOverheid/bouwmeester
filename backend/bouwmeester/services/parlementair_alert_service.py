@@ -209,13 +209,19 @@ class ParlementairAlertService:
             if categorie not in (a.uitgezette_categorieen or [])
             # Onder de drempel geen bericht. Het stuk is wél geïmporteerd
             # en staat in de webapp: een drempel hoort ruis te schelen,
-            # geen dekking. Een meting over zeven stukken gaf een scherpe
-            # scheiding: alles met inhoud op 15 of hoger, en alleen een
-            # procedureel verslag zonder inhoud op 0. De standaard staat
-            # daarom laag genoeg om een stuk waarin de term als gewoon
-            # woord valt nog door te laten; of dat ruis is, is een oordeel
-            # van de lezer en niet van het model.
-            and score >= (a.minimum_relevantie or 0)
+            # geen dekking. Een meting over 146 beoordeelde stukken gaf
+            # twintig stukken tussen 10 en 19, en geen van alle ging
+            # over de NLDD: batterijsystemen, waterstof en
+            # eigenwoningforfait, termen die als gewoon woord vielen.
+            # Daarboven begint het echte werk pas bij 40. De standaard
+            # staat daarom op 20, en is per abonnement bij te stellen
+            # omdat een brede term iets anders vraagt dan een smalle.
+            # Geen `or 0` eromheen: de kolom is `nullable=False`, dus dat
+            # idioom vangt niets en maskeert juist de keuze "Alles tonen".
+            # Die zet de drempel op 0, en 0 is falsy: elke fout in de
+            # rechterhelft zou dan stil de scherpste stand opleveren voor
+            # wie juist alles wil zien.
+            and score >= a.minimum_relevantie
         ]
         if not abonnementen:
             logger.info(
@@ -259,9 +265,55 @@ class ParlementairAlertService:
 
         gepost = 0
         for channel_id in kanalen:
-            if await self.mattermost.send_channel_message(channel_id, text, props):
-                gepost += 1
+            post_id = await self.mattermost.send_channel_message(
+                channel_id, text, props
+            )
+            if not post_id:
+                continue
+            gepost += 1
+            await self._onthoud_post(item.id, channel_id, post_id)
         return gepost
+
+    async def _onthoud_post(self, item_id: UUID, channel_id: str, post_id: str) -> None:
+        """Leg vast waar dit stuk is gepost, en bied de reacties aan.
+
+        Beide zijn nodig om te kunnen wegklikken: het post-id is waar
+        `_dispatch_reaction_added` op zoekt, en de reacties zijn de knop
+        die de lezer ziet. Zonder allebei blijft de teller op nul staan,
+        zoals hij sinds de bouw stond.
+
+        Faalt zacht. Het bericht is al gepost en dat is niet terug te
+        draaien; een mislukte administratie mag daar geen exception
+        overheen gooien. De prijs is dat wegklikken voor dát bericht niet
+        werkt, en dat is minder erg dan een ronde die omvalt.
+        """
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+
+        try:
+            self.session.add(
+                ParlementairAlertPost(
+                    parlementair_item_id=item_id,
+                    channel_id=channel_id,
+                    post_id=post_id,
+                )
+            )
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.warning(
+                "Post %s van stuk %s niet vastgelegd; wegklikken werkt hier niet",
+                post_id,
+                item_id,
+                exc_info=True,
+            )
+            return
+
+        # De reacties die de bot zelf plaatst zijn de affordance: zonder
+        # zichtbare "x" weet niemand dat wegklikken kan. De websocket
+        # negeert reacties van de bot zelf, dus ze triggeren niets.
+        for emoji in (REACTIE_NIET_RELEVANT, REACTIE_OPVOLGEN):
+            if not await self.mattermost.add_reaction(post_id, emoji):
+                logger.info("Reactie %s niet geplaatst op post %s", emoji, post_id)
 
     def format_alert(
         self, item: ParlementairItem, termen: list[str]

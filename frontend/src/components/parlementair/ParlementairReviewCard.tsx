@@ -178,6 +178,33 @@ function TagTokenField({ nodeTags, allTags, onAdd, onAddNew, onRemove }: TagToke
   );
 }
 
+/**
+ * De relevantiescore met de reden die het model gaf.
+ *
+ * Beide staan al in `extra_data` en kwamen al mee in de API-respons, maar
+ * werden nergens getoond. Juist de reden is bruikbaar: "'Fundament' is
+ * hier staande Haagse retoriek binnen een jeugdzorgonderzoek" vertelt in
+ * één zin waarom een zoekterm te breed staat.
+ */
+function RelevantieBadge({ extra }: { extra?: Record<string, unknown> }) {
+  const score = extra?.relevantie_score;
+  if (typeof score !== 'number') return null;
+
+  const reden = typeof extra?.relevantie_reden === 'string' ? extra.relevantie_reden : '';
+  // Dezelfde grenzen als de backend gebruikt voor de kleur van de streep
+  // in Mattermost (DREMPEL_MIDDEN = 40, DREMPEL_HOOG = 70).
+  const kleur = score >= 70 ? 'success' : score >= 40 ? undefined : 'secondary';
+
+  return (
+    <div className="hug hug-gap-2" title={reden || undefined}>
+      <Icon name="ai" size="xs" />
+      <nldd-text size="xs" color={kleur}>
+        relevantie {score}
+      </nldd-text>
+    </div>
+  );
+}
+
 interface ParlementairReviewCardProps {
   item: ParlementairItem;
   defaultExpanded?: boolean;
@@ -412,6 +439,11 @@ export function ParlementairReviewCard({ item, defaultExpanded = false }: Parlem
             {item.ministerie && (
               <nldd-text size="xs" color="secondary">{item.ministerie}</nldd-text>
             )}
+            {/* De score stuurt of dit stuk in Mattermost verschijnt, maar
+                stond nergens. "Waarom kwam dit door?" was daardoor alleen
+                te beantwoorden uit productielogs die te kort bewaard
+                blijven. */}
+            <RelevantieBadge extra={item.extra_data} />
             {/* The count is metadata too. Beside the title it took a third of
                 the header on a phone, and the title wrapped every few words. */}
             {item.suggested_edges && item.suggested_edges.length > 0 && (

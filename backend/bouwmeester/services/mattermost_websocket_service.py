@@ -397,6 +397,70 @@ class MattermostWebsocketService:
         "link": "link_lead_to_suggestion",
     }
 
+    async def _verwerk_kamerstuk_reactie(self, post_id: str, emoji_name: str) -> bool:
+        """Tel een wegklik als deze reactie op een kamerstuk-alert staat.
+
+        Geeft terug of de reactie hier is afgehandeld, zodat de aanroeper
+        weet dat hij niet ook nog het suggested-lead-pad moet proberen.
+
+        Alleen "x" telt. `REACTIE_OPVOLGEN` ("eyes") plaatst de bot wel als
+        affordance, maar er hangt nog geen actie aan; die zou een taak of
+        een toewijzing moeten aanmaken en dat is een aparte keuze.
+        """
+        from bouwmeester.services.parlementair_alert_service import (
+            REACTIE_NIET_RELEVANT,
+        )
+
+        if emoji_name != REACTIE_NIET_RELEVANT:
+            return False
+
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+        from bouwmeester.services.parlementair_alert_service import (
+            ParlementairAlertService,
+        )
+
+        async with async_session() as session:
+            # De lookup staat apart van het tellen, en dat is het verschil
+            # tussen "dit is geen kamerstuk" en "dit ging mis". Zaten ze in
+            # één try, dan zou een databasefout tijdens het zoeken ook
+            # `True` opleveren — en dan slikt deze functie een reactie op
+            # een suggested-lead op die daarna nergens meer terechtkomt.
+            try:
+                stmt = select(ParlementairAlertPost.parlementair_item_id).where(
+                    ParlementairAlertPost.post_id == post_id
+                )
+                row = (await session.execute(stmt)).first()
+            except Exception:
+                logger.exception(
+                    "Kon niet opzoeken of post %s bij een kamerstuk hoort", post_id
+                )
+                # Niet afgehandeld: we weten het simpelweg niet, dus het
+                # andere pad mag het alsnog proberen.
+                return False
+
+            if row is None:
+                return False
+
+            item_id = row[0]
+            try:
+                await ParlementairAlertService(session).markeer_niet_relevant(item_id)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.exception(
+                    "Wegklik op kamerstuk %s kon niet worden geteld", item_id
+                )
+                # Hier wél afgehandeld: de post hóórt bij een kamerstuk,
+                # dus het suggested-lead-pad zou hem toch niet vinden.
+                return True
+
+            logger.info(
+                "Kamerstuk %s weggeklikt via reactie op post %s",
+                item_id,
+                post_id,
+            )
+            return True
+
     async def _dispatch_reaction_added(self, msg: dict) -> None:
         """Verwerk een ``reaction_added`` event als trigger voor een
         suggested-lead approval.
@@ -417,8 +481,36 @@ class MattermostWebsocketService:
             return
         # Skip eigen reactions (we plaatsen zelf white_check_mark/x/link
         # als affordance, die mogen geen actie triggeren).
-        if user_id == self._bot_user_id:
+        #
+        # Weten we niet wie de bot is, dan verwerken we niets. Dat is geen
+        # overdreven voorzichtigheid: `get_bot_identity()` geeft
+        # `(None, None)` terug als Mattermost even onbereikbaar is, en
+        # `_resolve_bot_user_id` kent dat toe zonder retry. Eén mislukte
+        # REST-call bij het opzetten van de verbinding zou dan, zolang die
+        # verbinding staat, elke alert zichzelf laten wegklikken: de bot
+        # zet zijn eigen "x" en `None == None` laat die door. De rij in
+        # `parlementair_alert_post` staat er op dat moment al, want die
+        # wordt gecommit vóór `add_reaction`. Hetzelfde patroon als in
+        # `mattermost_ingest_service`, dat overal `if bot_user_id and ...`
+        # schrijft.
+        #
+        # `is None` en niet `not self._bot_user_id`, omdat het verschil
+        # hier nergens uit deze functie blijkt: `get_bot_identity()`
+        # normaliseert een lege id naar `None` (`data.get("id") or None`),
+        # dus een lege string komt hier niet aan. `get_bot_user_id()` op de
+        # regel ernaast doet dat níet en geeft bij dezelfde respons wél
+        # `""`. Verdwijnt die normalisatie, dan valt de bot samen met een
+        # onbekende gebruiker en klikt elk alert zichzelf weg.
+        if self._bot_user_id is None or user_id == self._bot_user_id:
             return
+
+        # Eerst kijken of dit een kamerstuk-alert is. "x" zit in beide
+        # tabellen — daar betekent het "geen lead", hier "niet relevant" —
+        # en zonder deze volgorde zou een wegklik op een alert in het
+        # suggested-lead-pad belanden, daar niets vinden en stil verdwijnen.
+        if await self._verwerk_kamerstuk_reactie(post_id, emoji_name):
+            return
+
         action_name = self._SUGGESTION_REACTION_ACTIONS.get(emoji_name)
         if action_name is None:
             return

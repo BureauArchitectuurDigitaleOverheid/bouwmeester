@@ -20,6 +20,7 @@ from bouwmeester.services.kamerstuk_soort import (
     CAT_VRAAG,
 )
 from bouwmeester.services.parlementair_alert_service import (
+    DREMPEL_MIDDEN,
     ParlementairAlertService,
     _nl_datum,
     _relevantie,
@@ -34,7 +35,7 @@ def _abonnement(**kwargs) -> ParlementairAbonnement:
         term_genormaliseerd="nldd",
     )
     a.id = uuid4()
-    a.minimum_relevantie = kwargs.pop("minimum_relevantie", 10)
+    a.minimum_relevantie = kwargs.pop("minimum_relevantie", 20)
     a.uitgezette_categorieen = kwargs.pop("uitgezette_categorieen", None)
     return a
 
@@ -232,15 +233,28 @@ class TestDrempel:
         abonnement = _abonnement(minimum_relevantie=10)
         assert _relevantie({"relevantie_score": 10}) >= abonnement.minimum_relevantie
 
-    def test_naamgenoot_blijft_zichtbaar(self):
-        """Een term die als gewoon woord valt blijft een grijze regel.
+    def test_ongewogen_stuk_haalt_de_standaarddrempel(self):
+        """Een mislukte LLM-call mag niet als "te licht" uitpakken.
+
+        `_relevantie` geeft zonder score `DREMPEL_MIDDEN` terug, en die
+        moet boven de standaarddrempel liggen. Zou de default 0 zijn, of
+        de drempel boven `DREMPEL_MIDDEN` worden gezet, dan verdwijnt elk
+        stuk waarvan het wegen misging stilzwijgend.
+        """
+        assert _relevantie({}) == DREMPEL_MIDDEN
+        assert _relevantie({}) >= _abonnement().minimum_relevantie
+
+    def test_naamgenoot_valt_stil_maar_blijft_zichtbaar(self):
+        """Een term die als gewoon woord valt haalt de drempel niet meer.
 
         Gemeten geval: een position paper over schuldhulpverlening waarin
-        "digitale dienst" een online dienst betekent, scoorde 15. Of dat
-        ruis is, is een oordeel van de lezer; het systeem houdt het stil
-        maar verzwijgt het niet.
+        "digitale dienst" een online dienst betekent, scoorde 15. Bij de
+        oude drempel van 10 kwam dat door; sinds de meting over 146
+        stukken staat de standaard op 20 en blijft het een grijze regel in
+        de webapp. Het stuk is wél geïmporteerd: een drempel scheelt ruis,
+        geen dekking.
         """
-        assert 15 >= _abonnement().minimum_relevantie
+        assert 15 < _abonnement().minimum_relevantie
 
     def test_uitgezette_categorie_valt_af(self):
         abonnement = _abonnement(uitgezette_categorieen=[CAT_VERGADERING_TERUG])
@@ -402,9 +416,12 @@ class TestInhaalslagWeegtDeDrempel:
     async def test_stuk_zonder_score_blijft_staan(self):
         """Een mislukte LLM-call mag een stuk niet verzwijgen.
 
-        `_relevantie` geeft dan 0 terug, en bij de standaarddrempel van 10
-        zou dat het stuk wegfilteren. Dat is de verkeerde kant om op te
-        falen: niet gewogen is iets anders dan te licht bevonden.
+        `_relevantie` geeft dan `DREMPEL_MIDDEN` terug en juist geen 0:
+        niet gewogen is iets anders dan te licht bevonden, en 0 zou het
+        stuk onder elke drempel wegfilteren. Deze test staat op drempel 0
+        en toetst dus alleen dat het stuk overeind blijft; dat de default
+        boven de standaarddrempel uitkomt staat vast in
+        `test_ongewogen_stuk_haalt_de_standaarddrempel`.
         """
         abo = _abonnement(minimum_relevantie=0)
         gepost, verstuurd = await self._post([abo], [_item(titel="Ongewogen")])

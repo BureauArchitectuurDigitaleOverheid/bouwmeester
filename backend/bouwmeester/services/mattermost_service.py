@@ -315,8 +315,21 @@ class MattermostService:
         channel_id: str,
         text: str,
         props: dict | None = None,
-    ) -> bool:
-        """Post a message to a Mattermost channel."""
+    ) -> str | None:
+        """Post a message to a Mattermost channel.
+
+        Geeft het post-id terug, of ``None`` als het posten mislukte.
+
+        Waarom een id en niet een bool: zonder het id is een bericht later
+        nergens meer aan te wijzen. Een emoji-reaction op een alert kwam
+        daardoor nooit ergens aan — `_dispatch_reaction_added` zoekt op
+        post-id, en dat van een kamerstuk-alert werd weggegooid. De
+        "Weggeklikt"-teller stond daardoor sinds de bouw op nul.
+
+        Een `str | None` is hier veilig voor bestaande aanroepers: die
+        doen `if await send_channel_message(...)`, en zowel ``None`` als
+        een lege string is falsy.
+        """
         client = await self._get_client()
         try:
             payload: dict = {"channel_id": channel_id, "message": text}
@@ -324,10 +337,17 @@ class MattermostService:
                 payload["props"] = props
             resp = await client.post("/api/v4/posts", json=payload)
             resp.raise_for_status()
-            return True
-        except httpx.HTTPError:
+            # Een post zonder id is theoretisch: Mattermost geeft hem
+            # altijd terug. Maar `or None` voorkomt dat een lege string
+            # als "gelukt" telt bij de aanroeper die hem opslaat.
+            return (resp.json() or {}).get("id") or None
+        except (httpx.HTTPError, ValueError):
+            # `ValueError` dekt de `JSONDecodeError` van een 200 zonder
+            # JSON — een proxy die een foutpagina teruggeeft. Toen dit nog
+            # een bool was kon dat niet gebeuren; nu lezen we de body, dus
+            # hoort die fout hier thuis en niet bij de aanroeper.
             logger.exception("Failed to send channel message to %s", channel_id)
-            return False
+            return None
 
     def _deep_link(self, notification: Notification) -> str:
         """Build a deep link back to the Bouwmeester frontend."""
@@ -403,7 +423,10 @@ class MattermostService:
             if not channel_id:
                 logger.debug("No notification channel configured, skipping broadcast")
                 return False
-            return await self.send_channel_message(channel_id, text, props)
+            # `send_channel_message` geeft sinds kort een post-id terug;
+            # deze functie belooft een bool, dus omzetten in plaats van
+            # het id laten lekken naar aanroepers die het niet verwachten.
+            return bool(await self.send_channel_message(channel_id, text, props))
 
         return await self.send_dm(notification.person_id, text, props)
 
