@@ -46,7 +46,13 @@ export async function createAbonnement(
 export async function updateAbonnement(
   initiatiefId: string,
   abonnementId: string,
-  data: { actief?: boolean; notitie?: string | null },
+  data: {
+    actief?: boolean;
+    notitie?: string | null;
+    // 0-100. De backend accepteerde dit al, maar geen enkel scherm stuurde
+    // het mee, waardoor elke term op de standaardwaarde bleef staan.
+    minimum_relevantie?: number;
+  },
 ): Promise<ParlementairAbonnement> {
   return apiPatch<ParlementairAbonnement>(
     `/api/initiatieven/${initiatiefId}/abonnementen/${abonnementId}`,

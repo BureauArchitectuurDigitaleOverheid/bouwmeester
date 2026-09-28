@@ -259,9 +259,55 @@ class ParlementairAlertService:
 
         gepost = 0
         for channel_id in kanalen:
-            if await self.mattermost.send_channel_message(channel_id, text, props):
-                gepost += 1
+            post_id = await self.mattermost.send_channel_message(
+                channel_id, text, props
+            )
+            if not post_id:
+                continue
+            gepost += 1
+            await self._onthoud_post(item.id, channel_id, post_id)
         return gepost
+
+    async def _onthoud_post(self, item_id: UUID, channel_id: str, post_id: str) -> None:
+        """Leg vast waar dit stuk is gepost, en bied de reacties aan.
+
+        Beide zijn nodig om te kunnen wegklikken: het post-id is waar
+        `_dispatch_reaction_added` op zoekt, en de reacties zijn de knop
+        die de lezer ziet. Zonder allebei blijft de teller op nul staan,
+        zoals hij sinds de bouw stond.
+
+        Faalt zacht. Het bericht is al gepost en dat is niet terug te
+        draaien; een mislukte administratie mag daar geen exception
+        overheen gooien. De prijs is dat wegklikken voor dát bericht niet
+        werkt, en dat is minder erg dan een ronde die omvalt.
+        """
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+
+        try:
+            self.session.add(
+                ParlementairAlertPost(
+                    parlementair_item_id=item_id,
+                    channel_id=channel_id,
+                    post_id=post_id,
+                )
+            )
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.warning(
+                "Post %s van stuk %s niet vastgelegd; wegklikken werkt hier niet",
+                post_id,
+                item_id,
+                exc_info=True,
+            )
+            return
+
+        # De reacties die de bot zelf plaatst zijn de affordance: zonder
+        # zichtbare "x" weet niemand dat wegklikken kan. De websocket
+        # negeert reacties van de bot zelf, dus ze triggeren niets.
+        for emoji in (REACTIE_NIET_RELEVANT, REACTIE_OPVOLGEN):
+            if not await self.mattermost.add_reaction(post_id, emoji):
+                logger.info("Reactie %s niet geplaatst op post %s", emoji, post_id)
 
     def format_alert(
         self, item: ParlementairItem, termen: list[str]

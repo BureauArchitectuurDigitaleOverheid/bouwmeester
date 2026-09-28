@@ -397,6 +397,56 @@ class MattermostWebsocketService:
         "link": "link_lead_to_suggestion",
     }
 
+    async def _verwerk_kamerstuk_reactie(self, post_id: str, emoji_name: str) -> bool:
+        """Tel een wegklik als deze reactie op een kamerstuk-alert staat.
+
+        Geeft terug of de reactie hier is afgehandeld, zodat de aanroeper
+        weet dat hij niet ook nog het suggested-lead-pad moet proberen.
+
+        Alleen "x" telt. `REACTIE_OPVOLGEN` ("eyes") plaatst de bot wel als
+        affordance, maar er hangt nog geen actie aan; die zou een taak of
+        een toewijzing moeten aanmaken en dat is een aparte keuze.
+        """
+        from bouwmeester.services.parlementair_alert_service import (
+            REACTIE_NIET_RELEVANT,
+        )
+
+        if emoji_name != REACTIE_NIET_RELEVANT:
+            return False
+
+        async with async_session() as session:
+            try:
+                from bouwmeester.models.parlementair_alert_post import (
+                    ParlementairAlertPost,
+                )
+                from bouwmeester.services.parlementair_alert_service import (
+                    ParlementairAlertService,
+                )
+
+                stmt = select(ParlementairAlertPost.parlementair_item_id).where(
+                    ParlementairAlertPost.post_id == post_id
+                )
+                row = (await session.execute(stmt)).first()
+                if row is None:
+                    return False
+
+                item_id = row[0]
+                await ParlementairAlertService(session).markeer_niet_relevant(item_id)
+                await session.commit()
+                logger.info(
+                    "Kamerstuk %s weggeklikt via reactie op post %s",
+                    item_id,
+                    post_id,
+                )
+                return True
+            except Exception:
+                await session.rollback()
+                logger.exception("Wegklik op post %s kon niet worden verwerkt", post_id)
+                # Wél als afgehandeld melden: de post hoort bij een
+                # kamerstuk, dus het suggested-lead-pad zou hem toch niet
+                # vinden en alleen een verwarrende melding opleveren.
+                return True
+
     async def _dispatch_reaction_added(self, msg: dict) -> None:
         """Verwerk een ``reaction_added`` event als trigger voor een
         suggested-lead approval.
@@ -419,6 +469,14 @@ class MattermostWebsocketService:
         # als affordance, die mogen geen actie triggeren).
         if user_id == self._bot_user_id:
             return
+
+        # Eerst kijken of dit een kamerstuk-alert is. "x" zit in beide
+        # tabellen — daar betekent het "geen lead", hier "niet relevant" —
+        # en zonder deze volgorde zou een wegklik op een alert in het
+        # suggested-lead-pad belanden, daar niets vinden en stil verdwijnen.
+        if await self._verwerk_kamerstuk_reactie(post_id, emoji_name):
+            return
+
         action_name = self._SUGGESTION_REACTION_ACTIONS.get(emoji_name)
         if action_name is None:
             return
