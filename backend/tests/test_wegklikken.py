@@ -494,6 +494,37 @@ class TestWebsocketTeltDeWegklik:
         assert geteld == []
         assert afgehandeld is False
 
+    async def test_een_lege_bot_id_wordt_none(self):
+        """De guard hierboven leunt hierop, en het staat in een ander bestand.
+
+        `_dispatch_reaction_added` toetst `is None` en niet `not ...`. Dat
+        mag alleen omdat `get_bot_identity()` een lege id naar `None`
+        normaliseert. Verdwijnt die normalisatie, dan is `_bot_user_id`
+        `""`, glipt hij langs `is None`, en valt de bot samen met elke
+        gebruiker wiens id ontbreekt in het event.
+        """
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"id": "", "username": ""}
+
+        class _Client:
+            async def get(self, _url):
+                return _Resp()
+
+        svc = MattermostService.__new__(MattermostService)
+
+        async def _get_client():
+            return _Client()
+
+        svc._get_client = _get_client
+
+        assert await svc.get_bot_identity() == (None, None)
+
     async def test_dispatch_routeert_het_reaction_added_event(self, monkeypatch):
         """De bovenste schakel: komt het event überhaupt aan.
 
