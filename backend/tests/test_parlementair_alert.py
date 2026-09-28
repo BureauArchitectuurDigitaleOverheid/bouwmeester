@@ -34,7 +34,7 @@ def _abonnement(**kwargs) -> ParlementairAbonnement:
         term_genormaliseerd="nldd",
     )
     a.id = uuid4()
-    a.minimum_relevantie = kwargs.pop("minimum_relevantie", 10)
+    a.minimum_relevantie = kwargs.pop("minimum_relevantie", 20)
     a.uitgezette_categorieen = kwargs.pop("uitgezette_categorieen", None)
     return a
 
@@ -232,15 +232,17 @@ class TestDrempel:
         abonnement = _abonnement(minimum_relevantie=10)
         assert _relevantie({"relevantie_score": 10}) >= abonnement.minimum_relevantie
 
-    def test_naamgenoot_blijft_zichtbaar(self):
-        """Een term die als gewoon woord valt blijft een grijze regel.
+    def test_naamgenoot_valt_stil_maar_blijft_zichtbaar(self):
+        """Een term die als gewoon woord valt haalt de drempel niet meer.
 
         Gemeten geval: een position paper over schuldhulpverlening waarin
-        "digitale dienst" een online dienst betekent, scoorde 15. Of dat
-        ruis is, is een oordeel van de lezer; het systeem houdt het stil
-        maar verzwijgt het niet.
+        "digitale dienst" een online dienst betekent, scoorde 15. Bij de
+        oude drempel van 10 kwam dat door; sinds de meting over 146
+        stukken staat de standaard op 20 en blijft het een grijze regel in
+        de webapp. Het stuk is wél geïmporteerd: een drempel scheelt ruis,
+        geen dekking.
         """
-        assert 15 >= _abonnement().minimum_relevantie
+        assert 15 < _abonnement().minimum_relevantie
 
     def test_uitgezette_categorie_valt_af(self):
         abonnement = _abonnement(uitgezette_categorieen=[CAT_VERGADERING_TERUG])

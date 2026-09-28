@@ -209,12 +209,13 @@ class ParlementairAlertService:
             if categorie not in (a.uitgezette_categorieen or [])
             # Onder de drempel geen bericht. Het stuk is wél geïmporteerd
             # en staat in de webapp: een drempel hoort ruis te schelen,
-            # geen dekking. Een meting over 146 beoordeelde stukken liet
-            # een gat zien tussen 19 en 40: de twintig stukken daaronder
-            # gingen over batterijsystemen, waterstof en eigenwoningforfait
-            # — termen die als gewoon woord vielen. De standaard staat
-            # daarom op 20, en is per abonnement bij te stellen omdat een
-            # brede term iets anders vraagt dan een smalle.
+            # geen dekking. Een meting over 146 beoordeelde stukken gaf
+            # twintig stukken tussen 10 en 19, en geen van alle ging
+            # over de NLDD: batterijsystemen, waterstof en
+            # eigenwoningforfait, termen die als gewoon woord vielen.
+            # Daarboven begint het echte werk pas bij 40. De standaard
+            # staat daarom op 20, en is per abonnement bij te stellen
+            # omdat een brede term iets anders vraagt dan een smalle.
             and score >= (a.minimum_relevantie or 0)
         ]
         if not abonnementen:

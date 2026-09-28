@@ -209,6 +209,33 @@ class TestPostAlertLegtVast:
         assert mm.berichten == []
         assert sessie.toegevoegd == []
 
+    async def test_precies_op_de_drempel_komt_door_post_alert(self):
+        """De grens in de productiecode, niet in een expressie in de test.
+
+        `TestDrempelOp20` schrijft de vergelijking zelf op en raakt
+        `post_alert` nooit; `>=` naar `>` veranderen in de service laat die
+        klasse groen. Deze twee tests zitten wél op het echte pad.
+        """
+        mm = _Mattermost(post_id="post-abc")
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=20)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=20, categorie="bijlage"))
+
+        assert gepost == 1
+
+    async def test_net_onder_de_drempel_komt_niet_door_post_alert(self):
+        mm = _Mattermost(post_id="post-abc")
+        sessie = _Sessie()
+        abo = _abonnement(minimum_relevantie=20)
+        svc = self._svc_met_kanaal(mm, sessie, abo)
+
+        gepost = await svc.post_alert(_item(relevantie_score=19, categorie="bijlage"))
+
+        assert gepost == 0
+        assert mm.berichten == []
+
     async def test_mislukte_post_levert_geen_rij_op(self):
         """Een rij zonder post zou naar een bericht wijzen dat er niet is."""
         mm = _Mattermost(post_id=None)
@@ -240,6 +267,8 @@ class TestPostIdUitDeRespons:
                 pass
 
             def json(self):
+                if isinstance(antwoord, Exception):
+                    raise antwoord
                 return antwoord
 
         class _Client:
@@ -263,6 +292,18 @@ class TestPostIdUitDeRespons:
     async def test_leeg_id_telt_als_mislukt(self):
         """Anders zou een lege string als post-id worden opgeslagen."""
         assert await self._post({"id": ""}) is None
+
+    async def test_een_200_zonder_json_telt_als_mislukt(self):
+        """Een proxy die een foutpagina teruggeeft met status 200.
+
+        Zolang dit een bool was kon dat niet gebeuren: er werd geen body
+        gelezen. Nu wel, dus een `JSONDecodeError` hoort hier te worden
+        opgevangen en niet bij de aanroeper te belanden.
+        """
+        import json
+
+        kapot = json.JSONDecodeError("Expecting value", "<html>", 0)
+        assert await self._post(kapot) is None
 
 
 class TestWebsocketTeltDeWegklik:
@@ -401,14 +442,61 @@ class TestWebsocketTeltDeWegklik:
         assert geteld == []
         assert afgehandeld is True
 
-    async def test_andere_emoji_telt_niet(self):
-        """Alleen "x" is wegklikken; "eyes" heeft nog geen actie."""
-        from bouwmeester.services.mattermost_websocket_service import (
-            MattermostWebsocketService,
+    async def test_andere_emoji_telt_niet(self, monkeypatch):
+        """Alleen "x" is wegklikken; "eyes" heeft nog geen actie.
+
+        Via de helper, met een sessie die een rij zou vinden. De eerste
+        versie riep de methode kaal aan en kwam daardoor groen uit om de
+        verkeerde reden: zonder emoji-filter viel hij door naar de echte
+        `async_session`, liep stuk op de ontbrekende database, en de brede
+        `except` maakte daar weer `False` van. Met een rij die er wél is,
+        is `False` alleen te halen via de filter.
+        """
+        geteld: list = []
+
+        afgehandeld = await _draai_reactie(
+            monkeypatch, geteld, rij=(uuid4(),), emoji="eyes"
         )
 
-        svc = MattermostWebsocketService.__new__(MattermostWebsocketService)
-        assert await svc._verwerk_kamerstuk_reactie("post-abc", "eyes") is False
+        assert geteld == []
+        assert afgehandeld is False
+
+    async def test_zonder_bekend_bot_id_verwerken_we_niets(self, monkeypatch):
+        """Weten we niet wie de bot is, dan houdt de guard niets tegen.
+
+        `get_bot_identity()` geeft `(None, None)` bij een HTTP-fout en
+        `_resolve_bot_user_id` kent dat onvoorwaardelijk toe. Zou de guard
+        dan alleen op gelijkheid toetsen, dan valt de bot samen met "een
+        onbekende gebruiker" en klikt elk alert zichzelf weg zodra de bot
+        zijn eigen "x" plaatst.
+        """
+        from bouwmeester.services import mattermost_websocket_service as mod
+
+        gezien: list = []
+
+        async def _verwerk(self, post_id, emoji_name):
+            gezien.append((post_id, emoji_name))
+            return True
+
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService, "_verwerk_kamerstuk_reactie", _verwerk
+        )
+        monkeypatch.setattr(
+            mod.MattermostWebsocketService,
+            "_parse_reaction",
+            lambda self, msg: {
+                "user_id": "bot1",
+                "post_id": "post-abc",
+                "emoji_name": "x",
+            },
+        )
+
+        svc = mod.MattermostWebsocketService.__new__(mod.MattermostWebsocketService)
+        svc._bot_user_id = None
+
+        await svc._dispatch_reaction_added({})
+
+        assert gezien == []
 
 
 async def _draai_reactie(

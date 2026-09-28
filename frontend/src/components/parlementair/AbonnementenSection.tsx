@@ -592,9 +592,9 @@ function AbonnementRow({
  * Drie keuzes dekken wat er in de praktijk nodig is: een smalle term wil
  * je ongefilterd, een brede term als "Fundament" (90 treffers) juist niet.
  *
- * De waarden komen uit een meting over 146 beoordeelde stukken: onder de
- * 20 zat vrijwel alleen ruis, tussen 19 en 40 zat een gat, en daarboven
- * ging het over het dossier.
+ * De waarden komen uit een meting over 146 beoordeelde stukken: twintig
+ * stukken scoorden tussen 10 en 19 en geen van alle ging over de NLDD,
+ * en het echte werk begint pas bij 40.
  */
 const DREMPELS = [
   { waarde: 0, label: 'Alles tonen' },

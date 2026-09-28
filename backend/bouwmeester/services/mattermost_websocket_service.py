@@ -481,7 +481,19 @@ class MattermostWebsocketService:
             return
         # Skip eigen reactions (we plaatsen zelf white_check_mark/x/link
         # als affordance, die mogen geen actie triggeren).
-        if user_id == self._bot_user_id:
+        #
+        # Weten we niet wie de bot is, dan verwerken we niets. Dat is geen
+        # overdreven voorzichtigheid: `get_bot_identity()` geeft
+        # `(None, None)` terug als Mattermost even onbereikbaar is, en
+        # `_resolve_bot_user_id` kent dat toe zonder retry. Eén mislukte
+        # REST-call bij het opzetten van de verbinding zou dan, zolang die
+        # verbinding staat, elke alert zichzelf laten wegklikken: de bot
+        # zet zijn eigen "x" en `None == None` laat die door. De rij in
+        # `parlementair_alert_post` staat er op dat moment al, want die
+        # wordt gecommit vóór `add_reaction`. Hetzelfde patroon als in
+        # `mattermost_ingest_service`, dat overal `if bot_user_id and ...`
+        # schrijft.
+        if self._bot_user_id is None or user_id == self._bot_user_id:
             return
 
         # Eerst kijken of dit een kamerstuk-alert is. "x" zit in beide
