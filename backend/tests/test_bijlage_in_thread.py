@@ -290,3 +290,46 @@ class TestReplyInDeThread:
         los = mm.props[0]["attachments"][0]
         assert los["fields"]
         assert los["footer"]
+
+
+@pytest.mark.asyncio
+class TestDePayloadNaarMattermost:
+    """Wat er werkelijk over de lijn gaat.
+
+    De tests hierboven gebruiken een dubbel voor Mattermost, dus die zien
+    niet of `root_id` ook in de request belandt. Zonder deze test blijft
+    alles groen terwijl elke bijlage weer los in het kanaal komt.
+    """
+
+    async def _verstuur(self, **kw) -> dict:
+        from bouwmeester.services.mattermost_service import MattermostService
+
+        verstuurd: dict = {}
+
+        class _Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"id": "post-abc"}
+
+        class _Client:
+            async def post(self, _url, json=None):
+                verstuurd.update(json or {})
+                return _Resp()
+
+        svc = MattermostService.__new__(MattermostService)
+
+        async def _get_client():
+            return _Client()
+
+        svc._get_client = _get_client
+        await svc.send_channel_message("kanaal-1", "tekst", None, **kw)
+        return verstuurd
+
+    async def test_root_id_gaat_mee_de_request_in(self):
+        assert (await self._verstuur(root_id="post-brief"))["root_id"] == "post-brief"
+
+    async def test_zonder_root_id_staat_het_veld_er_niet_in(self):
+        """Een lege `root_id` meesturen zou Mattermost kunnen weigeren."""
+        assert "root_id" not in await self._verstuur()
