@@ -187,6 +187,23 @@ class TestErRaaktNooitIetsZoek:
         assert len(uit) == 6
         assert {i.zaak_id for i in uit} == {f"s{n}" for n in range(6)}
 
+    def test_een_cykel_gaat_langs_de_gewone_weg(self, caplog):
+        """Niet via het vangnet, want dat is voor wat er misgaat.
+
+        De opvanglus onder de wortels geeft een cykel gewoon uit. Haal hem
+        weg en de lijst blijft compleet (het vangnet pakt hem op), maar de
+        volgorde verslechtert en er verschijnt een waarschuwing over
+        stukken die zijn blijven liggen. Die waarschuwing hoort iets te
+        betekenen.
+        """
+        items = [_stuk("A", bijlage_bij="B"), _stuk("B", bijlage_bij="A")]
+
+        with caplog.at_level("WARNING"):
+            uit = _hoofdstuk_voor_bijlage(items)
+
+        assert len(uit) == 2
+        assert "liggen" not in caplog.text
+
     def test_een_lange_keten_loopt_niet_vast(self):
         """Iteratief en niet recursief: de diepte komt uit een externe bron."""
         items = [_stuk("s0")]

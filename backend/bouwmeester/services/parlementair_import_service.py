@@ -1352,9 +1352,19 @@ class ParlementairImportService:
         return person
 
 
-# Hoeveel omwentelingen de sorteerlus per stuk mag maken. Eén is genoeg:
-# elke omwenteling geeft hoogstens één stuk uit. De marge staat apart
-# zodat een test hem kan verlagen en het vangnet eronder kan aantonen.
+# Hoeveel omwentelingen de sorteerlus per stuk mag maken.
+#
+# Twee is ruim zolang de nummers uniek zijn: elk stuk wordt dan hoogstens
+# één keer op de stapel gezet door zijn hoofdstuk en één keer door de
+# hoofdlus. Zijn er dubbele nummers, dan groeit het aantal omwentelingen
+# kwadratisch en raakt het budget op; het vangnet eronder levert de lijst
+# dan compleet maar minder net gesorteerd af. Dat is de goede kant om op
+# te falen, en het is in de praktijk onbereikbaar: `search_many`
+# ontdubbelt op documentnummer en `ParlementairItem.zaak_id` is uniek.
+#
+# Verlaag dit getal dus niet op de aanname dat één omwenteling per stuk
+# genoeg is. De marge staat apart zodat een test hem op nul kan zetten en
+# kan aantonen dat het vangnet werkt.
 _SORTEER_MARGE = 2
 
 
