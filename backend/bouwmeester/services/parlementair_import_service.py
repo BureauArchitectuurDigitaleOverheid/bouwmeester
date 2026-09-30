@@ -214,7 +214,7 @@ class ParlementairImportService:
                 )
                 ek_items = []
 
-        all_items = tk_items + ek_items
+        all_items = _hoofdstuk_voor_bijlage(tk_items + ek_items)
 
         self._inhaalslag = {}
         self._gepost_deze_ronde = set()
@@ -1350,6 +1350,57 @@ class ParlementairImportService:
         self.session.add(person)
         await self.session.flush()
         return person
+
+
+def _hoofdstuk_voor_bijlage(items: list) -> list:
+    """Zet elk hoofdstuk vóór de bijlagen die eraan hangen.
+
+    Een beslisnota en de brief waar hij bij hoort komen in dezelfde ronde
+    binnen, maar de bron levert ze in willekeurige volgorde. Werd de
+    bijlage eerst verwerkt, dan bestond de thread van de brief nog niet en
+    kwamen er twee losse berichten in het kanaal die over hetzelfde gaan.
+
+    Sorteren is hier genoeg, en dat is de reden dat er geen wachtrij of
+    timer nodig is: beide stukken zitten al in deze lijst. Een bijlage
+    waarvan het hoofdstuk niet in dezelfde ronde zit blijft op zijn plek
+    staan en wordt los gepost, zoals nu. Wachten zou dat stuk kunnen laten
+    verdwijnen als de brief nooit komt, en dat is erger dan twee berichten.
+
+    De volgorde binnen elke groep blijft zoals de bron hem gaf; alleen een
+    bijlage verhuist, naar de plek direct achter zijn hoofdstuk.
+    """
+
+    def nummer(item) -> str | None:
+        return getattr(item, "zaak_id", None)
+
+    aanwezig = {nummer(item) for item in items if nummer(item)}
+
+    bijlagen_van: dict[str, list] = {}
+    for item in items:
+        extra = getattr(item, "extra_data", None) or {}
+        hoort_bij = extra.get("bijlage_bij_nummer")
+        # Alleen verhuizen als het hoofdstuk hier ook werkelijk in zit.
+        # Anders is dit stuk voor deze ronde gewoon een los bericht. De
+        # vergelijking met het eigen nummer vangt een stuk dat naar
+        # zichzelf verwijst; dat zou zichzelf anders eindeloos vooruit
+        # schuiven.
+        if not hoort_bij or hoort_bij not in aanwezig:
+            continue
+        if hoort_bij == nummer(item):
+            continue
+        bijlagen_van.setdefault(hoort_bij, []).append(item)
+
+    if not bijlagen_van:
+        return items
+
+    verhuisd = {id(b) for groep in bijlagen_van.values() for b in groep}
+    gesorteerd: list = []
+    for item in items:
+        if id(item) in verhuisd:
+            continue
+        gesorteerd.append(item)
+        gesorteerd.extend(bijlagen_van.get(nummer(item), []))
+    return gesorteerd
 
 
 def _context_regels(extra: dict) -> list[str]:

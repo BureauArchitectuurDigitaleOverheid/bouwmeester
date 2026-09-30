@@ -261,18 +261,63 @@ class ParlementairAlertService:
             return 0
 
         termen = [a.term for a in abonnementen]
-        text, props = self.format_alert(item, termen)
+
+        # Is dit een bijlage bij een stuk dat we al gepost hebben, dan hoort
+        # hij in díe thread en niet als los bericht ernaast. Per kanaal,
+        # want hetzelfde stuk kan in meerdere kanalen staan en heeft daar
+        # elk een eigen post.
+        draden = await self._draden_van_het_hoofdstuk(extra)
+        text, props = self.format_alert(item, termen, beknopt=bool(draden))
 
         gepost = 0
         for channel_id in kanalen:
             post_id = await self.mattermost.send_channel_message(
-                channel_id, text, props
+                channel_id, text, props, root_id=draden.get(channel_id)
             )
             if not post_id:
                 continue
             gepost += 1
             await self._onthoud_post(item.id, channel_id, post_id)
         return gepost
+
+    async def _draden_van_het_hoofdstuk(self, extra: dict) -> dict[str, str]:
+        """Waar het stuk staat waar deze bijlage bij hoort, per kanaal.
+
+        Leeg als dit geen bijlage is, of als het hoofdstuk nog nergens is
+        gepost. Dan wordt het een gewoon bericht, zoals altijd.
+
+        `bijlage_bij_nummer` is een DocumentNummer, en bij tkconv is dat
+        precies wat er als `zaak_id` op het item staat. De import zet een
+        hoofdstuk bovendien vóór zijn bijlagen, dus binnen één ronde staat
+        de thread er al tegen de tijd dat we hier komen.
+        """
+        hoort_bij = (extra or {}).get("bijlage_bij_nummer")
+        if not hoort_bij:
+            return {}
+
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+
+        stmt = (
+            select(ParlementairAlertPost.channel_id, ParlementairAlertPost.post_id)
+            .join(
+                ParlementairItem,
+                ParlementairItem.id == ParlementairAlertPost.parlementair_item_id,
+            )
+            .where(ParlementairItem.zaak_id == hoort_bij)
+            .order_by(ParlementairAlertPost.created_at.desc())
+        )
+        try:
+            rijen = (await self.session.execute(stmt)).all()
+        except Exception:
+            # Een mislukte lookup mag het bericht niet tegenhouden; dan
+            # wordt het een los bericht in plaats van een reply.
+            logger.exception("Kon de thread van %s niet opzoeken", hoort_bij)
+            return {}
+
+        draden: dict[str, str] = {}
+        for channel_id, post_id in rijen:
+            draden.setdefault(channel_id, post_id)
+        return draden
 
     async def _onthoud_post(self, item_id: UUID, channel_id: str, post_id: str) -> None:
         """Leg vast waar dit stuk is gepost, en bied de reacties aan.
@@ -316,7 +361,7 @@ class ParlementairAlertService:
                 logger.info("Reactie %s niet geplaatst op post %s", emoji, post_id)
 
     def format_alert(
-        self, item: ParlementairItem, termen: list[str]
+        self, item: ParlementairItem, termen: list[str], beknopt: bool = False
     ) -> tuple[str, dict]:
         """Bouw het bericht: strak, met bron, soort en herkomst.
 
@@ -325,6 +370,12 @@ class ParlementairAlertService:
         is, vraagt iets anders van de lezer dan een besluitenlijst van een
         vergadering die geweest is, en een position paper komt van buiten
         de Kamer en is geen beleid.
+
+        `beknopt` is voor een bijlage die als reply onder zijn hoofdstuk
+        komt. Daar staat de context al boven het bericht: dezelfde termen,
+        dezelfde datum, dezelfde bron, en een titel die de brief bijna
+        letterlijk herhaalt. Wat overblijft is wat de bijlage zelf
+        toevoegt: waar hij over gaat en waar hij te vinden is.
         """
         extra = item.extra_data or {}
         score = _relevantie(extra)
@@ -363,13 +414,20 @@ class ParlementairAlertService:
         if acties:
             tekst_delen.append(" · ".join(acties))
 
-        fields = [
-            {
-                "short": False,
-                "title": "Gevonden op",
-                "value": ", ".join(_escape_proza(t) for t in termen),
-            }
-        ]
+        # In een thread staan de termen al boven het bericht, bij het stuk
+        # waar deze bijlage bij hoort. Ze nog eens herhalen maakt de reply
+        # langer dan wat hij toevoegt.
+        fields = (
+            []
+            if beknopt
+            else [
+                {
+                    "short": False,
+                    "title": "Gevonden op",
+                    "value": ", ".join(_escape_proza(t) for t in termen),
+                }
+            ]
+        )
 
         # Het `title`-veld is platte tekst zolang er een `title_link`
         # staat: de webapp rendert dan `decodeHtmlEntities(title)` binnen
@@ -394,12 +452,17 @@ class ParlementairAlertService:
             # toont. Backslashes horen daar net zomin.
             "fallback": f"{presentatie['label']}: {item.titel}",
             "color": kleur,
-            "pretext": kop,
+            # De kop noemt het soort en bij welk stuk de bijlage hoort. In
+            # de thread van dat stuk is het tweede overbodig en het eerste
+            # al zichtbaar aan het icoon, dus die regel vervalt.
+            "pretext": "" if beknopt else kop,
             "title": titel,
             "title_link": titel_link,
             "text": "\n\n".join(tekst_delen),
             "fields": fields,
-            "footer": self._voettekst(item, extra),
+            # De voettekst draagt soort, commissie, datum en bron: alle
+            # vier hetzelfde als bij het hoofdstuk erboven.
+            "footer": "" if beknopt else self._voettekst(item, extra),
         }
 
         return "", {"attachments": [attachment]}

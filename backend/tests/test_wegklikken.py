@@ -59,12 +59,18 @@ class _Mattermost:
         self._post_id = post_id
         self.reacties: list[tuple[str, str]] = []
         self.berichten: list[str] = []
+        # Waar elk bericht heen ging, en in welke thread. `None` is een
+        # gewoon bericht in het kanaal.
+        self.draden: list[str | None] = []
+        self.props: list[dict] = []
 
     async def is_enabled(self) -> bool:
         return True
 
-    async def send_channel_message(self, channel_id, text, props):
+    async def send_channel_message(self, channel_id, text, props, root_id=None):
         self.berichten.append(channel_id)
+        self.draden.append(root_id)
+        self.props.append(props)
         return self._post_id
 
     async def add_reaction(self, post_id: str, emoji: str) -> bool:
