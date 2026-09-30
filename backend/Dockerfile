@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS builder
+FROM python:3.13-slim AS deps
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -7,15 +7,27 @@ WORKDIR /app
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --frozen --no-install-project
 
+
+# De browser hangt alleen aan de playwright-versie in uv.lock, niet aan de
+# applicatiecode. Stond de download onderaan, onder de COPY van /app, dan
+# maakte elke commit hem opnieuw: een nieuwe digest van 106 MiB die het
+# register apart opslaat. Vanuit `deps` erft deze stage dezelfde versie als
+# de runtime, dus er kan geen versienummer uit de pas lopen.
+FROM deps AS playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN /app/.venv/bin/playwright install chromium-headless-shell
+
+
+FROM deps AS builder
+
 COPY . .
 RUN uv sync --frozen
 
 
 FROM python:3.13-slim
 
-# Playwright runtime deps voor headless chromium (ABD-scrape).
-# We installeren chromium via `playwright install chromium` na de
-# uv sync; de browser zelf landt in /home/appuser/.cache/ms-playwright.
+# Playwright runtime deps voor headless chromium (ABD-scrape). De browser
+# zelf komt uit de playwright-stage hierboven en staat in /ms-playwright.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-client \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
@@ -41,6 +53,9 @@ RUN set -eux; \
       && apt-get autoremove -y; } \
     || echo "Claude CLI install gefaald; abonnementsroute niet beschikbaar"; \
     rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
+
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=playwright /ms-playwright /ms-playwright
 
 RUN useradd --create-home --uid 1001 appuser && \
     mkdir -p /data/bijlagen/chat /data/bijlagen/leads && \
@@ -69,10 +84,6 @@ USER 1001
 
 # Activate venv via PATH — entrypoint uses python/alembic/uvicorn directly
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Playwright chromium (skip download error si offline build)
-RUN python -m playwright install chromium-headless-shell || \
-    echo "Playwright chromium install gefaald; ABD-scrape niet beschikbaar"
 
 # Force unbuffered stdout/stderr — without this Python buffers when stdout
 # is not a TTY, so the worker's log lines (and crash tracebacks) sit in the
