@@ -1412,7 +1412,15 @@ def _hoofdstuk_voor_bijlage(items: list) -> list:
         # een externe bron, en een stack overflow zou een hele ronde
         # kosten.
         stapel = [wortel]
-        while stapel:
+        # Harde bovengrens naast de `uitgegeven`-check. Die check is wat
+        # een cykel breekt, en als hij ooit wegvalt hangt deze lus in
+        # plaats van te falen. Een vastgelopen worker is erger dan een
+        # verkeerd gesorteerde ronde, en dit kost niets zolang alles werkt:
+        # elke omwenteling geeft hoogstens één stuk uit.
+        rondes = 0
+        grens = len(items) + 1
+        while stapel and rondes <= grens:
+            rondes += 1
             item = stapel.pop()
             if id(item) in uitgegeven:
                 continue
@@ -1436,6 +1444,17 @@ def _hoofdstuk_voor_bijlage(items: list) -> list:
     # eronder, en niemand valt weg.
     for item in items:
         geef_uit(item)
+
+    # Vangnet. Alles hierboven hoort elk stuk al te hebben uitgegeven, dus
+    # deze lus doet normaal niets. Hij staat er omdat de prijs van een
+    # gemist stuk permanent is: de sortering is een nettigheid, de
+    # volledigheid van de lijst niet.
+    ontbrekend = [i for i in items if id(i) not in uitgegeven]
+    if ontbrekend:
+        logger.warning(
+            "Sortering liet %d stuk(ken) liggen; alsnog toegevoegd", len(ontbrekend)
+        )
+        gesorteerd.extend(ontbrekend)
     return gesorteerd
 
 

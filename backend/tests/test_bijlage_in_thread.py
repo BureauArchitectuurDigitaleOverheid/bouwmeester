@@ -159,6 +159,37 @@ class TestErRaaktNooitIetsZoek:
         assert len(uit) == 2
         assert _volgorde(uit) == ["brief-1", "bijlage-1"]
 
+    def test_de_lus_heeft_een_bovengrens(self, monkeypatch):
+        """Hangen is erger dan verkeerd sorteren.
+
+        De cykelbescherming zit in één set-check. Valt die weg, dan draait
+        de lus eindeloos en staat de hele importworker stil. De harde
+        bovengrens vangt dat af, en het vangnet eronder zorgt dat er ook
+        dan geen stuk verdwijnt.
+        """
+        import bouwmeester.services.parlementair_import_service as mod
+
+        # Een stuk waarvan het nummer per uitlezing verandert, zodat de
+        # `uitgegeven`-check nooit aanslaat: dat is wat een kapotte
+        # cykelbescherming in de praktijk doet. Zonder bovengrens draait
+        # de lus hierop eeuwig door.
+        beurten = iter(["A"] * 50_000)
+
+        class _Wisselend:
+            extra_data: dict = {}
+
+            @property
+            def zaak_id(self):
+                return next(beurten, "A")
+
+        items = [_Wisselend(), _stuk("B", bijlage_bij="A")]
+
+        uit = mod._hoofdstuk_voor_bijlage(items)
+
+        # Komt terug in plaats van te hangen, en het vangnet zorgt dat er
+        # geen stuk verdwijnt.
+        assert len(uit) == 2
+
     def test_een_lange_keten_loopt_niet_vast(self):
         """Iteratief en niet recursief: de diepte komt uit een externe bron."""
         items = [_stuk("s0")]
