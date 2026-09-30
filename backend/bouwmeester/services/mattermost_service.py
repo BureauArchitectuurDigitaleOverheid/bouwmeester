@@ -315,10 +315,15 @@ class MattermostService:
         channel_id: str,
         text: str,
         props: dict | None = None,
+        root_id: str | None = None,
     ) -> str | None:
         """Post a message to a Mattermost channel.
 
         Geeft het post-id terug, of ``None`` als het posten mislukte.
+
+        Met `root_id` wordt het een reply in die thread. Dat is hoe een
+        bijlage onder de brief komt te hangen waar hij bij hoort, in plaats
+        van als tweede bericht over hetzelfde onderwerp in het kanaal.
 
         Waarom een id en niet een bool: zonder het id is een bericht later
         nergens meer aan te wijzen. Een emoji-reaction op een alert kwam
@@ -335,6 +340,8 @@ class MattermostService:
             payload: dict = {"channel_id": channel_id, "message": text}
             if props:
                 payload["props"] = props
+            if root_id:
+                payload["root_id"] = root_id
             resp = await client.post("/api/v4/posts", json=payload)
             resp.raise_for_status()
             # Een post zonder id is theoretisch: Mattermost geeft hem

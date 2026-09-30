@@ -214,7 +214,7 @@ class ParlementairImportService:
                 )
                 ek_items = []
 
-        all_items = tk_items + ek_items
+        all_items = _hoofdstuk_voor_bijlage(tk_items + ek_items)
 
         self._inhaalslag = {}
         self._gepost_deze_ronde = set()
@@ -1350,6 +1350,131 @@ class ParlementairImportService:
         self.session.add(person)
         await self.session.flush()
         return person
+
+
+# Hoeveel omwentelingen de sorteerlus per stuk mag maken.
+#
+# Twee is ruim zolang de nummers uniek zijn: elk stuk wordt dan hoogstens
+# één keer op de stapel gezet door zijn hoofdstuk en één keer door de
+# hoofdlus. Zijn er dubbele nummers, dan groeit het aantal omwentelingen
+# kwadratisch en raakt het budget op; het vangnet eronder levert de lijst
+# dan compleet maar minder net gesorteerd af. Dat is de goede kant om op
+# te falen, en het is in de praktijk onbereikbaar: `search_many`
+# ontdubbelt op documentnummer en `ParlementairItem.zaak_id` is uniek.
+#
+# Verlaag dit getal dus niet op de aanname dat één omwenteling per stuk
+# genoeg is. De marge staat apart zodat een test hem op nul kan zetten en
+# kan aantonen dat het vangnet werkt.
+_SORTEER_MARGE = 2
+
+
+def _hoofdstuk_voor_bijlage(items: list) -> list:
+    """Zet elk hoofdstuk vóór de bijlagen die eraan hangen.
+
+    Een beslisnota en de brief waar hij bij hoort komen in dezelfde ronde
+    binnen, maar de bron levert ze in willekeurige volgorde. Werd de
+    bijlage eerst verwerkt, dan bestond de thread van de brief nog niet en
+    kwamen er twee losse berichten in het kanaal die over hetzelfde gaan.
+
+    Sorteren is hier genoeg, en dat is de reden dat er geen wachtrij of
+    timer nodig is: beide stukken zitten al in deze lijst. Een bijlage
+    waarvan het hoofdstuk niet in dezelfde ronde zit blijft op zijn plek
+    staan en wordt los gepost, zoals nu. Wachten zou dat stuk kunnen laten
+    verdwijnen als de brief nooit komt, en dat is erger dan twee berichten.
+
+    De volgorde binnen elke groep blijft zoals de bron hem gaf; alleen een
+    bijlage verhuist, naar de plek direct achter zijn hoofdstuk.
+    """
+
+    def nummer(item) -> str | None:
+        return getattr(item, "zaak_id", None)
+
+    aanwezig = {nummer(item) for item in items if nummer(item)}
+
+    bijlagen_van: dict[str, list] = {}
+    for item in items:
+        extra = getattr(item, "extra_data", None) or {}
+        hoort_bij = extra.get("bijlage_bij_nummer")
+        # Alleen verhuizen als het hoofdstuk hier ook werkelijk in zit.
+        # Anders is dit stuk voor deze ronde gewoon een los bericht. De
+        # vergelijking met het eigen nummer vangt een stuk dat naar
+        # zichzelf verwijst; dat zou zichzelf anders eindeloos vooruit
+        # schuiven.
+        if not hoort_bij or hoort_bij not in aanwezig:
+            continue
+        if hoort_bij == nummer(item):
+            continue
+        bijlagen_van.setdefault(hoort_bij, []).append(item)
+
+    if not bijlagen_van:
+        return items
+
+    # Elk item precies één keer, en dat is hier geen nettigheid maar de
+    # hele veiligheid van deze functie. Een stuk dat hier uit de lijst
+    # valt wordt niet los gepost maar verdwijnt: `_import_type` loopt
+    # alleen over wat hier uitkomt, en `_verschuif_watermerk` draait al in
+    # `fetch_items`, dus de volgende ronde ziet het stuk niet meer. Het
+    # verlies is dan permanent en stil.
+    #
+    # Een eerdere versie sloeg een verhuisd item over met `continue`, en
+    # sprong daarmee ook over de regel die zijn éígen bijlagen uitgeeft.
+    # Bij een keten (A hangt aan B, B hangt aan C) verdween A daardoor
+    # helemaal; bij een cykel de hele cykel.
+    uitgegeven: set[int] = set()
+    gesorteerd: list = []
+
+    # Harde bovengrens naast de `uitgegeven`-check. Die check is wat een
+    # cykel breekt, en als hij ooit wegvalt draait de lus hieronder eeuwig
+    # door in plaats van te falen. Een vastgelopen importworker is erger
+    # dan een verkeerd gesorteerde ronde. Het kost niets zolang alles
+    # werkt, want elke omwenteling geeft hoogstens één stuk uit.
+    #
+    # Over de hele functie en niet per aanroep: anders krijgt elke wortel
+    # zijn eigen ruimte terug en begrenst het niets.
+    budget = [len(items) * _SORTEER_MARGE]
+
+    def geef_uit(wortel) -> None:
+        # Iteratief en niet recursief: de diepte van deze keten komt uit
+        # een externe bron, en een stack overflow zou een hele ronde
+        # kosten.
+        stapel = [wortel]
+        while stapel and budget[0] > 0:
+            budget[0] -= 1
+            item = stapel.pop()
+            if id(item) in uitgegeven:
+                continue
+            uitgegeven.add(id(item))
+            gesorteerd.append(item)
+            # Omgekeerd op de stapel, zodat ze er in de oorspronkelijke
+            # volgorde weer af komen.
+            stapel.extend(reversed(bijlagen_van.get(nummer(item), [])))
+
+    # Eerst de stukken die zelf geen bijlage zijn: die trekken hun eigen
+    # bijlagen mee, en dat is het hele doel. Zou een bijlage eerder
+    # langskomen, dan werd hij meteen uitgegeven en stond hij alsnog vóór
+    # zijn hoofdstuk.
+    verhuisd = {id(b) for groep in bijlagen_van.values() for b in groep}
+    for item in items:
+        if id(item) not in verhuisd:
+            geef_uit(item)
+
+    # Wat dan nog over is hangt aan niets dat we hebben uitgegeven: een
+    # cykel. Wie als eerste langskomt wordt de wortel, de rest hangt
+    # eronder, en niemand valt weg.
+    for item in items:
+        geef_uit(item)
+
+    # Vangnet. Alles hierboven hoort elk stuk al te hebben uitgegeven, dus
+    # deze lus doet normaal niets. Hij staat er omdat de prijs van een
+    # gemist stuk permanent is: de sortering is een nettigheid, de
+    # volledigheid van de lijst niet.
+    ontbrekend = [i for i in items if id(i) not in uitgegeven]
+    if ontbrekend:
+        logger.warning(
+            "Sortering liet %d stuk(ken) liggen; alsnog toegevoegd", len(ontbrekend)
+        )
+        gesorteerd.extend(ontbrekend)
+    return gesorteerd
 
 
 def _context_regels(extra: dict) -> list[str]:
