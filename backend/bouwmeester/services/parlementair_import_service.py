@@ -1393,13 +1393,49 @@ def _hoofdstuk_voor_bijlage(items: list) -> list:
     if not bijlagen_van:
         return items
 
-    verhuisd = {id(b) for groep in bijlagen_van.values() for b in groep}
+    # Elk item precies één keer, en dat is hier geen nettigheid maar de
+    # hele veiligheid van deze functie. Een stuk dat hier uit de lijst
+    # valt wordt niet los gepost maar verdwijnt: `_import_type` loopt
+    # alleen over wat hier uitkomt, en `_verschuif_watermerk` draait al in
+    # `fetch_items`, dus de volgende ronde ziet het stuk niet meer. Het
+    # verlies is dan permanent en stil.
+    #
+    # Een eerdere versie sloeg een verhuisd item over met `continue`, en
+    # sprong daarmee ook over de regel die zijn éígen bijlagen uitgeeft.
+    # Bij een keten (A hangt aan B, B hangt aan C) verdween A daardoor
+    # helemaal; bij een cykel de hele cykel.
+    uitgegeven: set[int] = set()
     gesorteerd: list = []
+
+    def geef_uit(wortel) -> None:
+        # Iteratief en niet recursief: de diepte van deze keten komt uit
+        # een externe bron, en een stack overflow zou een hele ronde
+        # kosten.
+        stapel = [wortel]
+        while stapel:
+            item = stapel.pop()
+            if id(item) in uitgegeven:
+                continue
+            uitgegeven.add(id(item))
+            gesorteerd.append(item)
+            # Omgekeerd op de stapel, zodat ze er in de oorspronkelijke
+            # volgorde weer af komen.
+            stapel.extend(reversed(bijlagen_van.get(nummer(item), [])))
+
+    # Eerst de stukken die zelf geen bijlage zijn: die trekken hun eigen
+    # bijlagen mee, en dat is het hele doel. Zou een bijlage eerder
+    # langskomen, dan werd hij meteen uitgegeven en stond hij alsnog vóór
+    # zijn hoofdstuk.
+    verhuisd = {id(b) for groep in bijlagen_van.values() for b in groep}
     for item in items:
-        if id(item) in verhuisd:
-            continue
-        gesorteerd.append(item)
-        gesorteerd.extend(bijlagen_van.get(nummer(item), []))
+        if id(item) not in verhuisd:
+            geef_uit(item)
+
+    # Wat dan nog over is hangt aan niets dat we hebben uitgegeven: een
+    # cykel. Wie als eerste langskomt wordt de wortel, de rest hangt
+    # eronder, en niemand valt weg.
+    for item in items:
+        geef_uit(item)
     return gesorteerd
 
 

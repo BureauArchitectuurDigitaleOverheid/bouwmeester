@@ -267,12 +267,24 @@ class ParlementairAlertService:
         # want hetzelfde stuk kan in meerdere kanalen staan en heeft daar
         # elk een eigen post.
         draden = await self._draden_van_het_hoofdstuk(extra)
-        text, props = self.format_alert(item, termen, beknopt=bool(draden))
+
+        # Per kanaal opmaken, want per kanaal verschilt of er een thread
+        # is. Het hoofdstuk kan in het ene kanaal boven de drempel zijn
+        # gekomen en in het andere niet, of een kanaal is pas later
+        # gekoppeld. Eén keer beknopt beslissen voor alle kanalen gaf daar
+        # een bericht zonder kop, zonder termen en zonder voettekst, met
+        # niets erboven dat die context droeg.
+        vormen: dict[bool, tuple[str, dict]] = {}
 
         gepost = 0
         for channel_id in kanalen:
+            root_id = draden.get(channel_id)
+            beknopt = root_id is not None
+            if beknopt not in vormen:
+                vormen[beknopt] = self.format_alert(item, termen, beknopt=beknopt)
+            text, props = vormen[beknopt]
             post_id = await self.mattermost.send_channel_message(
-                channel_id, text, props, root_id=draden.get(channel_id)
+                channel_id, text, props, root_id=root_id
             )
             if not post_id:
                 continue
@@ -414,20 +426,13 @@ class ParlementairAlertService:
         if acties:
             tekst_delen.append(" · ".join(acties))
 
-        # In een thread staan de termen al boven het bericht, bij het stuk
-        # waar deze bijlage bij hoort. Ze nog eens herhalen maakt de reply
-        # langer dan wat hij toevoegt.
-        fields = (
-            []
-            if beknopt
-            else [
-                {
-                    "short": False,
-                    "title": "Gevonden op",
-                    "value": ", ".join(_escape_proza(t) for t in termen),
-                }
-            ]
-        )
+        fields = [
+            {
+                "short": False,
+                "title": "Gevonden op",
+                "value": ", ".join(_escape_proza(t) for t in termen),
+            }
+        ]
 
         # Het `title`-veld is platte tekst zolang er een `title_link`
         # staat: de webapp rendert dan `decodeHtmlEntities(title)` binnen
@@ -452,18 +457,26 @@ class ParlementairAlertService:
             # toont. Backslashes horen daar net zomin.
             "fallback": f"{presentatie['label']}: {item.titel}",
             "color": kleur,
-            # De kop noemt het soort en bij welk stuk de bijlage hoort. In
-            # de thread van dat stuk is het tweede overbodig en het eerste
-            # al zichtbaar aan het icoon, dus die regel vervalt.
-            "pretext": "" if beknopt else kop,
             "title": titel,
             "title_link": titel_link,
             "text": "\n\n".join(tekst_delen),
-            "fields": fields,
-            # De voettekst draagt soort, commissie, datum en bron: alle
-            # vier hetzelfde als bij het hoofdstuk erboven.
-            "footer": "" if beknopt else self._voettekst(item, extra),
         }
+
+        # Weglaten en niet leeg meesturen. Dat is wat de andere
+        # attachment-bouwers in deze codebase doen
+        # (`mattermost_ingest_service`, `mattermost_slash_service`), en het
+        # scheelt de vraag hoe een renderer een lege string behandelt.
+        #
+        # In een thread dragen deze drie alleen wat het hoofdstuk erboven
+        # al zegt: de kop noemt het soort en bij welk stuk de bijlage
+        # hoort, de velden herhalen de gevonden termen, en de voettekst
+        # herhaalt soort, commissie, datum en bron. De titel blijft wel
+        # staan: die draagt de link naar het document en is waar een
+        # ingeklapte reply aan te herkennen is.
+        if not beknopt:
+            attachment["pretext"] = kop
+            attachment["fields"] = fields
+            attachment["footer"] = self._voettekst(item, extra)
 
         return "", {"attachments": [attachment]}
 

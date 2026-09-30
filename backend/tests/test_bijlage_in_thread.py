@@ -89,6 +89,84 @@ class TestSortering:
         assert len(_hoofdstuk_voor_bijlage(items)) == 2
 
 
+class TestErRaaktNooitIetsZoek:
+    """De invariant, en die is hier belangrijker dan de volgorde.
+
+    Een stuk dat uit deze lijst valt wordt niet los gepost maar verdwijnt:
+    `_import_type` loopt alleen over wat hieruit komt, en het watermerk is
+    al opgeschoven in `fetch_items`. De volgende ronde ziet het stuk niet
+    meer, dus het verlies is permanent en stil.
+
+    De eerste versie sloeg een verhuisd item over met `continue` en sprong
+    daarmee ook over de regel die zijn eigen bijlagen uitgeeft. Een meting
+    over 3000 willekeurige rondes vond 637 rondes waarin items verdwenen
+    of dubbel voorkwamen.
+    """
+
+    def _controleer(self, items: list) -> list:
+        uit = _hoofdstuk_voor_bijlage(items)
+        assert sorted(id(i) for i in uit) == sorted(id(i) for i in items), (
+            "elk stuk hoort er precies één keer uit te komen"
+        )
+        return uit
+
+    def test_een_keten_verliest_het_middelste_stuk_niet(self):
+        """A hangt aan B, B hangt aan C: geen van drieën mag wegvallen.
+
+        Dit is realistisch: een beslisnota bij een brief bij een
+        nota-overleg is een gewone stapeling, en de TK-API sluit niet uit
+        dat een BronDocument zelf weer een BronDocument heeft.
+        """
+        items = [
+            _stuk("A", bijlage_bij="B"),
+            _stuk("B", bijlage_bij="C"),
+            _stuk("C"),
+        ]
+
+        assert _volgorde(self._controleer(items)) == ["C", "B", "A"]
+
+    def test_een_cykel_van_twee_verdampt_niet(self):
+        items = [_stuk("A", bijlage_bij="B"), _stuk("B", bijlage_bij="A")]
+
+        # Wie als eerste langskomt wordt de wortel; de ander hangt eronder.
+        assert _volgorde(self._controleer(items)) == ["A", "B"]
+
+    def test_een_cykel_van_drie_verdampt_niet(self):
+        items = [
+            _stuk("A", bijlage_bij="B"),
+            _stuk("B", bijlage_bij="C"),
+            _stuk("C", bijlage_bij="A"),
+        ]
+
+        assert len(self._controleer(items)) == 3
+
+    def test_een_cykel_neemt_de_losse_stukken_niet_mee(self):
+        items = [
+            _stuk("X", bijlage_bij="Y"),
+            _stuk("Y", bijlage_bij="X"),
+            _stuk("Z"),
+        ]
+
+        assert sorted(_volgorde(self._controleer(items))) == ["X", "Y", "Z"]
+
+    def test_hetzelfde_object_twee_keer_levert_niet_meer_op(self):
+        brief = _stuk("brief-1")
+        items = [_stuk("bijlage-1", bijlage_bij="brief-1"), brief, brief]
+
+        # `id()` en niet `zaak_id`: twee losse objecten met hetzelfde
+        # nummer zijn iets anders dan één object dat er twee keer in zit.
+        uit = _hoofdstuk_voor_bijlage(items)
+        assert len(uit) == 2
+        assert _volgorde(uit) == ["brief-1", "bijlage-1"]
+
+    def test_een_lange_keten_loopt_niet_vast(self):
+        """Iteratief en niet recursief: de diepte komt uit een externe bron."""
+        items = [_stuk("s0")]
+        items += [_stuk(f"s{n}", bijlage_bij=f"s{n - 1}") for n in range(1, 1500)]
+
+        assert len(self._controleer(items)) == 1500
+
+
 async def _niets(*_args, **_kw):
     return None
 
@@ -157,11 +235,13 @@ class _Mattermost:
     def __init__(self):
         self.draden: list[str | None] = []
         self.props: list[dict] = []
+        self.kanalen: list[str] = []
 
     async def is_enabled(self) -> bool:
         return True
 
     async def send_channel_message(self, channel_id, text, props, root_id=None):
+        self.kanalen.append(channel_id)
         self.draden.append(root_id)
         self.props.append(props)
         return "post-nieuw"
@@ -173,17 +253,15 @@ class _Mattermost:
 class _Sessie:
     """Twee queries: eerst de kanalen, dan de thread van het hoofdstuk."""
 
-    def __init__(self, thread: list[tuple[str, str]]):
+    def __init__(self, thread: list[tuple[str, str]], kanalen=("kanaal-1",)):
         self._thread = thread
+        self._kanalen = list(kanalen)
 
     async def execute(self, stmt):
         tekst = str(stmt)
         if "mattermost_channel_link" in tekst:
-            return SimpleNamespace(
-                scalars=lambda: SimpleNamespace(
-                    all=lambda: [SimpleNamespace(channel_id="kanaal-1")]
-                )
-            )
+            links = [SimpleNamespace(channel_id=k) for k in self._kanalen]
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: links))
         return SimpleNamespace(all=lambda: self._thread)
 
     def add(self, _rij):
@@ -223,7 +301,9 @@ def _bijlage(**extra) -> SimpleNamespace:
     )
 
 
-def _svc(mm: _Mattermost, sessie: _Sessie) -> ParlementairAlertService:
+def _svc(mm: _Mattermost, sessie: _Sessie, kanalen=None) -> ParlementairAlertService:
+    if kanalen is not None:
+        sessie._kanalen = list(kanalen)
     svc = ParlementairAlertService.__new__(ParlementairAlertService)
     svc.mattermost = mm
     svc.session = sessie
@@ -274,12 +354,18 @@ class TestReplyInDeThread:
         await svc.post_alert(_bijlage(bijlage_bij_nummer="brief-1"))
 
         bijlage = mm.props[0]["attachments"][0]
-        assert bijlage["fields"] == []
-        assert bijlage["pretext"] == ""
-        assert bijlage["footer"] == ""
-        # Wat de bijlage zélf toevoegt blijft staan.
+        # Weggelaten, niet leeg: dat is wat de andere attachment-bouwers
+        # in deze codebase doen, en het scheelt de vraag hoe een renderer
+        # een lege string behandelt.
+        assert "fields" not in bijlage
+        assert "pretext" not in bijlage
+        assert "footer" not in bijlage
+        # Wat de bijlage zélf toevoegt blijft staan. De titel ook: die
+        # draagt de link en is waar een ingeklapte reply aan te herkennen
+        # is.
         assert "adviseert in te stemmen" in bijlage["text"]
         assert bijlage["title"]
+        assert bijlage["title_link"]
 
     async def test_los_in_het_kanaal_blijft_het_bericht_volledig(self):
         mm = _Mattermost()
@@ -290,6 +376,58 @@ class TestReplyInDeThread:
         los = mm.props[0]["attachments"][0]
         assert los["fields"]
         assert los["footer"]
+
+
+@pytest.mark.asyncio
+class TestPerKanaalApart:
+    """Of er een thread is verschilt per kanaal, dus de vorm ook.
+
+    Het hoofdstuk kan in het ene kanaal boven de drempel zijn gekomen en
+    in het andere niet (`minimum_relevantie` staat per abonnement), of een
+    kanaal is pas later gekoppeld. Eén keer beknopt beslissen voor alle
+    kanalen gaf daar een bericht zonder kop, zonder termen en zonder
+    voettekst, met niets erboven dat die context droeg. Dat is slechter
+    dan wat er vóór deze wijziging stond.
+    """
+
+    async def test_zonder_thread_blijft_het_bericht_volledig(self):
+        mm = _Mattermost()
+        svc = _svc(
+            mm,
+            _Sessie(thread=[("kanaal-1", "post-brief")]),
+            kanalen=["kanaal-1", "kanaal-2"],
+        )
+
+        await svc.post_alert(_bijlage(bijlage_bij_nummer="brief-1"))
+
+        per_kanaal = dict(zip(mm.kanalen, mm.props, strict=True))
+        in_de_thread = per_kanaal["kanaal-1"]["attachments"][0]
+        los = per_kanaal["kanaal-2"]["attachments"][0]
+
+        assert "footer" not in in_de_thread
+        assert los["footer"]
+        assert los["fields"]
+        assert mm.draden == ["post-brief", None]
+
+
+@pytest.mark.asyncio
+class TestEenKapotteLookupHoudtHetBerichtNietTegen:
+    """Dan wordt het een los bericht, en dat is beter dan geen bericht."""
+
+    async def test_een_databasefout_laat_het_stuk_door(self):
+        class _Stuk(_Sessie):
+            async def execute(self, stmt):
+                if "parlementair_alert_post" in str(stmt):
+                    raise RuntimeError("database weg")
+                return await super().execute(stmt)
+
+        mm = _Mattermost()
+        svc = _svc(mm, _Stuk(thread=[]))
+
+        gepost = await svc.post_alert(_bijlage(bijlage_bij_nummer="brief-1"))
+
+        assert gepost == 1
+        assert mm.draden == [None]
 
 
 @pytest.mark.asyncio
