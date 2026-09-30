@@ -1413,20 +1413,23 @@ def _hoofdstuk_voor_bijlage(items: list) -> list:
     uitgegeven: set[int] = set()
     gesorteerd: list = []
 
+    # Harde bovengrens naast de `uitgegeven`-check. Die check is wat een
+    # cykel breekt, en als hij ooit wegvalt draait de lus hieronder eeuwig
+    # door in plaats van te falen. Een vastgelopen importworker is erger
+    # dan een verkeerd gesorteerde ronde. Het kost niets zolang alles
+    # werkt, want elke omwenteling geeft hoogstens één stuk uit.
+    #
+    # Over de hele functie en niet per aanroep: anders krijgt elke wortel
+    # zijn eigen ruimte terug en begrenst het niets.
+    budget = [len(items) * _SORTEER_MARGE]
+
     def geef_uit(wortel) -> None:
         # Iteratief en niet recursief: de diepte van deze keten komt uit
         # een externe bron, en een stack overflow zou een hele ronde
         # kosten.
         stapel = [wortel]
-        # Harde bovengrens naast de `uitgegeven`-check. Die check is wat
-        # een cykel breekt, en als hij ooit wegvalt hangt deze lus in
-        # plaats van te falen. Een vastgelopen worker is erger dan een
-        # verkeerd gesorteerde ronde, en dit kost niets zolang alles werkt:
-        # elke omwenteling geeft hoogstens één stuk uit.
-        rondes = 0
-        grens = len(items) * _SORTEER_MARGE
-        while stapel and rondes <= grens:
-            rondes += 1
+        while stapel and budget[0] > 0:
+            budget[0] -= 1
             item = stapel.pop()
             if id(item) in uitgegeven:
                 continue
