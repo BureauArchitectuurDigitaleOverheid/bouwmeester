@@ -173,22 +173,19 @@ class TestErRaaktNooitIetsZoek:
         # `uitgegeven`-check nooit aanslaat: dat is wat een kapotte
         # cykelbescherming in de praktijk doet. Zonder bovengrens draait
         # de lus hierop eeuwig door.
-        beurten = iter(["A"] * 50_000)
+        # Een lange keten met de grens kunstmatig op één omwenteling. Dan
+        # kapt hij midden in af, precies zoals bij een kapotte
+        # cykelcheck, en moet het vangnet de rest alsnog meenemen.
+        items = [_stuk("s0")]
+        items += [_stuk(f"s{n}", bijlage_bij=f"s{n - 1}") for n in range(1, 6)]
 
-        class _Wisselend:
-            extra_data: dict = {}
-
-            @property
-            def zaak_id(self):
-                return next(beurten, "A")
-
-        items = [_Wisselend(), _stuk("B", bijlage_bij="A")]
+        monkeypatch.setattr(mod, "_SORTEER_MARGE", 0)
 
         uit = mod._hoofdstuk_voor_bijlage(items)
 
-        # Komt terug in plaats van te hangen, en het vangnet zorgt dat er
-        # geen stuk verdwijnt.
-        assert len(uit) == 2
+        # Komt terug in plaats van te hangen, en geen stuk is verdwenen.
+        assert len(uit) == 6
+        assert {i.zaak_id for i in uit} == {f"s{n}" for n in range(6)}
 
     def test_een_lange_keten_loopt_niet_vast(self):
         """Iteratief en niet recursief: de diepte komt uit een externe bron."""

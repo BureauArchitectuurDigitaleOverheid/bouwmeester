@@ -1352,6 +1352,12 @@ class ParlementairImportService:
         return person
 
 
+# Hoeveel omwentelingen de sorteerlus per stuk mag maken. Eén is genoeg:
+# elke omwenteling geeft hoogstens één stuk uit. De marge staat apart
+# zodat een test hem kan verlagen en het vangnet eronder kan aantonen.
+_SORTEER_MARGE = 2
+
+
 def _hoofdstuk_voor_bijlage(items: list) -> list:
     """Zet elk hoofdstuk vóór de bijlagen die eraan hangen.
 
@@ -1418,7 +1424,7 @@ def _hoofdstuk_voor_bijlage(items: list) -> list:
         # verkeerd gesorteerde ronde, en dit kost niets zolang alles werkt:
         # elke omwenteling geeft hoogstens één stuk uit.
         rondes = 0
-        grens = len(items) + 1
+        grens = len(items) * _SORTEER_MARGE
         while stapel and rondes <= grens:
             rondes += 1
             item = stapel.pop()
