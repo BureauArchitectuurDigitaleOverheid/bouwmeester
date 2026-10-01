@@ -53,6 +53,15 @@ _SOORT_CATEGORIE: dict[str, str] = {
     "Lijst van vragen en antwoorden": CAT_VRAAG,
     "Inbreng verslag schriftelijk overleg": CAT_VRAAG,
     "Verslag van een schriftelijk overleg": CAT_VRAAG,
+    # Geen administratief lijstje maar het bericht dat een antwoordtermijn
+    # verschuift: "Uitstel beantwoording vragen van de leden X en Y over
+    # ...". Dat hoort bij de vraag waar het over gaat, en de vraag-categorie
+    # draagt de termijn al in de kopregel.
+    "Mededeling (uitstel antwoord)": CAT_VRAAG,
+    # Opgeheven soort: in 2010 gesplitst in "Antwoord schriftelijke vragen"
+    # en de mededeling hierboven. Staat hier voor het archief, want een
+    # zoekterm kan ook een oud stuk raken.
+    "Aanhangsel van de Handelingen": CAT_VRAAG,
     # Vooraf: er komt een vergadering aan waar deze term in staat, en daar
     # is nog iets mee te doen. Een convocatie is de uitnodiging met de
     # agenda erbij, en met bijna 30.000 stukken de grootste soort die we
@@ -183,10 +192,14 @@ CATEGORIE_PRESENTATIE: dict[str, dict[str, str]] = {
         "herkomst": "vakpers",
     },
     CAT_DEBAT: {
-        "emoji": ":speech_balloon:",
-        "teken": "\U0001f4ac",
+        # Een microfoon en niet een tekstballon: die laatste heeft `extern`
+        # al, en in de inhaalslag-lijst is de emoji het enige dat een lezer
+        # ziet. Daar zouden een debatverslag en een position paper dan niet
+        # uit elkaar te houden zijn.
+        "emoji": ":microphone:",
+        "teken": "\U0001f3a4",
         "label": "Debatverslag",
-        "kleur": "#0F766E",
+        "kleur": "#0E7490",
     },
     CAT_OVERIG: {
         "emoji": ":page_facing_up:",
@@ -264,8 +277,15 @@ def categorie_van(soort: str | None) -> str:
     klein = soort.lower()
     if "agenda" in klein and "procedurevergadering" in klein:
         return CAT_VERGADERING_VOORUIT
-    if "besluitenlijst" in klein or "verslag van een" in klein:
+    if "besluitenlijst" in klein:
         return CAT_VERGADERING_TERUG
+    # "Verslag van een ..." is een woordelijk verslag en geen besluitenlijst.
+    # Elke benoemde variant staat hierboven al in de tabel; wat hier langs
+    # komt is restmateriaal (werkbezoek, rapporteur, politieke dialoog) of
+    # een soort die de TK heeft hernoemd. Dan is `debat` de goede terugval,
+    # want anders zegt dit vangnet precies het omgekeerde van de tabel.
+    if "verslag van een" in klein:
+        return CAT_DEBAT
     if "vragen" in klein:
         return CAT_VRAAG
     if klein.startswith("brief"):
@@ -342,8 +362,16 @@ async def haal_context(
         ctx.activiteit_soort = act.get("Soort")
         ctx.activiteit_datum = _parse_datum(act.get("Datum"))
         # Een agenda die in het verleden ligt is geen vooruitblik meer.
+        #
+        # Een convocatie inbreng niet: dat is de aankondiging van een
+        # inbrengdatum, geen vergadering. Verstreken of niet, er is geen
+        # besluitenlijst, en `vergadering_terug` zou het model opdragen te
+        # zeggen "welk besluit is genomen" over een stuk dat er geen bevat.
+        # Dan liever de vooruitblik laten staan: die klopt tenminste over
+        # wat voor stuk het is.
         if (
             ctx.categorie == CAT_VERGADERING_VOORUIT
+            and ctx.soort != "Convocatie inbreng"
             and ctx.activiteit_datum
             and ctx.activiteit_datum < date.today()
         ):

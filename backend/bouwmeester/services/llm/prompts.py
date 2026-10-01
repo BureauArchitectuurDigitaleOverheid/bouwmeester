@@ -140,12 +140,24 @@ _CATEGORIE_CONTEXT: dict[str, str] = {
         "Zeiden meerdere sprekers er iets over, kies dan de uitspraak die "
         "het meest over de zoekterm zelf gaat en noem hoeveel sprekers er "
         "nog meer aan raakten.\n"
+        "Je krijgt een PASSAGE uit het verslag, niet het hele stuk. De "
+        "sprekersaanduiding staat aan het begin van een blok en kan dus "
+        "buiten je fragment vallen. Staat er geen aanduiding in de passage "
+        "zelf, schrijf dan dat niet is vast te stellen wie dit zei. Verzin "
+        "geen naam en pak niet de dichtstbijzijnde naam uit de tekst: dat "
+        "is vaak een genoemd Kamerlid of de vorige spreker.\n"
         "Een stenogram en een conceptverslag zijn ONGECORRIGEERD: de "
         "spreker kan zijn woorden nog aanpassen. Schrijf een uitspraak "
-        "daarom nooit op als vaststaand beleid, en maak van een losse "
-        "opmerking in een debat geen toezegging. Is er wél een toezegging "
-        "gedaan, zeg dat dan expliciet, want dat is precies waar een "
-        "debatverslag voor gelezen wordt."
+        "daarom nooit op als vaststaand beleid.\n"
+        "Noem alleen een toezegging als die met zoveel woorden wordt "
+        'gedaan ("ik zeg u toe", "ik zal uw Kamer informeren"). Een '
+        'voornemen, een overweging of "daar kijk ik naar" is geen '
+        "toezegging.\n"
+        "Niet elk stenogram is een debat. Een regeling van werkzaamheden "
+        "of een stemming bevat geen inhoudelijke uitspraak: daar valt de "
+        "zoekterm in de titel van een motie of in een verzoek om een "
+        "debat. Is dat het geval, zeg dan kort wat er gebeurde en houd de "
+        "samenvatting kort. Forceer geen citaat dat er niet is."
     ),
     "bijlage": (
         "Dit is een bijlage bij een ander kamerstuk, vaak een kamerbrief. "

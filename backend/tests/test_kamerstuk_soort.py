@@ -95,6 +95,46 @@ class TestCategorieVan:
         zonder = sorted(set(CATEGORIE_PRESENTATIE) - set(_CATEGORIE_CONTEXT))
         assert zonder == [], f"categorieën zonder instructie: {zonder}"
 
+    def test_de_debat_instructie_dekt_de_drie_valkuilen(self):
+        """De tekst zelf, niet alleen dat er een sleutel is.
+
+        Elk van deze drie dekt een gemeten risico af. Het model krijgt een
+        passage en niet het hele verslag, dus de sprekersaanduiding kan
+        buiten beeld vallen; een stenogram is ongecorrigeerd, dus een
+        uitspraak is geen beleid; en een derde van de stenogrammen is een
+        regeling van werkzaamheden of een stemming, waar helemaal geen
+        citaat in staat.
+        """
+        from bouwmeester.services.llm.prompts import _CATEGORIE_CONTEXT
+
+        tekst = _CATEGORIE_CONTEXT["debat"]
+
+        assert "PASSAGE" in tekst
+        assert "Verzin geen naam" in tekst
+        assert "ONGECORRIGEERD" in tekst
+        assert "regeling van werkzaamheden" in tekst.lower()
+
+    def test_de_convocatie_instructie_noemt_de_stukkenlijst(self):
+        """Een term die alleen in een geagendeerd stuk valt is geen onderwerp."""
+        from bouwmeester.services.llm.prompts import _CATEGORIE_CONTEXT
+
+        assert "CONVOCATIE" in _CATEGORIE_CONTEXT["vergadering_vooruit"]
+        assert "geagendeerd" in _CATEGORIE_CONTEXT["vergadering_vooruit"]
+
+    def test_elke_categorie_ziet_er_anders_uit(self):
+        """Teken én kleur samen moeten onderscheidend zijn.
+
+        In `format_inhaalslag` wordt alleen de emoji gerenderd, zonder
+        label en zonder kleur. Twee categorieën met hetzelfde teken zijn
+        daar dus niet uit elkaar te houden, en dat is precies de lijst
+        waar iemand na een nieuwe zoekterm overheen scant.
+        """
+        from bouwmeester.services.kamerstuk_soort import CATEGORIE_PRESENTATIE
+
+        tekens = [p["teken"] for p in CATEGORIE_PRESENTATIE.values()]
+        dubbel = {t for t in tekens if tekens.count(t) > 1}
+        assert dubbel == set(), f"categorieën met hetzelfde teken: {dubbel}"
+
     def test_een_debatverslag_is_geen_besluitenlijst(self):
         """Het verschil waar deze categorie voor bestaat.
 
@@ -106,6 +146,24 @@ class TestCategorieVan:
             CAT_VERGADERING_TERUG
         )
         assert categorie_van("Verslag van een commissiedebat") == CAT_DEBAT
+
+    def test_een_onbenoemd_verslag_valt_terug_op_debat(self):
+        """Het vangnet moet hetzelfde zeggen als de tabel.
+
+        "Verslag van een werkbezoek" en "Verslag van een politieke dialoog"
+        staan niet in de tabel. Zonder deze terugval zouden ze op
+        `vergadering_terug` uitkomen en de instructie krijgen om te zeggen
+        welk besluit is genomen, terwijl het beschrijvende verslagen zijn.
+        Dat gold tot deze wijziging ook voor elke soort die de TK hernoemt.
+        """
+        assert categorie_van("Verslag van een werkbezoek") == CAT_DEBAT
+        assert categorie_van("Verslag van een politieke dialoog") == CAT_DEBAT
+
+    def test_een_besluitenlijst_blijft_een_besluitenlijst(self):
+        """De terugval hierboven mag die van de besluitenlijst niet opeten."""
+        assert categorie_van("Besluitenlijst strategische procedurevergadering") == (
+            CAT_VERGADERING_TERUG
+        )
 
     def test_herziene_agenda_valt_terug_op_de_kern(self):
         # Commissies formuleren dit per gelegenheid net anders.
@@ -242,6 +300,31 @@ class TestHaalContext:
             ctx = await haal_context("2026D00001", c)
 
         assert ctx.categorie == CAT_VERGADERING_TERUG
+
+    @pytest.mark.asyncio
+    async def test_verstreken_inbrengdatum_wordt_geen_verslag(self):
+        """Een convocatie inbreng is geen vergadering en krijgt er geen.
+
+        De degradatie hierboven zou hem op `vergadering_terug` zetten, en
+        dan krijgt het model de opdracht te zeggen welk besluit is genomen.
+        Een convocatie inbreng bevat geen besluiten: het is de aankondiging
+        van een datum waarop fracties hun inbreng leveren.
+        """
+        gisteren = (date.today() - timedelta(days=1)).isoformat()
+        async with _api(
+            {
+                "value": [
+                    {
+                        "DocumentNummer": "2026D00002",
+                        "Soort": "Convocatie inbreng",
+                        "Activiteit": [{"Soort": "Inbreng", "Datum": gisteren}],
+                    }
+                ]
+            }
+        ) as c:
+            ctx = await haal_context("2026D00002", c)
+
+        assert ctx.categorie == CAT_VERGADERING_VOORUIT
 
     @pytest.mark.asyncio
     async def test_agenda_in_de_toekomst_blijft_vooruitblik(self):
