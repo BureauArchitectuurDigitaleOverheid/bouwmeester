@@ -225,6 +225,12 @@ class KamerstukContext:
     # Bij een vergaderstuk: welke vergadering, en wanneer.
     activiteit_soort: str | None = None
     activiteit_datum: date | None = None
+    # De vergadering waar dit stuk bij hoort. Draagt geen betekenis voor
+    # het bericht, wel voor wat erna kan komen: met dit id is de
+    # vergadering op de dag zelf terug te vinden, inclusief de actuele
+    # status en begintijd.
+    activiteit_id: str | None = None
+    activiteit_status: str | None = None
     commissie: str | None = None
     zaak_nummer: str | None = None
     extra: dict = field(default_factory=dict)
@@ -254,6 +260,8 @@ class KamerstukContext:
             "activiteit_datum": (
                 self.activiteit_datum.isoformat() if self.activiteit_datum else None
             ),
+            "activiteit_id": self.activiteit_id,
+            "activiteit_status": self.activiteit_status,
             "zaak_nummer": self.zaak_nummer,
         }
 
@@ -325,7 +333,18 @@ async def haal_context(
         "$expand": (
             "Zaak($select=Nummer,Soort,Onderwerp,Termijn,Afgedaan),"
             "BronDocument($select=DocumentNummer,Soort,Onderwerp),"
-            "Activiteit($select=Nummer,Soort,Onderwerp,Datum)"
+            # `Id` en `Status` lijken overbodig voor het bericht, en dat
+            # zijn ze ook: ze dragen de koppeling naar de vergadering zelf.
+            # Een convocatie kondigt een debat aan dat weken later pas
+            # plaatsvindt (mediaan 20,5 dagen, gemeten over 80 convocaties),
+            # en de activiteit is dan de enige sleutel die blijft werken.
+            # Debat Direct kent het debat op dat moment nog niet: dat geeft
+            # nul resultaten voor elke toekomstige datum.
+            #
+            # `Status` staat erbij omdat een aangekondigd debat niet altijd
+            # doorgaat: van 250 gemeten activiteiten werden er 14
+            # geannuleerd en 11 verplaatst.
+            "Activiteit($select=Id,Nummer,Soort,Onderwerp,Datum,Status)"
         ),
     }
     try:
@@ -361,6 +380,8 @@ async def haal_context(
         act = activiteiten[0]
         ctx.activiteit_soort = act.get("Soort")
         ctx.activiteit_datum = _parse_datum(act.get("Datum"))
+        ctx.activiteit_id = act.get("Id") or None
+        ctx.activiteit_status = act.get("Status") or None
         # Een agenda die in het verleden ligt is geen vooruitblik meer.
         #
         # Een convocatie inbreng niet: dat is de aankondiging van een

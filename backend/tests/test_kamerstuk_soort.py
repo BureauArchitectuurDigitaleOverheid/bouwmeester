@@ -302,6 +302,81 @@ class TestHaalContext:
         assert ctx.categorie == CAT_VERGADERING_TERUG
 
     @pytest.mark.asyncio
+    async def test_een_convocatie_onthoudt_welke_vergadering_het_is(self):
+        """Het activiteit-Id draagt de koppeling naar de vergadering zelf.
+
+        Een convocatie kondigt een debat aan dat weken later pas is: de
+        mediaan is 20,5 dagen, gemeten over 80 convocaties. Op dat moment
+        bestaat er nog geen debat om naar te wijzen, alleen deze activiteit.
+        Zonder het Id is de vergadering op de dag zelf niet meer terug te
+        vinden, want het onderwerp alleen is geen sleutel.
+
+        De payload is de vorm die de TK-API werkelijk teruggeeft, gemeten op
+        1 oktober 2026 tegen convocatie 2026D47426.
+        """
+        async with _api(
+            {
+                "value": [
+                    {
+                        "DocumentNummer": "2026D47426",
+                        "Soort": "Convocatie commissieactiviteit",
+                        "Activiteit": [
+                            {
+                                "Id": "1a1d9338-c763-43e0-b50e-2eb9c85a7fd2",
+                                "Nummer": "2026A06386",
+                                "Soort": "Commissiedebat",
+                                "Onderwerp": "Digitaliserende overheid",
+                                "Datum": "2026-10-07T14:00:00+02:00",
+                                "Status": "Gepland",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ) as c:
+            ctx = await haal_context("2026D47426", c)
+
+        assert ctx.activiteit_id == "1a1d9338-c763-43e0-b50e-2eb9c85a7fd2"
+        assert ctx.activiteit_status == "Gepland"
+        # En het moet de database halen, niet alleen het object.
+        assert ctx.as_extra_data()["activiteit_id"] == (
+            "1a1d9338-c763-43e0-b50e-2eb9c85a7fd2"
+        )
+
+    @pytest.mark.asyncio
+    async def test_de_api_wordt_ook_om_het_id_gevraagd(self):
+        """Anders stuurt de API het veld niet mee en blijft het stil leeg.
+
+        Dit is een OData-`$select`: wat er niet in staat, komt niet terug. De
+        test hierboven zou dan nog steeds slagen, want die voert de respons
+        zelf aan.
+        """
+        gezien: dict = {}
+
+        def handler(request):
+            gezien["expand"] = request.url.params.get("$expand", "")
+            return httpx.Response(200, json={"value": []})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            await haal_context("2026D00004", c)
+
+        assert "Activiteit($select=" in gezien["expand"]
+        activiteit = gezien["expand"].split("Activiteit($select=")[1]
+        assert "Id" in activiteit.split(",")
+        assert "Status" in activiteit.rstrip(")").split(",")
+
+    @pytest.mark.asyncio
+    async def test_een_stuk_zonder_activiteit_houdt_lege_velden(self):
+        """De meeste kamerstukken hangen aan geen enkele vergadering."""
+        async with _api(
+            {"value": [{"DocumentNummer": "2026D00003", "Soort": "Brief regering"}]}
+        ) as c:
+            ctx = await haal_context("2026D00003", c)
+
+        assert ctx.activiteit_id is None
+        assert ctx.activiteit_status is None
+
+    @pytest.mark.asyncio
     async def test_verstreken_inbrengdatum_wordt_geen_verslag(self):
         """Een convocatie inbreng is geen vergadering en krijgt er geen.
 
