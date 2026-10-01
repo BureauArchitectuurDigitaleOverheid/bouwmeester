@@ -28,6 +28,10 @@ TK_BASE_URL = "https://gegevensmagazijn.tweedekamer.nl/OData/v4/2.0"
 CAT_VRAAG = "vraag"
 CAT_VERGADERING_VOORUIT = "vergadering_vooruit"
 CAT_VERGADERING_TERUG = "vergadering_terug"
+# Het woordelijke verslag van een debat, apart van `vergadering_terug`.
+# Dat laatste is een besluitenlijst: wat is er besloten. Hier staat wat er
+# gezégd is, door wie, en dat vraagt een andere samenvatting.
+CAT_DEBAT = "debat"
 CAT_BIJLAGE = "bijlage"
 CAT_BRIEF = "brief"
 CAT_EXTERN = "extern"
@@ -49,24 +53,77 @@ _SOORT_CATEGORIE: dict[str, str] = {
     "Lijst van vragen en antwoorden": CAT_VRAAG,
     "Inbreng verslag schriftelijk overleg": CAT_VRAAG,
     "Verslag van een schriftelijk overleg": CAT_VRAAG,
+    # Geen administratief lijstje maar het bericht dat een antwoordtermijn
+    # verschuift: "Uitstel beantwoording vragen van de leden X en Y over
+    # ...". Dat hoort bij de vraag waar het over gaat, en de vraag-categorie
+    # draagt de termijn al in de kopregel.
+    "Mededeling (uitstel antwoord)": CAT_VRAAG,
+    # Opgeheven soort: in 2010 gesplitst in "Antwoord schriftelijke vragen"
+    # en de mededeling hierboven. Staat hier voor het archief, want een
+    # zoekterm kan ook een oud stuk raken.
+    "Aanhangsel van de Handelingen": CAT_VRAAG,
+    # Vooraf: er komt een vergadering aan waar deze term in staat, en daar
+    # is nog iets mee te doen. Een convocatie is de uitnodiging met de
+    # agenda erbij, en met bijna 30.000 stukken de grootste soort die we
+    # hier nog niet benoemden.
+    "Convocatie commissieactiviteit": CAT_VERGADERING_VOORUIT,
+    "Convocatie inbreng": CAT_VERGADERING_VOORUIT,
+    "Agenda plenaire vergadering": CAT_VERGADERING_VOORUIT,
     "Agenda procedurevergadering": CAT_VERGADERING_VOORUIT,
     "Herziene agenda procedurevergadering": CAT_VERGADERING_VOORUIT,
     "Tweede herziene agenda procedurevergadering": CAT_VERGADERING_VOORUIT,
     "Besluitenlijst procedurevergadering": CAT_VERGADERING_TERUG,
-    "Verslag van een commissiedebat": CAT_VERGADERING_TERUG,
-    "Verslag van een wetgevingsoverleg": CAT_VERGADERING_TERUG,
-    "Verslag van een notaoverleg": CAT_VERGADERING_TERUG,
+    # Woordelijke verslagen. Het stenogram is het ongecorrigeerde verslag
+    # van een plenair debat en staat er binnen een dag of twee; een
+    # conceptverslag van een commissiedebat na een tot drie weken. Het
+    # definitieve "Verslag van een commissiedebat" duurde bij een meting op
+    # 1 oktober 2026 bijna drie maanden (debat 1 juli, verslag 21
+    # september), dus zonder deze soorten hoor je weken niets over een
+    # debat waarin je term viel.
+    #
+    # "Verslag van een algemeen overleg" is de oude naam voor een
+    # commissiedebat en komt in het archief vaker voor dan de nieuwe.
+    "Stenogram": CAT_DEBAT,
+    "Verslag van een commissiedebat": CAT_DEBAT,
+    "Verslag van een algemeen overleg": CAT_DEBAT,
+    "Verslag van een wetgevingsoverleg": CAT_DEBAT,
+    "Verslag van een notaoverleg": CAT_DEBAT,
+    "Verslag van een hoorzitting / rondetafelgesprek": CAT_DEBAT,
+    "Verslag van een bijeenkomst": CAT_DEBAT,
+    "Mondelinge vragen": CAT_DEBAT,
     "Bijlage": CAT_BIJLAGE,
     "Brief regering": CAT_BRIEF,
     "Brief commissie": CAT_BRIEF,
+    "Brief commissie aan bewindspersoon": CAT_BRIEF,
     "Brief lid / fractie": CAT_BRIEF,
+    "Brief Kamer": CAT_BRIEF,
+    "Brief Presidium": CAT_BRIEF,
+    "Geleidende brief": CAT_BRIEF,
     "Position paper": CAT_EXTERN,
     "Burgerbrief": CAT_EXTERN,
+    # Ook van buiten de Kamer en het kabinet: adviezen en rapporten van
+    # onafhankelijke instanties. Geen beleid, wel vaak het stuk waar een
+    # discussie op teruggaat.
+    "Advies Afdeling advisering Raad van State": CAT_EXTERN,
+    "Advies Afdeling advisering Raad van State en Nader rapport": CAT_EXTERN,
+    "Brief Algemene Rekenkamer": CAT_EXTERN,
+    "Rapport Algemene Rekenkamer": CAT_EXTERN,
     "Memorie van toelichting": CAT_WETGEVING,
     "Voorstel van wet": CAT_WETGEVING,
     "Nota naar aanleiding van het (nader) verslag": CAT_WETGEVING,
+    "Nota n.a.v. het (nader/tweede nader/enz.) verslag": CAT_WETGEVING,
+    "Nota van wijziging": CAT_WETGEVING,
     "Amendement": CAT_WETGEVING,
+    "Amendement (gewijzigd/nader/vervangend)": CAT_WETGEVING,
     "Motie": CAT_WETGEVING,
+    # Een gewijzigde motie vervangt de oorspronkelijke en is dus de versie
+    # waar over gestemd wordt.
+    "Motie (gewijzigd/nader)": CAT_WETGEVING,
+    "Memorie van toelichting (initiatiefvoorstel)": CAT_WETGEVING,
+    "Voorstel van wet (initiatiefvoorstel)": CAT_WETGEVING,
+    "Verslag (initiatief)wetsvoorstel (nader)": CAT_WETGEVING,
+    "Nader rapport": CAT_WETGEVING,
+    "Koninklijke boodschap": CAT_WETGEVING,
 }
 
 # Hoe elke categorie in Mattermost verschijnt. Het icoon is een emoji omdat
@@ -133,6 +190,16 @@ CATEGORIE_PRESENTATIE: dict[str, dict[str, str]] = {
         # De publicatie staat in de kopregel omdat het bij journalistiek
         # het eerste is wat je wil weten: wie schrijft dit.
         "herkomst": "vakpers",
+    },
+    CAT_DEBAT: {
+        # Een microfoon en niet een tekstballon: die laatste heeft `extern`
+        # al, en in de inhaalslag-lijst is de emoji het enige dat een lezer
+        # ziet. Daar zouden een debatverslag en een position paper dan niet
+        # uit elkaar te houden zijn.
+        "emoji": ":microphone:",
+        "teken": "\U0001f3a4",
+        "label": "Debatverslag",
+        "kleur": "#0E7490",
     },
     CAT_OVERIG: {
         "emoji": ":page_facing_up:",
@@ -210,8 +277,15 @@ def categorie_van(soort: str | None) -> str:
     klein = soort.lower()
     if "agenda" in klein and "procedurevergadering" in klein:
         return CAT_VERGADERING_VOORUIT
-    if "besluitenlijst" in klein or "verslag van een" in klein:
+    if "besluitenlijst" in klein:
         return CAT_VERGADERING_TERUG
+    # "Verslag van een ..." is een woordelijk verslag en geen besluitenlijst.
+    # Elke benoemde variant staat hierboven al in de tabel; wat hier langs
+    # komt is restmateriaal (werkbezoek, rapporteur, politieke dialoog) of
+    # een soort die de TK heeft hernoemd. Dan is `debat` de goede terugval,
+    # want anders zegt dit vangnet precies het omgekeerde van de tabel.
+    if "verslag van een" in klein:
+        return CAT_DEBAT
     if "vragen" in klein:
         return CAT_VRAAG
     if klein.startswith("brief"):
@@ -288,8 +362,16 @@ async def haal_context(
         ctx.activiteit_soort = act.get("Soort")
         ctx.activiteit_datum = _parse_datum(act.get("Datum"))
         # Een agenda die in het verleden ligt is geen vooruitblik meer.
+        #
+        # Een convocatie inbreng niet: dat is de aankondiging van een
+        # inbrengdatum, geen vergadering. Verstreken of niet, er is geen
+        # besluitenlijst, en `vergadering_terug` zou het model opdragen te
+        # zeggen "welk besluit is genomen" over een stuk dat er geen bevat.
+        # Dan liever de vooruitblik laten staan: die klopt tenminste over
+        # wat voor stuk het is.
         if (
             ctx.categorie == CAT_VERGADERING_VOORUIT
+            and ctx.soort != "Convocatie inbreng"
             and ctx.activiteit_datum
             and ctx.activiteit_datum < date.today()
         ):

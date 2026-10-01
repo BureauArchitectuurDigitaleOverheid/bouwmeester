@@ -108,14 +108,19 @@ _CATEGORIE_CONTEXT: dict[str, str] = {
         "fracties dat zijn."
     ),
     "vergadering_vooruit": (
-        "Dit is de AGENDA van een procedurevergadering die nog MOET "
-        "plaatsvinden. In zo'n vergadering besluit een commissie wat er "
-        "met stukken gebeurt: een rondetafelgesprek organiseren, een brief "
-        "vragen, een debat inplannen.\n"
+        "Dit is de AGENDA of CONVOCATIE van een vergadering die nog MOET "
+        "plaatsvinden: een procedurevergadering, een commissiedebat, een "
+        "inbrengdatum of een plenaire agenda. Bij een procedurevergadering "
+        "besluit een commissie wat er met stukken gebeurt: een "
+        "rondetafelgesprek organiseren, een brief vragen, een debat "
+        "inplannen.\n"
         "Dit is dus een vooruitblik, en dat is het belangrijkste aan dit "
         "bericht: er kan nog invloed op worden uitgeoefend. Zeg welk "
-        "agendapunt de zoekterm raakt en wat de commissie daarover gaat "
-        "besluiten. Speculeer niet over de uitkomst."
+        "agendapunt de zoekterm raakt en wat er gaat gebeuren. Staat er "
+        "een datum bij, noem die. Speculeer niet over de uitkomst.\n"
+        "Een convocatie noemt vaak de stukken die geagendeerd zijn. Valt "
+        "de zoekterm alleen in zo'n lijst, zeg dan welk stuk dat is en "
+        "schrijf niet alsof het onderwerp van het debat is."
     ),
     "vergadering_terug": (
         "Dit is een besluitenlijst of verslag van een vergadering die AL "
@@ -123,6 +128,36 @@ _CATEGORIE_CONTEXT: dict[str, str] = {
         "Zeg welk besluit is genomen rond de zoekterm, en door wie. Een "
         "besluit om iets aan te houden of uit te stellen is ook een "
         "besluit, noem dat expliciet."
+    ),
+    "debat": (
+        "Dit is een WOORDELIJK verslag van een debat of overleg: een "
+        "stenogram, een conceptverslag of het definitieve verslag. Hier "
+        "staat wat er is GEZEGD, niet wat er is besloten.\n"
+        "CITEER WAT ER GEZEGD IS over de zoekterm, letterlijk en tussen "
+        "aanhalingstekens, en noem WIE het zei: het Kamerlid met fractie, "
+        "of de bewindspersoon met functie. Een lezer wil de uitspraak "
+        "zien, niet dat er iets gezegd is.\n"
+        "Zeiden meerdere sprekers er iets over, kies dan de uitspraak die "
+        "het meest over de zoekterm zelf gaat en noem hoeveel sprekers er "
+        "nog meer aan raakten.\n"
+        "Je krijgt een PASSAGE uit het verslag, niet het hele stuk. De "
+        "sprekersaanduiding staat aan het begin van een blok en kan dus "
+        "buiten je fragment vallen. Staat er geen aanduiding in de passage "
+        "zelf, schrijf dan dat niet is vast te stellen wie dit zei. Verzin "
+        "geen naam en pak niet de dichtstbijzijnde naam uit de tekst: dat "
+        "is vaak een genoemd Kamerlid of de vorige spreker.\n"
+        "Een stenogram en een conceptverslag zijn ONGECORRIGEERD: de "
+        "spreker kan zijn woorden nog aanpassen. Schrijf een uitspraak "
+        "daarom nooit op als vaststaand beleid.\n"
+        "Noem alleen een toezegging als die met zoveel woorden wordt "
+        'gedaan ("ik zeg u toe", "ik zal uw Kamer informeren"). Een '
+        'voornemen, een overweging of "daar kijk ik naar" is geen '
+        "toezegging.\n"
+        "Niet elk stenogram is een debat. Een regeling van werkzaamheden "
+        "of een stemming bevat geen inhoudelijke uitspraak: daar valt de "
+        "zoekterm in de titel van een motie of in een verzoek om een "
+        "debat. Is dat het geval, zeg dan kort wat er gebeurde en houd de "
+        "samenvatting kort. Forceer geen citaat dat er niet is."
     ),
     "bijlage": (
         "Dit is een bijlage bij een ander kamerstuk, vaak een kamerbrief. "
