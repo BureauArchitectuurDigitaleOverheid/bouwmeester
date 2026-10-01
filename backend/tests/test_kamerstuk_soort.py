@@ -17,6 +17,7 @@ import pytest
 from bouwmeester.services.kamerstuk_soort import (
     CAT_BIJLAGE,
     CAT_BRIEF,
+    CAT_DEBAT,
     CAT_EXTERN,
     CAT_OVERIG,
     CAT_VERGADERING_TERUG,
@@ -46,6 +47,65 @@ class TestCategorieVan:
     )
     def test_bekende_soorten(self, soort, verwacht):
         assert categorie_van(soort) == verwacht
+
+    @pytest.mark.parametrize(
+        ("soort", "verwacht"),
+        [
+            # Woordelijke verslagen, apart van de besluitenlijst: hier
+            # staat wat er gezegd is, niet wat er besloten is.
+            ("Stenogram", CAT_DEBAT),
+            ("Verslag van een commissiedebat", CAT_DEBAT),
+            ("Verslag van een algemeen overleg", CAT_DEBAT),
+            ("Verslag van een wetgevingsoverleg", CAT_DEBAT),
+            ("Mondelinge vragen", CAT_DEBAT),
+            # Vooraf: hier is nog iets mee te doen.
+            ("Convocatie commissieactiviteit", CAT_VERGADERING_VOORUIT),
+            ("Convocatie inbreng", CAT_VERGADERING_VOORUIT),
+            ("Agenda plenaire vergadering", CAT_VERGADERING_VOORUIT),
+            ("Brief commissie aan bewindspersoon", CAT_BRIEF),
+            ("Advies Afdeling advisering Raad van State", CAT_EXTERN),
+            ("Rapport Algemene Rekenkamer", CAT_EXTERN),
+            ("Motie (gewijzigd/nader)", CAT_WETGEVING),
+            ("Nota van wijziging", CAT_WETGEVING),
+        ],
+    )
+    def test_soorten_die_eerst_overig_waren(self, soort, verwacht):
+        """Gemeten tegen de API op 1 oktober 2026.
+
+        Deze stukken kwamen altijd al binnen (een onbekend soort valt in
+        `overig` en wordt gewoon gepost), maar zonder label en zonder
+        gerichte instructie aan het model. Stenogram en convocatie zijn met
+        samen ruim 57.000 stukken de twee grootste soorten die we nog niet
+        benoemden.
+        """
+        assert categorie_van(soort) == verwacht
+
+    def test_elke_categorie_heeft_een_eigen_instructie(self):
+        """Anders valt een nieuwe categorie stil terug op de generieke.
+
+        De instructie stuurt de samenvatting én de relevantiescore, en de
+        score beslist via de drempel of er een bericht komt. Een categorie
+        zonder eigen tekst krijgt "het soort van dit stuk is niet
+        vastgesteld" en daarmee precies de duiding die we net hebben
+        toegevoegd weer kwijt.
+        """
+        from bouwmeester.services.kamerstuk_soort import CATEGORIE_PRESENTATIE
+        from bouwmeester.services.llm.prompts import _CATEGORIE_CONTEXT
+
+        zonder = sorted(set(CATEGORIE_PRESENTATIE) - set(_CATEGORIE_CONTEXT))
+        assert zonder == [], f"categorieën zonder instructie: {zonder}"
+
+    def test_een_debatverslag_is_geen_besluitenlijst(self):
+        """Het verschil waar deze categorie voor bestaat.
+
+        Een besluitenlijst zegt wat er is besloten; een verslag zegt wat
+        er is gezegd, door wie. Dat vraagt een andere samenvatting, en
+        daarom krijgt het model er een andere instructie bij.
+        """
+        assert categorie_van("Besluitenlijst procedurevergadering") == (
+            CAT_VERGADERING_TERUG
+        )
+        assert categorie_van("Verslag van een commissiedebat") == CAT_DEBAT
 
     def test_herziene_agenda_valt_terug_op_de_kern(self):
         # Commissies formuleren dit per gelegenheid net anders.
