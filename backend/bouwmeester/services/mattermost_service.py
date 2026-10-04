@@ -629,6 +629,26 @@ class MattermostService:
             return None
         return data if isinstance(data, dict) else None
 
+    async def channel_is_gone(self, channel_id: str) -> bool:
+        """Is this channel archived or deleted? Only a certain yes is True.
+
+        A failed call is False. The caller drops its record of the channel
+        on a yes, and a Mattermost hiccup must not make it forget a
+        channel that is still there.
+        """
+        try:
+            client = await self._get_client()
+            resp = await client.get(f"/api/v4/channels/{channel_id}")
+            if resp.status_code == 404:
+                return True
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Kon kanaal %s niet controleren", channel_id, exc_info=True)
+            return False
+        # An archived channel is still returned, with a `delete_at`.
+        return isinstance(data, dict) and bool(data.get("delete_at"))
+
     async def get_channel_by_name(self, team_id: str, name: str) -> dict | None:
         """Fetch a channel by its url name; ``None`` if it cannot be read.
 
@@ -643,6 +663,10 @@ class MattermostService:
         try:
             client = await self._get_client()
             resp = await client.get(f"/api/v4/teams/{team_id}/channels/name/{name}")
+            if resp.status_code == 404:
+                # The ordinary answer for a name held by an archived
+                # channel; nothing to log a stack trace about.
+                return None
             resp.raise_for_status()
             data = resp.json()
         except (httpx.HTTPError, ValueError):

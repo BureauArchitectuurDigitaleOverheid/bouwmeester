@@ -12,10 +12,11 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_sessie import DebatSessie
@@ -80,8 +81,10 @@ def _activiteit(**overrides) -> Activiteit:
                 "Voortgang digitale overheid",
                 "2099Z00001",
                 (
-                    AgendaDocument("2099D00001", "Brief regering", "Voortgang"),
-                    AgendaDocument("2099D00002", "Bijlage", "Rapport"),
+                    AgendaDocument(
+                        "2099D00001", "Brief regering", "Voortgang", "2099Z00001"
+                    ),
+                    AgendaDocument("2099D00002", "Bijlage", "Rapport", "2099Z00001"),
                 ),
             ),
             Agendapunt(2, "Indicatieve spreektijd 4 minuten", None, ()),
@@ -254,6 +257,25 @@ class TestChannelTexts:
             "Digitaliserende overheid"
         )
 
+    @pytest.mark.parametrize(
+        "onderwerp",
+        [
+            "Gewasbeschermingsmiddelenbeleid en bestrijdingsmiddelenregistratie"
+            "systematiek van Nederland",
+            "x" * 300,
+        ],
+    )
+    def test_a_long_word_at_the_cut_still_fits(self, onderwerp):
+        """Cutting adds an ellipsis. With no space near the cut that used
+        to give one character too many, and Mattermost answers 400."""
+        a = _activiteit(onderwerp=onderwerp)
+        assert len(channel_display_name(a)) <= 64
+        assert len(channel_purpose(a)) <= 250
+
+    def test_a_bracket_in_a_nummer_cannot_end_the_link(self):
+        header = channel_header(_activiteit(nummer="2099A)x"))
+        assert "id=2099A%29x)" in header
+
     def test_purpose_fits(self):
         assert len(channel_purpose(_activiteit(onderwerp="woord " * 100))) <= 250
 
@@ -343,6 +365,27 @@ class TestStukkenMessage:
         # The footer survives the cut.
         assert bericht.endswith("._")
 
+    def test_each_document_links_through_its_own_zaak(self):
+        """One agendapunt can carry several zaken. The zaak of one with
+        the document of another is a link to nothing."""
+        punt = Agendapunt(
+            1,
+            "Twee zaken",
+            "2099Z00001",
+            (
+                AgendaDocument("2099D00007", "Motie", None, "2099Z00002"),
+                AgendaDocument("2099D00008", "Motie", None, "2099Z00001"),
+            ),
+        )
+        bericht = stukken_message(_activiteit(agendapunten=(punt,)), now=self.NOW)
+        assert "detail?id=2099Z00002&did=2099D00007)" in bericht
+
+    def test_a_monstrous_header_is_still_cut(self):
+        bericht = stukken_message(
+            _activiteit(onderwerp="x" * 30000, agendapunten=()), now=self.NOW
+        )
+        assert len(bericht) <= 15000
+
     def test_summaries_go_before_agenda_items_do(self):
         punten = tuple(
             Agendapunt(
@@ -376,11 +419,12 @@ class FakeMattermost:
         self.team_id: str | None = TEAM
         self.username = "marieke"
         self.closed = False
-        self._seq = 0
+        self.gone: set[str] = set()
 
     def _id(self, prefix: str) -> str:
-        self._seq += 1
-        return f"{prefix}{self._seq:0{26 - len(prefix)}d}"
+        # Random, not counted: `channel_id` is unique in the database, and
+        # tests that really commit run next to each other.
+        return f"{prefix}{uuid.uuid4().hex}"[:26]
 
     async def create_channel(self, **kwargs) -> dict:
         self.created.append(kwargs)
@@ -395,6 +439,9 @@ class FakeMattermost:
 
     async def get_bot_user_id(self):
         return BOT
+
+    async def channel_is_gone(self, channel_id: str) -> bool:
+        return channel_id in self.gone
 
     async def get_channel(self, channel_id: str):
         return {"id": channel_id, "team_id": self.team_id} if self.team_id else None
@@ -716,6 +763,15 @@ class TestRefusals:
         assert result.outcome is StartOutcome.REFUSED
         assert "verplaatst" in mm.replies[0]
 
+    async def test_closed_meeting(self, db_session, monkeypatch):
+        """A closed meeting is not broadcast; a channel with a link to the
+        livestream would promise something that never comes."""
+        result, mm = await self._refused(
+            db_session, monkeypatch, _activiteit(besloten=True)
+        )
+        assert result.outcome is StartOutcome.REFUSED
+        assert "besloten" in mm.replies[0]
+
     async def test_already_over(self, db_session, monkeypatch):
         start = datetime.now(UTC) - timedelta(hours=5)
         result, mm = await self._refused(
@@ -849,6 +905,7 @@ class TestWhenMattermostFails:
             "id": "chanorphan0000000000000000",
             "name": "debat-digitaliserende-overheid-6-okt",
             "creator_id": BOT,
+            "header": channel_header(activiteit),
         }
         mm.by_name[orphan["name"]] = orphan
         mm.create_errors = [ChannelNameTakenError("x")]
@@ -871,6 +928,7 @@ class TestWhenMattermostFails:
             "id": "chanhuman00000000000000000",
             "name": "debat-digitaliserende-overheid-6-okt",
             "creator_id": USER,
+            "header": channel_header(activiteit),
         }
         mm.create_errors = [ChannelNameTakenError("x")]
 
@@ -893,6 +951,7 @@ class TestWhenMattermostFails:
             "id": result_first.channel_id,
             "name": "debat-digitaliserende-overheid-6-okt",
             "creator_id": BOT,
+            "header": channel_header(first),
         }
 
         second = _activiteit(nummer="2099A09999")
@@ -903,6 +962,114 @@ class TestWhenMattermostFails:
         assert result_second.outcome is StartOutcome.CREATED
         assert result_second.channel_id != result_first.channel_id
         assert mm.created[-1]["name"].endswith("-2099a09999")
+
+    async def test_orphan_of_a_twin_debate_is_not_adopted(
+        self, db_session, monkeypatch
+    ):
+        """The twin's create was saved but never recorded, so no sessie
+        points to its channel. Bot-made and unclaimed is then not enough:
+        the header has to be the one of this activiteit."""
+        twin = _activiteit(nummer="2099A00001")
+        activiteit = _activiteit(nummer="2099A00002")
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+        mm.by_name["debat-digitaliserende-overheid-6-okt"] = {
+            "id": "chantwin000000000000000000",
+            "name": "debat-digitaliserende-overheid-6-okt",
+            "creator_id": BOT,
+            "header": channel_header(twin),
+        }
+        mm.create_errors = [ChannelNameTakenError("x")]
+
+        result = await _start(db_session, mm, await _item(db_session, activiteit.id))
+
+        assert result.outcome is StartOutcome.CREATED
+        assert result.channel_id != "chantwin000000000000000000"
+        assert mm.created[-1]["name"].endswith("-2099a00002")
+
+    async def test_twin_without_nummer_does_not_take_a_claimed_channel(
+        self, db_session, monkeypatch
+    ):
+        """Without a nummer the header has no agenda link, so twins get
+        the same header. Then the sessie is what says the channel is
+        somebody's."""
+        first = _activiteit(nummer=None)
+        _patch_fetch(monkeypatch, first)
+        mm = FakeMattermost()
+        result_first = await _start(db_session, mm, await _item(db_session, first.id))
+        mm.by_name["debat-digitaliserende-overheid-6-okt"] = {
+            "id": result_first.channel_id,
+            "name": "debat-digitaliserende-overheid-6-okt",
+            "creator_id": BOT,
+            "header": channel_header(first),
+        }
+
+        second = _activiteit(nummer=None)
+        assert channel_header(second) == channel_header(first)
+        _patch_fetch(monkeypatch, second)
+        mm.create_errors = [ChannelNameTakenError("x")]
+        result_second = await _start(db_session, mm, await _item(db_session, second.id))
+
+        # Not only "another channel": the unique key on `channel_id` would
+        # also stop the adoption, but as a failed start.
+        assert result_second.outcome is StartOutcome.CREATED
+        assert result_second.channel_id != result_first.channel_id
+
+    async def test_archived_channel_is_set_up_again(self, db_session, monkeypatch):
+        """Someone archives the channel weeks before the debate. The
+        button must not keep pointing at a channel nobody can open."""
+        activiteit = _activiteit()
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+        item = await _item(db_session, activiteit.id)
+        first = await _start(db_session, mm, item)
+        mm.gone.add(first.channel_id)
+
+        second = await _start(db_session, mm, item)
+
+        assert second.outcome is StartOutcome.CREATED
+        assert second.channel_id != first.channel_id
+        (sessie,) = await _sessies(db_session, activiteit.id)
+        assert sessie.channel_id == second.channel_id
+
+    async def test_channel_that_cannot_be_checked_is_kept(
+        self, db_session, monkeypatch
+    ):
+        """`channel_is_gone` answers False when it does not know."""
+        activiteit = _activiteit()
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+        item = await _item(db_session, activiteit.id)
+        first = await _start(db_session, mm, item)
+
+        second = await _start(db_session, mm, item)
+
+        assert second.outcome is StartOutcome.EXISTS
+        assert second.channel_id == first.channel_id
+
+    async def test_refused_insert_without_a_row_is_not_silence(
+        self, db_session, monkeypatch
+    ):
+        """Not every refused insert is a lost race. With no row to point
+        at, saying nothing leaves the button looking dead."""
+        activiteit = _activiteit()
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+        svc = DebatKanaalService(db_session, mm)
+
+        async def refused(*args):
+            return None, None
+
+        monkeypatch.setattr(svc, "_claim", refused)
+        result = await svc.start(
+            item=await _item(db_session, activiteit.id),
+            source_channel_id=SOURCE_CHANNEL,
+            source_post_id=SOURCE_POST,
+            mattermost_user_id=USER,
+        )
+
+        assert result.outcome is StartOutcome.FAILED
+        assert "Er ging iets mis" in mm.replies[0]
 
     async def test_both_names_taken_is_a_failure(self, db_session, monkeypatch):
         activiteit = _activiteit()
@@ -1042,7 +1209,7 @@ class TestClaim:
             assert await svc_two._find(activiteit.id, TEAM) is None
             # ...then session one claims and commits...
             claimed, _ = await svc_one._claim(activiteit, TEAM, None, USER)
-            assert claimed is not None
+            assert isinstance(claimed, uuid.UUID)
 
             # ...and session two, still believing the way is free, inserts.
             real_find = svc_two._find
@@ -1060,7 +1227,7 @@ class TestClaim:
 
             assert lost is None
             assert existing is not None
-            assert existing.id == claimed.id
+            assert existing.id == claimed
             # And the session is usable again after the collision.
             assert len(await _sessies(two, activiteit.id)) == 1
         finally:
@@ -1072,6 +1239,157 @@ class TestClaim:
             await one.commit()
             await one.close()
             await two.close()
+
+
+@pytest.fixture
+async def real_session(_test_engine):
+    """A session that really commits and really rolls back.
+
+    `db_session` joins an outer transaction, so a rollback inside the
+    service undoes the whole test and behaves unlike production. The
+    failure paths below are about exactly that rollback.
+    """
+    session = AsyncSession(bind=_test_engine, expire_on_commit=False)
+    made: list[str] = []
+    try:
+        yield session, made
+    finally:
+        await session.rollback()
+        for activiteit_id in made:
+            await session.execute(
+                delete(DebatSessie).where(DebatSessie.activiteit_id == activiteit_id)
+            )
+        await session.commit()
+        await session.close()
+
+
+async def _press(session, mm, activiteit_id, item_id=None):
+    item = SimpleNamespace(id=item_id, extra_data={"activiteit_id": activiteit_id})
+    return await DebatKanaalService(session, mm).start(
+        item=item,
+        source_channel_id=SOURCE_CHANNEL,
+        source_post_id=SOURCE_POST,
+        mattermost_user_id=USER,
+    )
+
+
+@pytest.mark.asyncio
+class TestAfterARollback:
+    """A rollback expires every loaded object, and async code cannot
+    reload one by touching it. These paths used to stop halfway."""
+
+    async def test_failing_summaries_still_give_an_agenda(
+        self, real_session, monkeypatch
+    ):
+        session, made = real_session
+        activiteit = _activiteit()
+        made.append(activiteit.id)
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+
+        real_execute = session.execute
+
+        async def execute(stmt, *args, **kwargs):
+            if "llm_samenvatting" in str(stmt):
+                # A statement that really fails in the database, so the
+                # transaction is really aborted.
+                await real_execute(text("SELECT 1/0"))
+            return await real_execute(stmt, *args, **kwargs)
+
+        monkeypatch.setattr(session, "execute", execute)
+
+        result = await _press(session, mm, activiteit.id)
+
+        assert result.outcome is StartOutcome.CREATED
+        assert mm.channel_posts[0][1].startswith("#### Geagendeerde stukken")
+        assert mm.members == [(result.channel_id, USER)]
+        assert "staat klaar" in mm.replies[0]
+        monkeypatch.undo()
+        (sessie,) = await _sessies(session, activiteit.id)
+        assert sessie.channel_id == result.channel_id
+        assert sessie.stukken_post_id == mm.pinned[0]
+
+    async def test_unexpected_error_releases_the_claim_and_answers(
+        self, real_session, monkeypatch
+    ):
+        """Otherwise every press in the next five minutes gets silence."""
+        session, made = real_session
+        activiteit = _activiteit()
+        made.append(activiteit.id)
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+        mm.create_errors = [RuntimeError("iets onvoorziens")]
+
+        result = await _press(session, mm, activiteit.id)
+
+        assert result.outcome is StartOutcome.FAILED
+        assert "Er ging iets mis" in mm.replies[0]
+        assert await _sessies(session, activiteit.id) == []
+
+        again = await _press(session, mm, activiteit.id)
+        assert again.outcome is StartOutcome.CREATED
+
+    async def test_error_after_the_channel_is_recorded_keeps_the_row(
+        self, real_session, monkeypatch
+    ):
+        """The channel exists by then. Dropping the row would make the
+        next press create a second one."""
+        session, made = real_session
+        activiteit = _activiteit()
+        made.append(activiteit.id)
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+
+        async def exploding(post_id):
+            raise RuntimeError("pin kapot")
+
+        monkeypatch.setattr(mm, "pin_post", exploding)
+
+        result = await _press(session, mm, activiteit.id)
+
+        assert result.outcome is StartOutcome.FAILED
+        (sessie,) = await _sessies(session, activiteit.id)
+        assert sessie.channel_id is not None
+        again = await _press(session, mm, activiteit.id)
+        assert again.outcome is StartOutcome.EXISTS
+
+    async def test_item_that_no_longer_exists_is_a_failure_not_silence(
+        self, real_session, monkeypatch
+    ):
+        """The foreign key refuses the insert. That is an IntegrityError
+        too, but nobody else is busy with this debate."""
+        session, made = real_session
+        activiteit = _activiteit()
+        made.append(activiteit.id)
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+
+        result = await _press(session, mm, activiteit.id, item_id=uuid.uuid4())
+
+        assert result.outcome is StartOutcome.FAILED
+        assert mm.created == []
+        assert "Er ging iets mis" in mm.replies[0]
+
+    async def test_a_failing_team_lookup_still_answers(self, real_session, monkeypatch):
+        session, made = real_session
+        activiteit = _activiteit()
+        _patch_fetch(monkeypatch, activiteit)
+        mm = FakeMattermost()
+
+        async def exploding(channel_id):
+            raise RuntimeError("database weg")
+
+        svc = DebatKanaalService(session, mm)
+        monkeypatch.setattr(svc, "_team_of", exploding)
+        result = await svc.start(
+            item=SimpleNamespace(id=None, extra_data={"activiteit_id": activiteit.id}),
+            source_channel_id=SOURCE_CHANNEL,
+            source_post_id=SOURCE_POST,
+            mattermost_user_id=USER,
+        )
+
+        assert result.outcome is StartOutcome.FAILED
+        assert "Er ging iets mis" in mm.replies[0]
 
 
 @pytest.mark.asyncio

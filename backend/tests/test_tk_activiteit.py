@@ -134,6 +134,37 @@ class TestParse:
         assert [d.nummer for d in punt.documenten] == ["2026D27459", "2026D27460"]
         assert punt.documenten[0].soort == "Brief regering"
 
+    def test_each_document_knows_its_own_zaak(self):
+        raw = _raw()
+        raw["Agendapunt"][1]["Zaak"].append(
+            {
+                "Nummer": "2026Z99999",
+                "Verwijderd": False,
+                "Document": [_doc("2026D99999")],
+            }
+        )
+        a = parse_activiteit(raw)
+        zaken = {d.nummer: d.zaak_nummer for d in a.agendapunten[0].documenten}
+        assert zaken == {
+            "2026D27459": "2026Z12093",
+            "2026D27460": "2026Z12093",
+            "2026D99999": "2026Z99999",
+        }
+
+    def test_document_directly_on_the_agendapunt_has_no_zaak(self):
+        raw = _raw()
+        raw["Agendapunt"][1]["Zaak"] = []
+        raw["Agendapunt"][1]["Document"] = [_doc("2026D00001")]
+        a = parse_activiteit(raw)
+        assert a.agendapunten[0].documenten[0].zaak_nummer is None
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [(True, True), (False, False), (None, False), ("ja", False)],
+    )
+    def test_besloten(self, value, expected):
+        assert parse_activiteit(_raw(Besloten=value)).besloten is expected
+
     def test_document_on_both_routes_counts_once(self):
         raw = _raw()
         raw["Agendapunt"][1]["Document"] = [_doc("2026D27459")]
@@ -222,7 +253,14 @@ class TestFetch:
         assert params["$filter"] == f"Id eq {ID}"
         # OData returns only what is asked for. Without these the agenda
         # is empty while the test data above still has it.
-        for veld in ("Aanvangstijd", "Eindtijd", "Status", "Verwijderd", "Nummer"):
+        for veld in (
+            "Aanvangstijd",
+            "Eindtijd",
+            "Status",
+            "Verwijderd",
+            "Nummer",
+            "Besloten",
+        ):
             assert veld in params["$select"]
         for entiteit in ("Agendapunt(", "Zaak(", "Document(", "ActiviteitActor("):
             assert entiteit in params["$expand"]

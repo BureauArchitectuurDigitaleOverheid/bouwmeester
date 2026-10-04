@@ -41,6 +41,10 @@ class AgendaDocument:
     nummer: str
     soort: str | None
     onderwerp: str | None
+    # The zaak this document belongs to. Per document and not per
+    # agendapunt: one agendapunt can carry several zaken, and a link built
+    # from the zaak of one and the document of another points nowhere.
+    zaak_nummer: str | None = None
 
 
 @dataclass(frozen=True)
@@ -69,6 +73,8 @@ class Activiteit:
     commissie: str | None
     bewindspersonen: tuple[Bewindspersoon, ...]
     agendapunten: tuple[Agendapunt, ...]
+    # A closed meeting is not broadcast.
+    besloten: bool = False
 
 
 def _parse_moment(value: object) -> datetime | None:
@@ -99,12 +105,18 @@ def _parse_agendapunt(raw: dict) -> Agendapunt:
     zaken = _rows(raw.get("Zaak"))
     documenten: list[AgendaDocument] = []
     seen: set[str] = set()
-    # A document can hang directly on the agendapunt or under its zaak;
-    # the same one may appear on both routes.
-    for doc in [
-        *_rows(raw.get("Document")),
-        *(d for z in zaken for d in _rows(z.get("Document"))),
-    ]:
+    # A document can hang directly on the agendapunt or under a zaak; the
+    # same one may appear on both routes. The zaak route first, because
+    # only there is it known which zaak the document belongs to.
+    routes = [
+        *(
+            (_text(z.get("Nummer")) or None, d)
+            for z in zaken
+            for d in _rows(z.get("Document"))
+        ),
+        *((None, d) for d in _rows(raw.get("Document"))),
+    ]
+    for zaak_nummer, doc in routes:
         nummer = _text(doc.get("DocumentNummer"))
         if not nummer or nummer in seen:
             continue
@@ -114,6 +126,7 @@ def _parse_agendapunt(raw: dict) -> Agendapunt:
                 nummer=nummer,
                 soort=_text(doc.get("Soort")) or None,
                 onderwerp=_text(doc.get("Onderwerp")) or None,
+                zaak_nummer=zaak_nummer,
             )
         )
 
@@ -162,13 +175,15 @@ def parse_activiteit(raw: dict) -> Activiteit:
         einde=_parse_moment(raw.get("Eindtijd")),
         status=_text(raw.get("Status")) or None,
         commissie=_text(raw.get("Voortouwnaam")) or None,
+        besloten=raw.get("Besloten") is True,
         bewindspersonen=bewindspersonen,
         agendapunten=tuple(agendapunten),
     )
 
 
 _SELECT = (
-    "Id,Nummer,Soort,Onderwerp,Aanvangstijd,Eindtijd,Status,Voortouwnaam,Verwijderd"
+    "Id,Nummer,Soort,Onderwerp,Aanvangstijd,Eindtijd,Status,"
+    "Voortouwnaam,Besloten,Verwijderd"
 )
 _EXPAND = (
     "Agendapunt($select=Nummer,Onderwerp,Volgorde,Verwijderd;"

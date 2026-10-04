@@ -191,6 +191,7 @@ class TestBrokenConfiguration:
         assert await svc.update_channel("chan1", header="x") is False
         assert await svc.get_channel("chan1") is None
         assert await svc.get_channel_by_name("team1", "naam") is None
+        assert await svc.channel_is_gone("chan1") is False
 
 
 @pytest.mark.asyncio
@@ -266,6 +267,33 @@ class TestChannelMembers:
     async def test_get_channel_failure_is_none(self, monkeypatch):
         svc, _ = _service(monkeypatch, lambda r: httpx.Response(404))
         assert await svc.get_channel("chan1") is None
+
+    async def test_archived_channel_is_gone(self, monkeypatch):
+        """Mattermost still returns an archived channel, with `delete_at`."""
+        svc, seen = _service(
+            monkeypatch,
+            lambda r: httpx.Response(200, json={"id": "chan1", "delete_at": 1700}),
+        )
+        assert await svc.channel_is_gone("chan1") is True
+        assert seen[0].url.path == "/api/v4/channels/chan1"
+
+    async def test_deleted_channel_is_gone(self, monkeypatch):
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(404))
+        assert await svc.channel_is_gone("chan1") is True
+
+    async def test_live_channel_is_not_gone(self, monkeypatch):
+        svc, _ = _service(
+            monkeypatch,
+            lambda r: httpx.Response(200, json={"id": "chan1", "delete_at": 0}),
+        )
+        assert await svc.channel_is_gone("chan1") is False
+
+    @pytest.mark.parametrize("status", [401, 403, 500, 502])
+    async def test_a_failed_check_is_not_gone(self, monkeypatch, status):
+        """The caller forgets the channel on a yes. A hiccup must not make
+        it forget a channel that is still there."""
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(status))
+        assert await svc.channel_is_gone("chan1") is False
 
     async def test_get_channel_by_name_asks_within_the_team(self, monkeypatch):
         svc, seen = _service(
