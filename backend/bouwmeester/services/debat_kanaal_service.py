@@ -547,7 +547,7 @@ class DebatKanaalService:
             return StartResult(
                 StartOutcome.REFUSED,
                 "Deze vergadering is verplaatst. De nieuwe datum komt als een "
-                "nieuwe convocatie; start het kanaal daaronder.",
+                "nieuwe vergadering in de agenda; start het kanaal daarvoor.",
             )
         if activiteit.besloten:
             return StartResult(

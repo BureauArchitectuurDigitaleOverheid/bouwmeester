@@ -5,7 +5,7 @@ import {
   formatRegel,
   formatTijd,
   groepeerPerDag,
-  startbareTeams,
+  kiesTeam,
   startMelding,
 } from './debatten';
 
@@ -106,13 +106,29 @@ describe('filterDebatten', () => {
   });
 });
 
-describe('startbareTeams', () => {
-  it('keeps only teams the bot may create a channel in', () => {
-    const teams = [
-      { team_id: 'a', team_name: 'A', can_create_channel: true },
-      { team_id: 'b', team_name: 'B', can_create_channel: false },
-    ];
-    expect(startbareTeams(teams).map((t) => t.team_id)).toEqual(['a']);
+describe('kiesTeam', () => {
+  const dicht = { team_id: 'dicht', team_name: 'Dicht', can_create_channel: false };
+  const open = { team_id: 'open', team_name: 'Open', can_create_channel: true };
+
+  it('keeps the chosen team, also one where no channel can be made', () => {
+    // Its existing channels have to stay visible.
+    expect(kiesTeam([open, dicht], 'dicht')).toBe(dicht);
+  });
+
+  it('prefers a team where a channel can be made when nothing is chosen', () => {
+    expect(kiesTeam([dicht, open], null)).toBe(open);
+  });
+
+  it('falls back to the first team when none can create', () => {
+    expect(kiesTeam([dicht], null)).toBe(dicht);
+  });
+
+  it('ignores a choice that is no longer on offer', () => {
+    expect(kiesTeam([open], 'weg')).toBe(open);
+  });
+
+  it('is null without teams', () => {
+    expect(kiesTeam([], 'x')).toBeNull();
   });
 });
 

@@ -230,15 +230,19 @@ async def fetch_activiteit(
     return parse_activiteit(rows[0])
 
 
-# Kinds that are a deadline for written input, not a meeting.
-_SOORT_PREFIX_NO_MEETING = ("Inbreng",)
+# Kinds that are not a meeting anyone can listen to: a deadline for
+# written input, a visit somewhere else, a petition handed over in the
+# hall, a procedure by e-mail. The API lists them as activiteiten and does
+# not mark them as closed.
+_SOORT_PREFIX_NO_MEETING = ("Inbreng", "Werkbezoek", "Petitie", "E-mailprocedure")
 
 _PAGE_SIZE = 250  # the API refuses a `$top` above this
 _MAX_PAGES = 4
 
 # How far back "upcoming" reaches, so a debate that is running now is still
-# in the list.
-_LOOKBACK = timedelta(hours=8)
+# in the list. Long ones exist (a wetgevingsoverleg from 11:00 to 23:00);
+# what has ended by now is dropped again further on.
+_LOOKBACK = timedelta(hours=16)
 
 
 async def list_upcoming(
@@ -265,7 +269,9 @@ async def list_upcoming(
             "and Verwijderd eq false and Besloten eq false"
         ),
         "$select": _SELECT,
-        "$orderby": "Aanvangstijd asc",
+        # `Id` as a tiebreaker: several meetings start at the same time,
+        # and paging over an order with ties may skip or repeat a row.
+        "$orderby": "Aanvangstijd asc,Id asc",
         "$top": str(_PAGE_SIZE),
     }
     rows: list[dict] = []
@@ -282,13 +288,26 @@ async def list_upcoming(
             rows.extend(row for row in batch if isinstance(row, dict))
             if len(batch) < _PAGE_SIZE:
                 break
+        else:
+            logger.warning(
+                "Meer dan %d komende vergaderingen; de lijst is afgekapt",
+                _MAX_PAGES * _PAGE_SIZE,
+            )
     except (httpx.HTTPError, ValueError, AttributeError) as exc:
         raise TkApiError("Kon de komende vergaderingen niet ophalen") from exc
 
     result = []
+    seen: set[str] = set()
     for row in rows:
         activiteit = parse_activiteit(row)
         if not activiteit.id or activiteit.besloten:
+            continue
+        # A row on two pages would be two list items with one key.
+        if activiteit.id in seen:
+            continue
+        seen.add(activiteit.id)
+        # Started within the lookback and already over: nothing to start.
+        if activiteit.einde is not None and activiteit.einde < now:
             continue
         if activiteit.status in (STATUS_CANCELLED, STATUS_MOVED):
             continue

@@ -574,8 +574,8 @@ class TestChannelRightsEndpoint:
 
 
 @pytest.mark.asyncio
-class TestTeamSlugs:
-    async def test_gives_the_url_name_not_the_display_name(self, monkeypatch):
+class TestTeamsInfo:
+    async def test_gives_slug_and_display_name(self, monkeypatch):
         """A link is built from the slug; "NLDD Team" in a url is a 404."""
         svc, seen = _service(
             monkeypatch,
@@ -583,18 +583,65 @@ class TestTeamSlugs:
                 200,
                 json=[
                     {"id": "team1", "name": "nldd", "display_name": "NLDD Team"},
-                    {"id": "team2", "display_name": "Zonder slug"},
+                    {"id": "team2", "name": "kaal"},
+                    {"name": "zonder-id"},
                     "geen dict",
                 ],
             ),
         )
-        assert await svc.team_slugs() == {"team1": "nldd"}
+        assert await svc.teams_info() == {
+            "team1": {"slug": "nldd", "display_name": "NLDD Team"},
+            "team2": {"slug": "kaal", "display_name": "kaal"},
+        }
         assert seen[0].url.path == "/api/v4/users/me/teams"
 
     async def test_failure_is_empty(self, monkeypatch):
         svc, _ = _service(monkeypatch, lambda r: httpx.Response(500))
-        assert await svc.team_slugs() == {}
+        assert await svc.teams_info() == {}
 
     async def test_odd_body_is_empty(self, monkeypatch):
         svc, _ = _service(monkeypatch, lambda r: httpx.Response(200, json={"x": 1}))
-        assert await svc.team_slugs() == {}
+        assert await svc.teams_info() == {}
+
+
+@pytest.mark.asyncio
+class TestIsTeamMember:
+    async def test_member(self, monkeypatch):
+        svc, seen = _service(
+            monkeypatch,
+            lambda r: httpx.Response(200, json={"user_id": "u1", "delete_at": 0}),
+        )
+        assert await svc.is_team_member("team1", "u1") is True
+        assert seen[0].url.path == "/api/v4/teams/team1/members/u1"
+
+    async def test_unknown_is_no(self, monkeypatch):
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(404))
+        assert await svc.is_team_member("team1", "u1") is False
+
+    async def test_removed_member_is_no(self, monkeypatch):
+        """Mattermost keeps returning the membership, with a `delete_at`."""
+        svc, _ = _service(
+            monkeypatch,
+            lambda r: httpx.Response(200, json={"user_id": "u1", "delete_at": 17}),
+        )
+        assert await svc.is_team_member("team1", "u1") is False
+
+    @pytest.mark.parametrize("status", [401, 403, 500])
+    async def test_a_hiccup_is_neither_yes_nor_no(self, monkeypatch, status):
+        """This decides whether someone may act in a team."""
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(status))
+        with pytest.raises(MattermostUnavailableError):
+            await svc.is_team_member("team1", "u1")
+
+    async def test_network_error_raises(self, monkeypatch):
+        def boom(request):
+            raise httpx.ConnectError("x", request=request)
+
+        svc, _ = _service(monkeypatch, boom)
+        with pytest.raises(MattermostUnavailableError):
+            await svc.is_team_member("team1", "u1")
+
+    async def test_unreadable_body_raises(self, monkeypatch):
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(200, text="<html>"))
+        with pytest.raises(MattermostUnavailableError):
+            await svc.is_team_member("team1", "u1")

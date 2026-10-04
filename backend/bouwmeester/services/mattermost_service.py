@@ -1037,11 +1037,12 @@ class MattermostService:
             namen[team_id] = team.get("display_name") or team.get("name") or ""
         return namen
 
-    async def team_slugs(self) -> dict[str, str]:
-        """Team id to url name, for building a link to a channel.
+    async def teams_info(self) -> dict[str, dict[str, str]]:
+        """Team id to ``{"slug", "display_name"}``, for the bot's teams.
 
-        `team_namen` gives what a human reads; a link needs the slug.
-        Fails soft: without it there is a channel name but no link.
+        The slug is the url name a link needs; the display name is what a
+        human reads. One call for both. Fails soft: without it there are
+        team ids but no names and no links.
         """
         try:
             client = await self._get_client()
@@ -1054,10 +1055,42 @@ class MattermostService:
         if not isinstance(teams, list):
             return {}
         return {
-            team["id"]: team["name"]
+            team["id"]: {
+                "slug": str(team.get("name") or ""),
+                "display_name": str(team.get("display_name") or team.get("name") or ""),
+            }
             for team in teams
-            if isinstance(team, dict) and team.get("id") and team.get("name")
+            if isinstance(team, dict) and team.get("id")
         }
+
+    async def is_team_member(self, team_id: str, user_id: str) -> bool:
+        """Is this user a member of this team right now?
+
+        A 404 is a no. Anything else that is not a clear yes raises
+        `MattermostUnavailableError`: this decides whether someone may act
+        in a team, and a hiccup must read as neither yes nor no.
+        """
+        try:
+            client = await self._get_client()
+            resp = await client.get(f"/api/v4/teams/{team_id}/members/{user_id}")
+        except (httpx.HTTPError, ValueError) as exc:
+            raise MattermostUnavailableError(
+                f"Kon lidmaatschap van team {team_id} niet controleren"
+            ) from exc
+        if resp.status_code == 404:
+            return False
+        if resp.status_code != 200:
+            raise MattermostUnavailableError(
+                f"Onverwachte status {resp.status_code} bij teamlidmaatschap"
+            )
+        try:
+            member = resp.json()
+        except ValueError as exc:
+            raise MattermostUnavailableError(
+                "Onleesbaar antwoord bij teamlidmaatschap"
+            ) from exc
+        # A removed member is still returned, with a `delete_at`.
+        return isinstance(member, dict) and not member.get("delete_at")
 
     async def base_url(self) -> str:
         """The Mattermost URL as configured, without a trailing slash."""

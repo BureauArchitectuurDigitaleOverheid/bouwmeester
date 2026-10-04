@@ -77,9 +77,20 @@ export function filterDebatten(debatten: AankomendDebat[], query: string): Aanko
   });
 }
 
-/** The teams a channel can be created in. */
-export function startbareTeams(teams: DebatTeam[]): DebatTeam[] {
-  return teams.filter((team) => team.can_create_channel);
+/**
+ * The team the page works in: the chosen one if it is still on offer,
+ * otherwise the first where a channel can be made, otherwise the first.
+ *
+ * Not only teams where the bot may create: a channel that exists in a team
+ * has to stay visible when the bot has since lost that right.
+ */
+export function kiesTeam(teams: DebatTeam[], gekozen: string | null): DebatTeam | null {
+  return (
+    teams.find((team) => team.team_id === gekozen) ??
+    teams.find((team) => team.can_create_channel) ??
+    teams[0] ??
+    null
+  );
 }
 
 /** What to tell the person who pressed start, and whether it is bad news. */

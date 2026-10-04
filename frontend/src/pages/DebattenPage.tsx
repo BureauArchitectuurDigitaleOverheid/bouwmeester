@@ -11,7 +11,7 @@ import {
   filterDebatten,
   formatRegel,
   groepeerPerDag,
-  startbareTeams,
+  kiesTeam,
   startMelding,
 } from './debatten';
 
@@ -61,7 +61,12 @@ function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowP
           cell, so the two measure each other and both end at zero. */}
       {debat.agenda_url && (
         <nldd-cell horizontal-alignment="right">
-          <nldd-link href={debat.agenda_url} target="_blank" text="Agenda" />
+          <nldd-link
+            href={debat.agenda_url}
+            target="_blank"
+            text="Agenda"
+            accessible-label={`Agenda van ${debat.onderwerp}`}
+          />
         </nldd-cell>
       )}
       {kanaal ? (
@@ -76,6 +81,7 @@ function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowP
               size="sm"
               startIcon="microphone"
               text="Kanaal opzetten"
+              accessibleLabel={`Kanaal opzetten voor ${debat.onderwerp}`}
               loading={pending}
               disabled={busy}
               onClick={() => onStart(debat)}
@@ -88,19 +94,19 @@ function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowP
 }
 
 export function DebattenPage() {
-  const { data, isLoading, isError } = useAankomendeDebatten();
+  const { data, isLoading } = useAankomendeDebatten();
   const start = useStartDebat();
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState('');
   const [chosenTeam, setChosenTeam] = useState<string | null>(null);
 
-  const teams = useMemo(() => startbareTeams(data?.teams ?? []), [data]);
-  // The choice is only a choice with more than one team; with one, that is it.
-  const teamId = teams.some((t) => t.team_id === chosenTeam) ? chosenTeam : (teams[0]?.team_id ?? null);
+  const teams = useMemo(() => data?.teams ?? [], [data]);
+  const team = kiesTeam(teams, chosenTeam);
+  const teamId = team?.team_id ?? null;
   // No permission check here, like the Kamerstukken page: the frontend only
   // knows permissions once a person is resolved, and the backend refuses a
   // start that is not allowed.
-  const canStart = teamId !== null;
+  const canStart = team?.can_create_channel ?? false;
 
   const dagen = useMemo(
     () => groepeerPerDag(filterDebatten(data?.debatten ?? [], search)),
@@ -123,20 +129,22 @@ export function DebattenPage() {
     [start, teamId, showError, showSuccess],
   );
 
-  if (isLoading) return <LoadingSpinner padding="64" />;
-  if (isError || !data) {
+  // Only without data. A refetch that fails in the background (after a
+  // start, or when the window gets focus) must not wipe a list that is there.
+  if (!data) {
+    if (isLoading) return <LoadingSpinner padding="64" />;
     return (
       <EmptyState
         title="De agenda is nu niet op te halen"
-        description="De Tweede Kamer geeft geen antwoord. Probeer het over een paar minuten opnieuw."
+        description="Probeer het over een paar minuten opnieuw."
       />
     );
   }
 
   const melding =
     data.mattermost_melding ??
-    (teams.length === 0 && data.teams.length > 0
-      ? 'De bot mag in geen enkel team kanalen aanmaken. Een Mattermost-beheerder kan dat aanzetten.'
+    (team && !team.can_create_channel
+      ? 'De bot mag in dit team geen kanalen aanmaken. Een Mattermost-beheerder kan dat aanzetten.'
       : null);
 
   return (
@@ -162,7 +170,7 @@ export function DebattenPage() {
 
       {melding && (
         <nldd-text size="sm" color="secondary">
-          {melding} Kanalen opzetten kan nu niet; de agenda hieronder klopt wel.
+          {melding} Kanalen opzetten kan hier nu niet; de agenda hieronder klopt wel.
         </nldd-text>
       )}
 
