@@ -1037,6 +1037,33 @@ class MattermostService:
             namen[team_id] = team.get("display_name") or team.get("name") or ""
         return namen
 
+    async def team_slugs(self) -> dict[str, str]:
+        """Team id to url name, for building a link to a channel.
+
+        `team_namen` gives what a human reads; a link needs the slug.
+        Fails soft: without it there is a channel name but no link.
+        """
+        try:
+            client = await self._get_client()
+            resp = await client.get("/api/v4/users/me/teams")
+            resp.raise_for_status()
+            teams = resp.json()
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Kon de teams van de bot niet ophalen", exc_info=True)
+            return {}
+        if not isinstance(teams, list):
+            return {}
+        return {
+            team["id"]: team["name"]
+            for team in teams
+            if isinstance(team, dict) and team.get("id") and team.get("name")
+        }
+
+    async def base_url(self) -> str:
+        """The Mattermost URL as configured, without a trailing slash."""
+        await self._get_config()
+        return self._cfg("MATTERMOST_URL").rstrip("/")
+
     async def team_id_per_kanaal(self) -> dict[str, str]:
         """Kanaal-id naar team-id, voor alle kanalen van de bot.
 

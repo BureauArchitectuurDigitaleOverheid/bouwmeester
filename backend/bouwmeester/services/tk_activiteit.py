@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -228,3 +228,71 @@ async def fetch_activiteit(
     if rows[0].get("Verwijderd"):
         return None
     return parse_activiteit(rows[0])
+
+
+# Kinds that are a deadline for written input, not a meeting.
+_SOORT_PREFIX_NO_MEETING = ("Inbreng",)
+
+_PAGE_SIZE = 250  # the API refuses a `$top` above this
+_MAX_PAGES = 4
+
+# How far back "upcoming" reaches, so a debate that is running now is still
+# in the list.
+_LOOKBACK = timedelta(hours=8)
+
+
+async def list_upcoming(
+    client: httpx.AsyncClient,
+    *,
+    days: int,
+    now: datetime | None = None,
+    base_url: str = TK_BASE_URL,
+) -> list[Activiteit]:
+    """The meetings of the coming days that can be listened to.
+
+    Without their agenda: this is for picking one. Closed meetings, and
+    ones that were cancelled or moved, are left out, as are deadlines for
+    written input, which the API lists as activiteiten too.
+
+    Raises `TkApiError` if the API cannot be read.
+    """
+    now = now or datetime.now(UTC)
+    start = (now - _LOOKBACK).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end = (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    params = {
+        "$filter": (
+            f"Aanvangstijd ge {start} and Aanvangstijd lt {end} "
+            "and Verwijderd eq false and Besloten eq false"
+        ),
+        "$select": _SELECT,
+        "$orderby": "Aanvangstijd asc",
+        "$top": str(_PAGE_SIZE),
+    }
+    rows: list[dict] = []
+    try:
+        for page in range(_MAX_PAGES):
+            response = await client.get(
+                f"{base_url}/Activiteit",
+                params={**params, "$skip": str(page * _PAGE_SIZE)},
+            )
+            response.raise_for_status()
+            batch = response.json().get("value", [])
+            if not isinstance(batch, list):
+                raise TkApiError("Onverwacht antwoord van de TK-API")
+            rows.extend(row for row in batch if isinstance(row, dict))
+            if len(batch) < _PAGE_SIZE:
+                break
+    except (httpx.HTTPError, ValueError, AttributeError) as exc:
+        raise TkApiError("Kon de komende vergaderingen niet ophalen") from exc
+
+    result = []
+    for row in rows:
+        activiteit = parse_activiteit(row)
+        if not activiteit.id or activiteit.besloten:
+            continue
+        if activiteit.status in (STATUS_CANCELLED, STATUS_MOVED):
+            continue
+        if (activiteit.soort or "").startswith(_SOORT_PREFIX_NO_MEETING):
+            continue
+        result.append(activiteit)
+    return result

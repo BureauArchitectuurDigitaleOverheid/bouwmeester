@@ -396,13 +396,17 @@ class StartOutcome(enum.Enum):
 @dataclass(frozen=True)
 class StartResult:
     outcome: StartOutcome
-    # What was said in the thread under the convocatie; empty if nothing.
+    # What there is to tell whoever pressed start; empty if nothing.
     message: str = ""
     channel_id: str | None = None
+    channel_name: str | None = None
 
 
-_RETRY_HINT = "Haal je reactie weg en zet hem opnieuw om het nog eens te proberen."
-_GENERIC_FAILURE = "Er ging iets mis bij het opzetten van het kanaal. " + _RETRY_HINT
+# How to try again depends on where start was pressed.
+RETRY_HINT_REACTION = (
+    "Haal je reactie weg en zet hem opnieuw om het nog eens te proberen."
+)
+RETRY_HINT_WEB = "Probeer het zo nog eens."
 
 
 class _Existing(NamedTuple):
@@ -424,6 +428,11 @@ class DebatKanaalService:
     ) -> None:
         self.session = session
         self.mattermost = mattermost or MattermostService(session)
+        self.retry_hint = RETRY_HINT_REACTION
+
+    @property
+    def _generic_failure(self) -> str:
+        return f"Er ging iets mis bij het opzetten van het kanaal. {self.retry_hint}"
 
     async def close(self) -> None:
         await self.mattermost.close()
@@ -452,12 +461,13 @@ class DebatKanaalService:
                 item_id=item_id,
                 activiteit_id=activiteit_id,
                 source_channel_id=source_channel_id,
+                team_id=None,
                 mattermost_user_id=mattermost_user_id,
             )
         except Exception:
             logger.exception("Startknop onder post %s liep vast", source_post_id)
             await self._safe_rollback()
-            result = StartResult(StartOutcome.FAILED, _GENERIC_FAILURE)
+            result = StartResult(StartOutcome.FAILED, self._generic_failure)
         if result.message:
             posted = await self.mattermost.send_channel_message(
                 source_channel_id, result.message, root_id=source_post_id
@@ -469,13 +479,43 @@ class DebatKanaalService:
                 )
         return result
 
+    async def start_in_team(
+        self,
+        *,
+        activiteit_id: str,
+        team_id: str,
+        mattermost_user_id: str | None = None,
+    ) -> StartResult:
+        """Set up the channel from the web app, for any activiteit.
+
+        The same path as the button under a convocatie, without the
+        convocatie: a debate that never came by as an alert can be started
+        too. There is no thread to answer in, so the caller shows the
+        result. Without a Mattermost account the channel is still made;
+        nobody is added to it.
+        """
+        self.retry_hint = RETRY_HINT_WEB
+        try:
+            return await self._start(
+                item_id=None,
+                activiteit_id=activiteit_id,
+                source_channel_id=None,
+                team_id=team_id,
+                mattermost_user_id=mattermost_user_id,
+            )
+        except Exception:
+            logger.exception("Start vanuit de webapp voor %s liep vast", activiteit_id)
+            await self._safe_rollback()
+            return StartResult(StartOutcome.FAILED, self._generic_failure)
+
     async def _start(
         self,
         *,
-        item_id: uuid.UUID,
+        item_id: uuid.UUID | None,
         activiteit_id: object,
-        source_channel_id: str,
-        mattermost_user_id: str,
+        source_channel_id: str | None,
+        team_id: str | None,
+        mattermost_user_id: str | None,
     ) -> StartResult:
         if not activiteit_id:
             return StartResult(
@@ -493,7 +533,8 @@ class DebatKanaalService:
             )
             return StartResult(
                 StartOutcome.FAILED,
-                "De agenda van de Tweede Kamer is nu niet op te halen. " + _RETRY_HINT,
+                "De agenda van de Tweede Kamer is nu niet op te halen. "
+                + self.retry_hint,
             )
         if activiteit is None:
             return StartResult(
@@ -516,11 +557,12 @@ class DebatKanaalService:
         if _is_over(activiteit):
             return StartResult(StartOutcome.REFUSED, "Deze vergadering is al geweest.")
 
-        team_id = await self._team_of(source_channel_id)
+        if not team_id and source_channel_id:
+            team_id = await self._team_of(source_channel_id)
         if not team_id:
             return StartResult(
                 StartOutcome.FAILED,
-                "Ik kan niet vinden in welk team dit kanaal staat. " + _RETRY_HINT,
+                "Ik kan niet vinden in welk team dit kanaal staat. " + self.retry_hint,
             )
 
         sessie_id, existing = await self._claim(
@@ -548,15 +590,17 @@ class DebatKanaalService:
             if existing is None:
                 # The insert was refused and there is no row to point at:
                 # not a lost race, so not something to stay silent about.
-                return StartResult(StartOutcome.FAILED, _GENERIC_FAILURE)
+                return StartResult(StartOutcome.FAILED, self._generic_failure)
             if existing.channel_id:
-                await self.mattermost.add_channel_member(
-                    existing.channel_id, mattermost_user_id
-                )
+                if mattermost_user_id:
+                    await self.mattermost.add_channel_member(
+                        existing.channel_id, mattermost_user_id
+                    )
                 return StartResult(
                     StartOutcome.EXISTS,
                     f"Er is al een kanaal voor dit debat: ~{existing.channel_name}",
                     channel_id=existing.channel_id,
+                    channel_name=existing.channel_name,
                 )
             # Someone else is setting it up right now. That run answers.
             return StartResult(StartOutcome.IN_PROGRESS)
@@ -575,14 +619,14 @@ class DebatKanaalService:
             await self._safe_rollback()
             if not await self._has_channel(sessie_id):
                 await self._release(sessie_id, activiteit.id)
-            return StartResult(StartOutcome.FAILED, _GENERIC_FAILURE)
+            return StartResult(StartOutcome.FAILED, self._generic_failure)
 
     async def _set_up(
         self,
         activiteit: Activiteit,
         team_id: str,
         sessie_id: uuid.UUID,
-        mattermost_user_id: str,
+        mattermost_user_id: str | None,
     ) -> StartResult:
         try:
             channel = await self._create_channel(activiteit, team_id)
@@ -600,7 +644,7 @@ class DebatKanaalService:
             await self._release(sessie_id, activiteit.id)
             return StartResult(
                 StartOutcome.FAILED,
-                "Het kanaal aanmaken is niet gelukt. " + _RETRY_HINT,
+                "Het kanaal aanmaken is niet gelukt. " + self.retry_hint,
             )
 
         channel_id: str = channel["id"]
@@ -635,7 +679,8 @@ class DebatKanaalService:
         else:
             logger.warning("Stukkenbericht voor kanaal %s niet geplaatst", channel_id)
 
-        await self.mattermost.add_channel_member(channel_id, mattermost_user_id)
+        if mattermost_user_id:
+            await self.mattermost.add_channel_member(channel_id, mattermost_user_id)
 
         tekst = (
             f"Kanaal ~{name} staat klaar voor "
@@ -647,12 +692,15 @@ class DebatKanaalService:
         tekst += "."
         if post_id:
             tekst += " De geagendeerde stukken staan er vastgepind."
-        username = await self.mattermost.get_username(mattermost_user_id)
-        # `get_username` returns the id itself when the lookup fails, and
-        # an id is not something to mention.
-        if username and username != mattermost_user_id:
-            tekst += f" Gestart door @{username}."
-        return StartResult(StartOutcome.CREATED, tekst, channel_id=channel_id)
+        if mattermost_user_id:
+            username = await self.mattermost.get_username(mattermost_user_id)
+            # `get_username` returns the id itself when the lookup fails,
+            # and an id is not something to mention.
+            if username and username != mattermost_user_id:
+                tekst += f" Gestart door @{username}."
+        return StartResult(
+            StartOutcome.CREATED, tekst, channel_id=channel_id, channel_name=name
+        )
 
     async def _safe_rollback(self) -> None:
         try:
@@ -699,7 +747,7 @@ class DebatKanaalService:
         activiteit: Activiteit,
         team_id: str,
         item_id: uuid.UUID | None,
-        mattermost_user_id: str,
+        mattermost_user_id: str | None,
     ) -> tuple[uuid.UUID | None, _Existing | None]:
         """Reserve this debate: ``(claim id, None)`` or ``(None, existing)``.
 

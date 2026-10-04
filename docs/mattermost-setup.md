@@ -81,6 +81,13 @@ cancelled, already over, or no permission).
 One channel per debate per team. A second press points to the existing channel
 and adds whoever pressed.
 
+A debate that never came by as a convocatie can be started from Bouwmeester
+itself: the page **Debatten** lists the public meetings of the coming three
+weeks from the agenda of the Tweede Kamer, with a button per meeting. It runs
+the same code as the reaction, so the same refusals and the same guard against
+a second channel apply. Whoever starts it there is added to the channel if
+their Mattermost account is linked.
+
 ### Channel creation rights
 
 Mattermost checks one permission for creating the channel,

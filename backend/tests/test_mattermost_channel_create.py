@@ -571,3 +571,30 @@ class TestChannelRightsEndpoint:
         monkeypatch.setattr(MattermostService, "is_enabled", disabled)
         resp = await client.get("/api/admin/mattermost-channel-rights")
         assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+class TestTeamSlugs:
+    async def test_gives_the_url_name_not_the_display_name(self, monkeypatch):
+        """A link is built from the slug; "NLDD Team" in a url is a 404."""
+        svc, seen = _service(
+            monkeypatch,
+            lambda r: httpx.Response(
+                200,
+                json=[
+                    {"id": "team1", "name": "nldd", "display_name": "NLDD Team"},
+                    {"id": "team2", "display_name": "Zonder slug"},
+                    "geen dict",
+                ],
+            ),
+        )
+        assert await svc.team_slugs() == {"team1": "nldd"}
+        assert seen[0].url.path == "/api/v4/users/me/teams"
+
+    async def test_failure_is_empty(self, monkeypatch):
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(500))
+        assert await svc.team_slugs() == {}
+
+    async def test_odd_body_is_empty(self, monkeypatch):
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(200, json={"x": 1}))
+        assert await svc.team_slugs() == {}

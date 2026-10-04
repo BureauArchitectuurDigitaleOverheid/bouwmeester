@@ -8,6 +8,7 @@ from bouwmeester.api.routes.admin_sync import router as admin_sync_router
 from bouwmeester.api.routes.auth import router as auth_router
 from bouwmeester.api.routes.bijlage import router as bijlage_router
 from bouwmeester.api.routes.chat import router as chat_router
+from bouwmeester.api.routes.debatten import router as debatten_router
 from bouwmeester.api.routes.edge_schema import router as edge_schema_router
 from bouwmeester.api.routes.edge_types import router as edge_types_router
 from bouwmeester.api.routes.edges import router as edges_router
@@ -90,6 +91,7 @@ api_router.include_router(opdrachten_router)
 api_router.include_router(org_placements_router)
 api_router.include_router(organisatie_router)
 api_router.include_router(parlementair_router)
+api_router.include_router(debatten_router)
 api_router.include_router(parlementair_abonnement_router)
 api_router.include_router(people_router)
 api_router.include_router(public_initiatief_router)

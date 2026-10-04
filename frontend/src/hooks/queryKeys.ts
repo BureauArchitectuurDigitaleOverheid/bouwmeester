@@ -99,6 +99,12 @@ export const queryKeys = {
     reviewQueue: () => ['parlementair-review-queue'] as const,
   },
 
+  // --- Debatten ---
+  debatten: {
+    all: ['debatten'] as const,
+    aankomend: () => ['debatten', 'aankomend'] as const,
+  },
+
   // --- FCC ---
   fcc: {
     syncLogs: (opdrachtId?: string) => ['fcc', 'sync-logs', opdrachtId] as const,
