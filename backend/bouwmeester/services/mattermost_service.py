@@ -85,6 +85,7 @@ PERMISSION_CREATE_PRIVATE_CHANNEL = "create_private_channel"
 
 # Error id Mattermost returns for a duplicate channel name within a team.
 _CHANNEL_EXISTS_ERROR_ID = "store.sql_channel.save_channel.exists.app_error"
+_PERMISSION_ERROR_ID = "api.context.permissions.app_error"
 
 
 def _error_id(resp: httpx.Response) -> str:
@@ -618,8 +619,8 @@ class MattermostService:
         Used to find the team a channel lives in: a channel link stored
         before `team_id` existed does not carry it.
         """
-        client = await self._get_client()
         try:
+            client = await self._get_client()
             resp = await client.get(f"/api/v4/channels/{channel_id}")
             resp.raise_for_status()
             data = resp.json()
@@ -627,6 +628,27 @@ class MattermostService:
             logger.warning("Kon kanaal %s niet ophalen", channel_id, exc_info=True)
             return None
         return data if isinstance(data, dict) else None
+
+    async def get_channel_by_name(self, team_id: str, name: str) -> dict | None:
+        """Fetch a channel by its url name; ``None`` if it cannot be read.
+
+        This is how a `ChannelNameTakenError` is told apart: the name may
+        be taken by a channel this bot created a moment ago. Mattermost
+        can save a channel and still answer with an error or not answer in
+        time, and then the retry runs into its own first attempt.
+
+        An archived channel is ``None`` here as well: Mattermost only
+        returns it when asked for deleted channels.
+        """
+        try:
+            client = await self._get_client()
+            resp = await client.get(f"/api/v4/teams/{team_id}/channels/name/{name}")
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Kon kanaal %s niet op naam ophalen", name, exc_info=True)
+            return None
+        return data if isinstance(data, dict) and data.get("id") else None
 
     async def create_channel(
         self,
@@ -650,10 +672,13 @@ class MattermostService:
         a single falsy value would hide which one it was:
 
         * `MattermostPermissionError`: an administrator has to act;
-        * `ChannelNameTakenError`: the caller picks another name;
-        * `MattermostUnavailableError`: try again later.
+        * `ChannelNameTakenError`: the name is in use, possibly by a
+          channel an earlier attempt of the same caller created (see
+          `get_channel_by_name`);
+        * `MattermostUnavailableError`: it did not work and the reason is
+          in the log. Often temporary, not always: a revoked token or a
+          rejected name lands here too, so do not retry in a loop.
         """
-        client = await self._get_client()
         payload = {
             "team_id": team_id,
             "name": name,
@@ -663,13 +688,21 @@ class MattermostService:
             "type": "P" if private else "O",
         }
         try:
+            # `_get_client` raises ValueError on a missing token or a
+            # rejected URL. Inside the try, so the caller sees the three
+            # documented exceptions and not a fourth.
+            client = await self._get_client()
             resp = await client.post("/api/v4/channels", json=payload)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError) as exc:
             raise MattermostUnavailableError(
                 f"Kon kanaal {name} niet aanmaken: Mattermost onbereikbaar"
             ) from exc
 
-        if resp.status_code == 403:
+        # On the error id and not on the status alone: a proxy answers 403
+        # as well, and that is not something a permission fixes. Mattermost
+        # uses this one id both for a missing permission and for a bot that
+        # is not a member of the team.
+        if resp.status_code == 403 and _error_id(resp) == _PERMISSION_ERROR_ID:
             raise MattermostPermissionError(
                 PERMISSION_CREATE_PRIVATE_CHANNEL
                 if private
@@ -727,25 +760,25 @@ class MattermostService:
         }
         if not patch:
             return True
-        client = await self._get_client()
         try:
+            client = await self._get_client()
             resp = await client.put(f"/api/v4/channels/{channel_id}/patch", json=patch)
             resp.raise_for_status()
             return True
-        except httpx.HTTPError:
+        except (httpx.HTTPError, ValueError):
             logger.exception("Failed to update channel %s", channel_id)
             return False
 
     async def add_channel_member(self, channel_id: str, user_id: str) -> bool:
         """Add a user to a channel. Already being a member counts as success."""
-        client = await self._get_client()
         try:
+            client = await self._get_client()
             resp = await client.post(
                 f"/api/v4/channels/{channel_id}/members", json={"user_id": user_id}
             )
             resp.raise_for_status()
             return True
-        except httpx.HTTPError:
+        except (httpx.HTTPError, ValueError):
             logger.exception("Failed to add user %s to channel %s", user_id, channel_id)
             return False
 
@@ -758,12 +791,12 @@ class MattermostService:
 
     async def _set_pinned(self, post_id: str, *, pinned: bool) -> bool:
         action = "pin" if pinned else "unpin"
-        client = await self._get_client()
         try:
+            client = await self._get_client()
             resp = await client.post(f"/api/v4/posts/{post_id}/{action}")
             resp.raise_for_status()
             return True
-        except httpx.HTTPError:
+        except (httpx.HTTPError, ValueError):
             logger.exception("Failed to %s post %s", action, post_id)
             return False
 
@@ -784,9 +817,10 @@ class MattermostService:
         Raises `MattermostUnavailableError` if the answer cannot be
         established. An empty dict would read as "no permissions anywhere"
         and send an administrator looking for a problem that is not there.
+        An empty dict therefore means one thing: the bot is in no team.
         """
-        client = await self._get_client()
         try:
+            client = await self._get_client()
             me_resp = await client.get("/api/v4/users/me")
             me_resp.raise_for_status()
             members_resp = await client.get("/api/v4/users/me/teams/members")
@@ -795,7 +829,11 @@ class MattermostService:
             roles_per_team = {
                 member["team_id"]: str(member.get("roles") or "").split()
                 for member in members_resp.json()
-                if member.get("team_id")
+                # This endpoint also lists teams the bot was removed from,
+                # roles and all. Mattermost ignores those when it checks a
+                # permission, so counting them promises a right that is
+                # gone.
+                if member.get("team_id") and not member.get("delete_at")
             }
 
             names = sorted({*system_roles, *sum(roles_per_team.values(), [])})
@@ -806,7 +844,8 @@ class MattermostService:
                 permissions_per_role = {
                     role["name"]: set(role.get("permissions") or [])
                     for role in roles_resp.json()
-                    if role.get("name")
+                    # A deleted role grants nothing either.
+                    if role.get("name") and not role.get("delete_at")
                 }
         except (
             httpx.HTTPError,

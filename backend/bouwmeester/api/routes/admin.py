@@ -1052,7 +1052,7 @@ async def mattermost_channel_rights(
     `create_public_channel`. Whether it does is a server setting an
     administrator can change per team, so this asks Mattermost instead of
     guessing. A 503 means the question could not be answered, which is
-    something else than "no".
+    something else than "no". An empty list means the bot is in no team.
     """
     service = MattermostService(db)
     try:
@@ -1063,12 +1063,14 @@ async def mattermost_channel_rights(
             )
         try:
             permissions = await service.team_permissions()
-        except MattermostUnavailableError as exc:
+            # `team_namen` fails soft on a network error, but not on a
+            # body that is no JSON; that is a ValueError.
+            names = await service.team_namen()
+        except (MattermostUnavailableError, ValueError) as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="De rechten van de bot zijn niet op te vragen bij Mattermost",
             ) from exc
-        names = await service.team_namen()
     finally:
         await service.close()
 
