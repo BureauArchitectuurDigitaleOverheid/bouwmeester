@@ -69,6 +69,36 @@ just restart-backend
 - Type `/bouwmeester taken` in Mattermost → see your open tasks
 - Click "Taak afronden" on a notification → task is marked done
 
+## Channel creation rights
+
+The bot creates a channel per debate. Mattermost checks one permission for
+that, `create_public_channel`, on the team the channel is created in. Header
+and purpose travel with the create call, and pinning a post needs only channel
+membership, so nothing else has to be granted.
+
+`create_public_channel` is part of the default role of every team member
+("All Members"), bots included. A server refuses only when an administrator
+removed it, either system-wide or in a team that has its own permission
+scheme. So check first:
+
+```
+GET /api/admin/mattermost-channel-rights
+```
+
+That asks Mattermost which permissions the bot holds and answers per team.
+If `can_create_public_channel` is `false` for the team you need, a Mattermost
+system administrator has two options:
+
+- **System Console > User Management > Permissions**, open the scheme that
+  applies to the team, and enable **Create Channels > Create public channels**
+  under All Members. This gives the right to every team member.
+- Make the bot a **Team Admin** in that team (team member list, then the role
+  dropdown next to the bot). This leaves the scheme alone, and works as long
+  as Team Admins still hold the permission.
+
+A 503 from the endpoint means the question could not be answered (Mattermost
+unreachable or disabled). That is not the same as "no".
+
 ## Architecture
 
 ```

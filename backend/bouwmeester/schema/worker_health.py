@@ -53,3 +53,12 @@ class MattermostChannelOverview(BaseModel):
     last_seen_post_at: datetime | None
     disabled_at: datetime | None
     created_at: datetime
+
+
+class MattermostChannelRights(BaseModel):
+    """Whether the bot may create channels in one team."""
+
+    team_id: str
+    team_name: str | None = None
+    can_create_public_channel: bool
+    can_create_private_channel: bool
