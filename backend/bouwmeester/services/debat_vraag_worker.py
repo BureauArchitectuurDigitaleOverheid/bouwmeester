@@ -249,6 +249,10 @@ class DebatVraagWorker:
             turns = await load_turns(self.session, sessie_id, debate_id)
             floor: Turn | None = None
             for turn in turns:
+                if turn.closing:
+                    # A suspension or the end, with the words of the
+                    # chairman under it. Nobody's turn at speaking.
+                    continue
                 if turn.beoordeeld_at is None and text_is_complete(
                     entry, next_message.get(turn.row_id), ends.get(debate_id)
                 ):

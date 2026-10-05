@@ -499,6 +499,7 @@ async def _row(
     tekst: str | None = None,
     post: bool = True,
     part: str = PART,
+    kop: str | None = None,
 ) -> DebatSpreekbeurt:
     speaking = kind in ("speaker", "interrupter")
     row = DebatSpreekbeurt(
@@ -508,7 +509,7 @@ async def _row(
         event_start=START + timedelta(seconds=seconds),
         object_id=who,
         post_id=f"post{uuid.uuid4().hex}"[:26] if post else None,
-        kop=KOP if post and speaking else None,
+        kop=kop or (KOP if post and speaking else None),
         tekst=tekst,
     )
     db_session.add(row)
@@ -710,6 +711,40 @@ class TestWhichTurns:
         await _tick(db_session, mm, llm)
 
         assert [beurt.spreekbeurt_id for beurt, _ in handed] == [a.id]
+
+    async def test_a_suspension_with_the_words_of_the_chairman_is_nobodys_turn(
+        self, db_session, monkeypatch, handed
+    ):
+        Outside(monkeypatch)
+        mm, llm = Chat(), FakeLLM()
+        s = await _running(db_session)
+        a = await _row(
+            db_session, s, "speaker", 60, "a", tekst=f"{OPENING} {Q_WANNEER}"
+        )
+        await _row(
+            db_session,
+            s,
+            "chairman",
+            100,
+            "v",
+            tekst="Ik schors de vergadering, kan de minister om twee uur terug zijn?",
+            post=False,
+        )
+        pause = await _row(
+            db_session, s, "suspended", 110, kop="⏸️ **Geschorst** · 10:01"
+        )
+        b = await _row(
+            db_session, s, "speaker", 200, "b", tekst=f"{OPENING} {Q_BUDGET}"
+        )
+        await _row(db_session, s, "debate_end", 300)
+        _in_channel(mm, a, b)
+        closing = [t for t in await load_turns(db_session, s.id, PART) if t.closing]
+        assert [t.row_id for t in closing] == [pause.id]
+
+        await _tick(db_session, mm, llm)
+
+        assert [beurt.spreekbeurt_id for beurt, _ in handed] == [a.id, b.id]
+        assert await _at(db_session, pause) is None
 
     async def test_the_subtitles_have_to_be_past_the_next_message(
         self, db_session, monkeypatch, handed

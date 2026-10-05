@@ -27,7 +27,9 @@ from bouwmeester.services.debat_transcript import (
     append_text,
     assign_cues,
     fit_messages,
+    last_sentences,
     render,
+    render_closing,
     split_text,
 )
 from bouwmeester.services.debat_transcript_service import (
@@ -215,6 +217,55 @@ class TestRender:
 
         assert "@all" not in message.replace("\\@all", "")
         assert "*dit*" not in message
+
+
+class TestClosing:
+    def test_a_short_text_is_shown_whole(self):
+        assert last_sentences("Ik schors tot twee uur.") == "Ik schors tot twee uur."
+
+    def test_only_the_last_sentences_that_fit(self):
+        text = (
+            "Dank aan de leden. " * 30 + "Ik schors de vergadering tot kwart over twee."
+        )
+
+        assert last_sentences(text, limit=80) == (
+            "Dank aan de leden. Ik schors de vergadering tot kwart over twee."
+        )
+
+    def test_a_scrap_after_a_long_sentence_is_not_all_that_is_shown(self):
+        text = "woord " * 100 + "tot kwart over twee. Ja."
+
+        shown = last_sentences(text, limit=80)
+
+        assert shown.endswith("tot kwart over twee. Ja.")
+        assert shown.startswith("… woord")
+
+    def test_one_sentence_that_is_too_long_is_cut_at_a_word(self):
+        text = "woord " * 100 + "einde"
+
+        shown = last_sentences(text, limit=30)
+
+        assert shown.startswith("… woord")
+        assert shown.endswith("woord einde")
+        assert len(shown) <= 31
+
+    def test_under_the_first_line_and_said_by_whom(self):
+        assert render_closing("⏸️ **Geschorst** · 13:46", "Ik schors tot @all uur.") == (
+            "⏸️ **Geschorst** · 13:46\nVoorzitter: Ik schors tot \\@all uur."
+        )
+
+    def test_only_the_end_of_a_long_text_goes_under_it(self):
+        text = "Dank aan de leden. " * 30 + "Ik schors tot twee uur."
+
+        message = render_closing("kop", text)
+
+        assert message.endswith("Ik schors tot twee uur.")
+        assert len(message) < 320
+
+    def test_without_words_it_is_the_first_line(self):
+        assert (
+            render_closing("⏸️ **Geschorst** · 13:46", " ") == "⏸️ **Geschorst** · 13:46"
+        )
 
 
 class Subtitles:
@@ -816,6 +867,156 @@ class TestTranscript:
         assert await DebatTranscript(db_session, mm)._rewrite(post_id, "x" * 20_000)
 
         assert len(mm.messages[post_id]) == MESSAGE_MAX
+
+    async def test_a_suspension_says_what_the_chairman_said(
+        self, db_session, monkeypatch
+    ):
+        """Otherwise it comes out of nowhere, and nobody knows until when."""
+        debat = _debat(("speaker", 1, "a"), ("chairman", 2, "v"), ("suspended", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        cues = [
+            _cue(70, "Mijn betoog."),
+            _cue(125, "Dank u wel."),
+            _cue(170, "Ik schors de vergadering tot kwart over twee."),
+            _cue(200, "Geroezemoes in de zaal."),
+        ]
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 5)
+
+        assert mm.channel[1].endswith("\nMijn betoog.")
+        assert mm.channel[2].startswith("⏸️ **Geschorst** · ")
+        assert mm.channel[2].endswith(
+            "\nVoorzitter: Dank u wel. Ik schors de vergadering tot kwart over twee."
+        )
+        assert len(mm.channel) == 3
+
+    async def test_the_end_says_what_the_chairman_said(self, db_session, monkeypatch):
+        debat = _debat(("speaker", 1, "a"), ("chairman", 2, "v"), ("debate_end", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(125, "Ik sluit de vergadering.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 5)
+
+        assert mm.channel[2].startswith("⏹️ **Het debat is afgelopen** · ")
+        assert mm.channel[2].endswith("\nVoorzitter: Ik sluit de vergadering.")
+
+    async def test_what_a_member_said_last_is_not_the_chairmans(
+        self, db_session, monkeypatch
+    ):
+        """The chairman spoke, then a member, then the suspension. The
+        chairman's words from before the member do not announce it."""
+        debat = _debat(("chairman", 1, "v"), ("speaker", 2, "a"), ("suspended", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(
+            monkeypatch, feed, [_cue(65, "Het woord is aan u."), _cue(125, "Dank.")]
+        )
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 5)
+
+        assert "Voorzitter:" not in mm.channel[2]
+        assert "\n" not in mm.channel[2]
+
+    async def test_only_what_the_chairman_said_last_announces_it(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("chairman", 1, "v"), ("chairman", 2, "v"), ("suspended", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(
+            monkeypatch, feed, [_cue(65, "Een mededeling."), _cue(125, "Ik schors.")]
+        )
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 5)
+
+        assert mm.channel[1].endswith("\nVoorzitter: Een mededeling. Ik schors.")
+
+    async def test_the_end_after_a_suspension_does_not_repeat_the_announcement(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(
+            ("chairman", 1, "v"), ("suspended", 2, ""), ("debate_end", 4, "")
+        )
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Ik schors tot twee uur.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6)
+
+        assert mm.channel[1].endswith("\nVoorzitter: Ik schors tot twee uur.")
+        assert "Voorzitter:" not in mm.channel[2]
+
+    async def test_a_second_suspension_gets_what_was_said_after_the_resumption(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(
+            ("chairman", 1, "v"),
+            ("suspended", 2, ""),
+            ("continued", 3, ""),
+            ("suspended", 4, ""),
+        )
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        cues = [_cue(65, "Ik schors tot twee uur."), _cue(190, "Ik schors opnieuw.")]
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6)
+
+        assert mm.channel[1].endswith("\nVoorzitter: Ik schors tot twee uur.")
+        assert mm.channel[3].endswith("\nVoorzitter: Ik schors opnieuw.")
+
+    async def test_the_words_under_a_suspension_are_written_once(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("chairman", 1, "v"), ("suspended", 2, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Ik schors.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6)
+
+        assert len(mm.updates) == 1
+
+    async def test_words_that_cannot_be_put_under_a_suspension_count_as_an_error(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("chairman", 1, "v"), ("suspended", 2, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(115, "Ik schors.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, 2.3)
+        assert "\n" not in mm.channel[1]
+        mm.broken.add(mm.order[1])
+
+        feed.now = START + _minutes(2.7)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+        assert result.fouten == 1
+
+        mm.broken.clear()
+        await _play(db_session, mm, feed, 3.2, start=2.8)
+        assert mm.channel[1].endswith("\nVoorzitter: Ik schors.")
+
+    async def test_a_resumption_gets_no_words(self, db_session, monkeypatch):
+        debat = _debat(("chairman", 1, "v"), ("continued", 2, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Ik heropen de vergadering.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 4)
+
+        assert all("Voorzitter:" not in m for m in mm.channel)
 
     async def test_what_was_said_cannot_mention_anyone(self, db_session, monkeypatch):
         feed = Feed(monkeypatch, parts=[_stream(_debat(("speaker", 1, "a")))])

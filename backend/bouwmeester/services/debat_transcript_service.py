@@ -31,6 +31,7 @@ from bouwmeester.services.debat_transcript import (
     assign_cues,
     fit_messages,
     render,
+    render_closing,
     split_text,
 )
 from bouwmeester.services.debat_vraag_service import statusblok_voor_post
@@ -42,6 +43,7 @@ from bouwmeester.services.mattermost_service import (
 logger = logging.getLogger(__name__)
 
 _SPEAKING = (dd.EVENT_SPEAKER, dd.EVENT_INTERRUPTER)
+_CLOSING = (dd.EVENT_SUSPENDED, dd.EVENT_DEBATE_END)
 # How far back the subtitles are read when a debate is first seen. The same
 # patience the timeline has for what it missed.
 READ_BACK = timedelta(minutes=10)
@@ -72,6 +74,9 @@ class Turn:
     start: datetime
     beoordeeld_at: datetime | None = None
     texts: list[str] = field(default_factory=list)
+    # A suspension or the end: the text is the chairman's, and only the
+    # last of it is shown.
+    closing: bool = False
 
     @property
     def text(self) -> str:
@@ -230,6 +235,17 @@ class DebatTranscript:
             text = turn.text
             if len(text) == turn.geplaatst:
                 continue
+            if turn.closing:
+                # `tekst_geplaatst` of this row counts the chairman's words
+                # shown under it, which are kept on other rows.
+                if await self._rewrite(turn.post_id, render_closing(turn.kop, text)):
+                    await self._keep(turn.row_id, tekst_geplaatst=len(text))
+                else:
+                    logger.warning(
+                        "Woorden van de voorzitter bij %s niet geplaatst", turn.row_id
+                    )
+                    result.fouten += 1
+                continue
             pieces = split_text(text)
             if turn.row_id != newest:
                 # A next message would land below whatever came after.
@@ -357,9 +373,39 @@ async def load_turns(
     ).all()
     turns: list[Turn] = []
     current: Turn | None = None
+    # What was said from the chair since a member last spoke, or since
+    # the last suspension. Not only on rows of the chairman: what is
+    # said after a resumption or a change of chairman is kept on the row
+    # of that event.
+    chairman = ""
     for row_id, kind, who, start, post_id, kop, tekst, geplaatst, vervolg, read in rows:
+        if kind in _SPEAKING:
+            chairman = ""
+        elif kind not in _CLOSING:
+            chairman = append_text(chairman, tekst or "")
         if post_id:
             current = None
+            if kind in _CLOSING and kop and chairman:
+                # "Ik schors de vergadering tot kwart over twee" is said
+                # by the chairman just before the event. Without it the
+                # suspension comes out of nowhere.
+                turns.append(
+                    Turn(
+                        row_id,
+                        post_id,
+                        kop,
+                        (kind, who),
+                        geplaatst,
+                        [],
+                        start,
+                        texts=[chairman],
+                        closing=True,
+                    )
+                )
+            if kind in _CLOSING:
+                # Said once. A second suspension, or the end after a
+                # suspension, does not repeat it.
+                chairman = ""
             if kind in _SPEAKING and kop:
                 current = Turn(
                     row_id,
