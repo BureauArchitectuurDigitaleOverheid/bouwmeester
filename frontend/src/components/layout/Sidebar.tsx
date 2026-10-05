@@ -78,6 +78,7 @@ export function Sidebar({ mobile }: SidebarProps) {
         group: 'organisatie',
       },
       { to: '/parlementair', icon: 'file-text', label: 'Kamerstukken', permission: 'node:read', group: 'kennis' },
+      { to: '/debatten', icon: 'microphone', label: 'Debatten', permission: 'node:read', group: 'kennis' },
       { to: '/search', icon: 'magnifier', label: 'Zoeken', group: 'kennis' },
       { to: '/docs', icon: 'book', label: 'Handleiding', group: 'kennis' },
     ];

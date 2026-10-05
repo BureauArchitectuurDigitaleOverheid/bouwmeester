@@ -49,11 +49,18 @@ from bouwmeester.schema.whitelist import (
 )
 from bouwmeester.schema.worker_health import (
     MattermostChannelOverview,
+    MattermostChannelRights,
     WorkerHealthResponse,
     WorkerHeartbeatResponse,
 )
 from bouwmeester.services.activity_service import ActivityService
-from bouwmeester.services.mattermost_service import vul_teamnaam_aan
+from bouwmeester.services.mattermost_service import (
+    PERMISSION_CREATE_PRIVATE_CHANNEL,
+    PERMISSION_CREATE_PUBLIC_CHANNEL,
+    MattermostService,
+    MattermostUnavailableError,
+    vul_teamnaam_aan,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1032,6 +1039,50 @@ async def mattermost_channel_overview(
     # dit overzicht zet ze onder elkaar. Zonder het team is niet te zien
     # welke regel over welk kanaal gaat. Dezelfde weg als de kanaalkaart.
     return await vul_teamnaam_aan(db, out)
+
+
+@router.get("/mattermost-channel-rights", response_model=list[MattermostChannelRights])
+async def mattermost_channel_rights(
+    admin: AdminUser,
+    db: AsyncSession = Depends(get_db),
+) -> list[MattermostChannelRights]:
+    """Per team: may the bot create a channel there?
+
+    Creating a channel for a debate only works where the bot holds
+    `create_public_channel`. Whether it does is a server setting an
+    administrator can change per team, so this asks Mattermost instead of
+    guessing. A 503 means the question could not be answered, which is
+    something else than "no". An empty list means the bot is in no team.
+    """
+    service = MattermostService(db)
+    try:
+        if not await service.is_enabled():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Mattermost staat niet aan",
+            )
+        try:
+            permissions = await service.team_permissions()
+            # `team_namen` fails soft on a network error, but not on a
+            # body that is no JSON; that is a ValueError.
+            names = await service.team_namen()
+        except (MattermostUnavailableError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="De rechten van de bot zijn niet op te vragen bij Mattermost",
+            ) from exc
+    finally:
+        await service.close()
+
+    return [
+        MattermostChannelRights(
+            team_id=team_id,
+            team_name=names.get(team_id) or None,
+            can_create_public_channel=PERMISSION_CREATE_PUBLIC_CHANNEL in granted,
+            can_create_private_channel=PERMISSION_CREATE_PRIVATE_CHANNEL in granted,
+        )
+        for team_id, granted in sorted(permissions.items())
+    ]
 
 
 # ---------------------------------------------------------------------------

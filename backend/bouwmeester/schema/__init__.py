@@ -48,6 +48,14 @@ from bouwmeester.schema.database_backup import (
     DatabaseResetResult,
     DatabaseRestoreResult,
 )
+from bouwmeester.schema.debat import (
+    AankomendDebat,
+    AankomendeDebattenResponse,
+    DebatKanaal,
+    DebatStartRequest,
+    DebatStartResponse,
+    DebatTeam,
+)
 from bouwmeester.schema.edge import (
     EdgeBase,
     EdgeCreate,
@@ -299,6 +307,7 @@ from bouwmeester.schema.whitelist import (
 )
 from bouwmeester.schema.worker_health import (
     MattermostChannelOverview,
+    MattermostChannelRights,
     WorkerHealthResponse,
     WorkerHeartbeatResponse,
 )
@@ -584,6 +593,13 @@ __all__ = [
     "WhitelistEmailResponse",
     # worker_health
     "MattermostChannelOverview",
+    "AankomendDebat",
+    "AankomendeDebattenResponse",
+    "DebatKanaal",
+    "DebatStartRequest",
+    "DebatStartResponse",
+    "DebatTeam",
+    "MattermostChannelRights",
     "WorkerHealthResponse",
     "WorkerHeartbeatResponse",
 ]

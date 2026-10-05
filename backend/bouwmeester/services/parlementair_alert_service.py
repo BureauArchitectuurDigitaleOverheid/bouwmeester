@@ -276,6 +276,14 @@ class ParlementairAlertService:
         # niets erboven dat die context droeg.
         vormen: dict[bool, tuple[str, dict]] = {}
 
+        # Imported here: the debate service builds on helpers of this
+        # module, so a module-level import would be circular.
+        from bouwmeester.services.debat_kanaal_service import is_startable
+
+        # A convocatie for a meeting that is still to come gets a start
+        # button for setting up a channel for that debate.
+        start_button = is_startable(extra)
+
         gepost = 0
         for channel_id in kanalen:
             root_id = draden.get(channel_id)
@@ -289,7 +297,9 @@ class ParlementairAlertService:
             if not post_id:
                 continue
             gepost += 1
-            await self._onthoud_post(item.id, channel_id, post_id)
+            await self._onthoud_post(
+                item.id, channel_id, post_id, start_button=start_button
+            )
         return gepost
 
     async def _draden_van_het_hoofdstuk(self, extra: dict) -> dict[str, str]:
@@ -331,7 +341,14 @@ class ParlementairAlertService:
             draden.setdefault(channel_id, post_id)
         return draden
 
-    async def _onthoud_post(self, item_id: UUID, channel_id: str, post_id: str) -> None:
+    async def _onthoud_post(
+        self,
+        item_id: UUID,
+        channel_id: str,
+        post_id: str,
+        *,
+        start_button: bool = False,
+    ) -> None:
         """Leg vast waar dit stuk is gepost, en bied de reacties aan.
 
         Beide zijn nodig om te kunnen wegklikken: het post-id is waar
@@ -368,7 +385,12 @@ class ParlementairAlertService:
         # De reacties die de bot zelf plaatst zijn de affordance: zonder
         # zichtbare "x" weet niemand dat wegklikken kan. De websocket
         # negeert reacties van de bot zelf, dus ze triggeren niets.
-        for emoji in (REACTIE_NIET_RELEVANT, REACTIE_OPVOLGEN):
+        reacties = [REACTIE_NIET_RELEVANT, REACTIE_OPVOLGEN]
+        if start_button:
+            from bouwmeester.services.debat_kanaal_service import REACTIE_UITLUISTEREN
+
+            reacties.append(REACTIE_UITLUISTEREN)
+        for emoji in reacties:
             if not await self.mattermost.add_reaction(post_id, emoji):
                 logger.info("Reactie %s niet geplaatst op post %s", emoji, post_id)
 

@@ -69,6 +69,55 @@ just restart-backend
 - Type `/bouwmeester taken` in Mattermost → see your open tasks
 - Click "Taak afronden" on a notification → task is marked done
 
+## Debate channels
+
+A convocatie for an upcoming committee meeting is posted with a headphones
+reaction next to the usual ones. Pressing it creates a public channel for that
+debate in the same team: header with time and links, a purpose, and a pinned
+message listing the agenda items with links to the documents. The bot answers
+in the thread under the convocatie, also when it does nothing (meeting
+cancelled, already over, or no permission).
+
+One channel per debate per team. A second press points to the existing channel
+and adds whoever pressed.
+
+A debate that never came by as a convocatie can be started from Bouwmeester
+itself: the page **Debatten** lists the public meetings of the coming three
+weeks from the agenda of the Tweede Kamer, with a button per meeting. It runs
+the same code as the reaction, so the same refusals and the same guard against
+a second channel apply. Whoever starts it there is added to the channel if
+their Mattermost account is linked.
+
+### Channel creation rights
+
+Mattermost checks one permission for creating the channel,
+`create_public_channel`, on the team the channel is created in. Header and
+purpose travel with the create call, and pinning a post needs only channel
+membership, so nothing else has to be granted.
+
+`create_public_channel` is part of the default role of every team member
+("All Members"), bots included. A server refuses only when an administrator
+removed it, either system-wide or in a team that has its own permission
+scheme, or when the bot is not a member of the team. So check first:
+
+```
+GET /api/admin/mattermost-channel-rights
+```
+
+That asks Mattermost which permissions the bot holds and answers per team.
+How to read the answer:
+
+- **The team is missing from the list, or the list is empty.** The bot is not
+  a member of that team. Add it to the team first.
+- **`can_create_public_channel` is `false`.** A Mattermost system
+  administrator opens **System Console > User Management > Permissions**,
+  picks the scheme that applies to the team, and enables **Manage Public
+  Channels > Create Channels** under All Members. This gives the right to
+  every team member. Making the bot a Team Admin does not help by itself:
+  that role holds the permission only if it was ticked there as well.
+- **A 503.** The question could not be answered: Mattermost is disabled,
+  unreachable or misconfigured. That is not the same as "no".
+
 ## Architecture
 
 ```

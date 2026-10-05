@@ -461,6 +461,77 @@ class MattermostWebsocketService:
             )
             return True
 
+    async def _handle_debat_start(
+        self, post_id: str, emoji_name: str, user_id: str
+    ) -> bool:
+        """Set up a debate channel if this is the start button on an alert.
+
+        Returns whether the reaction was handled here. Any human may add
+        the reaction, also under an alert that was posted without the
+        button; whether there is a meeting to start is decided when it is
+        pressed.
+
+        Runs inline, so the read loop waits for it. That is a handful of
+        HTTP calls with their own timeouts, and it keeps two presses on
+        the same button in order.
+        """
+        from bouwmeester.services.debat_kanaal_service import (
+            REACTIE_UITLUISTEREN,
+            DebatKanaalService,
+        )
+
+        if emoji_name != REACTIE_UITLUISTEREN:
+            return False
+
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+        from bouwmeester.models.parlementair_item import ParlementairItem
+
+        async with async_session() as session:
+            # The lookup apart from the work, as in
+            # `_verwerk_kamerstuk_reactie`: "not an alert" and "this went
+            # wrong" must not look the same to the caller.
+            try:
+                stmt = (
+                    select(ParlementairItem, ParlementairAlertPost.channel_id)
+                    .join(
+                        ParlementairAlertPost,
+                        ParlementairAlertPost.parlementair_item_id
+                        == ParlementairItem.id,
+                    )
+                    .where(ParlementairAlertPost.post_id == post_id)
+                )
+                row = (await session.execute(stmt)).first()
+            except Exception:
+                logger.exception(
+                    "Kon niet opzoeken of post %s bij een kamerstuk hoort", post_id
+                )
+                return False
+
+            if row is None:
+                return False
+            item, channel_id = row
+
+            service = DebatKanaalService(session)
+            try:
+                result = await service.start(
+                    item=item,
+                    source_channel_id=channel_id,
+                    source_post_id=post_id,
+                    mattermost_user_id=user_id,
+                )
+                logger.info(
+                    "Startknop op post %s door %s: %s",
+                    post_id,
+                    user_id,
+                    result.outcome.value,
+                )
+            except Exception:
+                await session.rollback()
+                logger.exception("Debatkanaal starten vanaf post %s mislukt", post_id)
+            finally:
+                await service.close()
+            return True
+
     async def _dispatch_reaction_added(self, msg: dict) -> None:
         """Verwerk een ``reaction_added`` event als trigger voor een
         suggested-lead approval.
@@ -508,6 +579,9 @@ class MattermostWebsocketService:
         # tabellen — daar betekent het "geen lead", hier "niet relevant" —
         # en zonder deze volgorde zou een wegklik op een alert in het
         # suggested-lead-pad belanden, daar niets vinden en stil verdwijnen.
+        if await self._handle_debat_start(post_id, emoji_name, user_id):
+            return
+
         if await self._verwerk_kamerstuk_reactie(post_id, emoji_name):
             return
 
