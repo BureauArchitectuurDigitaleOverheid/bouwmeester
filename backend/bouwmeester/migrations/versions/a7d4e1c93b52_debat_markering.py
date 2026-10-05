@@ -7,7 +7,7 @@ marked twice. A later turn that comes back to a question is a vermelding on
 it instead of a new row.
 
 Revision ID: a7d4e1c93b52
-Revises: f3c6b9d52e87
+Revises: b8e5f2a04c63
 Create Date: 2026-10-05
 
 """
@@ -17,7 +17,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "a7d4e1c93b52"
-down_revision: str | None = "f3c6b9d52e87"
+down_revision: str | None = "b8e5f2a04c63"
 branch_labels: str | None = None
 depends_on: str | None = None
 
