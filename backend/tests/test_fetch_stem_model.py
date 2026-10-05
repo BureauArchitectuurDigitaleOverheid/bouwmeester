@@ -28,10 +28,12 @@ def test_the_right_file_is_written(tmp_path, monkeypatch):
     assert target.read_bytes() == data
 
 
-def test_another_file_fails_the_build_and_is_not_kept(tmp_path, capsys):
+def test_another_file_is_not_kept_and_does_not_fail_the_build(tmp_path, capsys):
+    """An error page with status 200 must not block a deploy, and must
+    not be taken for the model either."""
     target = tmp_path / "models" / "model.onnx"
 
-    assert fetch_stem_model.main(target, b"something else") == 1
+    assert fetch_stem_model.main(target, b"something else") == 0
     assert not target.exists()
     assert "verwacht was" in capsys.readouterr().out
 
@@ -86,3 +88,15 @@ def test_the_download_is_pinned_to_a_revision(monkeypatch):
     assert len(fetch_stem_model.REVISION) == 40
     assert len(fetch_stem_model.SHA256) == 64
     assert timeout == fetch_stem_model.TIMEOUT
+
+
+def test_a_download_that_breaks_off_is_nothing_either(monkeypatch, capsys):
+    import http.client
+
+    def broken(url, timeout=None):
+        raise http.client.IncompleteRead(b"half")
+
+    monkeypatch.setattr(fetch_stem_model.urllib.request, "urlopen", broken)
+
+    assert fetch_stem_model.fetch() is None
+    assert "de image komt zonder" in capsys.readouterr().out

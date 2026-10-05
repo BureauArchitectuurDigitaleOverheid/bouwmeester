@@ -520,7 +520,7 @@ def test_the_numbers_are_the_ones_that_were_measured():
         "LINE_MIN": 1.6,
         "WAIT": 30,
         "RETRY_FOR": 600,
-        "AUDIO_RETRY": 60,
+        "AUDIO_RETRY": 300,
         "AUDIO_KEEPS": 45 * 60,
     }
     assert {name: getattr(svc, name).total_seconds() for name in seconds} == seconds
@@ -1066,6 +1066,26 @@ class TestVoicesDecide:
         assert where["r230."] == ("speaker", "a", 240, "stem", True)
         assert _said(mm.channel[2]) == [f"r{s}." for s in range(190, 227, 4)]
 
+    async def test_a_line_with_a_wrong_end_is_not_listened_to_for_minutes(
+        self, db_session, monkeypatch
+    ):
+        """A line that says it lasts a minute and a half would be fetched
+        and embedded whole, and the memory that takes is not given back."""
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*EVENTS))])
+        lines = [c for c in _lines(62, 298) if c.text != "r182."]
+        lines.append(_cue(182, "r182.", 100.0))
+        Subtitles(monkeypatch, feed, sorted(lines, key=lambda c: c.start))
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 9)
+
+        assert max(sound.embedder.heard) <= svc.CLIP_MAX.total_seconds() + 1
+        # And it is decided all the same, on the start of it.
+        where = await _where(db_session, sessie)
+        assert where["r182."][3:] == ("stem", True)
+
     async def test_no_more_audio_is_fetched_than_a_round_may(
         self, db_session, monkeypatch
     ):
@@ -1503,7 +1523,7 @@ class TestNothingDependsOnIt:
         assert "niet te lezen (AudioError)" in caplog.text
         # Asked again after a while, not on every round: a server that is
         # down answers slowly, and the timeline waits for it.
-        assert 2 <= sound.playlists <= _minutes(6) / svc.AUDIO_RETRY
+        assert 1 <= sound.playlists <= 2
         assert caplog.text.count("niet te lezen") == sound.playlists
 
     async def test_a_model_that_breaks_leaves_the_time_to_decide(

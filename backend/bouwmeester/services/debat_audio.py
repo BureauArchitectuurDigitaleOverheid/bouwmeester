@@ -141,10 +141,16 @@ def parse_playlist(text: str) -> Playlist:
     return Playlist(init_url=init.group(1), segments=tuple(segments))
 
 
+# A segment is sixty kilobytes from a CDN and comes in a tenth of a
+# second. The timeline waits for every request, so one that takes longer
+# than this is given up on, whatever the client itself would wait.
+REQUEST_TIMEOUT = 4.0
+
+
 async def _get(client: httpx.AsyncClient, url: str) -> httpx.Response:
     try:
-        return await client.get(url, headers=_HEADERS)
-    except httpx.HTTPError as exc:
+        return await client.get(url, headers=_HEADERS, timeout=REQUEST_TIMEOUT)
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
         raise AudioError(f"Audio onbereikbaar: {url}") from exc
 
 

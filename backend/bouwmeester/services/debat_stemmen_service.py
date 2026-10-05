@@ -98,8 +98,9 @@ WAIT = timedelta(seconds=30)
 RETRY_FOR = timedelta(minutes=10)
 # After audio that could not be read, how long it is left alone. A
 # server that is down takes its time to say so, and the timeline waits
-# for every request that is made.
-AUDIO_RETRY = timedelta(minutes=1)
+# for every request that is made: with a few debates at once, a shorter
+# pause than this is over before the round is.
+AUDIO_RETRY = timedelta(minutes=5)
 # The server keeps audio for about fifty minutes.
 AUDIO_KEEPS = timedelta(minutes=45)
 # Per round, over all debates: how many seconds of sound are turned into
@@ -441,7 +442,13 @@ class DebatStemmen:
                 continue
             vector = held.lines.get(line.id)
             if vector is None:
-                end = max(line.end, line.start + LINE_MIN) + LINE_PAD
+                # Never more than a clip: a line with a wrong end would
+                # otherwise be fetched and embedded for a minute and a
+                # half, and the memory that takes is not given back.
+                end = (
+                    min(max(line.end, line.start + LINE_MIN), line.start + CLIP_MAX)
+                    + LINE_PAD
+                )
                 if not await reach.has(end):
                     # The audio runs behind the room. Every line after
                     # this one is younger still.

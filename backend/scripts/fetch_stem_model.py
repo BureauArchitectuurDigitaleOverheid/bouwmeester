@@ -35,8 +35,10 @@ def fetch(url: str = URL) -> bytes | None:
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
             return response.read()
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        print(f"Sprekermodel niet te downloaden ({exc}); de image komt zonder")
+    except Exception as exc:
+        # Whatever it is, also a download that breaks off halfway: this
+        # must never be the reason an image cannot be built.
+        print(f"Sprekermodel niet te downloaden ({exc!r}); de image komt zonder")
         return None
 
 
@@ -46,8 +48,14 @@ def main(target: pathlib.Path, data: bytes | None) -> int:
         return 0
     found = hashlib.sha256(data).hexdigest()
     if found != SHA256:
-        print(f"Sprekermodel heeft SHA-256 {found}, verwacht was {SHA256}")
-        return 1
+        # Not what was pinned: an error page, or another file. It is not
+        # used, and the image is built without, so that a hiccup at the
+        # other end cannot block a deploy.
+        print(
+            f"Sprekermodel heeft SHA-256 {found}, verwacht was {SHA256}; "
+            "de image komt zonder"
+        )
+        return 0
     target.write_bytes(data)
     print(f"Sprekermodel staat op {target} ({len(data)} bytes)")
     return 0

@@ -715,3 +715,21 @@ class TestReach:
 
         with pytest.raises(AudioError):
             await self._samples(server, _moment(grid[6]), _moment(grid[6], 1.0))
+
+
+@pytest.mark.asyncio
+async def test_a_request_for_audio_does_not_wait_as_long_as_the_client_would():
+    """The timeline waits for every request. A server that hangs is given
+    up on in seconds, whatever the client was made with."""
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.extensions["timeout"])
+        return httpx.Response(200, content=b"x")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport, timeout=15.0) as client:
+        await audio.fetch_bytes(client, "https://stream.example/init.m4i")
+
+    assert set(seen[0].values()) == {audio.REQUEST_TIMEOUT}
+    assert audio.REQUEST_TIMEOUT <= 5

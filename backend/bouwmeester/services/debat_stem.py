@@ -177,7 +177,7 @@ def _load(path: str) -> Embedder | None:
         )
         return None
     try:
-        return Embedder(path)
+        embedder = Embedder(path)
     except Exception as exc:
         logger.warning(
             "Sprekermodel op %s niet te laden (%s): regels blijven op tijd "
@@ -186,6 +186,12 @@ def _load(path: str) -> Embedder | None:
             type(exc).__name__,
         )
         return None
+    logger.info(
+        "Sprekermodel geladen van %s (%s vrij)",
+        path,
+        "geen limiet" if free is None else f"{free // 2**20} MB",
+    )
+    return embedder
 
 
 def choose(scores: Mapping[str, float], unknown: Collection[str]) -> str | None:
