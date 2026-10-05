@@ -1064,75 +1064,48 @@ class MattermostService:
         }
 
     async def is_team_member(self, team_id: str, user_id: str) -> bool:
-        """Is this user a member of this team right now?
+        """Is this user an active member of this team right now?
 
-        A 404 is a no. Anything else that is not a clear yes raises
-        `MattermostUnavailableError`, so a hiccup reads as neither yes nor
-        no.
+        Asked through `POST /teams/{id}/members/ids`, which returns the
+        active members among the ids given: a removed member and someone
+        who never was one both give an empty list.
 
-        Nothing decides on this at the moment. It answered "no" in
-        production for someone who was in the team, and until that is
-        understood it is not a condition for anything.
+        Not through `GET /teams/{id}/members/{user}`, although that looks
+        like the obvious question. Newer Mattermost versions hide role data
+        of other people's memberships from anyone who cannot manage team
+        roles, and blank `delete_at` to -1 while doing so. The field that
+        should tell a removed member from an active one then says the same
+        for both. Reading it as "non-zero means removed" told an active
+        member in production that they were not one; a local Mattermost 9.5
+        does not hide anything and showed 0, so it went unnoticed.
+
+        Raises `MattermostUnavailableError` on anything that is not a clear
+        answer, so a hiccup reads as neither yes nor no.
         """
         try:
             client = await self._get_client()
-            resp = await client.get(f"/api/v4/teams/{team_id}/members/{user_id}")
+            resp = await client.post(
+                f"/api/v4/teams/{team_id}/members/ids", json=[user_id]
+            )
         except (httpx.HTTPError, ValueError) as exc:
             raise MattermostUnavailableError(
                 f"Kon lidmaatschap van team {team_id} niet controleren"
             ) from exc
-        if resp.status_code == 404:
-            return False
         if resp.status_code != 200:
             raise MattermostUnavailableError(
                 f"Onverwachte status {resp.status_code} bij teamlidmaatschap"
             )
         try:
-            member = resp.json()
+            members = resp.json()
         except ValueError as exc:
             raise MattermostUnavailableError(
                 "Onleesbaar antwoord bij teamlidmaatschap"
             ) from exc
-        # A removed member is still returned, with a `delete_at`.
-        return isinstance(member, dict) and not member.get("delete_at")
-
-    async def describe_team_membership(self, team_id: str, user_id: str) -> str:
-        """What Mattermost answers about this user and team, as one line.
-
-        For a log, not for a decision: status code, error id, `delete_at`
-        and roles, plus the username the id belongs to. "Not a member" has
-        two shapes on the server (no row: a 404; a removed member: a 200
-        with `delete_at`) and they point to different causes, as does an id
-        that belongs to another account than expected.
-
-        Never raises.
-        """
-        try:
-            client = await self._get_client()
-            member = await client.get(f"/api/v4/teams/{team_id}/members/{user_id}")
-            user = await client.get(f"/api/v4/users/{user_id}")
-        except (httpx.HTTPError, ValueError) as exc:
-            return f"niet op te vragen ({type(exc).__name__})"
-
-        def body(resp: httpx.Response) -> dict:
-            try:
-                data = resp.json()
-            except ValueError:
-                return {}
-            return data if isinstance(data, dict) else {}
-
-        m, u = body(member), body(user)
-        if member.status_code == 200:
-            lid = f"delete_at={m.get('delete_at')} roles={m.get('roles')!r}"
-        else:
-            lid = f"id={m.get('id')!r}"
-        if user.status_code == 200:
-            account = f"username={u.get('username')!r} delete_at={u.get('delete_at')}"
-        else:
-            account = f"id={u.get('id')!r}"
-        return (
-            f"lidmaatschap: status {member.status_code} {lid}; "
-            f"account: status {user.status_code} {account}"
+        if not isinstance(members, list):
+            raise MattermostUnavailableError("Onverwacht antwoord bij teamlidmaatschap")
+        return any(
+            isinstance(member, dict) and member.get("user_id") == user_id
+            for member in members
         )
 
     async def base_url(self) -> str:
