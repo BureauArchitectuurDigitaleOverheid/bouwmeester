@@ -103,7 +103,7 @@ class Embedder:
         fbank.accept_waveform(SAMPLE_RATE, (samples * 32768).tolist())
         fbank.input_finished()
         features = np.stack([fbank.get_frame(i) for i in range(fbank.num_frames_ready)])
-        features = features - features.mean(axis=0, keepdims=True)
+        features = features - features.mean(axis=0)
         out = self._session.run(None, {self._input: features[None].astype(np.float32)})[
             0
         ][0]
