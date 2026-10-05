@@ -12,10 +12,10 @@ import dataclasses
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, func, select, update
 
 from bouwmeester.core.config import get_settings
-from bouwmeester.models.debat_sessie import DebatSpreekbeurt
+from bouwmeester.models.debat_sessie import DebatOndertitel, DebatSpreekbeurt
 from bouwmeester.services import debat_subtitles as subs
 from bouwmeester.services.debat_subtitles import Cue
 from bouwmeester.services.debat_tijdlijn_service import (
@@ -25,16 +25,18 @@ from bouwmeester.services.debat_tijdlijn_service import (
 from bouwmeester.services.debat_transcript import (
     MESSAGE_LIMIT,
     append_text,
-    assign_cues,
     fit_messages,
     last_sentences,
+    place_cues,
     render,
     render_closing,
     split_text,
+    text_key,
 )
 from bouwmeester.services.debat_transcript_service import (
     MESSAGE_MAX,
     DebatTranscript,
+    derive_text,
 )
 from bouwmeester.services.mattermost_service import PostNotFoundError
 from tests.test_debat_tijdlijn import (
@@ -59,7 +61,15 @@ def _cue(seconds: float, text: str, length: float = 2.0) -> Cue:
     return Cue(start, start + timedelta(seconds=length), text)
 
 
-class TestAssignCues:
+def assign_cues(cues, turns, offset=timedelta(0)) -> dict:
+    """The text per turn, as `place_cues` puts the lines."""
+    texts: dict = {}
+    for key, cue in place_cues(cues, turns, offset):
+        texts.setdefault(key, []).append(cue.text)
+    return {key: " ".join(parts) for key, parts in texts.items()}
+
+
+class TestPlaceCues:
     def test_a_line_belongs_to_the_turn_it_was_spoken_in(self):
         turns = [("a", START), ("b", START + timedelta(seconds=60))]
         cues = [_cue(5, "Een."), _cue(30, "Twee."), _cue(61, "Drie.")]
@@ -310,6 +320,8 @@ class Mattermost(FakeMattermost):
         self.fail_updates = 0
         self.broken: set[str] = set()
         self.deleted: set[str] = set()
+        self.removed: list[str] = []
+        self.fail_deletes = 0
 
     async def send_channel_message(self, channel_id, text, props=None, root_id=None):
         post_id = await super().send_channel_message(channel_id, text, props, root_id)
@@ -326,6 +338,17 @@ class Mattermost(FakeMattermost):
             return False
         self.updates.append((post_id, message))
         self.messages[post_id] = message
+        return True
+
+    async def delete_post(self, post_id) -> bool:
+        if post_id in self.deleted:
+            return False
+        if self.fail_deletes > 0:
+            self.fail_deletes -= 1
+            return False
+        self.removed.append(post_id)
+        self.order.remove(post_id)
+        del self.messages[post_id]
         return True
 
     async def get_post(self, post_id) -> dict | None:
@@ -1028,3 +1051,403 @@ class TestTranscript:
 
         assert "\\@channel" in mm.channel[1]
         assert "\\@all" in mm.channel[1]
+
+
+class TestTextKey:
+    def test_the_same_text_has_the_same_name(self):
+        assert text_key("Een. Twee.") == text_key("Een. Twee.")
+
+    def test_another_text_of_the_same_length_has_another(self):
+        assert text_key("Een. Twee.") != text_key("Een. Drie.")
+
+    def test_it_fits_the_column(self):
+        assert len(text_key("Een. Twee." * 1000)) == 16
+
+
+async def _row(db_session, sessie, who: str) -> DebatSpreekbeurt:
+    return (
+        await db_session.execute(
+            select(DebatSpreekbeurt)
+            .where(
+                DebatSpreekbeurt.sessie_id == sessie.id,
+                DebatSpreekbeurt.object_id == who,
+            )
+            # As it is in the database now, not as it was read before.
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+
+
+async def _move(db_session, sessie, texts: list[str], to: DebatSpreekbeurt) -> None:
+    """What the voices do: these lines belong to another turn after all."""
+    moved = (
+        await db_session.execute(
+            update(DebatOndertitel)
+            .where(
+                DebatOndertitel.sessie_id == sessie.id,
+                DebatOndertitel.tekst.in_(texts),
+            )
+            .values(spreekbeurt_id=to.id)
+            .returning(DebatOndertitel.id)
+        )
+    ).all()
+    assert len(moved) == len(texts)
+    rows = (
+        await db_session.execute(
+            select(DebatSpreekbeurt.id).where(DebatSpreekbeurt.sessie_id == sessie.id)
+        )
+    ).scalars()
+    await derive_text(db_session, set(rows))
+
+
+def _sentence(i: int) -> str:
+    return f"Dit is zin nummer {i} van het betoog."
+
+
+@pytest.mark.asyncio
+class TestLines:
+    """Every line is a row, and the text of a turn is its lines in order."""
+
+    async def test_every_line_is_kept_with_its_turn(self, db_session, monkeypatch):
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(
+            monkeypatch,
+            feed,
+            [_cue(65, "Een.", 2.5), _cue(70, "Twee."), _cue(125, "Drie.")],
+        )
+        sessie = await _sessie(db_session)
+
+        await _play(db_session, Mattermost(), feed, 4)
+
+        a, b = await _row(db_session, sessie, "a"), await _row(db_session, sessie, "b")
+        lines = (
+            await db_session.execute(
+                select(DebatOndertitel)
+                .where(DebatOndertitel.sessie_id == sessie.id)
+                .order_by(DebatOndertitel.start)
+            )
+        ).scalars()
+        assert [
+            (
+                line.tekst,
+                line.spreekbeurt_id,
+                (line.start - START).total_seconds(),
+                (line.einde - START).total_seconds(),
+                line.debat_direct_id,
+                line.toewijzing,
+                line.stem_klaar,
+            )
+            for line in lines
+        ] == [
+            ("Een.", a.id, 65.0, 67.5, debat.id, "tijd", False),
+            ("Twee.", a.id, 70.0, 72.0, debat.id, "tijd", False),
+            ("Drie.", b.id, 125.0, 127.0, debat.id, "tijd", False),
+        ]
+        assert (a.tekst, b.tekst) == ("Een. Twee.", "Drie.")
+
+    async def test_a_line_read_twice_is_kept_once(self, db_session, monkeypatch):
+        """Two workers read the same file during a deploy."""
+        feed = Feed(monkeypatch, parts=[_stream(_debat(("speaker", 1, "a")))])
+        Subtitles(monkeypatch, feed, [_cue(65, "Een."), _cue(70, "Twee.")])
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 3)
+        entry = dict(sessie.ondertitels[feed.parts[0].id])
+        del entry["positie"]
+        sessie.ondertitels = {feed.parts[0].id: entry}
+        await db_session.flush()
+        mm.updates.clear()
+
+        await _play(db_session, mm, feed, 4, start=3.2)
+
+        count = await db_session.scalar(
+            select(func.count()).where(DebatOndertitel.sessie_id == sessie.id)
+        )
+        assert count == 2
+        assert (await _row(db_session, sessie, "a")).tekst == "Een. Twee."
+        assert mm.updates == []
+
+    async def test_the_text_of_a_turn_follows_from_its_lines_in_order_of_time(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Een."), _cue(125, "Drie.")])
+        sessie = await _sessie(db_session)
+        await _play(db_session, Mattermost(), feed, 4)
+        a = await _row(db_session, sessie, "a")
+        # A line that comes in late and out of order.
+        db_session.add(
+            DebatOndertitel(
+                sessie_id=sessie.id,
+                debat_direct_id=debat.id,
+                start=START + timedelta(seconds=62),
+                einde=START + timedelta(seconds=64),
+                tekst="Nul.",
+                spreekbeurt_id=a.id,
+            )
+        )
+        await db_session.flush()
+
+        await derive_text(db_session, {a.id})
+
+        assert (await _row(db_session, sessie, "a")).tekst == "Nul. Een."
+        assert (await _row(db_session, sessie, "b")).tekst == "Drie."
+
+    async def test_a_turn_that_lost_its_last_line_has_no_text(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Een."), _cue(125, "Drie.")])
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 4)
+
+        await _move(db_session, sessie, ["Drie."], await _row(db_session, sessie, "a"))
+        await _play(db_session, mm, feed, 4.5, start=4.2)
+
+        assert (await _row(db_session, sessie, "b")).tekst == ""
+        assert mm.channel[1].endswith("\nEen. Drie.")
+        assert "\n" not in mm.channel[2]
+
+    async def test_nothing_to_derive_is_no_statement(self, db_session):
+        await derive_text(db_session, set())
+
+    async def test_a_turn_from_before_lines_were_kept_keeps_its_text(
+        self, db_session, monkeypatch
+    ):
+        """A turn can have text and no lines. Its text is only made anew
+        when a line is added to it or taken from it, never because another
+        turn changed."""
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Een."), _cue(125, "Drie.")])
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 2)
+        a = await _row(db_session, sessie, "a")
+        assert a.tekst == "Een."
+        await db_session.execute(
+            delete(DebatOndertitel).where(DebatOndertitel.spreekbeurt_id == a.id)
+        )
+        await db_session.flush()
+
+        await _play(db_session, mm, feed, 4, start=2.2)
+
+        assert (await _row(db_session, sessie, "b")).tekst == "Drie."
+        assert (await _row(db_session, sessie, "a")).tekst == "Een."
+        assert mm.channel[1].endswith("\nEen.")
+
+
+@pytest.mark.asyncio
+class TestTextThatChanges:
+    """A line can move to another turn. Then the text of a turn changes
+    otherwise than by growing, and what is in the channel is not how it
+    begins any more."""
+
+    async def _long_turn(self, db_session, monkeypatch, count: int = 120):
+        debat = _debat(("speaker", 1, "a"), ("speaker", 10, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        cues = [_cue(65 + 4 * i, _sentence(i)) for i in range(count)]
+        cues.append(_cue(605, "Van b."))
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 11.5)
+        assert len(mm.channel) == 5
+        mm.updates.clear()
+        return feed, mm, sessie
+
+    async def test_every_message_of_the_turn_is_written_again(
+        self, db_session, monkeypatch
+    ):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        first, second, third, other = mm.order[1:]
+
+        await _move(
+            db_session, sessie, [_sentence(0)], await _row(db_session, sessie, "b")
+        )
+        await _play(db_session, mm, feed, 12, start=11.6)
+
+        assert [post_id for post_id, _ in mm.updates] == [first, second, third, other]
+        said = " ".join(m.split("\n", 1)[1] for m in mm.channel[1:4])
+        assert said == " ".join(_sentence(i) for i in range(1, 120))
+        assert mm.channel[4].endswith(f"\n{_sentence(0)} Van b.")
+        assert all(len(m.split("\n", 1)[1]) <= MESSAGE_LIMIT for m in mm.channel[1:4])
+
+    async def test_and_then_only_once(self, db_session, monkeypatch):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        await _move(
+            db_session, sessie, [_sentence(0)], await _row(db_session, sessie, "b")
+        )
+        await _play(db_session, mm, feed, 12, start=11.6)
+        mm.updates.clear()
+
+        await _play(db_session, mm, feed, 13, start=12.2)
+
+        assert mm.updates == []
+
+    async def test_a_text_of_the_same_length_that_says_something_else(
+        self, db_session, monkeypatch
+    ):
+        """The length alone does not show it."""
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        first = mm.order[1]
+        await db_session.execute(
+            update(DebatOndertitel)
+            .where(DebatOndertitel.tekst == _sentence(3))
+            .values(tekst=_sentence(4))
+        )
+        a = await _row(db_session, sessie, "a")
+        before = len(a.tekst)
+        await derive_text(db_session, {a.id})
+        assert len((await _row(db_session, sessie, "a")).tekst) == before
+
+        await _play(db_session, mm, feed, 12, start=11.6)
+
+        assert first in {post_id for post_id, _ in mm.updates}
+        assert _sentence(3) not in mm.messages[first]
+
+    async def test_a_next_message_that_is_not_needed_any_more_is_taken_away(
+        self, db_session, monkeypatch
+    ):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        first, second, third, other = mm.order[1:]
+
+        gone = [_sentence(i) for i in range(60, 120)]
+        await _move(db_session, sessie, gone, await _row(db_session, sessie, "b"))
+        await _play(db_session, mm, feed, 12, start=11.6)
+
+        assert mm.removed == [third]
+        assert mm.order[1:3] == [first, second]
+        a = await _row(db_session, sessie, "a")
+        assert a.vervolg_post_ids == [second]
+        said = " ".join(mm.messages[p].split("\n", 1)[1] for p in (first, second))
+        assert said == " ".join(_sentence(i) for i in range(60))
+        assert a.tekst_geplaatst == len(a.tekst)
+
+    async def test_a_turn_that_lost_everything_keeps_only_its_first_line(
+        self, db_session, monkeypatch
+    ):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        first, second, third, other = mm.order[1:]
+
+        everything = [_sentence(i) for i in range(120)]
+        await _move(db_session, sessie, everything, await _row(db_session, sessie, "b"))
+        await _play(db_session, mm, feed, 12, start=11.6)
+
+        assert mm.removed == [third, second]
+        assert "\n" not in mm.messages[first]
+        assert (await _row(db_session, sessie, "a")).vervolg_post_ids == []
+        # The turn that got them is the last thing in the channel, so it
+        # can continue below itself.
+        assert len(mm.order) > 3
+
+    async def test_a_message_that_cannot_be_taken_away_is_tried_again(
+        self, db_session, monkeypatch
+    ):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        third = mm.order[3]
+        gone = [_sentence(i) for i in range(60, 120)]
+        await _move(db_session, sessie, gone, await _row(db_session, sessie, "b"))
+
+        mm.fail_deletes = 1
+        feed.now = START + _minutes(11.6)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert result.fouten == 1
+        assert third in mm.order
+        a = await _row(db_session, sessie, "a")
+        assert third in a.vervolg_post_ids
+        assert a.tekst_geplaatst != len(a.tekst)
+
+        await _play(db_session, mm, feed, 12, start=11.8)
+
+        assert mm.removed == [third]
+        a = await _row(db_session, sessie, "a")
+        assert third not in a.vervolg_post_ids
+        assert a.tekst_geplaatst == len(a.tekst)
+
+    async def test_a_message_someone_deleted_already_counts_as_taken_away(
+        self, db_session, monkeypatch
+    ):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        third = mm.order[3]
+        mm.deleted.add(third)
+        gone = [_sentence(i) for i in range(60, 120)]
+        await _move(db_session, sessie, gone, await _row(db_session, sessie, "b"))
+
+        feed.now = START + _minutes(11.6)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert result.fouten == 0
+        assert third not in (await _row(db_session, sessie, "a")).vervolg_post_ids
+
+    async def test_a_turn_that_only_grew_keeps_its_full_messages(
+        self, db_session, monkeypatch
+    ):
+        """Also for a message written before the digest was kept: it is
+        taken at its length, and not written again from the start."""
+        debat = _debat(("speaker", 1, "a"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(
+            monkeypatch, feed, [_cue(65 + 4 * i, _sentence(i)) for i in range(120)]
+        )
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 6)
+        first = mm.order[1]
+        a = await _row(db_session, sessie, "a")
+        assert a.tekst_geplaatst_hash == text_key(a.tekst)
+        a.tekst_geplaatst_hash = None
+        await db_session.flush()
+        mm.updates.clear()
+
+        await _play(db_session, mm, feed, 11, start=6.2)
+
+        assert mm.updates
+        assert first not in {post_id for post_id, _ in mm.updates}
+        a = await _row(db_session, sessie, "a")
+        assert a.tekst_geplaatst_hash == text_key(a.tekst)
+
+    async def test_a_text_that_became_shorter_is_written_again_also_without_a_digest(
+        self, db_session, monkeypatch
+    ):
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        first = mm.order[1]
+        a = await _row(db_session, sessie, "a")
+        a.tekst_geplaatst_hash = None
+        await db_session.flush()
+
+        await _move(
+            db_session, sessie, [_sentence(119)], await _row(db_session, sessie, "b")
+        )
+        await _play(db_session, mm, feed, 12, start=11.6)
+
+        assert first in {post_id for post_id, _ in mm.updates}
+
+    async def test_the_words_under_a_suspension_follow_a_line_that_moved(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("speaker", 1, "a"), ("chairman", 2, "v"), ("suspended", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(
+            monkeypatch,
+            feed,
+            [_cue(65, "Ik rond af."), _cue(118, "Dank u."), _cue(125, "Ik schors.")],
+        )
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 5)
+        assert mm.channel[2].endswith("\nVoorzitter: Ik schors.")
+
+        # "Dank u." was the chairman's, not the speaker's.
+        await _move(
+            db_session, sessie, ["Dank u."], await _row(db_session, sessie, "v")
+        )
+        await _play(db_session, mm, feed, 5.5, start=5.2)
+
+        assert mm.channel[1].endswith("\nIk rond af.")
+        assert mm.channel[2].endswith("\nVoorzitter: Dank u. Ik schors.")

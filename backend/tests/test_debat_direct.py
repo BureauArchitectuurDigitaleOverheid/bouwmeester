@@ -495,6 +495,17 @@ class TestStream:
         assert debat.stream_url is None
         assert debat.stream_offset == timedelta(0)
 
+    def test_the_audio_of_the_room_is_kept(self):
+        debat = self._debate({"audioUrl": "https://stream.example/zaal/audio.m3u8"})
+        assert debat.audio_url == "https://stream.example/zaal/audio.m3u8"
+
+    @pytest.mark.parametrize("url", ["http://stream.example/a.m3u8", "", None, 7])
+    def test_audio_that_is_not_https_is_not_kept(self, url):
+        assert self._debate({"audioUrl": url}).audio_url is None
+
+    def test_a_debate_without_audio(self):
+        assert self._debate({}).audio_url is None
+
     @pytest.mark.parametrize(
         "url", ["http://stream.example/x.m3u8", "file:///etc/passwd", "", 12]
     )

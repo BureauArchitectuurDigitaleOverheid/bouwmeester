@@ -78,6 +78,8 @@ class DdDebat:
     stream_url: str | None = None
     # How much later than an event the sound of it is, as the feed says.
     stream_offset: timedelta = timedelta(0)
+    # The playlist of the audio of the room alone, to tell voices apart.
+    audio_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -164,6 +166,7 @@ def parse_debate(raw: dict) -> DdDebat | None:
         events=tuple(events),
         stream_url=_stream_url(video.get("url")),
         stream_offset=_offset(video.get("pdtOffset")),
+        audio_url=_stream_url(video.get("audioUrl")),
     )
 
 

@@ -6,9 +6,14 @@ under the turn it was spoken in, and writes the message again with the text
 below the first line. A turn that goes on gets a message that grows.
 
 Everything is kept in the database first and written to Mattermost from
-there. A row holds the text of its turn and how much of it is in the
-channel, so a message that could not be written is simply written on the
-next round, and a restart continues where the reading stood.
+there. Every line is a row with the turn it belongs to; the text of a turn
+is its lines in order. A turn holds how much of that is in the channel, so
+a message that could not be written is simply written on the next round,
+and a restart continues where the reading stood.
+
+Which turn a line belongs to is first decided by time. Around a change of
+speaker the voices decide again (`debat_stemmen_service`), and a line can
+move to the turn before or after. Then both messages are written anew.
 """
 
 from __future__ import annotations
@@ -19,20 +24,27 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import httpx
-from sqlalchemy import case, select, update
+from sqlalchemy import case, func, literal, select, update
+from sqlalchemy.dialects.postgresql import aggregate_order_by, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.models.debat_sessie import DebatSessie, DebatSpreekbeurt
+from bouwmeester.models.debat_sessie import (
+    DebatOndertitel,
+    DebatSessie,
+    DebatSpreekbeurt,
+)
+from bouwmeester.services import debat_audio as audio
 from bouwmeester.services import debat_direct as dd
 from bouwmeester.services import debat_subtitles as subs
 from bouwmeester.services.debat_statusregel import SCHEIDING, voeg_samen
 from bouwmeester.services.debat_transcript import (
     append_text,
-    assign_cues,
     fit_messages,
+    place_cues,
     render,
     render_closing,
     split_text,
+    text_key,
 )
 from bouwmeester.services.debat_vraag_service import statusblok_voor_post
 from bouwmeester.services.mattermost_service import (
@@ -69,6 +81,9 @@ class Turn:
     kop: str
     key: tuple[str, str]
     geplaatst: int
+    # The digest of the text that is in the channel, or None for a message
+    # from before that was kept.
+    placed_key: str | None
     vervolg: list[str]
     # When the turn began, and when it was read for questions.
     start: datetime
@@ -85,11 +100,35 @@ class Turn:
             joined = append_text(joined, text)
         return joined
 
+    def has_grown(self, text: str) -> bool:
+        """Whether what is in the channel is still how `text` begins.
+
+        Then the messages that are full can stay. Not when a line moved to
+        or from this turn: the text changed in the middle, and every
+        message of the turn has to be written again.
+        """
+        if len(text) < self.geplaatst:
+            return False
+        if self.placed_key is None:
+            return True
+        return text_key(text[: self.geplaatst]) == self.placed_key
+
+    def is_written(self, text: str) -> bool:
+        return len(text) == self.geplaatst and self.has_grown(text)
+
 
 class DebatTranscript:
-    def __init__(self, session: AsyncSession, mattermost: MattermostService) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        mattermost: MattermostService,
+        stemmen=None,  # type: ignore[no-untyped-def]
+    ) -> None:
         self.session = session
         self.mattermost = mattermost
+        # A `DebatStemmen`, or None when voices are not told apart: then a
+        # line stays in the turn the time put it in.
+        self.stemmen = stemmen
 
     async def update(
         self,
@@ -114,9 +153,43 @@ class DebatTranscript:
                 changed = False
             if changed:
                 await self.session.commit()
+            if self.stemmen is not None:
+                await self._listen(sessie, debate_id, client, now)
             # Also when nothing is new: what could not be written before
             # is written now.
             await self._write(sessie_id, channel_id, debate_id, result)
+
+    async def _listen(
+        self,
+        sessie: DebatSessie,
+        debate_id: str,
+        client: httpx.AsyncClient,
+        now: datetime,
+    ) -> None:
+        """Let the voices decide about the lines around a change of speaker.
+
+        Nothing depends on this. Whatever goes wrong, a line stays where
+        the time put it and the round goes on.
+        """
+        entry = (sessie.ondertitels or {}).get(debate_id) or {}
+        audio_url = entry.get("audio")
+        if not audio_url:
+            return
+        try:
+            # A savepoint: half a decision is not kept, and what was read
+            # before it is not undone.
+            async with self.session.begin_nested():
+                await self.stemmen.update(sessie.id, debate_id, audio_url, client, now)
+            await self.session.commit()
+        except Exception as exc:
+            # Only what kind of error: the error itself may carry a piece
+            # of what was being worked on, and audio and voices are not
+            # written anywhere.
+            logger.warning(
+                "Stemmen van %s niet te onderscheiden (%s)",
+                debate_id,
+                type(exc).__name__,
+            )
 
     async def _read(
         self,
@@ -144,6 +217,7 @@ class DebatTranscript:
                 "url": subs.find_subtitle_playlist(master, debat.stream_url) or "",
                 "offset_ms": round(debat.stream_offset.total_seconds() * 1000),
                 "gekeken": now.isoformat(),
+                "audio": _audio_of(debat),
             }
             # A new dict every time: a JSON column only notices a value
             # that is replaced, not one that is changed in place.
@@ -152,19 +226,24 @@ class DebatTranscript:
                 logger.info("Debat %s heeft geen ondertitelspoor", debate_id)
                 return True
 
+        if debat is not None and _audio_of(debat) != entry.get("audio", ""):
+            # Also for a part that was first seen before the audio was
+            # kept, and for a room whose address changed.
+            entry["audio"] = _audio_of(debat)
+            sessie.ondertitels = {**state, debate_id: dict(entry)}
+
         rows = (
             await self.session.execute(
                 select(
                     DebatSpreekbeurt.id,
                     DebatSpreekbeurt.event_type,
                     DebatSpreekbeurt.event_start,
-                    DebatSpreekbeurt.tekst,
                 )
                 .where(
                     DebatSpreekbeurt.sessie_id == sessie.id,
                     DebatSpreekbeurt.debat_direct_id == debate_id,
                 )
-                .order_by(*_ORDER)
+                .order_by(*ORDER)
             )
         ).all()
         if not rows:
@@ -196,14 +275,28 @@ class DebatTranscript:
             return False
 
         offset = timedelta(milliseconds=entry.get("offset_ms") or 0)
-        spoken = assign_cues(cues, [(r[0], r[2]) for r in rows], offset)
-        existing = {r[0]: r[3] for r in rows}
-        for row_id, text in spoken.items():
+        placed = place_cues(cues, [(r[0], r[2]) for r in rows], offset)
+        if placed:
             await self.session.execute(
-                update(DebatSpreekbeurt)
-                .where(DebatSpreekbeurt.id == row_id)
-                .values(tekst=append_text(existing[row_id], text))
+                insert(DebatOndertitel)
+                .values(
+                    [
+                        {
+                            "sessie_id": sessie.id,
+                            "debat_direct_id": debate_id,
+                            "start": cue.start,
+                            "einde": cue.end,
+                            "tekst": cue.text,
+                            "spreekbeurt_id": row_id,
+                        }
+                        for row_id, cue in placed
+                    ]
+                )
+                # A line that is there already was read by another worker
+                # in the same round, as happens during a deploy.
+                .on_conflict_do_nothing(constraint="uq_debat_ondertitel_start")
             )
+            await derive_text(self.session, {row_id for row_id, _ in placed})
         entry["positie"] = position.isoformat()
         sessie.ondertitels = {**state, debate_id: dict(entry)}
         return True
@@ -216,7 +309,7 @@ class DebatTranscript:
         result,  # type: ignore[no-untyped-def]
     ) -> None:
         turns = await load_turns(self.session, sessie_id, debate_id)
-        if not any(len(turn.text) != turn.geplaatst for turn in turns):
+        if all(turn.is_written(turn.text) for turn in turns):
             return
         # The last thing the timeline put in the channel, of any part and
         # any kind. Only the turn that is that can continue below itself.
@@ -227,19 +320,23 @@ class DebatTranscript:
                     DebatSpreekbeurt.sessie_id == sessie_id,
                     DebatSpreekbeurt.post_id.is_not(None),
                 )
-                .order_by(*(column.desc() for column in _ORDER))
+                .order_by(*(column.desc() for column in ORDER))
                 .limit(1)
             )
         ).scalar_one_or_none()
         for turn in turns:
             text = turn.text
-            if len(text) == turn.geplaatst:
+            if turn.is_written(text):
                 continue
+            placed = {
+                "tekst_geplaatst": len(text),
+                "tekst_geplaatst_hash": text_key(text),
+            }
             if turn.closing:
                 # `tekst_geplaatst` of this row counts the chairman's words
                 # shown under it, which are kept on other rows.
                 if await self._rewrite(turn.post_id, render_closing(turn.kop, text)):
-                    await self._keep(turn.row_id, tekst_geplaatst=len(text))
+                    await self._keep(turn.row_id, **placed)
                 else:
                     logger.warning(
                         "Woorden van de voorzitter bij %s niet geplaatst", turn.row_id
@@ -250,9 +347,12 @@ class DebatTranscript:
             if turn.row_id != newest:
                 # A next message would land below whatever came after.
                 pieces = fit_messages(pieces, 1 + len(turn.vervolg))
-            # Full messages never change; only the last one that exists is
-            # written again, and whatever comes after it is new.
-            first = len(turn.vervolg)
+            # Full messages never change while the text only grows: only
+            # the last one that exists is written again, and whatever comes
+            # after it is new. A text that changed in the middle is cut
+            # anew from the start, and every message is written again.
+            grown = turn.has_grown(text)
+            first = len(turn.vervolg) if grown else 0
             vervolg = list(turn.vervolg)
             done = True
             for number in range(first, len(pieces)):
@@ -290,8 +390,21 @@ class DebatTranscript:
                     result.fouten += 1
                     done = False
                     break
+            # A turn that lost lines can need fewer messages than it has. A
+            # next message with nothing left under it is taken away: it
+            # would say "vervolg" and then nothing.
+            while done and not grown and len(vervolg) >= len(pieces):
+                if not await self._remove(vervolg[-1]):
+                    logger.warning(
+                        "Vervolgbericht van spreekbeurt %s niet verwijderd", turn.row_id
+                    )
+                    result.fouten += 1
+                    done = False
+                    break
+                vervolg.pop()
+                await self._keep(turn.row_id, vervolg_post_ids=list(vervolg))
             if done:
-                await self._keep(turn.row_id, tekst_geplaatst=len(text))
+                await self._keep(turn.row_id, **placed)
             # A turn that could not be written does not hold up the ones
             # after it: it is tried again on a later round.
 
@@ -310,6 +423,16 @@ class DebatTranscript:
             return True
         return False
 
+    async def _remove(self, post_id: str) -> bool:
+        """Take a message away. ``True`` also when it was gone already."""
+        if await self.mattermost.delete_post(post_id):
+            return True
+        try:
+            await self.mattermost.get_post(post_id)
+        except PostNotFoundError:
+            return True
+        return False
+
     async def _keep(self, row_id: uuid.UUID, **values) -> None:  # type: ignore[no-untyped-def]
         await self.session.execute(
             update(DebatSpreekbeurt)
@@ -319,9 +442,35 @@ class DebatTranscript:
         await self.session.commit()
 
 
+async def derive_text(session: AsyncSession, row_ids: set[uuid.UUID]) -> None:
+    """Make the text of these turns what their lines say, in order.
+
+    One statement, computed by the database from the lines as they are:
+    two workers that both moved or added a line end up with the same text,
+    whoever was last.
+    """
+    if not row_ids:
+        return
+    lines = (
+        select(
+            func.string_agg(
+                DebatOndertitel.tekst,
+                aggregate_order_by(literal(" "), DebatOndertitel.start),
+            )
+        )
+        .where(DebatOndertitel.spreekbeurt_id == DebatSpreekbeurt.id)
+        .scalar_subquery()
+    )
+    await session.execute(
+        update(DebatSpreekbeurt)
+        .where(DebatSpreekbeurt.id.in_(row_ids))
+        .values(tekst=func.coalesce(lines, ""))
+    )
+
+
 # The order of the timeline: by moment, and within one second whatever is
 # not someone speaking first.
-_ORDER = (
+ORDER = (
     DebatSpreekbeurt.event_start,
     case((DebatSpreekbeurt.event_type.in_(_SPEAKING), 1), else_=0),
     # And a fixed order for two people speaking in the same second, so
@@ -329,6 +478,12 @@ _ORDER = (
     DebatSpreekbeurt.event_type,
     DebatSpreekbeurt.object_id,
 )
+
+
+def _audio_of(debat: dd.DdDebat) -> str:
+    """Where the audio of a part is, or nothing when it is not to be fetched."""
+    url = debat.audio_url or ""
+    return url if audio.is_trusted(url) else ""
 
 
 def _moment(value: object) -> datetime | None:
@@ -361,6 +516,7 @@ async def load_turns(
                 DebatSpreekbeurt.kop,
                 DebatSpreekbeurt.tekst,
                 DebatSpreekbeurt.tekst_geplaatst,
+                DebatSpreekbeurt.tekst_geplaatst_hash,
                 DebatSpreekbeurt.vervolg_post_ids,
                 DebatSpreekbeurt.beoordeeld_at,
             )
@@ -368,7 +524,7 @@ async def load_turns(
                 DebatSpreekbeurt.sessie_id == sessie_id,
                 DebatSpreekbeurt.debat_direct_id == debate_id,
             )
-            .order_by(*_ORDER)
+            .order_by(*ORDER)
         )
     ).all()
     turns: list[Turn] = []
@@ -378,7 +534,19 @@ async def load_turns(
     # said after a resumption or a change of chairman is kept on the row
     # of that event.
     chairman = ""
-    for row_id, kind, who, start, post_id, kop, tekst, geplaatst, vervolg, read in rows:
+    for (
+        row_id,
+        kind,
+        who,
+        start,
+        post_id,
+        kop,
+        tekst,
+        geplaatst,
+        placed_key,
+        vervolg,
+        read,
+    ) in rows:
         if kind in _SPEAKING:
             chairman = ""
         elif kind not in _CLOSING:
@@ -396,6 +564,7 @@ async def load_turns(
                         kop,
                         (kind, who),
                         geplaatst,
+                        placed_key,
                         [],
                         start,
                         texts=[chairman],
@@ -413,6 +582,7 @@ async def load_turns(
                     kop,
                     (kind, who),
                     geplaatst,
+                    placed_key,
                     list(vervolg or []),
                     start,
                     read,

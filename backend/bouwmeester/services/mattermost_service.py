@@ -613,6 +613,17 @@ class MattermostService:
             logger.exception("Failed to update post %s", post_id)
             return False
 
+    async def delete_post(self, post_id: str) -> bool:
+        """Remove a post of the bot itself."""
+        client = await self._get_client()
+        try:
+            resp = await client.delete(f"/api/v4/posts/{post_id}")
+            resp.raise_for_status()
+            return True
+        except httpx.HTTPError:
+            logger.exception("Failed to delete post %s", post_id)
+            return False
+
     async def get_channel(self, channel_id: str) -> dict | None:
         """Fetch a channel, or ``None`` if that fails for any reason.
 

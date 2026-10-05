@@ -40,7 +40,7 @@ from bouwmeester.services.debat_tijdlijn_service import (
     LOOKAHEAD,
 )
 from bouwmeester.services.debat_transcript_service import (
-    _ORDER,
+    ORDER,
     Turn,
     _moment,
     load_turns,
@@ -271,7 +271,7 @@ class DebatVraagWorker:
                         DebatSpreekbeurt.event_type == dd.EVENT_DEBATE_END,
                     ),
                 )
-                .order_by(*_ORDER)
+                .order_by(*ORDER)
             )
         ).all()
         next_message: dict[uuid.UUID, datetime] = {}
