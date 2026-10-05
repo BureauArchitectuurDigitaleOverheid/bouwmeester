@@ -309,6 +309,49 @@ async def _debat_tijdlijn_loop(settings) -> None:  # type: ignore[no-untyped-def
         await asyncio.sleep(settings.DEBAT_TIJDLIJN_INTERVAL_SECONDS)
 
 
+async def _debat_vragen_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Mark the questions to the bewindspersoon in turns that are finished.
+
+    Not in the tick of the timeline: a model reads a turn for seconds, and
+    the timeline has to say who speaks now.
+    """
+    if not settings.DEBAT_VRAGEN_ENABLED:
+        logger.info("Debatvragen staan uit (DEBAT_VRAGEN_ENABLED=false)")
+        # Off is the default, and must not show up as a loop that died.
+        await health_tick("debat_vragen", status="disabled")
+        return
+    from bouwmeester.services.debat_vraag_worker import DebatVraagWorker
+
+    await health_tick("debat_vragen", status="starting")
+    last_heartbeat = 0.0
+    # What the TK API says about each debate, asked once per debate for as
+    # long as this process lives.
+    contexts: dict = {}
+    while True:
+        detail = None
+        try:
+            async with async_session() as session:
+                service = DebatVraagWorker(session, contexts=contexts)
+                try:
+                    result = await service.tick()
+                finally:
+                    await service.close()
+            if result.beoordeeld or result.fouten:
+                logger.info("Debatvragen: %s", result.summary())
+            detail = result.summary()
+            status = "error" if result.fouten else "ok"
+        except Exception as exc:
+            logger.exception("Error in debatvragen tick")
+            detail = _short_error(exc)
+            status = "error"
+
+        if status == "error" or time.monotonic() - last_heartbeat > 60.0:
+            last_heartbeat = time.monotonic()
+            await health_tick("debat_vragen", status=status, detail=detail)
+
+        await asyncio.sleep(settings.DEBAT_VRAGEN_INTERVAL_SECONDS)
+
+
 async def _cleanup_obsolete_heartbeats() -> None:
     """Verwijder heartbeat-rijen van loops die niet meer bestaan.
 
@@ -484,6 +527,7 @@ async def main() -> None:
         asyncio.create_task(_overheidsorganisaties_dagelijks_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_wekelijks_loop(settings)),
         asyncio.create_task(_debat_tijdlijn_loop(settings)),
+        asyncio.create_task(_debat_vragen_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 

@@ -139,7 +139,14 @@ def upgrade() -> None:
         ["spreekbeurt_id"],
     )
 
+    # When a turn was read for questions, so that it is read once.
+    op.add_column(
+        "debat_spreekbeurt",
+        sa.Column("beoordeeld_at", sa.DateTime(timezone=True), nullable=True),
+    )
+
 
 def downgrade() -> None:
+    op.drop_column("debat_spreekbeurt", "beoordeeld_at")
     op.drop_table("debat_markering_vermelding")
     op.drop_table("debat_markering")
