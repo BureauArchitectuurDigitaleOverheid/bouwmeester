@@ -144,9 +144,22 @@ def upgrade() -> None:
         "debat_spreekbeurt",
         sa.Column("beoordeeld_at", sa.DateTime(timezone=True), nullable=True),
     )
+    op.add_column(
+        "debat_spreekbeurt",
+        sa.Column(
+            "beoordeel_pogingen",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
+    )
+    # What is in the channel already is not read after the fact: a debate
+    # of this morning would get its threads hours late, all at once.
+    op.execute("UPDATE debat_spreekbeurt SET beoordeeld_at = now()")
 
 
 def downgrade() -> None:
+    op.drop_column("debat_spreekbeurt", "beoordeel_pogingen")
     op.drop_column("debat_spreekbeurt", "beoordeeld_at")
     op.drop_table("debat_markering_vermelding")
     op.drop_table("debat_markering")

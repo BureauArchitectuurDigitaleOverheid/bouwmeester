@@ -11,6 +11,8 @@ it, and neither may lose what the other wrote.
 
 from __future__ import annotations
 
+import asyncio
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -136,6 +138,14 @@ class Outside:
 
         monkeypatch.setattr(dd, "fetch_sprekers", sprekers)
         monkeypatch.setattr(tk_activiteit, "fetch_activiteit", activiteit)
+
+
+@pytest.fixture(autouse=True)
+def _no_pause_left_over():
+    """The pause after a failure lives in the process; a test starts clean."""
+    mod._pause.reset()
+    yield
+    mod._pause.reset()
 
 
 @pytest.fixture
@@ -517,6 +527,10 @@ async def _row(
     return row
 
 
+async def _nothing() -> None:
+    """In place of a rollback: the test session rolls back the whole test."""
+
+
 async def _tick(db_session, mm, llm, now_seconds: float = 700, contexts=None):
     return await DebatVraagWorker(db_session, mm, llm, contexts).tick(
         (START + timedelta(seconds=now_seconds)).astimezone(UTC)
@@ -624,10 +638,112 @@ class TestWhichTurns:
         assert await _at(db_session, a) is None
         assert await _at(db_session, b) is None
 
+        # Not at once: the debate is left alone for half a minute.
         result = await _tick(db_session, mm, llm, 715)
+        assert (len(llm.prompts), result.beoordeeld) == (1, 0)
+
+        result = await _tick(db_session, mm, llm, 731)
 
         assert (result.beoordeeld, result.vragen, result.fouten) == (2, 2, 0)
         assert [root for root, _ in mm.threads] == [a.post_id, b.post_id]
+
+    async def test_the_wait_doubles_while_the_model_stays_away(
+        self, db_session, monkeypatch
+    ):
+        Outside(monkeypatch)
+        mm = Chat()
+        llm = FakeLLM(*[ConnectionError("geen verbinding")] * 10)
+        await self._two(db_session, mm)
+
+        asked = []
+        for seconds in range(700, 1000, 10):
+            await _tick(db_session, mm, llm, seconds)
+            asked.append(len(llm.prompts))
+
+        # At 700, then after 30 s, then after 60 more, then after 120 more.
+        assert [asked.index(n) * 10 for n in (1, 2, 3, 4)] == [0, 30, 90, 210]
+
+    async def test_after_a_turn_that_went_well_the_wait_starts_short_again(self):
+        now = START.astimezone(UTC)
+        pause = mod._Pause()
+        sessie_id = uuid.uuid4()
+        pause.failed(sessie_id, now)
+        pause.failed(sessie_id, now)
+        assert pause.waiting(sessie_id, now + timedelta(seconds=45))
+
+        pause.succeeded(sessie_id)
+        assert not pause.waiting(sessie_id, now)
+        pause.failed(sessie_id, now)
+
+        assert pause.waiting(sessie_id, now + timedelta(seconds=29))
+        assert not pause.waiting(sessie_id, now + timedelta(seconds=31))
+
+    async def test_a_turn_that_keeps_failing_is_given_up_on(
+        self, db_session, monkeypatch
+    ):
+        """Something the model cannot take, a filter or a text too long,
+        fails every time. The turns after it must not wait for ever."""
+        Outside(monkeypatch)
+        mm = Chat()
+        llm = FakeLLM(
+            *[ConnectionError("geweigerd")] * mod.MAX_ATTEMPTS,
+            antwoord(vraag(Q_BUDGET)),
+        )
+        _, a, b, _ = await self._two(db_session, mm)
+
+        seconds = 700
+        for _ in range(mod.MAX_ATTEMPTS):
+            mod._pause.reset()
+            await _tick(db_session, mm, llm, seconds)
+            seconds += 10
+        assert await _at(db_session, a) is not None
+        assert await _at(db_session, b) is None
+
+        mod._pause.reset()
+        result = await _tick(db_session, mm, llm, seconds)
+
+        assert result.beoordeeld == 1
+        assert [root for root, _ in mm.threads] == [b.post_id]
+
+    async def test_something_breaking_after_the_answer_counts_as_an_attempt(
+        self, db_session, monkeypatch
+    ):
+        Outside(monkeypatch)
+        mm, llm = Chat(), FakeLLM()
+        _, a, _, _ = await self._two(db_session, mm)
+
+        async def broken(self, beurt, context):
+            raise RuntimeError("stuk")
+
+        monkeypatch.setattr(DebatVraagService, "beoordeel_beurt", broken)
+        monkeypatch.setattr(db_session, "rollback", _nothing)
+        result = await _tick(db_session, mm, llm)
+
+        assert result.fouten == 1
+        attempts = await db_session.scalar(
+            select(DebatSpreekbeurt.beoordeel_pogingen).where(
+                DebatSpreekbeurt.id == a.id
+            )
+        )
+        assert attempts == 1
+
+    async def test_a_model_that_hangs_is_not_waited_for(self, db_session, monkeypatch):
+        Outside(monkeypatch)
+        mm, llm = Chat(), FakeLLM()
+        _, a, _, _ = await self._two(db_session, mm)
+        monkeypatch.setattr(mod, "JUDGE_TIMEOUT", 0.05)
+        monkeypatch.setattr(db_session, "rollback", _nothing)
+
+        async def hangs(self, beurt, context):
+            await asyncio.sleep(5)
+
+        monkeypatch.setattr(DebatVraagService, "beoordeel_beurt", hangs)
+        began = time.monotonic()
+        result = await _tick(db_session, mm, llm)
+
+        assert time.monotonic() - began < 2
+        assert result.fouten == 1
+        assert await _at(db_session, a) is None
 
     async def test_an_answer_that_cannot_be_read_is_not_asked_for_again(
         self, db_session, monkeypatch, handed
@@ -1206,22 +1322,20 @@ class TestWhatIsKnownOfTheDebate:
         assert llm.prompts == []
         assert (result.fouten, result.beoordeeld) == (0, 1)
 
-    async def test_someone_who_is_not_on_the_list_is_read_as_unknown(
+    async def test_someone_who_is_not_on_the_list_is_not_read(
         self, db_session, monkeypatch, handed
     ):
+        """Whether an unknown speaker asks or answers cannot be told, and
+        the answers of a minister are not questions."""
         Outside(monkeypatch)
         mm, llm = Chat(), FakeLLM(antwoord(vraag(Q_WANNEER)))
-        await self._one(db_session, mm, who="zz")
+        _, a = await self._one(db_session, mm, who="zz")
 
         await _tick(db_session, mm, llm)
 
-        beurt = handed[0][0]
-        assert (beurt.spreker, beurt.fractie, beurt.is_bewindspersoon) == (
-            "Onbekende spreker",
-            None,
-            False,
-        )
-        assert len(mm.threads) == 1
+        assert handed == []
+        assert llm.prompts == []
+        assert await _at(db_session, a) is not None
 
     async def test_an_interruption_with_nobody_before_it(
         self, db_session, monkeypatch, handed

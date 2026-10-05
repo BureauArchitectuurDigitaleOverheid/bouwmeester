@@ -275,15 +275,25 @@ def vind_citaat(tekst: str, citaat: str) -> str | None:
             vanaf = at + len(zoek)
         else:
             if gevonden:
-                return " (...) ".join(
-                    tekst[herkomst[a] : herkomst[b] + 1].strip() for a, b in gevonden
+                return _zegt_iets(
+                    " (...) ".join(
+                        tekst[herkomst[a] : herkomst[b] + 1].strip()
+                        for a, b in gevonden
+                    )
                 )
     bijna = _vind_bijna(plat, _plat(citaat)[0].strip())
     if bijna is None:
         return None
-    return tekst[herkomst[bijna[0]] : herkomst[bijna[1]] + 1].strip()
+    return _zegt_iets(tekst[herkomst[bijna[0]] : herkomst[bijna[1]] + 1].strip())
 
 
+def _zegt_iets(citaat: str) -> str | None:
+    """A quote of a word or two stands in every turn and proves nothing."""
+    return citaat if len(citaat) >= MIN_CITAAT else None
+
+
+# The shortest quote that counts as a question that was really asked.
+MIN_CITAAT = 12
 # How much of a quote has to stand in the turn, in the same order, for the
 # passage to count as the one the model meant.
 _BIJNA_AANDEEL = 0.9
@@ -357,26 +367,52 @@ def format_vraag_thread(
     quote from the transcript, the summary from a model that read the
     transcript. All of it is escaped.
     """
-    wie = _escape(_kort(spreker, 120))
+    wie = _vrij(_kort(spreker, 120))
     if fractie and fractie.lower() not in spreker.lower():
-        wie = f"{wie} ({_escape(fractie)})"
+        wie = f"{wie} ({_vrij(fractie)})"
     tijd = _hhmm(moment)
     if moment_url and _VEILIGE_URL.match(moment_url):
         tijd = f"[{tijd}]({moment_url})"
-    aan = _escape(_kort(gericht_aan, MAX_GERICHT_AAN)) or "de bewindspersoon"
-    regels = [f"{ICOON_VRAAG} **Vraag aan {aan}** · {wie} · {tijd}"]
+    regels = [f"{ICOON_VRAAG} **Vraag aan {aan_wie(gericht_aan)}** · {wie} · {tijd}"]
     if samenvatting:
-        regels.append(_escape(_kort(samenvatting, MAX_SAMENVATTING)))
+        regels.append(_vrij(_kort(samenvatting, MAX_SAMENVATTING)))
+    if stuk:
+        regels.append(f"Gaat over: {_vrij(_kort(stuk, 300))}")
     regels.append("")
-    regels.append(f"> {_escape(_kort(citaat, MAX_CITAAT))}")
+    regels.append(f"> {_vrij(_kort(citaat, MAX_CITAAT))}")
     regels.append("")
     regels.append(
-        "_Letterlijk uit het automatische transcript; namen en termen kunnen"
-        " verkeerd verstaan zijn. De tijd is het begin van de spreekbeurt._"
+        "_Het citaat komt letterlijk uit het automatische transcript; de tijd"
+        " is het begin van de spreekbeurt._"
     )
-    if stuk:
-        regels.append(f"Gaat over: {_escape(_kort(stuk, 300))}")
     return "\n".join(regels)
+
+
+def _vrij(tekst: str) -> str:
+    """Text a model wrote, or chose, made harmless for a message.
+
+    Escaping alone is not enough: a model that writes a backslash before
+    an at-sign gets the backslash escaped and the mention live. So no
+    backslashes and no at-signs at all, and an address is broken up so it
+    does not become a link.
+    """
+    tekst = tekst.replace("\\", "").replace("@", "")
+    tekst = tekst.replace("://", ": //").replace("www.", "www ")
+    return _escape(tekst)
+
+
+def aan_wie(gericht_aan: str) -> str:
+    """Who a question is put to, in our words and not the model's."""
+    aan = gericht_aan.lower()
+    if "staatssecretaris" in aan:
+        return "de staatssecretaris"
+    if "minister-president" in aan or "premier" in aan:
+        return "de minister-president"
+    if "minister" in aan:
+        return "de minister"
+    if "kabinet" in aan or "regering" in aan:
+        return "het kabinet"
+    return "de bewindspersoon"
 
 
 # --- the answer of the model -------------------------------------------
@@ -511,6 +547,7 @@ class DebatVraagService:
         self.session = session
         self.mattermost = mattermost
         self.llm = llm
+        self._ingehaald: set[uuid.UUID] = set()
 
     @classmethod
     async def create(
@@ -527,6 +564,10 @@ class DebatVraagService:
             return None
         return cls(session, mattermost or MattermostService(session), llm)
 
+    def nieuwe_ronde(self) -> None:
+        """For whoever keeps one service over several rounds."""
+        self._ingehaald.clear()
+
     async def beoordeel_beurt(self, beurt: Beurt, context: DebatContext) -> Beoordeling:
         """Judge one finished turn, and post what it holds.
 
@@ -534,7 +575,13 @@ class DebatVraagService:
         a thread is posted once.
         """
         # Threads and status lines of earlier turns that did not make it.
-        threads = await self._haal_achterstand_in(beurt.sessie_id)
+        # Once per debate for as long as this service lives, which is one
+        # round: tried with every turn, a Mattermost that is down for a
+        # moment would use up all attempts within that one round.
+        threads = 0
+        if beurt.sessie_id not in self._ingehaald:
+            self._ingehaald.add(beurt.sessie_id)
+            threads = await self._haal_achterstand_in(beurt.sessie_id)
 
         reden = self._overslaan(beurt, context)
         if reden:

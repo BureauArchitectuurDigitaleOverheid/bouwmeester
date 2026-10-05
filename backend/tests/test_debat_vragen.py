@@ -457,6 +457,20 @@ def _thread(**extra) -> str:
     return format_vraag_thread(**values)
 
 
+class TestEenCitaatZegtIets:
+    """A quote of a word or two stands in every turn and proves nothing:
+    the summary next to it would be free text of the model."""
+
+    @pytest.mark.parametrize("citaat", ["de", "?", "minister", "kan de"])
+    def test_a_scrap_is_not_a_quote(self, citaat):
+        assert vind_citaat("Kan de minister dat toezeggen? Dank.", citaat) is None
+
+    def test_a_short_question_is(self):
+        assert vind_citaat("Dank. Waarom niet? Dat vraag ik.", "Waarom niet? Dat") == (
+            "Waarom niet? Dat"
+        )
+
+
 class TestFormatVraagThread:
     def test_says_what_was_asked_by_whom_and_when(self):
         tekst = _thread()
@@ -499,9 +513,11 @@ class TestFormatVraagThread:
 
     def test_the_document_is_named_only_when_there_is_one(self):
         assert "Gaat over" not in _thread()
-        assert _thread(stuk="Kabinetsreactie [concept]").endswith(
-            "Gaat over: Kabinetsreactie \\[concept\\]"
-        )
+        tekst = _thread(stuk="Kabinetsreactie [concept]")
+        # With the question, above the quote; the note about the transcript
+        # is about the quote and closes the message.
+        assert "\nGaat over: Kabinetsreactie \\[concept\\]\n\n> " in tekst
+        assert tekst.endswith("spreekbeurt._")
 
     def test_text_from_outside_is_escaped(self):
         tekst = _thread(
@@ -510,15 +526,49 @@ class TestFormatVraagThread:
             citaat="Kan de minister @channel [dit](https://kwaad.example) lezen?",
             samenvatting="@here ~town-square _nu_",
         )
-        assert "\\@all" in tekst
-        assert "de \\*\\*minister\\*\\*" in tekst
-        assert "\\@channel \\[dit\\]" in tekst
-        assert "\\@here \\~town-square \\_nu\\_" in tekst
+        # No at-sign survives, escaped or not: a model can write the
+        # backslash itself, and then the escape is what frees the mention.
+        assert "@" not in tekst
+        assert "all (BBB)" in tekst
+        # Who it is put to is said in our words, not the model's.
+        assert "**Vraag aan de minister**" in tekst
+        assert "channel \\[dit\\](https: //kwaad.example)" in tekst
+        assert "here \\~town-square \\_nu\\_" in tekst
+
+    def test_a_backslash_from_the_model_cannot_free_a_mention(self):
+        tekst = _thread(
+            samenvatting="lees \\@all en \\\\@here", citaat="Wat \\@channel?"
+        )
+
+        assert "@" not in tekst
+        assert "\\" not in tekst.split("\n")[1]
+
+    def test_an_address_does_not_become_a_link(self):
+        tekst = _thread(samenvatting="zie https://kwaad.example en www.kwaad.example")
+
+        assert "://" not in tekst.split("\n")[1]
+        assert "www." not in tekst
+
+    @pytest.mark.parametrize(
+        "aan,verwacht",
+        [
+            ("De minister", "de minister"),
+            ("minister", "de minister"),
+            ("de staatssecretaris van BZK", "de staatssecretaris"),
+            ("de minister-president", "de minister-president"),
+            ("het kabinet", "het kabinet"),
+            ("de regering", "het kabinet"),
+            ("", "de bewindspersoon"),
+            ("@all", "de bewindspersoon"),
+        ],
+    )
+    def test_who_it_is_put_to_is_one_of_a_few(self, aan, verwacht):
+        assert f"**Vraag aan {verwacht}**" in _thread(gericht_aan=aan)
 
     def test_a_quote_cannot_leave_its_block(self):
         tekst = _thread(citaat="Eerste regel.\n\n# Kop\n@channel")
         citaat = [r for r in tekst.split("\n") if r.startswith(">")]
-        assert citaat == ["> Eerste regel. \\# Kop \\@channel"]
+        assert citaat == ["> Eerste regel. \\# Kop channel"]
 
     def test_a_very_long_quote_is_cut(self):
         tekst = _thread(citaat="woord " * 400)
@@ -1119,7 +1169,7 @@ class TestMarkeren:
             _beurt(sessie_id, KAMERLID_B, mm.turn()), CONTEXT
         )
 
-        assert mm.replies[0][2].endswith(f"Gaat over: {FIXTURE['stukken'][1]}")
+        assert f"\nGaat over: {FIXTURE['stukken'][1]}\n" in mm.replies[0][2]
         stuk = (
             await db_session.execute(
                 select(DebatMarkering.stuk).where(DebatMarkering.sessie_id == sessie_id)
@@ -1213,9 +1263,9 @@ class TestMarkeren:
             _beurt(sessie_id, KAMERLID_A, mm.turn()), CONTEXT
         )
         tekst = mm.replies[0][2]
-        assert "\\@channel lees dit" in tekst
-        assert "de minister \\@all" in tekst
-        assert " @" not in tekst
+        assert "channel lees dit" in tekst
+        assert "**Vraag aan de minister**" in tekst
+        assert "@" not in tekst
 
 
 class TestEenVraagIsEenToestand:
@@ -1550,7 +1600,9 @@ class TestMattermostFaalt:
         mm.fail_sends = 2
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
 
-        # Any next turn will do, also one that is not judged itself.
+        # Any turn of a next round will do, also one that is not judged
+        # itself.
+        svc.nieuwe_ronde()
         result = await svc.beoordeel_beurt(
             _beurt(sessie_id, VOORZITTER, mm.turn()), CONTEXT
         )
@@ -1589,6 +1641,7 @@ class TestMattermostFaalt:
         assert mm.messages[post_id] == "kop\n\n---\n❓ Vraag gemarkeerd · staat open"
 
         # The retry posts the other one and corrects the line.
+        svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, mm.turn()), CONTEXT)
         assert mm.messages[post_id] == (
             "kop\n\n---\n❓ 2 vragen gemarkeerd · staan open"
@@ -1600,12 +1653,25 @@ class TestMattermostFaalt:
         mm.fail_sends = 100
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
         for _ in range(4):
+            svc.nieuwe_ronde()
             await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
 
         rows = await _markeringen(db_session, sessie_id)
         assert [r[3] for r in rows] == [mod.MAX_POST_POGINGEN] * 2
         # Two questions, three attempts each, and then no more.
         assert mm.fail_sends == 100 - 2 * mod.MAX_POST_POGINGEN
+
+    async def test_one_round_is_one_attempt_however_many_turns(self, db_session):
+        """Otherwise a Mattermost that is away for one round uses up every
+        attempt, and the threads never come."""
+        sessie_id, mm, _, svc, post_id = await self._twee_vragen(db_session)
+        mm.fail_sends = 100
+        await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
+        for _ in range(5):
+            await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
+
+        rows = await _markeringen(db_session, sessie_id)
+        assert [r[3] for r in rows] == [1, 1]
 
     async def test_a_thread_of_another_debate_is_left_to_that_debate(self, db_session):
         sessie_id, mm, _, svc, post_id = await self._twee_vragen(db_session)
@@ -1652,6 +1718,7 @@ class TestDeStatusregel:
         assert mm.updates == []
         assert (await _markeringen(db_session, sessie_id))[0][4] is None
 
+        svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
         assert mm.messages[post_id].endswith("❓ Vraag gemarkeerd · staat open")
         assert (await _markeringen(db_session, sessie_id))[0][4] is not None
@@ -1677,6 +1744,7 @@ class TestDeStatusregel:
         assert mm.messages[post_id] == "kop\neen zin."
         assert (await _markeringen(db_session, sessie_id))[0][4] is None
 
+        svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
         assert mm.messages[post_id].endswith("❓ Vraag gemarkeerd · staat open")
 
@@ -1712,6 +1780,7 @@ class TestDeStatusregel:
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
         mm.messages[post_id] = met_body(mm.messages[post_id], "kop\neen zin. En meer.")
 
+        svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
 
         assert mm.messages[post_id] == (

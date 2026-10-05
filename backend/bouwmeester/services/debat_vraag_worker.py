@@ -15,6 +15,7 @@ which words belong under which message, and this reads exactly those.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import uuid
@@ -133,6 +134,45 @@ def text_is_complete(
     return position >= next_message + offset + MARGIN
 
 
+class _Pause:
+    """How long a debate is left alone after reading a turn failed.
+
+    In the memory of the process: after a restart the first try is free,
+    which is what a restart is for. The wait doubles with every failure in
+    a row, so a model that is down costs a few calls and not four a minute.
+    """
+
+    def __init__(self) -> None:
+        self._until: dict[uuid.UUID, datetime] = {}
+        self._failures: dict[uuid.UUID, int] = {}
+
+    def waiting(self, sessie_id: uuid.UUID, now: datetime) -> bool:
+        until = self._until.get(sessie_id)
+        return until is not None and now < until
+
+    def failed(self, sessie_id: uuid.UUID, now: datetime) -> None:
+        count = self._failures.get(sessie_id, 0) + 1
+        self._failures[sessie_id] = count
+        self._until[sessie_id] = now + min(PAUSE_FIRST * 2 ** (count - 1), PAUSE_MAX)
+
+    def succeeded(self, sessie_id: uuid.UUID) -> None:
+        self._until.pop(sessie_id, None)
+        self._failures.pop(sessie_id, None)
+
+    def reset(self) -> None:
+        self._until.clear()
+        self._failures.clear()
+
+
+_pause = _Pause()
+# How long one turn may take, model and all. Measured: 3 to 14 seconds.
+JUDGE_TIMEOUT = 60.0
+# The pauses add up to a quarter of an hour before a turn is given up on.
+MAX_ATTEMPTS = 6
+PAUSE_FIRST = timedelta(seconds=30)
+PAUSE_MAX = timedelta(minutes=5)
+
+
 class DebatVraagWorker:
     def __init__(
         self,
@@ -176,6 +216,8 @@ class DebatVraagWorker:
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
             for sessie_id in sessie_ids:
                 result.sessies += 1
+                if _pause.waiting(sessie_id, now):
+                    continue
                 try:
                     waiting = await self._waiting(sessie_id)
                     if not waiting:
@@ -301,6 +343,13 @@ class DebatVraagWorker:
                 return
             kind, who = turn.key
             spreker = sprekers.get(who)
+            if spreker is None:
+                # Not on the list of Debat Direct: a guest, or a minister
+                # the list does not have yet. Whether this is someone who
+                # asks or someone who answers cannot be told, so the model
+                # is not asked to guess.
+                await self._mark(turn.row_id, now)
+                continue
             onderbroken = None
             if kind == dd.EVENT_INTERRUPTER and item.floor is not None:
                 onderbroken = sprekers.get(item.floor.key[1])
@@ -311,28 +360,62 @@ class DebatVraagWorker:
                 post_id=turn.post_id,
                 channel_id=channel_id,
                 soort=kind,
-                spreker=spreker.label if spreker else "Onbekende spreker",
-                fractie=spreker.fractie if spreker else None,
+                spreker=spreker.label,
+                fractie=spreker.fractie,
                 start=turn.start,
                 moment_url=moment_url_from_kop(turn.kop),
                 tekst=tekst,
-                is_bewindspersoon=bool(spreker and is_bewindspersoon(spreker)),
+                is_bewindspersoon=is_bewindspersoon(spreker),
                 onderbroken=onderbroken.label if onderbroken else None,
                 onderbroken_is_bewindspersoon=bool(
                     onderbroken and is_bewindspersoon(onderbroken)
                 ),
             )
-            outcome = await vragen.beoordeel_beurt(beurt, context)
-            if outcome.opnieuw_proberen:
-                # The model cannot be reached. The turns after this one
-                # would find the same, each after its own wait; the next
-                # round starts here again.
+            try:
+                outcome = await asyncio.wait_for(
+                    vragen.beoordeel_beurt(beurt, context), JUDGE_TIMEOUT
+                )
+                failed = outcome.opnieuw_proberen
+            except Exception:
+                # Also a model that hangs: the clients wait ten minutes by
+                # themselves. And anything that breaks after the model
+                # answered, which would otherwise ask it again every round.
+                logger.exception("Spreekbeurt %s niet beoordeeld", turn.row_id)
+                await self.session.rollback()
+                failed = True
+            if failed:
+                # The turns after this one would find the same, each after
+                # its own wait. The debate is left alone for a while, longer
+                # each time; a turn that keeps failing is given up on, so
+                # that it does not hold up every turn after it.
                 result.fouten += 1
+                attempts = await self._count_attempt(turn.row_id)
+                if attempts >= MAX_ATTEMPTS:
+                    logger.warning(
+                        "Spreekbeurt %s na %d pogingen overgeslagen",
+                        turn.row_id,
+                        attempts,
+                    )
+                    await self._mark(turn.row_id, now)
+                _pause.failed(sessie_id, now)
                 return
+            _pause.succeeded(sessie_id)
             await self._mark(turn.row_id, now)
             result.beoordeeld += 1
             if outcome.uitkomst == UITKOMST_GEMARKEERD:
                 result.vragen += len(outcome.markering_ids)
+
+    async def _count_attempt(self, row_id: uuid.UUID) -> int:
+        attempts = (
+            await self.session.execute(
+                update(DebatSpreekbeurt)
+                .where(DebatSpreekbeurt.id == row_id)
+                .values(beoordeel_pogingen=DebatSpreekbeurt.beoordeel_pogingen + 1)
+                .returning(DebatSpreekbeurt.beoordeel_pogingen)
+            )
+        ).scalar_one()
+        await self.session.commit()
+        return attempts
 
     async def _mark(self, row_id: uuid.UUID, now: datetime) -> None:
         await self.session.execute(
