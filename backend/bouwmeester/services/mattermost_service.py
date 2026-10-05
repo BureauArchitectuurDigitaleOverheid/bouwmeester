@@ -1067,8 +1067,12 @@ class MattermostService:
         """Is this user a member of this team right now?
 
         A 404 is a no. Anything else that is not a clear yes raises
-        `MattermostUnavailableError`: this decides whether someone may act
-        in a team, and a hiccup must read as neither yes nor no.
+        `MattermostUnavailableError`, so a hiccup reads as neither yes nor
+        no.
+
+        Nothing decides on this at the moment. It answered "no" in
+        production for someone who was in the team, and until that is
+        understood it is not a condition for anything.
         """
         try:
             client = await self._get_client()
@@ -1091,6 +1095,45 @@ class MattermostService:
             ) from exc
         # A removed member is still returned, with a `delete_at`.
         return isinstance(member, dict) and not member.get("delete_at")
+
+    async def describe_team_membership(self, team_id: str, user_id: str) -> str:
+        """What Mattermost answers about this user and team, as one line.
+
+        For a log, not for a decision: status code, error id, `delete_at`
+        and roles, plus the username the id belongs to. "Not a member" has
+        two shapes on the server (no row: a 404; a removed member: a 200
+        with `delete_at`) and they point to different causes, as does an id
+        that belongs to another account than expected.
+
+        Never raises.
+        """
+        try:
+            client = await self._get_client()
+            member = await client.get(f"/api/v4/teams/{team_id}/members/{user_id}")
+            user = await client.get(f"/api/v4/users/{user_id}")
+        except (httpx.HTTPError, ValueError) as exc:
+            return f"niet op te vragen ({type(exc).__name__})"
+
+        def body(resp: httpx.Response) -> dict:
+            try:
+                data = resp.json()
+            except ValueError:
+                return {}
+            return data if isinstance(data, dict) else {}
+
+        m, u = body(member), body(user)
+        if member.status_code == 200:
+            lid = f"delete_at={m.get('delete_at')} roles={m.get('roles')!r}"
+        else:
+            lid = f"id={m.get('id')!r}"
+        if user.status_code == 200:
+            account = f"username={u.get('username')!r} delete_at={u.get('delete_at')}"
+        else:
+            account = f"id={u.get('id')!r}"
+        return (
+            f"lidmaatschap: status {member.status_code} {lid}; "
+            f"account: status {user.status_code} {account}"
+        )
 
     async def base_url(self) -> str:
         """The Mattermost URL as configured, without a trailing slash."""

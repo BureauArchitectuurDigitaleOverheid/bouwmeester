@@ -108,7 +108,6 @@ async def _teams_for(
         info = await mattermost.teams_info()
 
         result = _Teams(slugs={tid: i["slug"] for tid, i in info.items()})
-        team_ids = list(permissions)
         if person is not None:
             mapping = await MattermostUserRepository(db).get_by_person_id(person.id)
             if mapping is None:
@@ -132,7 +131,7 @@ async def _teams_for(
                 can_create_channel=PERMISSION_CREATE_PUBLIC_CHANNEL
                 in permissions[team_id],
             )
-            for team_id in team_ids
+            for team_id in permissions
         ),
         key=lambda team: (team.team_name or "").lower(),
     )
@@ -152,20 +151,18 @@ async def _log_membership(
     if not mattermost_user_id:
         return
     try:
-        member = await mattermost.is_team_member(team_id, mattermost_user_id)
-        logger.info(
-            "Teamlidmaatschap volgens Mattermost: account %s in team %s: %s",
-            mattermost_user_id,
-            team_id,
-            "lid" if member else "geen lid",
-        )
-    except Exception:
-        logger.info(
-            "Teamlidmaatschap van account %s in team %s niet op te vragen",
-            mattermost_user_id,
-            team_id,
-            exc_info=True,
-        )
+        answer = await mattermost.describe_team_membership(team_id, mattermost_user_id)
+    except Exception as exc:
+        answer = f"niet op te vragen ({type(exc).__name__})"
+    # At warning level on purpose. The API process configures no logging,
+    # so anything below warning is dropped and this line would never be
+    # seen where it is needed.
+    logger.warning(
+        "Teamlidmaatschap volgens Mattermost: account %s in team %s: %s",
+        mattermost_user_id,
+        team_id,
+        answer,
+    )
 
 
 @router.get("/aankomend", response_model=AankomendeDebattenResponse)
@@ -281,13 +278,14 @@ async def start_debat(
                 or "Je kunt in dit team geen kanaal laten opzetten.",
             )
 
-        await _log_membership(mattermost, body.team_id, allowed.mattermost_user_id)
-
         result = await DebatKanaalService(db, mattermost).start_in_team(
             activiteit_id=str(body.activiteit_id),
             team_id=body.team_id,
             mattermost_user_id=allowed.mattermost_user_id,
         )
+        # After the start, so a slow Mattermost delays the diagnosis and
+        # not the channel.
+        await _log_membership(mattermost, body.team_id, allowed.mattermost_user_id)
 
         kanaal = None
         if result.channel_name:

@@ -228,6 +228,13 @@ def _stub_mattermost(
     async def channel_is_gone(self, channel_id):
         return channel_id in gone
 
+    async def describe_team_membership(self, team_id, user_id):
+        if isinstance(members, Exception):
+            raise members
+        if members is None or user_id in members.get(team_id, ()):
+            return "lidmaatschap: status 200 delete_at=0"
+        return "lidmaatschap: status 404 id='app.team.get_member.missing.app_error'"
+
     for name, fn in {
         "is_enabled": is_enabled,
         "team_permissions": team_permissions,
@@ -235,6 +242,7 @@ def _stub_mattermost(
         "base_url": get_base_url,
         "is_team_member": is_team_member,
         "channel_is_gone": channel_is_gone,
+        "describe_team_membership": describe_team_membership,
     }.items():
         monkeypatch.setattr(MattermostService, name, fn)
 
@@ -747,26 +755,67 @@ class TestOnBehalfOfAPerson:
     async def test_what_mattermost_says_about_membership_is_logged(
         self, db_session, people, monkeypatch, caplog
     ):
-        """This line is how we find out what production answers."""
+        """This line is how we find out what production answers.
+
+        At WARNING, and the test does not lower the level to see it: the
+        API process configures no logging, so an INFO line is dropped
+        there. A first version logged at INFO and passed its test only
+        because the test raised the level itself.
+        """
+        import logging
+
         from tests.factories import client_as
 
         activiteit = _activiteit()
         _stub_mattermost(monkeypatch, **{**TWO_TEAMS, "members": {}})
         _stub_service(monkeypatch, FakeMattermost(), activiteit)
 
-        with caplog.at_level("INFO", logger="bouwmeester.api.routes.debatten"):
+        with caplog.at_level(logging.WARNING, logger="bouwmeester.api.routes.debatten"):
             async with client_as(db_session, people.reviewer) as c:
                 await c.post(
                     "/api/debatten/start",
                     json={"activiteit_id": activiteit.id, "team_id": TEAM},
                 )
 
-        regel = next(
-            r.getMessage() for r in caplog.records if "Teamlidmaat" in r.getMessage()
-        )
+        (record,) = [r for r in caplog.records if "Teamlidmaatschap" in r.getMessage()]
+        assert record.levelno == logging.WARNING
+        regel = record.getMessage()
         assert "mmreviewer0000000000000000" in regel
         assert TEAM in regel
-        assert "geen lid" in regel
+        # The raw answer, not a yes or no: a 404 and a removed member are
+        # different causes.
+        assert "status 404" in regel
+
+    async def test_channels_in_every_team_of_the_bot_are_shown(
+        self, db_session, people, monkeypatch
+    ):
+        """The other side of dropping the membership condition, written
+        down so it is a choice and not an accident."""
+        from tests.factories import client_as
+
+        activiteit = _activiteit()
+        for team_id, name in ((TEAM, "debat-mijn"), (OTHER_TEAM, "debat-ander")):
+            db_session.add(
+                DebatSessie(
+                    activiteit_id=activiteit.id,
+                    onderwerp="x",
+                    team_id=team_id,
+                    channel_id=f"chan{uuid.uuid4().hex}"[:26],
+                    channel_name=name,
+                )
+            )
+        await db_session.flush()
+        _stub_upcoming(monkeypatch, [activiteit])
+        _stub_mattermost(monkeypatch, **TWO_TEAMS)
+
+        async with client_as(db_session, people.reviewer) as c:
+            resp = await c.get("/api/debatten/aankomend")
+
+        kanalen = resp.json()["debatten"][0]["kanalen"]
+        assert sorted(k["channel_name"] for k in kanalen) == [
+            "debat-ander",
+            "debat-mijn",
+        ]
 
     async def test_start_in_a_team_the_bot_is_not_in_is_403(
         self, db_session, people, monkeypatch

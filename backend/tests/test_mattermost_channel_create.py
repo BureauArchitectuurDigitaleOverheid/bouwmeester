@@ -645,3 +645,91 @@ class TestIsTeamMember:
         svc, _ = _service(monkeypatch, lambda r: httpx.Response(200, text="<html>"))
         with pytest.raises(MattermostUnavailableError):
             await svc.is_team_member("team1", "u1")
+
+
+@pytest.mark.asyncio
+class TestDescribeTeamMembership:
+    """One line for the log. The shapes are what Mattermost 9.5 returns."""
+
+    def _handler(self, member: httpx.Response, user: httpx.Response):
+        def handler(request):
+            return member if "/members/" in request.url.path else user
+
+        return handler
+
+    async def test_member(self, monkeypatch):
+        svc, seen = _service(
+            monkeypatch,
+            self._handler(
+                httpx.Response(200, json={"delete_at": 0, "roles": "team_user"}),
+                httpx.Response(200, json={"username": "anne", "delete_at": 0}),
+            ),
+        )
+        regel = await svc.describe_team_membership("team1", "u1")
+        assert "lidmaatschap: status 200 delete_at=0 roles='team_user'" in regel
+        assert "account: status 200 username='anne' delete_at=0" in regel
+        assert [r.url.path for r in seen] == [
+            "/api/v4/teams/team1/members/u1",
+            "/api/v4/users/u1",
+        ]
+
+    async def test_no_row_and_removed_member_read_differently(self, monkeypatch):
+        """Both are "not a member", with different causes."""
+        user = httpx.Response(200, json={"username": "anne", "delete_at": 0})
+        svc, _ = _service(
+            monkeypatch,
+            self._handler(
+                httpx.Response(
+                    404, json={"id": "app.team.get_member.missing.app_error"}
+                ),
+                user,
+            ),
+        )
+        geen_rij = await svc.describe_team_membership("team1", "u1")
+        svc, _ = _service(
+            monkeypatch,
+            self._handler(
+                httpx.Response(200, json={"delete_at": 17, "roles": ""}), user
+            ),
+        )
+        verwijderd = await svc.describe_team_membership("team1", "u1")
+
+        assert "status 404 id='app.team.get_member.missing.app_error'" in geen_rij
+        assert "status 200 delete_at=17" in verwijderd
+
+    async def test_unknown_account_is_visible(self, monkeypatch):
+        """A link to an id this server never had."""
+        svc, _ = _service(
+            monkeypatch,
+            self._handler(
+                httpx.Response(
+                    404, json={"id": "app.team.get_member.missing.app_error"}
+                ),
+                httpx.Response(404, json={"id": "app.user.missing_account.const"}),
+            ),
+        )
+        regel = await svc.describe_team_membership("team1", "u1")
+        assert "account: status 404 id='app.user.missing_account.const'" in regel
+
+    async def test_forbidden_is_reported_not_raised(self, monkeypatch):
+        svc, _ = _service(
+            monkeypatch,
+            self._handler(
+                httpx.Response(403, json={"id": "api.context.permissions.app_error"}),
+                httpx.Response(200, json={"username": "anne", "delete_at": 0}),
+            ),
+        )
+        regel = await svc.describe_team_membership("team1", "u1")
+        assert "status 403 id='api.context.permissions.app_error'" in regel
+
+    async def test_never_raises(self, monkeypatch):
+        def boom(request):
+            raise httpx.ConnectError("x", request=request)
+
+        svc, _ = _service(monkeypatch, boom)
+        assert "niet op te vragen" in await svc.describe_team_membership("t", "u")
+
+    async def test_non_json_body_is_not_a_crash(self, monkeypatch):
+        svc, _ = _service(monkeypatch, lambda r: httpx.Response(502, text="<html>"))
+        regel = await svc.describe_team_membership("t", "u")
+        assert "status 502" in regel
