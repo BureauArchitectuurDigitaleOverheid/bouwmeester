@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -161,6 +161,8 @@ class DebatTijdlijnService:
         # Per day, for the length of one tick.
         self._sprekers: dict[str, dict[str, dd.Spreker]] = {}
         self._agenda: dict[str, list[dd.DdDebat]] = {}
+        # Parts the agenda says have started, whatever the planned time.
+        self._started: set[str] = set()
 
     async def close(self) -> None:
         await self.mattermost.close()
@@ -242,7 +244,7 @@ class DebatTijdlijnService:
         if due:
             # Look for a later part of the same debate.
             sessie.tijdlijn_gecontroleerd_at = now
-            await self._find_more_parts(sessie, client)
+            await self._find_more_parts(sessie, client, now)
 
         await self._post_new_events(sessie, client, now, result)
 
@@ -339,7 +341,7 @@ class DebatTijdlijnService:
         return True
 
     async def _find_more_parts(
-        self, sessie: DebatSessie, client: httpx.AsyncClient
+        self, sessie: DebatSessie, client: httpx.AsyncClient, now: datetime
     ) -> None:
         if sessie.aanvang is None:
             return
@@ -348,6 +350,15 @@ class DebatTijdlijnService:
         except dd.DebatDirectError:
             return
         known = list(sessie.debat_direct_ids or [])
+        # A debate can start well before its planned time: plenary items
+        # were measured up to 38 minutes early. The agenda says so, and it
+        # is read here anyway.
+        for part in agenda:
+            start = dd.start_of(part)
+            if part.id in known and (
+                part.started_at is not None or (start is not None and start <= now)
+            ):
+                self._started.add(part.id)
         new = [p.id for p in dd.later_parts(sessie.onderwerp, known, agenda)]
         if new:
             # A new list, not an append: a JSON column only notices a
@@ -390,7 +401,12 @@ class DebatTijdlijnService:
                     DebatSpreekbeurt.post_id,
                 )
                 .where(DebatSpreekbeurt.sessie_id == sessie.id)
-                .order_by(DebatSpreekbeurt.event_start)
+                # Within one second the same order as the feed is read in:
+                # a resumption comes before whoever speaks after it.
+                .order_by(
+                    DebatSpreekbeurt.event_start,
+                    case((DebatSpreekbeurt.event_type.in_(_SPEAKING), 1), else_=0),
+                )
             )
         ).all()
         seen = {(r[0], r[1], r[2], r[3]) for r in rows}
@@ -401,6 +417,11 @@ class DebatTijdlijnService:
         last_turn: dict[str, tuple[str, str]] = {}
         for r in rows:
             if not r[4]:
+                if r[1] in _SPEAKING and last_turn.get(r[0]) != (r[1], r[3]):
+                    # Someone else spoke without a message: that only
+                    # happens in a stretch the timeline missed. Who spoke
+                    # before it says nothing about who speaks after it.
+                    last_turn.pop(r[0], None)
                 continue
             if r[1] in _SPEAKING:
                 last_turn[r[0]] = (r[1], r[3])
@@ -421,6 +442,7 @@ class DebatTijdlijnService:
                 continue
             if (
                 debate_id not in started_parts
+                and debate_id not in self._started
                 and sessie.aanvang is not None
                 and now < sessie.aanvang - POLL_BEFORE_START
             ):
@@ -443,38 +465,59 @@ class DebatTijdlijnService:
             sprekers = await self._sprekers_for(client, debat)
 
             joining = debate_id not in started_parts
-            too_old = BACKLOG_AGE if joining else GAP_AGE
-            backlog = [e for e in new if now - e.start > too_old]
+            too_old = GAP_AGE
+            if joining and not await self._was_there_before(sessie.id, debat):
+                too_old = BACKLOG_AGE
+            old = [e for e in new if now - e.start > too_old]
             new = [e for e in new if now - e.start <= too_old]
-            for event in backlog:
-                await self._remember(sessie.id, debate_id, event, None)
-                if event.type == dd.EVENT_DEBATE_END:
-                    ended.add(debate_id)
-                    last_end = max(last_end, event.start) if last_end else event.start
-            if backlog:
-                beurten = sum(1 for e in backlog if e.type in _SPEAKING)
+            # Old and from before something already seen: the feed added or
+            # corrected an event afterwards. Nothing was missed, so nothing
+            # is said. Old and after everything seen: the timeline was away.
+            last_seen = max((r[2] for r in rows if r[0] == debate_id), default=None)
+            missed = [e for e in old if last_seen is None or e.start > last_seen]
+            beurten = sum(1 for e in missed if e.type in _SPEAKING)
+            is_over = any(e.type == dd.EVENT_DEBATE_END for e in missed)
+            if missed and (beurten or is_over):
                 url = dd.debate_url(debat)
                 waar = f"[Debat Direct]({url})" if url else "Debat Direct"
+                aantal = "1 spreekbeurt" if beurten == 1 else f"{beurten} spreekbeurten"
                 if joining:
+                    staan = "staat" if beurten == 1 else "staan"
                     melding = (
                         f"🎧 Ik luister mee vanaf {_hhmm(now)}. Het debat "
-                        f"was toen al bezig; de {beurten} spreekbeurten "
-                        f"daarvoor staan op {waar}."
+                        f"was toen al bezig; de {aantal} daarvoor {staan} op {waar}."
                     )
                 else:
                     melding = (
                         f"⏭️ Ik was er even niet. Wat er tussen "
-                        f"{_hhmm(backlog[0].start)} en {_hhmm(backlog[-1].start)} "
-                        f"gebeurde ({beurten} spreekbeurten) staat op {waar}."
+                        f"{_hhmm(missed[0].start)} en {_hhmm(missed[-1].start)} "
+                        f"gebeurde ({aantal}) staat op {waar}."
                     )
-                    # What came before the gap says nothing about who
-                    # speaks after it.
-                    last_turn.pop(debate_id, None)
+                if is_over:
+                    melding += " Het debat is inmiddels afgelopen."
                 post_id = await self.mattermost.send_channel_message(
                     sessie.channel_id, melding
                 )
-                if post_id:
-                    result.berichten += 1
+                if not post_id:
+                    # Nothing is remembered before the channel has been told.
+                    # Mattermost being down looks the same as having been
+                    # away: what waits grows old. Remembering it here would
+                    # drop it without a word.
+                    logger.warning(
+                        "Melding over gemist deel voor %s niet geplaatst", debate_id
+                    )
+                    result.fouten += 1
+                    continue
+                result.berichten += 1
+                # What came before the gap says nothing about who speaks
+                # after it.
+                last_turn.pop(debate_id, None)
+            for event in old:
+                await self._remember(sessie.id, debate_id, event, None)
+                if event.type == dd.EVENT_DEBATE_END:
+                    ended.add(debate_id)
+                    last_end = max(last_end, event.start) if last_end else event.start
+            if old:
                 # Commit the history before going on: a crash after this
                 # must not make the next tick announce it again.
                 await self.session.commit()
@@ -521,6 +564,21 @@ class DebatTijdlijnService:
         if parts and all(p in ended for p in parts) and last_end is not None:
             if now - last_end > END_GRACE:
                 sessie.tijdlijn_status = TIJDLIJN_AFGELOPEN
+
+    async def _was_there_before(self, sessie_id: uuid.UUID, debat: dd.DdDebat) -> bool:
+        """Whether the channel existed before this part of the debate began.
+
+        Then the timeline did not join late: it only saw the start late,
+        at most one round of reading the agenda. That gets the patience of
+        a gap, not the short one for a channel made halfway through.
+        """
+        start = dd.start_of(debat)
+        if start is None:
+            return False
+        created = await self.session.scalar(
+            select(DebatSessie.created_at).where(DebatSessie.id == sessie_id)
+        )
+        return created is not None and created <= start
 
     async def _remember(
         self,
