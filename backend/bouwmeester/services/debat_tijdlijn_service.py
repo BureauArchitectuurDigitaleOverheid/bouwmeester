@@ -261,10 +261,15 @@ class DebatTijdlijnService:
             sessie.tijdlijn_gecontroleerd_at = now
             await self._find_more_parts(sessie, client, now)
 
+        fouten = result.fouten
         await self._post_new_events(sessie, client, now, result)
         if (
             get_settings().DEBAT_TRANSCRIPT_ENABLED
             and sessie.tijdlijn_status == TIJDLIJN_LOOPT
+            # While a message of the timeline waits to be posted, its turn
+            # is not known yet, and what is said in it would be filed
+            # under the speaker before. The subtitles keep for an hour.
+            and result.fouten == fouten
         ):
             await DebatTranscript(self.session, self.mattermost).update(
                 sessie, self._debates, client, now, result

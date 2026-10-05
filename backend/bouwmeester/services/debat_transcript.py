@@ -53,11 +53,11 @@ def assign_cues[K: Hashable](
 def append_text(existing: str | None, more: str) -> str:
     """Text of a turn with more of it behind it.
 
-    The subtitles end a line that runs on with three dots and go on in
-    lower case. Read as one text, those dots are in the way.
+    Only ever longer: what is kept is never changed afterwards. Where a
+    long turn is cut, and whether a message is up to date, both lean on
+    that.
     """
-    joined = f"{(existing or '').strip()} {more.strip()}".strip()
-    return _RUNS_ON.sub(" ", joined)
+    return f"{(existing or '').strip()} {more.strip()}".strip()
 
 
 def split_text(
@@ -104,5 +104,7 @@ def fit_messages(pieces: list[str], available: int) -> list[str]:
 def render(kop: str, piece: str, *, vervolg: bool = False) -> str:
     """One message: who and when on the first line, what was said below."""
     head = f"{kop} · vervolg" if vervolg else kop
-    body = escape_mattermost_prose(piece).strip()
+    # The subtitles end a line that runs on with three dots and go on in
+    # lower case. Read as one text, those dots are in the way.
+    body = escape_mattermost_prose(_RUNS_ON.sub(" ", piece)).strip()
     return f"{head}\n{body}" if body else head

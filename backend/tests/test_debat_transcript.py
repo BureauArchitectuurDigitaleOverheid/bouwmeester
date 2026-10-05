@@ -30,7 +30,11 @@ from bouwmeester.services.debat_transcript import (
     render,
     split_text,
 )
-from bouwmeester.services.debat_transcript_service import DebatTranscript
+from bouwmeester.services.debat_transcript_service import (
+    MESSAGE_MAX,
+    DebatTranscript,
+)
+from bouwmeester.services.mattermost_service import PostNotFoundError
 from tests.test_debat_tijdlijn import (
     START,
     FakeMattermost,
@@ -93,18 +97,12 @@ class TestAppendText:
     def test_nothing_new_changes_nothing(self):
         assert append_text("Een.", "  ") == "Een."
 
-    def test_dots_of_a_line_that_runs_on_are_dropped(self):
+    def test_what_is_kept_is_never_changed(self):
+        """Where a turn is cut and whether a message is up to date both
+        lean on the text only getting longer."""
         assert append_text("dat we toewerken naar...", "een steunpunt.") == (
-            "dat we toewerken naar een steunpunt."
+            "dat we toewerken naar... een steunpunt."
         )
-
-    def test_dots_inside_what_comes_in_are_dropped_too(self):
-        assert append_text("Voorzitter.", "een overleg... en dat is goed.") == (
-            "Voorzitter. een overleg en dat is goed."
-        )
-
-    def test_dots_before_a_new_sentence_stay(self):
-        assert append_text("En toen...", "Voorzitter.") == "En toen... Voorzitter."
 
 
 class TestSplitText:
@@ -204,6 +202,14 @@ class TestRender:
             "**Kamerlid A (X)** · 10:42 · vervolg\nEn verder."
         )
 
+    def test_dots_of_a_line_that_runs_on_are_not_shown(self):
+        message = render("kop", "dat we toewerken naar... een steunpunt.")
+
+        assert message == "kop\ndat we toewerken naar een steunpunt."
+
+    def test_dots_before_a_new_sentence_are_shown(self):
+        assert render("kop", "En toen... Voorzitter.") == "kop\nEn toen... Voorzitter."
+
     def test_what_was_said_cannot_mention_or_format(self):
         message = render("kop", "@all kijk naar *dit* en _dat_")
 
@@ -251,6 +257,8 @@ class Mattermost(FakeMattermost):
         self.order: list[str] = []
         self.updates: list[tuple[str, str]] = []
         self.fail_updates = 0
+        self.broken: set[str] = set()
+        self.deleted: set[str] = set()
 
     async def send_channel_message(self, channel_id, text, props=None, root_id=None):
         post_id = await super().send_channel_message(channel_id, text, props, root_id)
@@ -260,12 +268,19 @@ class Mattermost(FakeMattermost):
         return post_id
 
     async def update_post(self, post_id, message, props=None) -> bool:
+        if post_id in self.broken or post_id in self.deleted:
+            return False
         if self.fail_updates > 0:
             self.fail_updates -= 1
             return False
         self.updates.append((post_id, message))
         self.messages[post_id] = message
         return True
+
+    async def get_post(self, post_id) -> dict | None:
+        if post_id in self.deleted:
+            raise PostNotFoundError(post_id)
+        return {"id": post_id, "message": self.messages[post_id]}
 
     @property
     def channel(self) -> list[str]:
@@ -535,6 +550,22 @@ class TestTranscript:
         assert mm.updates == []
         assert len(mm.channel) == 2
 
+    async def test_a_track_that_was_not_there_yet_is_found_later(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch, parts=[_stream(_debat(("speaker", 1, "a")))])
+        track = Subtitles(monkeypatch, feed, [_cue(65, "Een."), _cue(400, "Twee.")])
+        track.master = "#EXTM3U\n"
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, 3)
+
+        track.master = MASTER
+        await _play(db_session, mm, feed, 8, start=3.2, step=20)
+
+        assert track.masters == 2
+        assert mm.channel[1].endswith("\nEen. Twee.")
+
     async def test_subtitles_that_cannot_be_read_do_not_stop_the_timeline(
         self, db_session, monkeypatch
     ):
@@ -633,6 +664,158 @@ class TestTranscript:
         )
 
         assert mm.channel == ["kop a\nVan a."]
+
+    async def test_a_deleted_message_does_not_hold_up_the_others(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"), ("speaker", 3, "c"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(
+            monkeypatch,
+            feed,
+            [_cue(70, "Van a."), _cue(130, "Van b."), _cue(190, "Van c.")],
+        )
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, 1.5)
+        mm.deleted.add(mm.order[1])
+
+        await _play(db_session, mm, feed, 5, start=1.6)
+        feed.now = START + _minutes(5.1)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert mm.channel[2].endswith("\nVan b.")
+        assert mm.channel[3].endswith("\nVan c.")
+        assert result.fouten == 0
+
+    async def test_a_message_that_keeps_failing_does_not_hold_up_the_others(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(70, "Van a."), _cue(130, "Van b.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, 1.5)
+        mm.broken.add(mm.order[1])
+
+        await _play(db_session, mm, feed, 4, start=1.6)
+
+        assert mm.channel[2].endswith("\nVan b.")
+        mm.broken.clear()
+        await _play(db_session, mm, feed, 5.1, start=4.1)
+        assert mm.channel[1].endswith("\nVan a.")
+
+    async def test_late_words_do_not_start_a_message_below_a_suspension(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("speaker", 1, "a"), ("suspended", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        cues = [
+            _cue(63 + 2 * i, f"Dit is zin nummer {i} van het betoog.")
+            for i in range(58)
+        ]
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 5)
+
+        assert len(mm.channel) == 3
+        assert mm.channel[2].startswith("⏸️")
+        assert mm.channel[1].endswith("nummer 57 van het betoog.")
+
+    async def test_while_the_timeline_cannot_post_the_text_waits(
+        self, db_session, monkeypatch
+    ):
+        """Otherwise what the next speaker says is filed under the one
+        before: the turn it belongs to is not known yet."""
+        debat = _debat(("speaker", 1, "a"), ("speaker", 2, "b"))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(70, "Van a."), _cue(125, "Van b.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, 1.9)
+
+        mm.fail_posts = 10_000
+        await _play(db_session, mm, feed, 3.5, start=2)
+        mm.fail_posts = 0
+        await _play(db_session, mm, feed, 5.1, start=3.6)
+
+        assert mm.channel[1].endswith("\nVan a.")
+        assert mm.channel[2].endswith("\nVan b.")
+
+    async def test_a_part_that_has_ended_on_debat_direct_is_not_read_on(
+        self, db_session, monkeypatch
+    ):
+        """The address is the room's. Without this the next debate in that
+        room would be written under the last speaker of this one."""
+        debat = _stream(_debat(("speaker", 1, "a")))
+        ended = dataclasses.replace(debat, ended_at=START + _minutes(3))
+        feed = Feed(monkeypatch, parts=[ended])
+        Subtitles(
+            monkeypatch,
+            feed,
+            [_cue(70, "Van dit debat."), _cue(300, "Van het volgende.")],
+        )
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 8)
+
+        assert mm.channel[1].endswith("\nVan dit debat.")
+
+    async def test_a_part_in_which_nothing_happens_for_an_hour_is_not_read_on(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch, parts=[_stream(_debat(("speaker", 1, "a")))])
+        track = Subtitles(
+            monkeypatch,
+            feed,
+            [_cue(70, "Van dit debat."), _cue(3720, "Een uur later.")],
+        )
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 66, step=30)
+        reads = len(track.reads)
+        await _play(db_session, mm, feed, 68, start=66.5, step=30)
+
+        assert mm.channel[1].endswith("\nVan dit debat.")
+        assert len(track.reads) == reads
+
+    async def test_a_next_message_that_fails_is_not_made_twice(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch, parts=[_stream(_debat(("speaker", 1, "a")))])
+        cues = [
+            _cue(65 + 4 * i, f"Dit is zin nummer {i} van het betoog.")
+            for i in range(120)
+        ]
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, 3)
+        assert len(mm.channel) == 2
+
+        # The first follow-up fails once, then the rewrites fail for a while.
+        mm.fail_posts = 1
+        await _play(db_session, mm, feed, 5, start=3.1)
+        mm.fail_updates = 4
+        await _play(db_session, mm, feed, 11, start=5.1)
+
+        turn = mm.channel[1:]
+        assert len(turn) == 3
+        said = " ".join(m.split("\n", 1)[1] for m in turn)
+        assert said == " ".join(c.text for c in cues)
+
+    async def test_a_message_is_never_longer_than_mattermost_takes(self, db_session):
+        mm = Mattermost()
+        post_id = await mm.send_channel_message("c", "kop")
+
+        assert await DebatTranscript(db_session, mm)._rewrite(post_id, "x" * 20_000)
+
+        assert len(mm.messages[post_id]) == MESSAGE_MAX
 
     async def test_what_was_said_cannot_mention_anyone(self, db_session, monkeypatch):
         feed = Feed(monkeypatch, parts=[_stream(_debat(("speaker", 1, "a")))])

@@ -398,13 +398,100 @@ class TestFetchSince:
         with pytest.raises(SubtitleError, match="onbereikbaar"):
             await self._since(server, None)
 
-    async def test_a_listed_file_that_fails_raises(self):
-        """Its lines are not skipped: the caller keeps its position and
-        asks again."""
+    async def test_the_first_listed_file_failing_raises(self):
         grid = _grid(10)
-        server = Server(grid[:-1], grid[-5:])
+        server = Server(grid[6:], grid[-5:])
         with pytest.raises(SubtitleError, match="500"):
             await self._since(server, None)
+
+    async def test_a_later_listed_file_failing_keeps_what_was_read(self):
+        """The next round starts at the file that failed."""
+        grid = _grid(10)
+        server = Server(grid[:-1], grid[-5:])
+
+        cues, position = await self._since(server, None)
+
+        assert len(cues) == 4
+        assert position == grid[-1]
+
+    async def test_one_missing_file_in_a_stretch_is_stepped_over(self):
+        grid = _grid(30)
+        server = Server([m for m in grid if m != grid[8]], grid[-5:])
+
+        cues, position = await self._since(server, grid[2])
+
+        assert len(cues) == 27
+        assert position == grid[-1] + STEP
+
+    async def test_three_missing_files_in_a_row_are_stepped_over_too(self):
+        grid = _grid(30)
+        server = Server([m for m in grid if m not in grid[8:11]], grid[-5:])
+
+        cues, _ = await self._since(server, grid[2])
+
+        assert len(cues) == 25
+
+    async def test_many_missing_files_apart_are_each_stepped_over(self):
+        grid = _grid(40)
+        gone = {grid[5], grid[9], grid[13], grid[17], grid[21]}
+        server = Server([m for m in grid if m not in gone], grid[-5:])
+
+        cues, _ = await self._since(server, grid[2])
+
+        assert len(cues) == 38 - 5
+
+    async def test_four_in_a_row_is_a_cold_trail(self, caplog):
+        grid = _grid(30)
+        server = Server([m for m in grid if m not in grid[8:12]], grid[-5:])
+
+        with caplog.at_level("WARNING"):
+            cues, position = await self._since(server, grid[2])
+
+        assert len(cues) == 6 + 5
+        assert position == grid[-1] + STEP
+        assert "niet meer op te halen" in caplog.text
+
+    async def test_an_address_that_is_no_address_is_a_subtitle_error(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.InvalidURL("nope")
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            with pytest.raises(SubtitleError, match="onbereikbaar"):
+                await subs.fetch_text(client, PLAYLIST_URL)
+
+
+class TestSamePlace:
+    """The playlists are not ours; an address in one is not followed
+    anywhere else."""
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "http://stream.example/live/zaal/subtitles/nl.m3u8",
+            "https://elsewhere.example/nl.m3u8",
+            "http://169.254.169.254/latest/meta-data",
+        ],
+    )
+    def test_a_track_somewhere_else_is_not_a_track(self, uri):
+        master = f'#EXT-X-MEDIA:TYPE=SUBTITLES,LANGUAGE="nl",URI="{uri}"\n'
+
+        assert subs.find_subtitle_playlist(master, MASTER_URL) is None
+
+    def test_a_full_address_on_the_same_server_is_fine(self):
+        master = f'#EXT-X-MEDIA:TYPE=SUBTITLES,LANGUAGE="nl",URI="{PLAYLIST_URL}"\n'
+
+        assert subs.find_subtitle_playlist(master, MASTER_URL) == PLAYLIST_URL
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "http://stream.example/x.vtt?start=2026-10-05T09:05:32.880Z",
+            "https://10.0.0.1/x.vtt?start=2026-10-05T09:05:32.880Z",
+        ],
+    )
+    def test_a_file_somewhere_else_is_not_fetched(self, line):
+        with pytest.raises(SubtitleError, match="ander adres"):
+            subs.parse_playlist(f"#EXTINF:3.840\n{line}", PLAYLIST_URL)
 
 
 def test_a_segment_ends_after_its_length():

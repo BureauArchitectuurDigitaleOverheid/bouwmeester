@@ -35,6 +35,9 @@ SEGMENT_SECONDS = 3.84
 # Segments are now and then 40 ms longer, and every later name moves along.
 NUDGE = timedelta(milliseconds=40)
 MAX_NUDGES = 5
+# How many files in a row may be missing before the rest of a stretch is
+# given up on.
+MAX_MISSES = 3
 
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 _MEDIA = re.compile(r"#EXT-X-MEDIA:(.*)")
@@ -86,10 +89,23 @@ def find_subtitle_playlist(master: str, master_url: str) -> str | None:
         if attributes.get("TYPE") != "SUBTITLES" or not attributes.get("URI"):
             continue
         url = urljoin(master_url, attributes["URI"])
+        if not _same_place(url, master_url):
+            continue
         if attributes.get("LANGUAGE", "").lower().startswith("nl"):
             return url
         fallback = fallback or url
     return fallback
+
+
+def _same_place(url: str, origin: str) -> bool:
+    """Whether an address found in a playlist stays with the server it is on.
+
+    The playlists are not ours. An address in one that points somewhere
+    else, or is not https, is not fetched: the worker would be asking a
+    host of someone else's choosing.
+    """
+    there, here = urlsplit(url), urlsplit(origin)
+    return there.scheme == "https" and there.netloc == here.netloc
 
 
 def _moment(value: str) -> datetime | None:
@@ -117,6 +133,8 @@ def parse_playlist(text: str, playlist_url: str) -> list[Segment]:
                 duration = SEGMENT_SECONDS
         elif line and not line.startswith("#"):
             url = urljoin(playlist_url, line)
+            if not _same_place(url, playlist_url):
+                raise SubtitleError("Ondertitelbestand op een ander adres")
             start = _moment((parse_qs(urlsplit(url).query).get("start") or [""])[0])
             if start is None:
                 raise SubtitleError("Ondertitelbestand zonder tijd")
@@ -182,7 +200,7 @@ def segment_url(playlist_url: str, start: datetime, duration: float) -> str:
 async def _get(client: httpx.AsyncClient, url: str) -> httpx.Response:
     try:
         return await client.get(url, headers=_HEADERS)
-    except httpx.HTTPError as exc:
+    except (httpx.HTTPError, httpx.InvalidURL) as exc:
         raise SubtitleError("Ondertitels onbereikbaar") from exc
 
 
@@ -234,8 +252,12 @@ async def fetch_since(
     given: the moment the caller wants to have from, which is then laid on
     the grid of the playlist. With it, the stretch between
     then and the playlist is closed by asking for files by time, so a round
-    that took long misses nothing. If the trail goes cold the missing
-    stretch is skipped with a warning and the playlist is picked up again.
+    that took long misses nothing. One file that is not there is stepped
+    over. After a few in a row the trail is cold: the rest of the stretch
+    is skipped with a warning and the playlist is picked up again.
+
+    A listed file that fails ends the round where it is, with what was
+    read before it; the next round starts at that file again.
 
     The second value is the end of the last file read, or `after` itself
     when there was nothing new.
@@ -249,25 +271,36 @@ async def fetch_since(
         position = listed[0].start - steps * timedelta(seconds=SEGMENT_SECONDS)
 
     if position is not None:
+        misses = 0
         while position < listed[0].start - NUDGE and count < max_segments:
             found = await fetch_segment_at(client, playlist_url, position)
+            count += 1
             if found is None:
-                logger.warning(
-                    "Ondertitels tussen %s en %s niet meer op te halen",
-                    position.isoformat(timespec="seconds"),
-                    listed[0].start.isoformat(timespec="seconds"),
-                )
-                break
+                misses += 1
+                if misses > MAX_MISSES:
+                    logger.warning(
+                        "Ondertitels tussen %s en %s niet meer op te halen",
+                        position.isoformat(timespec="seconds"),
+                        listed[0].start.isoformat(timespec="seconds"),
+                    )
+                    break
+                position += timedelta(seconds=SEGMENT_SECONDS)
+                continue
+            misses = 0
             cues.extend(found[1])
             position = found[0].end
-            count += 1
 
     for segment in listed:
         if count >= max_segments:
             break
         if position is not None and segment.start < position - NUDGE:
             continue
-        cues.extend(await fetch_cues(client, segment))
+        try:
+            cues.extend(await fetch_cues(client, segment))
+        except SubtitleError:
+            if not count:
+                raise
+            break
         position = segment.end
         count += 1
     return cues, position
