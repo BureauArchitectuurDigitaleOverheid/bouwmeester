@@ -63,6 +63,10 @@ MAX_SEGMENTS = 30
 # How long a stream without a subtitle track is left alone before looking
 # again.
 LOOK_AGAIN = timedelta(minutes=5)
+# How long after the end of a part its subtitles are still read. What was
+# said before the end comes in within about forty seconds; after this
+# nothing of the part can still arrive.
+AFTER_END = timedelta(minutes=3)
 # See `_read`: how long nothing may happen before a part counts as over.
 SILENT_IS_OVER = timedelta(hours=1)
 # Mattermost refuses a message over 16383 characters. Only reachable by
@@ -251,6 +255,12 @@ class DebatTranscript:
         if debat is not None and debat.ended_at is not None:
             ends.append(debat.ended_at)
         if ends and position is not None and position > max(ends):
+            return False
+        # And by the clock. The stream stops when the debate does, so the
+        # last file ends at or just before the end, the position never
+        # gets past it, and the check above alone would have the playlist
+        # fetched on every round until the debate drops out of sight.
+        if ends and now > max(ends) + AFTER_END:
             return False
         # The address belongs to the room, not to the debate: the next
         # debate in that room is on the same one. Without an end, a part

@@ -22,7 +22,7 @@ _SPEC.loader.exec_module(fetch_stem_model)
 def test_the_right_file_is_written(tmp_path, monkeypatch):
     data = b"the model"
     monkeypatch.setattr(fetch_stem_model, "SHA256", hashlib.sha256(data).hexdigest())
-    target = tmp_path / "models" / "model.onnx"
+    target = tmp_path / "opt" / "models" / "model.onnx"
 
     assert fetch_stem_model.main(target, data) == 0
     assert target.read_bytes() == data

@@ -128,6 +128,8 @@ class Sound:
         # Every stretch that was asked for, and the ones that were there.
         self.asked: list[tuple[datetime, datetime]] = []
         self.got: list[tuple[datetime, datetime]] = []
+        # And the moment of the round each of those was heard in.
+        self.when: list[datetime] = []
         self.rounds: dict[datetime, float] = {}
 
         async def fetch_playlist(client, url):
@@ -170,6 +172,7 @@ class Sound:
             heard = await real(reach, start, end)
             if heard is not None:
                 self.got.append((start, end))
+                self.when.append(self.feed.now)
             return heard
 
         monkeypatch.setattr(audio, "fetch_playlist", fetch_playlist)
@@ -500,6 +503,68 @@ def _embedder(out: list[float]) -> tuple[stem.Embedder, _Session]:
     return embedder, embedder._session
 
 
+def test_the_numbers_are_the_ones_that_were_measured():
+    """Each of these was chosen from a measurement, explained where it is
+    set. A change is a decision, not a slip."""
+    seconds = {
+        "BEFORE": 14,
+        "AFTER": 9,
+        "EDGE_IN": 6,
+        "EDGE_OUT": 14,
+        "OPEN_SLACK": 20,
+        "CLIP_MIN": 4,
+        "CLIP_MAX": 8,
+        "CLIP_GAP": 1.5,
+        "SUPERSEDED": 5,
+        "LINE_PAD": 0.2,
+        "LINE_MIN": 1.6,
+        "WAIT": 30,
+        "RETRY_FOR": 600,
+        "AUDIO_RETRY": 60,
+        "AUDIO_KEEPS": 45 * 60,
+    }
+    assert {name: getattr(svc, name).total_seconds() for name in seconds} == seconds
+    assert (svc.MAX_CLIPS, svc.SOUND_PER_TICK, svc.SOUND_PER_SESSIE_MIN) == (8, 48, 12)
+    assert (stem.MATCH, stem.MARGIN, stem.MATCH_ALONE, stem.MISMATCH) == (
+        0.45,
+        0.15,
+        0.62,
+        0.30,
+    )
+    assert stem.MIN_SECONDS == 1.0
+    assert stem.MAX_IDLE == timedelta(minutes=20)
+    assert audio.TRUSTED_HOSTS == ("tweedekamer.nl", "vos360.video")
+    assert audio.SAMPLE_RATE == 16_000
+
+
+def test_the_model_runs_on_one_core_of_the_cpu(monkeypatch):
+    """The runtime would otherwise take every core of the machine."""
+    import onnxruntime
+
+    made: list[tuple] = []
+
+    class Input:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+    class Session:
+        def __init__(self, path, sess_options, providers):
+            made.append((path, sess_options, providers))
+
+        def get_inputs(self):
+            return [Input("feats"), Input("other")]
+
+    monkeypatch.setattr(onnxruntime, "InferenceSession", Session)
+
+    embedder = stem.Embedder("/ergens/model.onnx")
+
+    ((path, options, providers),) = made
+    assert path == "/ergens/model.onnx"
+    assert (options.intra_op_num_threads, options.inter_op_num_threads) == (1, 1)
+    assert providers == ["CPUExecutionProvider"]
+    assert embedder._input == "feats"
+
+
 class TestEmbedder:
     def test_the_model_is_fed_what_it_was_trained_on(self):
         """80 mel bins per 10 ms, with the mean over time taken out."""
@@ -593,6 +658,16 @@ class TestCandidates:
 
         assert candidates(turns, _at(100)) == []
         assert candidates(turns, _at(200)) == []
+
+    def test_a_change_after_something_that_is_not_one_still_counts(self):
+        turns = _turns((0, "a"), (100, None), (200, "b"), (300, "c"))
+
+        assert candidates(turns, _at(300)) == turns[2:]
+
+    def test_a_change_after_someone_carrying_on_still_counts(self):
+        turns = _turns((0, "a"), (100, "a"), (200, "b"))
+
+        assert candidates(turns, _at(200)) == turns[1:]
 
     def test_two_changes_close_together_give_everyone_around_them(self):
         turns = _turns((0, "a"), (100, "v"), (103, "b"))
@@ -693,6 +768,15 @@ class TestClips:
             (_at(10), _at(10 + short + 0.1))
         ]
 
+    def test_a_piece_of_exactly_the_least_counts_wherever_it_is(self):
+        least = svc.CLIP_MIN.total_seconds()
+        lines = [_line(10, least), _line(30, least)]
+
+        assert clips(lines, _at(0), _at(100)) == [
+            (_at(10), _at(10 + least)),
+            (_at(30), _at(30 + least)),
+        ]
+
     def test_a_short_piece_before_a_long_one_is_dropped_alone(self):
         lines = [_line(10, 2), _line(30, 5)]
 
@@ -766,10 +850,13 @@ class TestVoicesDecide:
         said = [r.getMessage() for r in caplog.records if r.name == svc.logger.name]
         assert said
         assert all("op stem bij een andere spreekbeurt gezet" in line for line in said)
+        assert all(int(line.split()[0]) > 0 for line in said)
         # Two at the interruption, three at the answer.
         assert sum(int(line.split()[0]) for line in said) == 5
 
-    async def test_without_the_voices_the_time_decides(self, db_session, monkeypatch):
+    async def test_without_the_voices_the_time_decides(
+        self, db_session, monkeypatch, caplog
+    ):
         feed = Feed(monkeypatch, parts=[_with_audio(_debat(*EVENTS))])
         Subtitles(monkeypatch, feed, _lines(62, 298))
         sound = Sound(monkeypatch, feed, SPEAKING)
@@ -777,7 +864,11 @@ class TestVoicesDecide:
         mm = Mattermost()
         sessie = await _sessie(db_session)
 
-        await _play(db_session, mm, feed, 6)
+        with caplog.at_level(logging.WARNING):
+            await _play(db_session, mm, feed, 6)
+
+        # Not an error either: nothing is tried, so nothing fails.
+        assert caplog.records == []
 
         speaker, interruption, answer = mm.channel[1:]
         assert _said(speaker)[-1] == "r178."
@@ -1029,6 +1120,9 @@ class TestVoicesDecide:
         assert after["r362."] == ("speaker", "a", 240, "stem", True)
         assert after["r366."] == ("speaker", "a", 240, "stem", True)
         assert after["r370."] == ("interrupter", "b", 360, "tijd", True)
+        # Learned again also from turns that ended before the restart,
+        # whose lines were all decided about long ago.
+        assert any(start < 230 for start, _ in sound.clips_heard())
         # Nothing that was decided before the restart is listened to again.
         assert sound.lines_heard()
         assert all(seconds > 300 for seconds in sound.lines_heard())
@@ -1101,6 +1195,285 @@ class TestVoicesDecide:
         assert moved is False
         where = await _where(db_session, sessie)
         assert where["r178."] == ("speaker", "a", 60, "stem", True)
+
+
+@pytest.mark.asyncio
+class TestLearning:
+    async def test_learning_takes_a_third_of_a_round_at_most(
+        self, db_session, monkeypatch
+    ):
+        """So that deciding is not kept waiting by one long speaker."""
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(("speaker", 1, "a")))])
+        Subtitles(monkeypatch, feed, _lines(62, 598))
+        sound = Sound(monkeypatch, feed, [(60, 1)])
+        sound.embedder = None
+        await _sessie(db_session)
+        # Everything waits, so there is plenty to learn from at once.
+        await _play(db_session, Mattermost(), feed, 5)
+        sound.embedder = Embedder()
+
+        await _play(db_session, Mattermost(), feed, 6, start=5.2)
+
+        per_round: dict[datetime, float] = {}
+        for (start, end), moment in zip(sound.got, sound.when, strict=True):
+            seconds = (end - start).total_seconds()
+            per_round[moment] = per_round.get(moment, 0.0) + seconds
+        # Pieces of seven seconds: the third one passes a third of 48.
+        assert max(per_round.values()) == 21.0
+        assert sum(per_round.values()) == 7.0 * svc.MAX_CLIPS
+
+    async def test_a_turn_that_goes_on_is_learned_from_well_behind_now(
+        self, db_session, monkeypatch
+    ):
+        """Whoever speaks next may have begun before their event shows."""
+        from tests import test_debat_transcript as transcript_tests
+
+        # Subtitles that come in almost at once, so that it is this rule
+        # that keeps the distance and not their delay.
+        monkeypatch.setattr(transcript_tests, "BEHIND", timedelta(seconds=5))
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(("speaker", 1, "a")))])
+        Subtitles(monkeypatch, feed, _lines(62, 298))
+        sound = Sound(monkeypatch, feed, [(60, 1)])
+        await _sessie(db_session)
+
+        await _play(db_session, Mattermost(), feed, 4)
+
+        assert sound.got
+        behind = svc.OPEN_SLACK + svc.EDGE_OUT
+        assert all(
+            moment - end >= behind
+            for (_, end), moment in zip(sound.got, sound.when, strict=True)
+        )
+        assert min(
+            moment - end for (_, end), moment in zip(sound.got, sound.when, strict=True)
+        ) < behind + timedelta(seconds=20)
+
+    async def test_a_piece_in_which_nothing_is_heard_is_asked_for_once(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(("speaker", 1, "a")))])
+        Subtitles(monkeypatch, feed, _lines(62, 198))
+        # The speaker is silent for a while; the subtitles go on.
+        sound = Sound(monkeypatch, feed, [(60, 1), (100, 0), (130, 1)])
+        sessie = await _sessie(db_session)
+
+        await _play(db_session, Mattermost(), feed, 6)
+
+        silent = [
+            start for start, end in sound.clips_heard() if 100 <= start and end <= 130
+        ]
+        assert silent
+        assert len(silent) == len(set(silent))
+        assert stem.VOICES.peek(sessie.id).voices["a"].count >= 3
+
+    async def test_a_voice_is_learned_past_events_that_are_nobodys(
+        self, db_session, monkeypatch
+    ):
+        """After a restart the voice of who spoke before a suspension is
+        only to be had from before it."""
+        events = (
+            ("speaker", 1, "a"),
+            ("suspended", 3, ""),
+            ("continued", 4, ""),
+            ("speaker", 4, "b"),
+        )
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*events))])
+        Subtitles(monkeypatch, feed, [*_lines(62, 170), *_lines(242, 398)])
+        Sound(monkeypatch, feed, [(60, 1), (180, 0), (240, 2)])
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 6)
+        assert set(stem.VOICES.peek(sessie.id).voices) == {"a", "b"}
+
+        stem.VOICES.clear()
+        await _play(db_session, mm, feed, 7.5, start=6.2)
+
+        assert set(stem.VOICES.peek(sessie.id).voices) == {"a", "b"}
+
+    async def test_lines_nobody_can_decide_about_do_not_hold_up_the_rest(
+        self, db_session, monkeypatch
+    ):
+        """Two people who each spoke too briefly to be learned: the lines
+        between them wait. The change after it is decided all the same."""
+        debat = _debat(
+            ("speaker", 1, "c"),
+            ("speaker", 1, "d"),
+            ("speaker", 2, "a"),
+            ("interrupter", 4, "b"),
+            ("speaker", 5, "a"),
+        )
+        events = list(debat.events)
+        events[2] = dataclasses.replace(events[2], start=_at(80))
+        events[3] = dataclasses.replace(events[3], start=_at(100))
+        feed = Feed(
+            monkeypatch,
+            parts=[_with_audio(dataclasses.replace(debat, events=tuple(events)))],
+        )
+        Subtitles(monkeypatch, feed, _lines(62, 358))
+        Sound(monkeypatch, feed, [(60, 3), (80, 4), (100, 1), (248, 2), (290, 1)])
+        sessie = await _sessie(db_session)
+
+        await _play(db_session, Mattermost(), feed, 7)
+
+        where = await _where(db_session, sessie)
+        assert where["r70."] == ("speaker", "c", 60, "tijd", False)
+        assert where["r246."] == ("speaker", "a", 100, "stem", True)
+        assert where["r290."] == ("speaker", "a", 300, "stem", True)
+
+    async def test_a_short_line_is_listened_to_with_enough_around_it(
+        self, db_session, monkeypatch
+    ):
+        """One word says too little about a voice."""
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*EVENTS))])
+        Subtitles(
+            monkeypatch,
+            feed,
+            [*_lines(62, 160), *_lines(164, 250, length=0.5), *_lines(254, 298)],
+        )
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        await _sessie(db_session)
+
+        await _play(db_session, Mattermost(), feed, 6)
+
+        short = [
+            (end - start).total_seconds()
+            for start, end in sound.got
+            if 164 <= (start - START).total_seconds() <= 250
+            and end - start < svc.CLIP_MIN
+        ]
+        pad = svc.LINE_PAD.total_seconds()
+        assert short
+        assert set(short) == {svc.LINE_MIN.total_seconds() + 2 * pad}
+
+    async def test_a_long_line_is_listened_to_whole(self, db_session, monkeypatch):
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*EVENTS))])
+        Subtitles(monkeypatch, feed, _lines(62, 298))
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        await _sessie(db_session)
+
+        await _play(db_session, Mattermost(), feed, 6)
+
+        pieces = {
+            round((end - start).total_seconds(), 3)
+            for start, end in sound.got
+            if end - start < svc.CLIP_MIN
+        }
+        assert pieces == {3.0 + 2 * svc.LINE_PAD.total_seconds()}
+
+    async def test_after_ten_minutes_of_silence_nothing_is_learned_any_more(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(("speaker", 1, "a")))])
+        Subtitles(monkeypatch, feed, _lines(62, 230))
+        sound = Sound(monkeypatch, feed, [(60, 1)])
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 5)
+        held = stem.VOICES.peek(sessie.id)
+        used = held.used
+        # As if there were still something to learn.
+        held.voices.clear()
+        sound.asked.clear()
+
+        quiet = 4 + svc.RETRY_FOR.total_seconds() / 60
+        await _play(db_session, mm, feed, quiet + 0.5, start=quiet)
+
+        assert sound.asked == []
+        assert stem.VOICES.peek(sessie.id).voices == {}
+        assert stem.VOICES.peek(sessie.id).used < START + _minutes(quiet)
+        assert stem.VOICES.peek(sessie.id).used >= used
+
+    async def test_a_part_that_has_ended_is_not_listened_to_any_more(
+        self, db_session, monkeypatch
+    ):
+        """Nothing is left to decide and no line will come: no audio is
+        asked for, also not to learn a voice a little better."""
+        events = (*EVENTS, ("debate_end", 5, ""))
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*events))])
+        Subtitles(monkeypatch, feed, _lines(62, 298))
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        after = 5 + svc.AFTER_END.total_seconds() / 60
+        await _play(db_session, mm, feed, after)
+        where = await _where(db_session, sessie)
+        assert all(done for *_, done in where.values())
+        assert where["r230."] == ("speaker", "a", 240, "stem", True)
+        held = stem.VOICES.peek(sessie.id)
+        # As if there were still a voice to learn.
+        del held.voices["b"]
+        used, playlists = held.used, sound.playlists
+        sound.asked.clear()
+
+        await _play(db_session, mm, feed, after + 2, start=after + 0.2)
+
+        assert sound.asked == []
+        assert sound.playlists == playlists
+        assert "b" not in stem.VOICES.peek(sessie.id).voices
+        assert stem.VOICES.peek(sessie.id).used == used
+
+    async def test_until_then_a_part_that_has_ended_is_still_learned_from(
+        self, db_session, monkeypatch
+    ):
+        events = (*EVENTS, ("debate_end", 5, ""))
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*events))])
+        Subtitles(monkeypatch, feed, _lines(62, 298))
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        after = 5 + svc.AFTER_END.total_seconds() / 60
+        await _play(db_session, mm, feed, after - 0.5)
+        del stem.VOICES.peek(sessie.id).voices["b"]
+        sound.asked.clear()
+
+        await _play(db_session, mm, feed, after, start=after)
+
+        assert "b" in stem.VOICES.peek(sessie.id).voices
+
+    async def test_a_line_that_waits_keeps_an_ended_part_listened_to(
+        self, db_session, monkeypatch
+    ):
+        """The model came late: the lines of the last minutes are still to
+        be decided about after the part has ended."""
+        events = (*EVENTS, ("debate_end", 5, ""))
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*events))])
+        Subtitles(monkeypatch, feed, _lines(62, 298))
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        sound.embedder = None
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        after = 5 + svc.AFTER_END.total_seconds() / 60
+        await _play(db_session, mm, feed, after + 0.5)
+        sound.embedder = Embedder()
+
+        await _play(db_session, mm, feed, after + 1.5, start=after + 0.6)
+
+        where = await _where(db_session, sessie)
+        assert where["r230."] == ("speaker", "a", 240, "stem", True)
+
+    async def test_names_of_segments_are_remembered_and_old_ones_dropped(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch, parts=[_with_audio(_debat(*EVENTS))])
+        Subtitles(monkeypatch, feed, _lines(62, 298))
+        sound = Sound(monkeypatch, feed, SPEAKING)
+        sessie = await _sessie(db_session)
+        await _play(db_session, Mattermost(), feed, 3)
+        known = stem.VOICES.peek(sessie.id).segments[AUDIO]
+        early = min(sound.segments)
+        assert early in known
+        # One from before what the server keeps, and one just inside it.
+        now = START + _minutes(6)
+        gone = audio.datetime_to_ticks(now - svc.AUDIO_KEEPS) - 1
+        kept = audio.datetime_to_ticks(now - svc.AUDIO_KEEPS)
+        known.update({gone, kept})
+
+        await _play(db_session, Mattermost(), feed, 6, start=6)
+
+        known = stem.VOICES.peek(sessie.id).segments[AUDIO]
+        assert gone not in known
+        assert kept in known
+        assert early in known
 
 
 @pytest.mark.asyncio
@@ -1179,7 +1552,7 @@ class TestNothingDependsOnIt:
         assert _said(mm.channel[2])[0] == "r182."
 
     async def test_switched_off_the_model_is_not_even_looked_for(
-        self, db_session, monkeypatch
+        self, db_session, monkeypatch, caplog
     ):
         feed = Feed(monkeypatch, parts=[_with_audio(_debat(*EVENTS))])
         Subtitles(monkeypatch, feed, _lines(62, 298))
@@ -1190,8 +1563,10 @@ class TestNothingDependsOnIt:
         mm = Mattermost()
         await _sessie(db_session)
 
-        await _play(db_session, mm, feed, 6)
+        with caplog.at_level(logging.WARNING):
+            await _play(db_session, mm, feed, 6)
 
+        assert caplog.records == []
         assert looked == []
         assert sound.asked == []
         assert _said(mm.channel[2])[0] == "r182."
@@ -1430,6 +1805,8 @@ class TestForgetting:
         )
         assert "array(" not in caplog.text
         assert "float32" not in caplog.text
+        # And nothing went wrong on the way: a failure is a warning.
+        assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
 
 
 @pytest.mark.asyncio
@@ -1450,7 +1827,8 @@ class TestOldLines:
         assert not any(done for *_, done in where.values())
 
         sound.embedder = Embedder()
-        late = 6 + svc.RETRY_FOR.total_seconds() / 60
+        # Well past what the server keeps, not only past the waiting.
+        late = 6 + svc.AUDIO_KEEPS.total_seconds() / 60 + 5
         await _play(db_session, mm, feed, late + 0.5, start=late)
 
         where = await _where(db_session, sessie)

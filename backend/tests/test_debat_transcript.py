@@ -61,10 +61,10 @@ def _cue(seconds: float, text: str, length: float = 2.0) -> Cue:
     return Cue(start, start + timedelta(seconds=length), text)
 
 
-def assign_cues(cues, turns, offset=timedelta(0)) -> dict:
+def assign_cues(cues, turns, *offset) -> dict:
     """The text per turn, as `place_cues` puts the lines."""
     texts: dict = {}
-    for key, cue in place_cues(cues, turns, offset):
+    for key, cue in place_cues(cues, turns, *offset):
         texts.setdefault(key, []).append(cue.text)
     return {key: " ".join(parts) for key, parts in texts.items()}
 
@@ -286,6 +286,8 @@ class Subtitles:
         self.cues = cues
         self.master = MASTER
         self.error = False
+        # The moment the stream stopped: nothing is listed after it.
+        self.stops_at = None
         self.reads: list[tuple] = []
         self.masters = 0
 
@@ -300,6 +302,8 @@ class Subtitles:
             if self.error:
                 raise subs.SubtitleError("down")
             upto = self.feed.now - BEHIND
+            if self.stops_at is not None:
+                upto = min(upto, self.stops_at)
             begin = after or since or upto
             if upto <= begin:
                 return [], after
@@ -702,6 +706,49 @@ class TestTranscript:
         await _play(db_session, mm, feed, 9, start=6.2)
 
         assert mm.channel[1].endswith("\nEen. Laatste woorden.")
+        assert len(track.reads) == reads
+
+    async def test_reading_stops_when_the_stream_stopped_with_the_debate(
+        self, db_session, monkeypatch
+    ):
+        """The last file ends just before the end, so where the reading
+        stands never gets past it. The clock ends it."""
+        debat = _debat(("speaker", 1, "a"), ("debate_end", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        track = Subtitles(
+            monkeypatch, feed, [_cue(65, "Een."), _cue(170, "Laatste woorden.")]
+        )
+        track.stops_at = START + timedelta(seconds=178)
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        # Up to and including the last moment it is still read.
+        await _play(db_session, mm, feed, 6)
+        reads = len(track.reads)
+        await _play(db_session, mm, feed, 6, start=6)
+        assert len(track.reads) == reads + 1
+        await _play(db_session, mm, feed, 9, start=6.1)
+
+        assert mm.channel[1].endswith("\nEen. Laatste woorden.")
+        assert len(track.reads) == reads + 1
+
+    async def test_a_part_that_debat_direct_says_has_ended_is_not_read_for_long(
+        self, db_session, monkeypatch
+    ):
+        """Also without the event of the end: the feed itself says so."""
+        debat = _stream(_debat(("speaker", 1, "a")))
+        ended = dataclasses.replace(debat, ended_at=START + _minutes(3))
+        feed = Feed(monkeypatch, parts=[ended])
+        track = Subtitles(monkeypatch, feed, [_cue(70, "Van dit debat.")])
+        track.stops_at = START + timedelta(seconds=178)
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6.5)
+        reads = len(track.reads)
+        await _play(db_session, mm, feed, 9, start=6.6)
+
+        assert reads > 10
         assert len(track.reads) == reads
 
     async def test_a_turn_the_timeline_missed_does_not_end_up_with_someone_else(
@@ -1276,6 +1323,35 @@ class TestTextThatChanges:
         assert said == " ".join(_sentence(i) for i in range(1, 120))
         assert mm.channel[4].endswith(f"\n{_sentence(0)} Van b.")
         assert all(len(m.split("\n", 1)[1]) <= MESSAGE_LIMIT for m in mm.channel[1:4])
+
+    async def test_lines_that_come_to_a_turn_with_someone_below_it_stay_in_its_messages(
+        self, db_session, monkeypatch
+    ):
+        """A turn of three messages that gets more text after the next
+        speaker began: a fourth message would land below that speaker."""
+        feed, mm, sessie = await self._long_turn(db_session, monkeypatch)
+        first, second, third, other = mm.order[1:]
+        a = await _row(db_session, sessie, "a")
+        for i in range(120, 180):
+            db_session.add(
+                DebatOndertitel(
+                    sessie_id=sessie.id,
+                    debat_direct_id=feed.parts[0].id,
+                    start=START + timedelta(seconds=65 + 4 * 119, milliseconds=i),
+                    einde=START + timedelta(seconds=65 + 4 * 119 + 1),
+                    tekst=_sentence(i),
+                    spreekbeurt_id=a.id,
+                )
+            )
+        await db_session.flush()
+        await derive_text(db_session, {a.id})
+
+        await _play(db_session, mm, feed, 12, start=11.6)
+
+        assert mm.order[1:] == [first, second, third, other]
+        assert mm.messages[third].endswith(_sentence(179))
+        assert len(mm.messages[third]) > MESSAGE_LIMIT
+        assert first not in {post_id for post_id, _ in mm.updates}
 
     async def test_and_then_only_once(self, db_session, monkeypatch):
         feed, mm, sessie = await self._long_turn(db_session, monkeypatch)

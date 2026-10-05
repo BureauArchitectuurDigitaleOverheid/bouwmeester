@@ -49,7 +49,11 @@ from bouwmeester.services.debat_stem import (
     VoiceCache,
     choose,
 )
-from bouwmeester.services.debat_transcript_service import ORDER, derive_text
+from bouwmeester.services.debat_transcript_service import (
+    AFTER_END,
+    ORDER,
+    derive_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +139,8 @@ class Turn:
     # Who has the floor, or None for an event that is not a person
     # speaking: a suspension, a resumption, the start.
     person: str | None
+    # Whether this is the end of the part.
+    closes: bool = False
 
     def distance(self, moment: datetime) -> timedelta:
         """How far a moment is from this turn; zero inside it."""
@@ -236,7 +242,7 @@ class DebatStemmen:
         self.embedder = embedder
         self.budget = budget
         self.cache = cache
-        # How many lines went to another turn, over the parts of a debate.
+        # How many lines went to another turn in the part being done.
         self.moved = 0
 
     async def update(
@@ -258,20 +264,26 @@ class DebatStemmen:
         # When nothing was said lately the voices are not counted as used,
         # so that they are forgotten when that goes on.
         lately = any(now - line.start <= RETRY_FOR for line in lines)
-        held = self.cache.of(sessie_id, now) if lately else self.cache.peek(sessie_id)
+        turns = await self._turns(sessie_id, debate_id) if lately else []
+        # A part that has ended gets no new lines. Once the ones it has
+        # are decided about there is nothing to learn a voice for, and no
+        # audio is asked for any more.
+        waiting = any(not line.done and now - line.start <= RETRY_FOR for line in lines)
+        ended = [turn.start for turn in turns if turn.closes]
+        busy = lately and (waiting or not ended or now <= max(ended) + AFTER_END)
+        held = self.cache.of(sessie_id, now) if busy else self.cache.peek(sessie_id)
         if held is not None:
             for line in expired:
                 held.lines.pop(line.id, None)
-        if held is None or not lately:
+        if held is None or not busy:
             return
         if held.retry_at is not None and now < held.retry_at:
             return
-        turns = await self._turns(sessie_id, debate_id)
         known = held.segments.setdefault(audio_url, set())
         oldest = audio.datetime_to_ticks(now - AUDIO_KEEPS)
         known.difference_update({name for name in known if name < oldest})
         reach = audio.Reach(client, audio_url, known, max_segments=self.budget.segments)
-        before = self.moved
+        self.moved = 0
         try:
             await self._learn(held, reach, turns, lines, now)
             await self._decide(held, reach, turns, lines, now)
@@ -287,10 +299,10 @@ class DebatStemmen:
             )
         finally:
             self.budget.segments = reach.left
-            if self.moved > before:
+            if self.moved:
                 logger.info(
                     "%d regels van %s op stem bij een andere spreekbeurt gezet",
-                    self.moved - before,
+                    self.moved,
                     debate_id,
                 )
 
@@ -348,6 +360,7 @@ class DebatStemmen:
                 start,
                 rows[index + 1][2] if index + 1 < len(rows) else None,
                 (who or None) if kind in _VOICED else None,
+                kind == dd.EVENT_DEBATE_END,
             )
             for index, (row_id, kind, start, who) in enumerate(rows)
         ]
