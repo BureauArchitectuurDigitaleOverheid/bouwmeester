@@ -9,6 +9,7 @@ the part that is hidden, so a long turn continues in a next message.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Hashable, Sequence
 from datetime import datetime, timedelta
@@ -31,36 +32,46 @@ _SENTENCE_END = re.compile(r"[.?!…][\"'”’)]?\s")
 _RUNS_ON = re.compile(r"\.\.\.\s+(?=[a-zà-ÿ])")
 
 
-def assign_cues[K: Hashable](
+def place_cues[K: Hashable](
     cues: Sequence[Cue],
     turns: Sequence[tuple[K, datetime]],
     offset: timedelta = timedelta(0),
-) -> dict[K, str]:
-    """Which lines belong to which turn.
+) -> list[tuple[K, Cue]]:
+    """Which turn every line belongs to, going by the time alone.
 
     `turns` are the moments someone got the floor, oldest first, each with
     whatever the caller knows it by. A line belongs to the last turn that
     began before it did. `offset` is how much later than the event the
-    sound is. A line from before the first turn belongs to nobody.
+    sound is. A line from before the first turn belongs to nobody and is
+    left out. The lines come back in order of time.
+
+    This is a first answer. The events are seconds off, so around a change
+    of speaker the voices decide again; see `debat_stemmen_service`.
     """
-    texts: dict[K, list[str]] = {}
+    placed: list[tuple[K, Cue]] = []
     index = -1
     for cue in sorted(cues, key=lambda c: c.start):
         while index + 1 < len(turns) and turns[index + 1][1] + offset <= cue.start:
             index += 1
         if index >= 0:
-            texts.setdefault(turns[index][0], []).append(cue.text)
-    return {key: " ".join(parts) for key, parts in texts.items()}
+            placed.append((turns[index][0], cue))
+    return placed
 
 
 def append_text(existing: str | None, more: str) -> str:
-    """Text of a turn with more of it behind it.
-
-    Only ever longer: what is kept is never changed afterwards. Where a
-    long turn is cut, and whether a message is up to date, both lean on
-    that.
-    """
+    """Text with more of it behind it."""
     return f"{(existing or '').strip()} {more.strip()}".strip()
+
+
+def text_key(text: str) -> str:
+    """A short name for a text, to see later whether it is still that text.
+
+    The text of a turn mostly grows, and then the messages that are full
+    stay as they are. When a line moves to another turn it changes in the
+    middle. Kept with how much of the text is in the channel, this tells
+    the two apart.
+    """
+    return hashlib.blake2s(text.encode(), digest_size=8).hexdigest()
 
 
 def split_text(

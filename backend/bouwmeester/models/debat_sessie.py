@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -98,7 +99,8 @@ class DebatSessie(Base):
         DateTime(timezone=True), nullable=True
     )
     # Per Debat Direct debate, where the reading of its subtitles stands:
-    # {"<id>": {"url": playlist or "", "positie": iso, "offset_ms": int}}.
+    # {"<id>": {"url": playlist or "", "positie": iso, "offset_ms": int,
+    # "audio": playlist of the audio of the room}}.
     ondertitels: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -162,15 +164,82 @@ class DebatSpreekbeurt(Base):
     # The first line of the message, kept so the message can be written
     # again with the text under it.
     kop: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # What was said in this turn, as far as the subtitles have come.
+    # What was said in this turn, as far as the subtitles have come. Derived:
+    # the lines of `debat_ondertitel` that belong to this row, in order. Only
+    # a row from before that table existed has text without lines.
     tekst: Mapped[str | None] = mapped_column(Text, nullable=True)
     # How much of the text of this turn is in the channel. Differs from the
     # length of the text when a message still has to be written.
     tekst_geplaatst: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
+    # Which text that is: a digest of the text of the turn as it was written.
+    # A line can move to another turn afterwards, and then the text of a turn
+    # changes without only growing. NULL for a message written before this
+    # column existed, which is taken at its length.
+    tekst_geplaatst_hash: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # The messages a long turn continues in, in order.
     vervolg_post_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+TOEWIJZING_TIJD = "tijd"
+TOEWIJZING_STEM = "stem"
+
+
+class DebatOndertitel(Base):
+    """One line of subtitle, and the turn it belongs to.
+
+    The subtitles say what was said and exactly when. Which turn a line
+    belongs to is first decided by time, and around a change of speaker
+    again by voice. Kept as rows so that a line can move: the text of a
+    turn is its lines in order.
+    """
+
+    __tablename__ = "debat_ondertitel"
+    __table_args__ = (
+        # A line is in one file of the track only, so its moment names it.
+        # Also what keeps two workers from keeping the same line twice.
+        UniqueConstraint(
+            "sessie_id", "debat_direct_id", "start", name="uq_debat_ondertitel_start"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    sessie_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("debat_sessie.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    debat_direct_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    einde: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    tekst: Mapped[str] = mapped_column(Text, nullable=False)
+    spreekbeurt_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("debat_spreekbeurt.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # What decided the turn: `tijd` (the last event before the line) or
+    # `stem` (whose voice it is). Not biometric: it says which of two turns,
+    # nothing about a voice.
+    toewijzing: Mapped[str] = mapped_column(
+        String(8), nullable=False, server_default=TOEWIJZING_TIJD
+    )
+    # Whether the voices have had their say about this line, or never will.
+    # A line that is not done is looked at again on a later round.
+    stem_klaar: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

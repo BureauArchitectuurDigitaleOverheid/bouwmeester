@@ -13,6 +13,7 @@ from bouwmeester.models.chat_attachment import ChatAttachment  # noqa: F401
 from bouwmeester.models.chat_conversation import ChatConversation  # noqa: F401
 from bouwmeester.models.corpus_node import CorpusNode  # noqa: F401
 from bouwmeester.models.debat_sessie import (  # noqa: F401
+    DebatOndertitel,
     DebatSessie,
     DebatSpreekbeurt,
 )
@@ -103,6 +104,7 @@ __all__ = [
     "Bron",
     "BronBijlage",
     "CorpusNode",
+    "DebatOndertitel",
     "DebatSessie",
     "DebatSpreekbeurt",
     "CorpusNodeStatus",

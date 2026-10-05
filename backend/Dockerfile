@@ -18,6 +18,20 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN /app/.venv/bin/playwright install chromium-headless-shell
 
 
+# Het sprekermodel waarmee de debat-tijdlijn stemmen uit elkaar houdt
+# (WeSpeaker ResNet34-LM, CC BY 4.0). 26 MB aan binair bestand hoort niet
+# in git, dus het wordt hier opgehaald: vastgepind op een revisie en op de
+# SHA-256 van het bestand, beide in het script. Een eigen stage, zodat de
+# laag alleen opnieuw wordt gemaakt als het script verandert.
+#
+# Lukt de download niet, dan slaagt de build toch en is de map leeg: de
+# tijdlijn zet een regel dan op tijd bij een spreker, zoals voorheen. Klopt
+# de checksum niet, dan faalt de build.
+FROM python:3.13-slim AS stemmodel
+COPY scripts/fetch_stem_model.py /tmp/fetch_stem_model.py
+RUN python /tmp/fetch_stem_model.py /models/voxceleb_resnet34_LM.onnx
+
+
 FROM deps AS builder
 
 COPY . .
@@ -56,6 +70,11 @@ RUN set -eux; \
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=playwright /ms-playwright /ms-playwright
+
+# Leesbaar voor elke UID: ZAD/OpenShift draait de container vaak onder een
+# willekeurige gebruiker.
+COPY --from=stemmodel /models /models
+ENV DEBAT_STEM_MODEL_PATH=/models/voxceleb_resnet34_LM.onnx
 
 RUN useradd --create-home --uid 1001 appuser && \
     mkdir -p /data/bijlagen/chat /data/bijlagen/leads && \
