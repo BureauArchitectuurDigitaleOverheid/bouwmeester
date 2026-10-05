@@ -95,6 +95,38 @@ class LeadCandidateClassification(BaseModel):
     lead in zit terwijl er niemand gekeken heeft."""
 
 
+class DebatVraag(BaseModel):
+    """Eén vraag aan de bewindspersoon, zoals het model hem uit een beurt haalt."""
+
+    citaat: str
+    gericht_aan: str
+    samenvatting: str
+    # Het nummer van een vraag die al openstaat, als dit dezelfde vraag is.
+    hoort_bij: int | None = None
+    # Het nummer van het geagendeerde stuk waar de vraag over gaat.
+    stuk: int | None = None
+
+
+DEBAT_VRAGEN_ONBEREIKBAAR = "onbereikbaar"
+DEBAT_VRAGEN_ONBRUIKBAAR = "onbruikbaar"
+
+
+class DebatVragenResult(BaseModel):
+    vragen: list[DebatVraag] = []
+    fout: str | None = None
+    """Waarom er geen oordeel is, of ``None`` als het model heeft geoordeeld.
+
+    Een lege lijst zonder fout betekent: gelezen, geen vraag. Dat is iets
+    anders dan niet gelezen, en de aanroeper moet die twee uit elkaar kunnen
+    houden.
+
+    * ``onbereikbaar``: de call zelf mislukte (netwerk, time-out, login).
+      Er is niets beoordeeld; later opnieuw proberen heeft zin.
+    * ``onbruikbaar``: het model antwoordde twee keer met iets dat niet te
+      lezen was. Nog een keer proberen levert waarschijnlijk hetzelfde op.
+    """
+
+
 class LegeLLMResponsError(ValueError):
     """Het model gaf niets terug.
 
@@ -424,6 +456,66 @@ class BaseLLMService(ABC):
             logger.exception("Fout bij LLM gap-analyse")
             return GapAnalysisResult(narrative="", recommendations=[])
 
+    async def markeer_debat_vragen(
+        self,
+        *,
+        onderwerp: str,
+        soort_vergadering: str | None,
+        bewindspersonen: list[str],
+        stukken: list[str],
+        openstaand: list[tuple[int, str, str]],
+        spreker: str,
+        interruptie: bool,
+        tekst: str,
+        onderbroken: str | None = None,
+        initiatiefnemers: bool = False,
+    ) -> DebatVragenResult:
+        """Haal uit één spreekbeurt de vragen aan de bewindspersoon.
+
+        `openstaand` is de lijst vragen van deze spreker die al gemarkeerd
+        zijn en nog openstaan, als (nummer, vragensteller, samenvatting). Het model
+        zegt per vraag of hij nieuw is of bij een van die nummers hoort.
+        `onderbroken` is bij een interruptie wie er het woord had.
+        `initiatiefnemers` zegt dat er naast de bewindspersoon Kamerleden
+        zitten die zelf vragen beantwoorden, zoals bij een initiatiefnota.
+
+        PUBLIC: een debat is openbaar en wordt uitgezonden.
+        """
+        from bouwmeester.services.llm.prompts import build_debat_vragen_prompt
+
+        prompt = build_debat_vragen_prompt(
+            onderwerp=onderwerp,
+            soort_vergadering=soort_vergadering,
+            bewindspersonen=bewindspersonen,
+            stukken=stukken,
+            openstaand=openstaand,
+            spreker=spreker,
+            interruptie=interruptie,
+            tekst=tekst,
+            onderbroken=onderbroken,
+            initiatiefnemers=initiatiefnemers,
+        )
+        # Twee pogingen voor een onleesbaar antwoord, geen voor een
+        # onbereikbaar model. Een beurt komt maar één keer langs, dus een
+        # antwoord dat net geen JSON was verdient een tweede kans; een model
+        # dat niet antwoordt wordt door de aanroeper later opnieuw gevraagd.
+        for poging in (1, 2):
+            try:
+                text = await self._complete(prompt, max_tokens=2048)
+            except Exception:
+                logger.exception("LLM onbereikbaar bij het markeren van debatvragen")
+                return DebatVragenResult(fout=DEBAT_VRAGEN_ONBEREIKBAAR)
+            try:
+                return DebatVragenResult(vragen=_lees_debat_vragen(self, text))
+            except Exception as exc:
+                logger.warning(
+                    "Onbruikbaar LLM-antwoord bij debatvragen (poging %d, %s: %s)",
+                    poging,
+                    type(exc).__name__,
+                    str(exc)[:200],
+                )
+        return DebatVragenResult(fout=DEBAT_VRAGEN_ONBRUIKBAAR)
+
     async def is_mattermost_noise(self, message: str) -> bool:
         """True als het bericht ruis is (ack/emoji/no-content)."""
         from bouwmeester.services.llm.prompts import build_is_noise_prompt
@@ -530,3 +622,42 @@ class BaseLLMService(ABC):
                 match_existing_lead_id=None,
                 reasoning="LLM-antwoord niet te lezen",
             )
+
+
+def _heel_getal(value: object) -> int | None:
+    """Een nummer uit het antwoord, of ``None`` voor alles wat er geen is."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _lees_debat_vragen(service: BaseLLMService, text: str) -> list[DebatVraag]:
+    """Lees het antwoord op de debatvragen-prompt.
+
+    Gooit een fout als het antwoord als geheel niet te lezen is. Eén vraag
+    die niet deugt (geen citaat) valt weg zonder de rest mee te nemen.
+    """
+    result = service._parse_json(text)
+    if not isinstance(result, dict) or not isinstance(result.get("vragen"), list):
+        raise ValueError("antwoord draagt geen lijst `vragen`")
+    vragen: list[DebatVraag] = []
+    for item in result["vragen"]:
+        if not isinstance(item, dict):
+            continue
+        citaat = item.get("citaat")
+        if not isinstance(citaat, str) or not citaat.strip():
+            continue
+        vragen.append(
+            DebatVraag(
+                citaat=citaat.strip(),
+                gericht_aan=str(item.get("gericht_aan") or "").strip(),
+                samenvatting=str(item.get("samenvatting") or "").strip(),
+                hoort_bij=_heel_getal(item.get("hoort_bij")),
+                stuk=_heel_getal(item.get("stuk")),
+            )
+        )
+    return vragen

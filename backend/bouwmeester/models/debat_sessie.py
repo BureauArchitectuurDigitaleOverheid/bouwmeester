@@ -171,6 +171,17 @@ class DebatSpreekbeurt(Base):
     )
     # The messages a long turn continues in, in order.
     vervolg_post_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # When this turn was read for questions to the bewindspersoon, with or
+    # without a find. NULL is not yet: a turn is read once, when it is over
+    # and its text is complete. Only on the row that carries the message.
+    beoordeeld_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # How often reading this turn failed. Past a few times it is given up
+    # on, so one turn the model cannot take does not hold up the debate.
+    beoordeel_pogingen: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

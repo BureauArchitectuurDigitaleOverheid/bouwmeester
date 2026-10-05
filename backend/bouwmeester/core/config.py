@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     # The text of each turn under its message, from the subtitles of the
     # stream. Off leaves the timeline as it is.
     DEBAT_TRANSCRIPT_ENABLED: bool = True
+    # Questions to the bewindspersoon, marked as a thread under the turn
+    # they were asked in. The model that is configured for the application
+    # reads every finished turn; a debate is public, so any model may.
+    # Needs the transcript. Off leaves the transcript as it is.
+    DEBAT_VRAGEN_ENABLED: bool = True
+    # A turn is finished some 45 seconds before its text is complete, so
+    # looking more often than this finds nothing sooner.
+    DEBAT_VRAGEN_INTERVAL_SECONDS: int = 15
 
     # tkconv (berthub.eu) draait op een privéserver zonder SLA en heeft een
     # eigen poll-ritme, los van de officiële TK-API. Het ritme volgt wanneer

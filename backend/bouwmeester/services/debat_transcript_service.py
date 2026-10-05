@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.models.debat_sessie import DebatSessie, DebatSpreekbeurt
 from bouwmeester.services import debat_direct as dd
 from bouwmeester.services import debat_subtitles as subs
+from bouwmeester.services.debat_statusregel import SCHEIDING, voeg_samen
 from bouwmeester.services.debat_transcript import (
     append_text,
     assign_cues,
@@ -33,6 +34,7 @@ from bouwmeester.services.debat_transcript import (
     render_closing,
     split_text,
 )
+from bouwmeester.services.debat_vraag_service import statusblok_voor_post
 from bouwmeester.services.mattermost_service import (
     MattermostService,
     PostNotFoundError,
@@ -59,7 +61,7 @@ MESSAGE_MAX = 16000
 
 
 @dataclass
-class _Turn:
+class Turn:
     """A message of the timeline and the rows whose text belongs in it."""
 
     row_id: uuid.UUID
@@ -68,6 +70,9 @@ class _Turn:
     key: tuple[str, str]
     geplaatst: int
     vervolg: list[str]
+    # When the turn began, and when it was read for questions.
+    start: datetime
+    beoordeeld_at: datetime | None = None
     texts: list[str] = field(default_factory=list)
     # A suspension or the end: the text is the chairman's, and only the
     # last of it is shown.
@@ -203,81 +208,6 @@ class DebatTranscript:
         sessie.ondertitels = {**state, debate_id: dict(entry)}
         return True
 
-    async def _turns(self, sessie_id: uuid.UUID, debate_id: str) -> list[_Turn]:
-        rows = (
-            await self.session.execute(
-                select(
-                    DebatSpreekbeurt.id,
-                    DebatSpreekbeurt.event_type,
-                    DebatSpreekbeurt.object_id,
-                    DebatSpreekbeurt.post_id,
-                    DebatSpreekbeurt.kop,
-                    DebatSpreekbeurt.tekst,
-                    DebatSpreekbeurt.tekst_geplaatst,
-                    DebatSpreekbeurt.vervolg_post_ids,
-                )
-                .where(
-                    DebatSpreekbeurt.sessie_id == sessie_id,
-                    DebatSpreekbeurt.debat_direct_id == debate_id,
-                )
-                .order_by(*_ORDER)
-            )
-        ).all()
-        turns: list[_Turn] = []
-        current: _Turn | None = None
-        # What was said from the chair since a member last spoke, or since
-        # the last suspension. Not only on rows of the chairman: what is
-        # said after a resumption or a change of chairman is kept on the row
-        # of that event.
-        chairman = ""
-        for row_id, kind, who, post_id, kop, tekst, geplaatst, vervolg in rows:
-            if kind in _SPEAKING:
-                chairman = ""
-            elif kind not in _CLOSING:
-                chairman = append_text(chairman, tekst or "")
-            if post_id:
-                current = None
-                if kind in _CLOSING and kop and chairman:
-                    # "Ik schors de vergadering tot kwart over twee" is said
-                    # by the chairman just before the event. Without it the
-                    # suspension comes out of nowhere.
-                    turns.append(
-                        _Turn(
-                            row_id,
-                            post_id,
-                            kop,
-                            (kind, who),
-                            geplaatst,
-                            [],
-                            [chairman],
-                            closing=True,
-                        )
-                    )
-                if kind in _CLOSING:
-                    # Said once. A second suspension, or the end after a
-                    # suspension, does not repeat it.
-                    chairman = ""
-                if kind in _SPEAKING and kop:
-                    current = _Turn(
-                        row_id,
-                        post_id,
-                        kop,
-                        (kind, who),
-                        geplaatst,
-                        list(vervolg or []),
-                    )
-                    turns.append(current)
-            elif kind in _SPEAKING and (current is None or current.key != (kind, who)):
-                # Someone spoke who has no message: a stretch the timeline
-                # missed. What follows is not the turn from before it.
-                current = None
-            if current is not None and kind in _SPEAKING and tekst:
-                # The row of the message itself, and the rows of the same
-                # speaker carrying on after the chairman said a word. What
-                # the chairman said in between is kept but not shown.
-                current.texts.append(tekst)
-        return turns
-
     async def _write(
         self,
         sessie_id: uuid.UUID,
@@ -285,7 +215,7 @@ class DebatTranscript:
         debate_id: str,
         result,  # type: ignore[no-untyped-def]
     ) -> None:
-        turns = await self._turns(sessie_id, debate_id)
+        turns = await load_turns(self.session, sessie_id, debate_id)
         if not any(len(turn.text) != turn.geplaatst for turn in turns):
             return
         # The last thing the timeline put in the channel, of any part and
@@ -327,6 +257,18 @@ class DebatTranscript:
             done = True
             for number in range(first, len(pieces)):
                 message = render(turn.kop, pieces[number], vervolg=number > 0)
+                if number == 0:
+                    # The first message is also where the questions of the
+                    # turn are counted. Writing it again from the text alone
+                    # would wipe that, so it goes back in, below the text
+                    # and outside what is cut into messages.
+                    blok = await statusblok_voor_post(self.session, turn.post_id)
+                    if blok:
+                        # Room for the rule and the block: what Mattermost
+                        # refuses for its length is cut from the text.
+                        room = MESSAGE_MAX - len(blok) - len(SCHEIDING) - 3
+                        message = message[:room]
+                    message = voeg_samen(message, blok)
                 if number <= len(vervolg):
                     target = turn.post_id if number == 0 else vervolg[number - 1]
                     ok = await self._rewrite(target, message)
@@ -397,3 +339,92 @@ def _moment(value: object) -> datetime | None:
     except ValueError:
         return None
     return moment if moment.tzinfo else None
+
+
+async def load_turns(
+    session: AsyncSession, sessie_id: uuid.UUID, debate_id: str
+) -> list[Turn]:
+    """The messages of one part of a debate, each with the text that is its.
+
+    The one place that says what a turn is. Writing the text and reading it
+    for questions both go by this, so they cannot disagree about which
+    words belong under which message.
+    """
+    rows = (
+        await session.execute(
+            select(
+                DebatSpreekbeurt.id,
+                DebatSpreekbeurt.event_type,
+                DebatSpreekbeurt.object_id,
+                DebatSpreekbeurt.event_start,
+                DebatSpreekbeurt.post_id,
+                DebatSpreekbeurt.kop,
+                DebatSpreekbeurt.tekst,
+                DebatSpreekbeurt.tekst_geplaatst,
+                DebatSpreekbeurt.vervolg_post_ids,
+                DebatSpreekbeurt.beoordeeld_at,
+            )
+            .where(
+                DebatSpreekbeurt.sessie_id == sessie_id,
+                DebatSpreekbeurt.debat_direct_id == debate_id,
+            )
+            .order_by(*_ORDER)
+        )
+    ).all()
+    turns: list[Turn] = []
+    current: Turn | None = None
+    # What was said from the chair since a member last spoke, or since
+    # the last suspension. Not only on rows of the chairman: what is
+    # said after a resumption or a change of chairman is kept on the row
+    # of that event.
+    chairman = ""
+    for row_id, kind, who, start, post_id, kop, tekst, geplaatst, vervolg, read in rows:
+        if kind in _SPEAKING:
+            chairman = ""
+        elif kind not in _CLOSING:
+            chairman = append_text(chairman, tekst or "")
+        if post_id:
+            current = None
+            if kind in _CLOSING and kop and chairman:
+                # "Ik schors de vergadering tot kwart over twee" is said
+                # by the chairman just before the event. Without it the
+                # suspension comes out of nowhere.
+                turns.append(
+                    Turn(
+                        row_id,
+                        post_id,
+                        kop,
+                        (kind, who),
+                        geplaatst,
+                        [],
+                        start,
+                        texts=[chairman],
+                        closing=True,
+                    )
+                )
+            if kind in _CLOSING:
+                # Said once. A second suspension, or the end after a
+                # suspension, does not repeat it.
+                chairman = ""
+            if kind in _SPEAKING and kop:
+                current = Turn(
+                    row_id,
+                    post_id,
+                    kop,
+                    (kind, who),
+                    geplaatst,
+                    list(vervolg or []),
+                    start,
+                    read,
+                )
+                turns.append(current)
+        elif kind in _SPEAKING and (current is None or current.key != (kind, who)):
+            # Someone spoke who has no message: a stretch the timeline
+            # missed. What follows is not the turn from before it.
+            current = None
+        if current is not None and kind in _SPEAKING and tekst:
+            # The row of the message itself, and the rows of the same
+            # speaker carrying on after the chairman said a word. What
+            # the chairman said in between is kept but not shown.
+            current.texts.append(tekst)
+    return turns
