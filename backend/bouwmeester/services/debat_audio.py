@@ -195,7 +195,6 @@ async def fetch_since(
                     ticks_to_datetime(position).isoformat(timespec="seconds"),
                     ticks_to_datetime(first_listed).isoformat(timespec="seconds"),
                 )
-                position = None
                 break
             result.append(found)
             position = found[0].end_ticks
