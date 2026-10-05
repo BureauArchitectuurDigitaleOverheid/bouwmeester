@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -75,6 +76,77 @@ class DebatSessie(Base):
         String(26), nullable=True
     )
 
+    # The Debat Direct debates that are this activiteit, found on the day
+    # itself. A list, because Debat Direct cuts a plenary debate in two
+    # around a break against one activiteit.
+    debat_direct_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Where the timeline stands: NULL (not yet found on Debat Direct),
+    # gekoppeld, loopt, afgelopen or afgelast.
+    tijdlijn_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # When the activiteit and the Debat Direct agenda were last read, so
+    # that is not done on every tick.
+    tijdlijn_gecontroleerd_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+TIJDLIJN_GEKOPPELD = "gekoppeld"
+TIJDLIJN_LOOPT = "loopt"
+TIJDLIJN_AFGELOPEN = "afgelopen"
+TIJDLIJN_AFGELAST = "afgelast"
+
+
+class DebatSpreekbeurt(Base):
+    """One event of a debate that the timeline has dealt with.
+
+    The table is the memory of what was seen: an event that is in here is
+    never posted again, also after a restart. `post_id` is the message it
+    became, or NULL for an event that was deliberately not posted (the
+    chairman giving the floor, or everything that happened before the
+    timeline joined a running debate).
+
+    Named after the spreekbeurt because that is what a row will grow into:
+    the transcript is added to the same message later.
+    """
+
+    __tablename__ = "debat_spreekbeurt"
+    __table_args__ = (
+        UniqueConstraint(
+            "sessie_id",
+            "debat_direct_id",
+            "event_type",
+            "event_start",
+            "object_id",
+            name="uq_debat_spreekbeurt_event",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("gen_random_uuid()"),
+    )
+    sessie_id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("debat_sessie.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    debat_direct_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    event_start: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    # The politician for a speaker event, the debate itself for a start or
+    # an end. Empty string, not NULL, so the unique key holds.
+    object_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, server_default=""
+    )
+    post_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

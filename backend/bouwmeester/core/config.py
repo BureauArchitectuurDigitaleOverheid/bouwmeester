@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     TK_POLL_INTERVAL_SECONDS: int = 3600
     TK_IMPORT_LIMIT: int = 100
 
+    # The timeline of a debate: how often Debat Direct is asked who speaks.
+    # A speaker change shows up there 5.8 to 8.7 seconds after it happened,
+    # so asking more often than this gains nothing. A tick without a debate
+    # today is one query and no HTTP call.
+    DEBAT_TIJDLIJN_INTERVAL_SECONDS: int = 10
+    DEBAT_TIJDLIJN_ENABLED: bool = True
+
     # tkconv (berthub.eu) draait op een privéserver zonder SLA en heeft een
     # eigen poll-ritme, los van de officiële TK-API. Het ritme volgt wanneer
     # kamerstukken verschijnen: een meting over 1010 stukken in acht dagen

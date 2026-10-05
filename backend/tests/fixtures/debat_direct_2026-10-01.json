@@ -1,0 +1,1284 @@
+{
+ "debate": {
+  "id": "5d210dbb-9be4-4c39-8640-63a8ccec5b3a",
+  "name": "Informele Raad Buitenlandse Zaken Ontwikkeling van 8 en 9 oktober 2026",
+  "slug": "informele-raad-buitenlandse-zaken-ontwikkeling-van-8-en-9-oktober-2026-10-00",
+  "debateType": "Commissiedebat",
+  "debateDate": "2026-10-01",
+  "startsAt": "2026-10-01T10:00:36+0200",
+  "startedAt": "2026-10-01T10:00:36+0200",
+  "endedAt": "2026-10-01T13:00:54+0200",
+  "locationId": "klompezaal",
+  "locationName": "Klompézaal",
+  "categoryIds": [
+   "internationaal"
+  ],
+  "events": [
+   {
+    "eventStart": "2026-10-01T13:00:54+0200",
+    "eventType": "debate_end",
+    "objectId": "5d210dbb-9be4-4c39-8640-63a8ccec5b3a"
+   },
+   {
+    "eventStart": "2026-10-01T13:00:34+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T13:00:21+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T13:00:13+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T13:00:12+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:59:10+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:58:13+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:58:12+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:58:02+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:57:53+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T12:57:38+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:56:05+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:55:48+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:55:21+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T12:55:12+0200",
+    "eventType": "interrupter",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T12:55:10+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:54:13+0200",
+    "eventType": "speaker",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T12:54:09+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T12:54:07+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:53:41+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T12:53:37+0200",
+    "eventType": "interrupter",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T12:53:35+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:52:22+0200",
+    "eventType": "interrupter",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T12:52:14+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:52:04+0200",
+    "eventType": "speaker",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T12:51:51+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:50:35+0200",
+    "eventType": "speaker",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T12:50:04+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:49:27+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:49:01+0200",
+    "eventType": "interrupter",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T12:48:49+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:47+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:32+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:30+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:28+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:25+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:23+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:22+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:45:17+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:44:32+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:43:58+0200",
+    "eventType": "interrupter",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T12:42:40+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:42:30+0200",
+    "eventType": "chairman",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:42:23+0200",
+    "eventType": "chairman_change",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:42:06+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:41:14+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:40:22+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T12:40:20+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:39:13+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:38:18+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T12:35:16+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:34:13+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T12:34:08+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:22:30+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:22:24+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:21:01+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:20:53+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:20:52+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:19:55+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:19:52+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:18:26+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:17:31+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T12:17:21+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:16:18+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:15:52+0200",
+    "eventType": "interrupter",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T12:15:42+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:14:14+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:13:41+0200",
+    "eventType": "interrupter",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T12:12:08+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:11:00+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:10:57+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:08:56+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:08:09+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:08:08+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:08:07+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T12:08:04+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:07:13+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:06:39+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T12:06:36+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T12:05:12+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:04:33+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T12:02:12+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T12:00:55+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T11:48:49+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:48:47+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:48:20+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:48:13+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:48:06+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:48:03+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:47:34+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:47:20+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:47:17+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:46:02+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:45:36+0200",
+    "eventType": "interrupter",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T11:45:26+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:44:06+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:43:38+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T11:43:35+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:42:41+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:42:22+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:42:19+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:34:24+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:34:20+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:34:00+0200",
+    "eventType": "speaker",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:34:00+0200",
+    "eventType": "continued",
+    "objectId": "5d210dbb-9be4-4c39-8640-63a8ccec5b3a"
+   },
+   {
+    "eventStart": "2026-10-01T11:33:16+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:10:08+0200",
+    "eventType": "suspended",
+    "objectId": "5d210dbb-9be4-4c39-8640-63a8ccec5b3a"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:59+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:58+0200",
+    "eventType": "interrupter",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:57+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:56+0200",
+    "eventType": "interrupter",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:54+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:53+0200",
+    "eventType": "interrupter",
+    "objectId": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:35+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:09:01+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:08:36+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:08:34+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:08:19+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:08:11+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:08:08+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:07:38+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:06:48+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:06:15+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T11:05:46+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:05:01+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T11:04:59+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:04:37+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:04:09+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T11:03:48+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:03:10+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T11:02:45+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:02:15+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T11:02:13+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:01:52+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T11:01:48+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T11:00:44+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:59:37+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:58:53+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:57:48+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:57:11+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:57:09+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:56:16+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:55:30+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:54:49+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:54:31+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:54:04+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:53:58+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:50:37+0200",
+    "eventType": "speaker",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:50:31+0200",
+    "eventType": "interrupter",
+    "objectId": "2b52579f-6343-4936-afac-9582ece0b33e"
+   },
+   {
+    "eventStart": "2026-10-01T10:50:22+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:50:20+0200",
+    "eventType": "speaker",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:50:14+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:46:01+0200",
+    "eventType": "speaker",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:45:56+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:41:45+0200",
+    "eventType": "speaker",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:41:40+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:41:22+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:41:14+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:41:12+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:40:54+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:40:52+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:40:31+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:40:00+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:39:47+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:39:32+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:38:56+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:38:10+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:38:09+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:37:59+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:37:31+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:37:05+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:36:51+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:35:57+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:35:14+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:35:12+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:34:20+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:33:25+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:33:24+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:32:23+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:31:32+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:31:28+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:30:54+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:30:17+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:30:15+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:29:40+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:29:06+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:28:17+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:27:51+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:27:46+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:23:53+0200",
+    "eventType": "speaker",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:23:49+0200",
+    "eventType": "interrupter",
+    "objectId": "8facda55-b928-4086-87a2-5105b6aeb6e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:23:45+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:23:27+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:23:03+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:22:52+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:22:34+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:22:20+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:21:51+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:21:07+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:20:22+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:19:41+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:19:39+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:19:02+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:18:23+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:17:12+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:16:33+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:16:32+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:16:28+0200",
+    "eventType": "interrupter",
+    "objectId": "ed1edc27-18bb-47cd-a617-01bcbec765a2"
+   },
+   {
+    "eventStart": "2026-10-01T10:16:24+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:15:56+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:15:40+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:15:39+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:15:28+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:14:54+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:13:59+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:13:55+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:13:52+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:13:00+0200",
+    "eventType": "interrupter",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:12:37+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:11:43+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:11:33+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:09:47+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:09:01+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:08:57+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:08:48+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:08:43+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:08:42+0200",
+    "eventType": "interrupter",
+    "objectId": "8eaa8995-7e34-47e6-bd85-250e60452b3f"
+   },
+   {
+    "eventStart": "2026-10-01T10:08:33+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:05:33+0200",
+    "eventType": "speaker",
+    "objectId": "3fe14035-2f9c-461e-94d4-56b8c9a019e1"
+   },
+   {
+    "eventStart": "2026-10-01T10:05:22+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:01:20+0200",
+    "eventType": "speaker",
+    "objectId": "b5363002-d06e-4813-9c05-86fe74185a56"
+   },
+   {
+    "eventStart": "2026-10-01T10:00:37+0200",
+    "eventType": "chairman",
+    "objectId": "bab21bc5-8703-4fe7-96f4-c0364573adfc"
+   },
+   {
+    "eventStart": "2026-10-01T10:00:36+0200",
+    "eventType": "debate_start",
+    "objectId": "5d210dbb-9be4-4c39-8640-63a8ccec5b3a"
+   }
+  ]
+ },
+ "actors": {
+  "politicians": [
+   {
+    "id": "3fe14035-2f9c-461e-94d4-56b8c9a019e1",
+    "name": "Kamerlid A",
+    "firstName": "Kamerlid",
+    "lastName": "A",
+    "title": "Tweede Kamerlid",
+    "partyId": "675D0C53-80F1-4F39-BC2B-C6E35F5C8D3E"
+   },
+   {
+    "id": "ed1edc27-18bb-47cd-a617-01bcbec765a2",
+    "name": "Kamerlid B",
+    "firstName": "Kamerlid",
+    "lastName": "B",
+    "title": "Tweede Kamerlid",
+    "partyId": "3cb82784-2a9b-4afb-a96b-69a9866fb502"
+   },
+   {
+    "id": "2b52579f-6343-4936-afac-9582ece0b33e",
+    "name": "Kamerlid C",
+    "firstName": "Kamerlid",
+    "lastName": "C",
+    "title": "Tweede Kamerlid",
+    "partyId": "4A7D5852-6DBB-4EC1-8AB5-572BA2CF31C3"
+   },
+   {
+    "id": "b5363002-d06e-4813-9c05-86fe74185a56",
+    "name": "Kamerlid D",
+    "firstName": "Kamerlid",
+    "lastName": "D",
+    "title": "Tweede Kamerlid",
+    "partyId": "28BE04BE-2BF2-4ABB-92E1-FAC61F8323E8"
+   },
+   {
+    "id": "bab21bc5-8703-4fe7-96f4-c0364573adfc",
+    "name": "Kamerlid E",
+    "firstName": "Kamerlid",
+    "lastName": "E",
+    "title": "Tweede Kamerlid",
+    "partyId": "3F74D635-C535-4F1A-A491-108EEDDA64CA"
+   },
+   {
+    "id": "8eaa8995-7e34-47e6-bd85-250e60452b3f",
+    "name": "Kamerlid F",
+    "firstName": "Kamerlid",
+    "lastName": "F",
+    "title": "Tweede Kamerlid",
+    "partyId": "f5c4f5e2-11f1-4ac0-a50e-38bdd7487873"
+   },
+   {
+    "id": "8facda55-b928-4086-87a2-5105b6aeb6e1",
+    "name": "Kamerlid G",
+    "firstName": "Kamerlid",
+    "lastName": "G",
+    "title": "Tweede Kamerlid",
+    "partyId": "3F74D635-C535-4F1A-A491-108EEDDA64CA"
+   },
+   {
+    "id": "b88ce003-f013-4cd4-a77e-c3bcf6158d5c",
+    "name": "Bewindspersoon A",
+    "firstName": "Bewindspersoon",
+    "lastName": "A",
+    "title": "Minister van Voorbeeldzaken",
+    "partyId": null
+   }
+  ],
+  "parties": [
+   {
+    "id": "4A7D5852-6DBB-4EC1-8AB5-572BA2CF31C3",
+    "shorthand": "D66",
+    "name": "Democraten 66"
+   },
+   {
+    "id": "3F74D635-C535-4F1A-A491-108EEDDA64CA",
+    "shorthand": "VVD",
+    "name": "Volkspartij voor Vrijheid en Democratie"
+   },
+   {
+    "id": "f5c4f5e2-11f1-4ac0-a50e-38bdd7487873",
+    "shorthand": "PRO",
+    "name": "Progressief Nederland"
+   },
+   {
+    "id": "675D0C53-80F1-4F39-BC2B-C6E35F5C8D3E",
+    "shorthand": "CDA",
+    "name": "Christen Democratisch Appel"
+   },
+   {
+    "id": "3cb82784-2a9b-4afb-a96b-69a9866fb502",
+    "shorthand": "DENK",
+    "name": "DENK"
+   },
+   {
+    "id": "28BE04BE-2BF2-4ABB-92E1-FAC61F8323E8",
+    "shorthand": "SP",
+    "name": "Socialistische Partij"
+   }
+  ]
+ }
+}

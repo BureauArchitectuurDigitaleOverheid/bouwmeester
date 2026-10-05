@@ -826,6 +826,7 @@ def _worker_expected_cadence_sec() -> dict[str, float]:
         # zou een gezonde loop elke nacht als "Vertraagd" verschijnen.
         "tkconv": float(settings.TKCONV_POLL_INTERVAL_NACHT_SECONDS),
         "mattermost_websocket": 90.0,  # idle-heartbeat is once per 60s
+        "debat_tijdlijn": 90.0,  # ticks every few seconds, heartbeat once per 60s
         "opdracht_task": float(settings.OPDRACHT_TASK_INTERVAL_SECONDS),
         "fcc_sync": float(settings.FCC_POLL_INTERVAL_SECONDS),
         "mattermost_retry": float(settings.MATTERMOST_RETRY_INTERVAL_SECONDS),
