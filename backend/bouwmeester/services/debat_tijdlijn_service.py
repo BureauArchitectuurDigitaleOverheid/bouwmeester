@@ -83,6 +83,8 @@ POLL_BEFORE_START = timedelta(minutes=15)
 
 _HTTP_TIMEOUT = 15.0
 _SPEAKING = (dd.EVENT_SPEAKER, dd.EVENT_INTERRUPTER)
+# Messages that get text under them later, so their first line is kept.
+_WITH_TEXT = (*_SPEAKING, dd.EVENT_SUSPENDED, dd.EVENT_DEBATE_END)
 # What the channel would have been told. A missed stretch with any of these
 # in it is said to have been missed; one with only the chairman giving the
 # floor is not.
@@ -593,7 +595,7 @@ class DebatTijdlijnService:
                         last_turn[debate_id] = (event.type, event.object_id)
                     else:
                         last_turn.pop(debate_id, None)
-                kop = tekst if post_id and event.type in _SPEAKING else None
+                kop = tekst if post_id and event.type in _WITH_TEXT else None
                 await self._remember(sessie.id, debate_id, event, post_id, kop)
                 # Per event: a message that is in the channel has to be in
                 # the database, or a restart posts it a second time.

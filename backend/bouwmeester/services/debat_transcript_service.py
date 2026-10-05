@@ -30,6 +30,7 @@ from bouwmeester.services.debat_transcript import (
     assign_cues,
     fit_messages,
     render,
+    render_closing,
     split_text,
 )
 from bouwmeester.services.mattermost_service import (
@@ -40,6 +41,7 @@ from bouwmeester.services.mattermost_service import (
 logger = logging.getLogger(__name__)
 
 _SPEAKING = (dd.EVENT_SPEAKER, dd.EVENT_INTERRUPTER)
+_CLOSING = (dd.EVENT_SUSPENDED, dd.EVENT_DEBATE_END)
 # How far back the subtitles are read when a debate is first seen. The same
 # patience the timeline has for what it missed.
 READ_BACK = timedelta(minutes=10)
@@ -67,6 +69,9 @@ class _Turn:
     geplaatst: int
     vervolg: list[str]
     texts: list[str] = field(default_factory=list)
+    # A suspension or the end: the text is the chairman's, and only the
+    # last of it is shown.
+    closing: bool = False
 
     @property
     def text(self) -> str:
@@ -220,9 +225,31 @@ class DebatTranscript:
         ).all()
         turns: list[_Turn] = []
         current: _Turn | None = None
+        # What the chairman said last, since anyone else spoke.
+        chairman = ""
         for row_id, kind, who, post_id, kop, tekst, geplaatst, vervolg in rows:
+            if kind == dd.EVENT_CHAIRMAN:
+                chairman = tekst or ""
+            elif kind in _SPEAKING:
+                chairman = ""
             if post_id:
                 current = None
+                if kind in _CLOSING and kop and chairman:
+                    # "Ik schors de vergadering tot kwart over twee" is said
+                    # by the chairman just before the event. Without it the
+                    # suspension comes out of nowhere.
+                    turns.append(
+                        _Turn(
+                            row_id,
+                            post_id,
+                            kop,
+                            (kind, who),
+                            geplaatst,
+                            [],
+                            [chairman],
+                            closing=True,
+                        )
+                    )
                 if kind in _SPEAKING and kop:
                     current = _Turn(
                         row_id,
@@ -270,6 +297,12 @@ class DebatTranscript:
         for turn in turns:
             text = turn.text
             if len(text) == turn.geplaatst:
+                continue
+            if turn.closing:
+                if await self._rewrite(turn.post_id, render_closing(turn.kop, text)):
+                    await self._keep(turn.row_id, tekst_geplaatst=len(text))
+                else:
+                    result.fouten += 1
                 continue
             pieces = split_text(text)
             if turn.row_id != newest:

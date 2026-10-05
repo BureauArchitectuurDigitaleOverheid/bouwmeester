@@ -23,6 +23,8 @@ MESSAGE_LIMIT = 1800
 # A cut is not made before this many characters: a message of one sentence
 # followed by "vervolg" reads worse than one that is a little long.
 MESSAGE_MINIMUM = 500
+# How much of what the chairman said goes under a suspension or the end.
+CLOSING_LIMIT = 300
 
 _SENTENCE_END = re.compile(r"[.?!…][\"'”’)]?\s")
 _RUNS_ON = re.compile(r"\.\.\.\s+(?=[a-zà-ÿ])")
@@ -99,6 +101,29 @@ def fit_messages(pieces: list[str], available: int) -> list[str]:
     if available < 1 or len(pieces) <= available:
         return pieces
     return [*pieces[: available - 1], " ".join(pieces[available - 1 :])]
+
+
+def last_sentences(text: str, limit: int = CLOSING_LIMIT) -> str:
+    """The end of a text: as many whole last sentences as fit.
+
+    For what the chairman said before a suspension. The last sentences are
+    the ones that say until when; what came before is the debate.
+    """
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+    window = text[-limit:]
+    starts = [found.end() for found in _SENTENCE_END.finditer(window)]
+    if starts and starts[0] < len(window):
+        return window[starts[0] :].strip()
+    space = window.find(" ")
+    return "…" + (window[space:] if space >= 0 else window)
+
+
+def render_closing(kop: str, text: str) -> str:
+    """A suspension or the end, with what the chairman said to announce it."""
+    words = escape_mattermost_prose(_RUNS_ON.sub(" ", last_sentences(text))).strip()
+    return f"{kop}\nVoorzitter: {words}" if words else kop
 
 
 def render(kop: str, piece: str, *, vervolg: bool = False) -> str:
