@@ -1,0 +1,143 @@
+"""The status line under the message of a turn at speaking.
+
+The message of a turn has two writers. The transcription makes the text
+grow while someone speaks, and the marking of questions appends where they
+stand. A `PUT /posts/{id}` replaces the whole message, so each writer has to
+keep what the other wrote. This module is the convention both follow.
+
+A message is:
+
+    <body>
+
+    ---
+    <status block>
+
+The body is the head of the turn and its transcript. The status block is
+everything after the last line that is exactly `---`, and it is optional.
+Mattermost shows the `---` as a thin rule.
+
+For the writer of the body:
+
+    nieuw = met_body(huidig_bericht, nieuwe_body)
+
+keeps the status block that is there. Never build the message by hand, and
+never put a line that is exactly `---` in the body (`voeg_samen` escapes one
+that slips in).
+
+For the writer of the status block:
+
+    nieuw = met_status(huidig_bericht, statusregel(...))
+
+keeps the body. The status block is not parsed back: it is derived from the
+database every time (`statusregel`), so a block that was lost is restored by
+the next write.
+
+Pure functions, no I/O.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from bouwmeester.models.debat_markering import (
+    SOORT_VRAAG,
+    STATUS_ANTWOORD_KLAAR,
+    STATUS_BEANTWOORD,
+    STATUS_OPEN,
+    STATUS_TOEGEWEZEN,
+    STATUS_VERWORPEN,
+)
+
+SCHEIDING = "---"
+
+ICOON_VRAAG = "❓"
+
+# (singular, plural) per soort. A soort that is not in here is not shown.
+_SOORT_LABEL: dict[str, tuple[str, str]] = {
+    SOORT_VRAAG: ("Vraag", "vragen"),
+}
+_SOORT_ICOON: dict[str, str] = {
+    SOORT_VRAAG: ICOON_VRAAG,
+}
+# (singular, plural, as a count) per status, in the order they are shown.
+_STATUS_LABEL: dict[str, tuple[str, str, str]] = {
+    STATUS_OPEN: ("staat open", "staan open", "open"),
+    STATUS_TOEGEWEZEN: ("wordt opgepakt", "worden opgepakt", "opgepakt"),
+    STATUS_ANTWOORD_KLAAR: ("antwoord klaar", "antwoord klaar", "antwoord klaar"),
+    STATUS_BEANTWOORD: ("beantwoord", "beantwoord", "beantwoord"),
+}
+
+
+def splits(bericht: str) -> tuple[str, str]:
+    """A message as (body, status block). No status block is an empty string."""
+    regels = (bericht or "").split("\n")
+    for i in range(len(regels) - 1, -1, -1):
+        if regels[i].strip() == SCHEIDING:
+            body = "\n".join(regels[:i]).rstrip()
+            status = "\n".join(regels[i + 1 :]).strip()
+            return body, status
+    return (bericht or "").rstrip(), ""
+
+
+def voeg_samen(body: str, status: str) -> str:
+    """A message from a body and a status block."""
+    # A bare `---` in the body would be read as the separator next time.
+    veilig = "\n".join(
+        "\\---" if regel.strip() == SCHEIDING else regel
+        for regel in (body or "").rstrip().split("\n")
+    )
+    status = (status or "").strip()
+    if not status:
+        return veilig
+    return f"{veilig}\n\n{SCHEIDING}\n{status}"
+
+
+def met_status(bericht: str, status: str) -> str:
+    """The same message with another status block; the body is kept."""
+    body, _ = splits(bericht)
+    return voeg_samen(body, status)
+
+
+def met_body(bericht: str, body: str) -> str:
+    """The same message with another body; the status block is kept."""
+    _, status = splits(bericht)
+    return voeg_samen(body, status)
+
+
+def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
+    """The status block for the markeringen of one turn.
+
+    Each item is (soort, status). One line per soort:
+
+        ❓ Vraag gemarkeerd · staat open
+        ❓ 3 vragen gemarkeerd · staan open
+        ❓ 3 vragen gemarkeerd · 2 open · 1 beantwoord
+
+    A rejected markering does not count. Nothing to show is an empty string.
+    """
+    regels: list[str] = []
+    for soort, (enkel, meer) in _SOORT_LABEL.items():
+        statussen = [
+            status
+            for s, status in markeringen
+            if s == soort and status != STATUS_VERWORPEN
+        ]
+        if not statussen:
+            continue
+        aantal = len(statussen)
+        kop = f"{enkel} gemarkeerd" if aantal == 1 else f"{aantal} {meer} gemarkeerd"
+        per_status = [
+            (status, statussen.count(status))
+            for status in _STATUS_LABEL
+            if status in statussen
+        ]
+        if len(per_status) == 1:
+            status, _ = per_status[0]
+            stand = _STATUS_LABEL[status][0 if aantal == 1 else 1]
+        else:
+            stand = " · ".join(
+                f"{n} {_STATUS_LABEL[status][2]}" for status, n in per_status
+            )
+        regel = f"{_SOORT_ICOON[soort]} {kop}"
+        regels.append(f"{regel} · {stand}" if stand else regel)
+    return "\n".join(regels)
