@@ -1511,11 +1511,11 @@ class TestTheLoop:
 
         assert "_debat_vragen_loop(settings)" in inspect.getsource(worker.main)
 
-    async def test_off_by_default_and_said_so_once(self, monkeypatch):
+    async def test_on_by_default_and_switched_off_is_said_once(self, monkeypatch):
         from bouwmeester import worker
         from bouwmeester.core.config import Settings, get_settings
 
-        assert Settings.model_fields["DEBAT_VRAGEN_ENABLED"].default is False
+        assert Settings.model_fields["DEBAT_VRAGEN_ENABLED"].default is True
         ticks = []
 
         async def health(name, *, status="ok", detail=None):

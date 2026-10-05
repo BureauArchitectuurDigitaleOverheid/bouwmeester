@@ -85,9 +85,10 @@ class Settings(BaseSettings):
     # stream. Off leaves the timeline as it is.
     DEBAT_TRANSCRIPT_ENABLED: bool = True
     # Questions to the bewindspersoon, marked as a thread under the turn
-    # they were asked in. A model reads every finished turn, so this stays
-    # off until it is decided which model that is. Needs the transcript.
-    DEBAT_VRAGEN_ENABLED: bool = False
+    # they were asked in. The model that is configured for the application
+    # reads every finished turn; a debate is public, so any model may.
+    # Needs the transcript. Off leaves the transcript as it is.
+    DEBAT_VRAGEN_ENABLED: bool = True
     # A turn is finished some 45 seconds before its text is complete, so
     # looking more often than this finds nothing sooner.
     DEBAT_VRAGEN_INTERVAL_SECONDS: int = 15
