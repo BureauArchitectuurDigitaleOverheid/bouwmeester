@@ -211,6 +211,7 @@ class Feed:
         self.now = START
         self.parts = parts or [FULL]
         self.activiteit_status = "Gepland"
+        self.aanvang = START.replace(second=0)
         self.activiteit_error = False
         self.agenda_error = False
         self.calls: list[str] = []
@@ -234,7 +235,9 @@ class Feed:
             self.calls.append("activiteit")
             if self.activiteit_error:
                 raise TkApiError("down")
-            return _activiteit(activiteit_id, status=self.activiteit_status)
+            return _activiteit(
+                activiteit_id, status=self.activiteit_status, aanvang=self.aanvang
+            )
 
         monkeypatch.setattr(dd, "fetch_agenda", agenda)
         monkeypatch.setattr(dd, "fetch_debate", debate)
@@ -259,19 +262,30 @@ class Feed:
         )
 
 
-def _activiteit(activiteit_id: str, *, status: str = "Gepland") -> Activiteit:
+def _activiteit(
+    activiteit_id: str, *, status: str = "Gepland", aanvang: datetime | None = None
+) -> Activiteit:
     return Activiteit(
         id=activiteit_id,
         nummer="2026A00001",
         soort="Commissiedebat",
         onderwerp=FULL.name,
-        aanvang=START.replace(second=0),
+        aanvang=aanvang or START.replace(second=0),
         einde=None,
         status=status,
         commissie=None,
         bewindspersonen=(),
         agendapunten=(),
     )
+
+
+def _debat(*events: tuple[str, int, str]) -> dd.DdDebat:
+    """A made-up debate: a start, then (kind, minutes after the start, who)."""
+    made = [dd.DdEvent(START, dd.EVENT_DEBATE_START, "", "start")]
+    for kind, minutes, who in events:
+        at = START + timedelta(minutes=minutes)
+        made.append(dd.DdEvent(at, kind, who, f"{kind}{minutes}"))
+    return dd.DdDebat(**{**FULL.__dict__, "events": tuple(made), "ended_at": None})
 
 
 async def _sessie(db_session, **overrides) -> DebatSessie:
@@ -547,6 +561,423 @@ class TestTimeline:
         # Only the last ten minutes follow, not all thirty.
         assert len(after) < 15
         assert sum(1 for t in mm.texts if t.startswith("⏭️")) == 1
+
+    async def test_mattermost_being_down_does_not_drop_events_without_a_word(
+        self, db_session, monkeypatch
+    ):
+        """Events that could not be posted grow old while they wait. They
+        are only filed as history once the channel has been told so."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        down = START.replace(hour=10, minute=20, second=0)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), down)
+        before = len(mm.texts)
+        rows = await _rows(db_session, sessie)
+
+        mm.fail_posts = 10_000
+        up = down + timedelta(minutes=25)
+        await _run(db_session, mm, feed, down + timedelta(seconds=30), up)
+        feed.now = up
+        result = await DebatTijdlijnService(db_session, mm).tick(up)
+
+        assert len(mm.texts) == before
+        # Only what gets no message of its own was filed in the meantime.
+        unposted = select(func.count()).where(
+            DebatSpreekbeurt.sessie_id == sessie.id,
+            DebatSpreekbeurt.event_type.in_(("speaker", "interrupter")),
+            DebatSpreekbeurt.event_start > down,
+        )
+        assert (await db_session.execute(unposted)).scalar_one() == 0
+        assert await _rows(db_session, sessie) - rows < 3
+        assert result.fouten == 1
+
+        mm.fail_posts = 0
+        await _run(db_session, mm, feed, up, up + timedelta(seconds=30), step=10)
+
+        after = mm.texts[before:]
+        assert after[0].startswith("⏭️ Ik was er even niet. Wat er tussen 10:19 en 10:3")
+        assert sum(1 for t in after if t.startswith("⏭️")) == 1
+        assert 1 <= len(after) - 1 < 25
+
+    async def test_an_event_added_afterwards_is_not_a_gap(
+        self, db_session, monkeypatch
+    ):
+        """The feed sometimes adds or corrects an event minutes later. The
+        timeline was there all along, so it does not say it was away."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        until = START + timedelta(minutes=30)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), until)
+        before = list(mm.texts)
+        rows = await _rows(db_session, sessie)
+
+        late = dd.DdEvent(
+            START + timedelta(minutes=12), dd.EVENT_SPEAKER, "late", "late"
+        )
+        events = tuple(sorted([*FULL.events, late], key=lambda e: e.start))
+        feed.parts = [dd.DdDebat(**{**FULL.__dict__, "events": events})]
+        feed.now = until + timedelta(seconds=5)
+        await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert mm.texts == before
+        assert await _rows(db_session, sessie) == rows + 1
+
+    async def test_a_debate_that_ended_during_a_gap_is_said_to_be_over(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        gone = FULL.ended_at - timedelta(minutes=20)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), gone)
+        before = len(mm.texts)
+
+        back = FULL.ended_at + timedelta(minutes=15)
+        await _run(db_session, mm, feed, back, back + timedelta(seconds=20), step=10)
+
+        after = mm.texts[before:]
+        assert len(after) == 1
+        assert after[0].startswith("⏭️ Ik was er even niet.")
+        assert after[0].endswith("Het debat is inmiddels afgelopen.")
+
+    async def test_a_debate_that_starts_early_is_followed_from_its_start(
+        self, db_session, monkeypatch
+    ):
+        """Planned forty minutes later than it began. The agenda says it has
+        started; the planned time is not waited for."""
+        feed = Feed(monkeypatch)
+        feed.aanvang = START.replace(second=0) + timedelta(minutes=40)
+        mm = FakeMattermost()
+        await _sessie(
+            db_session, aanvang=feed.aanvang, created_at=START - timedelta(days=1)
+        )
+
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=20),
+            START + timedelta(minutes=8),
+            step=10,
+        )
+
+        assert not any(t.startswith("🎧") for t in mm.texts)
+        assert any("Het debat is begonnen" in t for t in mm.texts)
+        assert mm.turns
+
+    async def test_a_channel_made_before_the_start_gets_the_first_minutes(
+        self, db_session, monkeypatch
+    ):
+        """The worker was down at the start and came back six minutes in.
+        The channel was there in time, so that is a gap to catch up, not a
+        debate joined halfway."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session, created_at=START - timedelta(days=1))
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=20),
+            START - timedelta(minutes=16),
+        )
+
+        back = START + timedelta(minutes=6)
+        await _run(db_session, mm, feed, back, back + timedelta(seconds=20), step=10)
+
+        assert not any(t.startswith("🎧") for t in mm.texts)
+        assert any("Het debat is begonnen" in t for t in mm.texts)
+
+    async def test_the_speaker_from_before_a_gap_is_a_new_turn_after_it(
+        self, db_session, monkeypatch
+    ):
+        """A spoke, the timeline was away while B spoke, and A speaks again.
+        Without a message for A the channel reads as if B never happened."""
+        feed = Feed(
+            monkeypatch,
+            parts=[
+                _debat(("speaker", 1, "a"), ("speaker", 5, "b"), ("speaker", 20, "a"))
+            ],
+        )
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=10),
+            START + timedelta(minutes=2),
+        )
+        assert len(mm.turns) == 1
+
+        back = START + timedelta(minutes=21)
+        await _run(db_session, mm, feed, back, back + timedelta(seconds=10), step=10)
+
+        assert sum(1 for t in mm.texts if t.startswith("⏭️")) == 1
+        assert len(mm.turns) == 2
+
+    async def test_the_same_when_that_speaker_only_shows_a_round_later(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(
+            monkeypatch,
+            parts=[
+                _debat(("speaker", 1, "a"), ("speaker", 5, "b"), ("speaker", 20, "a"))
+            ],
+        )
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=10),
+            START + timedelta(minutes=2),
+        )
+
+        back = START + timedelta(minutes=17)
+        await _run(db_session, mm, feed, back, back + timedelta(minutes=4), step=30)
+
+        assert sum(1 for t in mm.texts if t.startswith("⏭️")) == 1
+        assert len(mm.turns) == 2
+
+    async def test_a_gap_in_which_nobody_spoke_is_not_announced(
+        self, db_session, monkeypatch
+    ):
+        """Only the chairman said a word. "0 spreekbeurten" is not news."""
+        feed = Feed(
+            monkeypatch, parts=[_debat(("speaker", 1, "a"), ("chairman", 5, "v"))]
+        )
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=10),
+            START + timedelta(minutes=2),
+        )
+        before = list(mm.texts)
+
+        back = START + timedelta(minutes=17)
+        await _run(db_session, mm, feed, back, back + timedelta(seconds=10), step=10)
+
+        assert mm.texts == before
+        assert await _rows(db_session, sessie) == 3
+
+    async def test_a_resumption_and_a_speaker_in_the_same_second_keep_their_order(
+        self, db_session, monkeypatch
+    ):
+        """Read back from the database, "hervat" has to come before the
+        speaker of that same second, or that speaker counts as forgotten
+        and gets a second message when the chairman has said a word."""
+        debat = _debat(
+            ("speaker", 1, "a"),
+            ("suspended", 2, ""),
+            ("continued", 3, ""),
+            ("speaker", 3, "a"),
+            ("chairman", 4, "v"),
+            ("speaker", 5, "a"),
+        )
+        feed = Feed(monkeypatch, parts=[debat])
+        mm = FakeMattermost()
+        sessie = await _sessie(
+            db_session, tijdlijn_status=TIJDLIJN_LOOPT, debat_direct_ids=[debat.id]
+        )
+        # Stored in the unlucky order: the speaker before the resumption.
+        for index in (0, 1, 2, 4, 3):
+            event = debat.events[index]
+            db_session.add(
+                DebatSpreekbeurt(
+                    sessie_id=sessie.id,
+                    debat_direct_id=debat.id,
+                    event_type=event.type,
+                    event_start=event.start,
+                    object_id=event.object_id,
+                    post_id=f"post{index}",
+                )
+            )
+            await db_session.flush()
+
+        feed.now = START + timedelta(minutes=5, seconds=20)
+        await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert mm.texts == []
+
+    async def test_a_debate_that_ended_long_ago_in_a_gap_is_closed_at_once(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        gone = FULL.ended_at - timedelta(minutes=20)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), gone)
+
+        feed.now = FULL.ended_at + timedelta(hours=3, minutes=5)
+        await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert sessie.tijdlijn_status == TIJDLIJN_AFGELOPEN
+
+    async def test_a_channel_archived_during_the_debate_stops_the_timeline(
+        self, db_session, monkeypatch
+    ):
+        """Otherwise every tick fails for the rest of the day, and the
+        heartbeat says "error" over a timeline nobody is waiting for."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        until = START + timedelta(minutes=20)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), until)
+
+        mm.gone.add(sessie.channel_id)
+        mm.fail_posts = 10_000
+        later = until + timedelta(minutes=3)
+        await _run(db_session, mm, feed, until, later)
+
+        assert sessie.tijdlijn_status == TIJDLIJN_AFGELOPEN
+        feed.now = later + timedelta(seconds=30)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+        assert (result.sessies, result.fouten) == (0, 0)
+
+    async def test_a_channel_archived_while_the_timeline_was_away_stops_it_too(
+        self, db_session, monkeypatch
+    ):
+        """Then the first thing that fails is the line about what was
+        missed, and nothing after it is ever tried."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        until = START + timedelta(minutes=20)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), until)
+
+        mm.gone.add(sessie.channel_id)
+        mm.fail_posts = 10_000
+        feed.now = until + timedelta(minutes=30)
+        await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert sessie.tijdlijn_status == TIJDLIJN_AFGELOPEN
+
+    async def test_a_message_that_fails_in_a_living_channel_does_not_stop_it(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        until = START + timedelta(minutes=20)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), until)
+
+        mm.fail_posts = 10_000
+        await _run(db_session, mm, feed, until, until + timedelta(minutes=15))
+
+        assert sessie.tijdlijn_status == TIJDLIJN_LOOPT
+
+    async def test_a_suspension_missed_in_a_storing_is_not_dropped_silently(
+        self, db_session, monkeypatch
+    ):
+        """Nobody spoke, but the channel would have been told "geschorst"."""
+        feed = Feed(
+            monkeypatch, parts=[_debat(("speaker", 1, "a"), ("suspended", 2, ""))]
+        )
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        down = START + timedelta(minutes=1, seconds=30)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), down)
+        before = len(mm.texts)
+
+        mm.fail_posts = 10_000
+        up = START + timedelta(minutes=14)
+        await _run(db_session, mm, feed, down + timedelta(seconds=30), up)
+        mm.fail_posts = 0
+        await _run(db_session, mm, feed, up, up + timedelta(seconds=30), step=10)
+
+        after = mm.texts[before:]
+        assert len(after) == 1
+        assert after[0].startswith("⏭️ Ik was er even niet.")
+        assert "gebeurde staat op" in after[0]
+        assert "spreekbeurt" not in after[0]
+
+    async def test_a_turn_in_the_same_second_as_a_silent_event_is_not_lost(
+        self, db_session, monkeypatch
+    ):
+        """The chairman's event gets no message and is filed while posting
+        fails. The speaker of that same second must still count as missed."""
+        feed = Feed(
+            monkeypatch,
+            parts=[
+                _debat(("speaker", 1, "a"), ("chairman", 5, "v"), ("speaker", 5, "b"))
+            ],
+        )
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        down = START + timedelta(minutes=2)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), down)
+        before = len(mm.texts)
+
+        mm.fail_posts = 10_000
+        up = START + timedelta(minutes=17)
+        await _run(db_session, mm, feed, down + timedelta(seconds=30), up)
+        mm.fail_posts = 0
+        await _run(db_session, mm, feed, up, up + timedelta(seconds=30), step=10)
+
+        after = mm.texts[before:]
+        assert len(after) == 1
+        assert "(1 spreekbeurt)" in after[0]
+
+    async def test_the_early_start_is_remembered_between_ticks(
+        self, db_session, monkeypatch
+    ):
+        """The agenda is read once in five minutes. What it said has to
+        hold for the ticks in between, also when the first look at the
+        debate found nothing yet."""
+        feed = Feed(monkeypatch)
+        feed.aanvang = START.replace(second=0) + timedelta(minutes=40)
+        mm = FakeMattermost()
+        sessie = await _sessie(
+            db_session, aanvang=feed.aanvang, created_at=START - timedelta(days=1)
+        )
+
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=20),
+            START + timedelta(minutes=8),
+            step=10,
+        )
+
+        assert sessie.aanvang <= START + timedelta(seconds=1)
+        assert feed.calls.count("debate") > 10
+
+    async def test_an_agenda_that_cannot_be_read_is_tried_again_soon(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch)
+        feed.aanvang = START.replace(second=0) + timedelta(minutes=40)
+        mm = FakeMattermost()
+        await _sessie(db_session, aanvang=feed.aanvang)
+        first = START - timedelta(minutes=30)
+        await _run(db_session, mm, feed, first, first + timedelta(seconds=20), step=10)
+        feed.calls.clear()
+
+        feed.agenda_error = True
+        again = first + timedelta(minutes=6)
+        await _run(db_session, mm, feed, again, again + timedelta(minutes=3), step=10)
+
+        assert 3 <= feed.calls.count("agenda") <= 5
+
+    async def test_joining_after_the_end_says_it_is_over(self, db_session, monkeypatch):
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session)
+
+        late = FULL.ended_at + timedelta(minutes=10)
+        await _run(db_session, mm, feed, late, late + timedelta(seconds=20), step=10)
+
+        assert len(mm.texts) == 1
+        assert mm.texts[0].startswith("🎧 Dit debat was al afgelopen toen ik om ")
+        assert "bezig" not in mm.texts[0]
 
     async def test_a_short_hiccup_is_simply_caught_up(self, db_session, monkeypatch):
         """Two minutes away is not a gap worth a message."""
