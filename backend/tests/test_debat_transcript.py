@@ -935,18 +935,19 @@ class TestTranscript:
     ):
         debat = _debat(("chairman", 1, "v"), ("suspended", 2, ""))
         feed = Feed(monkeypatch, parts=[_stream(debat)])
-        Subtitles(monkeypatch, feed, [_cue(65, "Ik schors.")])
+        Subtitles(monkeypatch, feed, [_cue(115, "Ik schors.")])
         mm = Mattermost()
         await _sessie(db_session)
         await _play(db_session, mm, feed, 2.3)
+        assert "\n" not in mm.channel[1]
         mm.broken.add(mm.order[1])
 
-        feed.now = START + _minutes(2.5)
+        feed.now = START + _minutes(2.7)
         result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
         assert result.fouten == 1
 
         mm.broken.clear()
-        await _play(db_session, mm, feed, 3, start=2.6)
+        await _play(db_session, mm, feed, 3.2, start=2.8)
         assert mm.channel[1].endswith("\nVoorzitter: Ik schors.")
 
     async def test_a_resumption_gets_no_words(self, db_session, monkeypatch):
