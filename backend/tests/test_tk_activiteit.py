@@ -73,19 +73,19 @@ def _raw(**overrides) -> dict:
         ],
         "ActiviteitActor": [
             {
-                "ActorNaam": "A.W.H. Bertram",
+                "ActorNaam": "Bewindspersoon A",
                 "Relatie": "Bewindspersoon c.a.",
                 "Functie": "staatssecretaris van Infrastructuur en Waterstaat",
                 "Verwijderd": False,
             },
             {
-                "ActorNaam": "S. van Veldhoven",
+                "ActorNaam": "Bewindspersoon B",
                 "Relatie": "Afgemeld",
                 "Functie": "minister van Klimaat en Groene Groei",
                 "Verwijderd": False,
             },
             {
-                "ActorNaam": "I. Kostić",
+                "ActorNaam": "Kamerlid A",
                 "Relatie": "Deelnemer",
                 "Functie": "Tweede Kamerlid",
                 "Verwijderd": False,
@@ -200,7 +200,7 @@ class TestParse:
         """Someone who cancelled has relation "Afgemeld", a member of
         parliament "Deelnemer"; neither is at the table as bewindspersoon."""
         a = parse_activiteit(_raw())
-        assert [b.naam for b in a.bewindspersonen] == ["A.W.H. Bertram"]
+        assert [b.naam for b in a.bewindspersonen] == ["Bewindspersoon A"]
         assert a.bewindspersonen[0].functie.startswith("staatssecretaris")
 
     def test_odd_fields_do_not_crash(self):
