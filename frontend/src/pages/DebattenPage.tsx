@@ -166,24 +166,28 @@ export function DebattenPage() {
     <nldd-container gap="24">
       <nldd-toolbar label="Debatten filteren">
         <nldd-toolbar-item slot="start" priority={1} min-width="60%">
-          <nldd-container layout="wrap" gap="8" vertical-alignment="center">
+          {/* Bottom-aligned, each field in a fixed-width container: the team
+              field carries a label above it and the search field does not, so
+              centring would put them at different heights. A labelled Select
+              is a form field that takes the full width it is given; without
+              the container it drops onto a line of its own. */}
+          <nldd-container layout="wrap" gap="12" vertical-alignment="bottom">
             <nldd-container width="320px">
               <DebatSearchField value={search} onChange={setSearch} />
             </nldd-container>
             {teams.length > 1 && (
-              // The dropdown's label is only an accessible name, so a chosen
-              // team would stand there without saying what it is for.
-              <nldd-text size="sm" color="secondary">Kanaal komt in team</nldd-text>
-            )}
-            {teams.length > 1 && (
-              <Select
-                label="Team voor het kanaal"
-                placeholder="Kies een team"
-                width="256px"
-                value={teamId ?? ''}
-                onChange={(e) => handleTeam(e.target.value)}
-                options={teams.map((t) => ({ value: t.team_id, label: t.team_name ?? t.team_id }))}
-              />
+              <nldd-container width="256px">
+                <Select
+                  label="Kanaal komt in team"
+                  placeholder="Kies een team"
+                  // The choice is needed before anything can be started, and
+                  // without `required` the field labels itself "Optioneel".
+                  required
+                  value={teamId ?? ''}
+                  onChange={(e) => handleTeam(e.target.value)}
+                  options={teams.map((t) => ({ value: t.team_id, label: t.team_name ?? t.team_id }))}
+                />
+              </nldd-container>
             )}
           </nldd-container>
         </nldd-toolbar-item>
