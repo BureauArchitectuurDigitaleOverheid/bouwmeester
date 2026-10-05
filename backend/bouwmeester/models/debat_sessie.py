@@ -15,7 +15,16 @@ is read for leads and notes, and a debate channel must not be.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -88,6 +97,9 @@ class DebatSessie(Base):
     tijdlijn_gecontroleerd_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Per Debat Direct debate, where the reading of its subtitles stands:
+    # {"<id>": {"url": playlist or "", "positie": iso, "offset_ms": int}}.
+    ondertitels: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -147,6 +159,19 @@ class DebatSpreekbeurt(Base):
         String(64), nullable=False, server_default=""
     )
     post_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    # The first line of the message, kept so the message can be written
+    # again with the text under it.
+    kop: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What was said in this turn, as far as the subtitles have come.
+    tekst: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How much of the text of this turn is in the channel. Differs from the
+    # length of the text when a message still has to be written.
+    tekst_geplaatst: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    # The messages a long turn continues in, in order.
+    vervolg_post_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

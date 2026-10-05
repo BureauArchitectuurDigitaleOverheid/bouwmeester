@@ -475,3 +475,41 @@ class TestLaterParts:
             )
             == []
         )
+
+
+class TestStream:
+    def _debate(self, video: object) -> dd.DdDebat:
+        return dd.parse_debate({"id": "d1", "name": "Debat", "video": video})
+
+    def test_the_stream_and_how_far_its_sound_is_behind(self):
+        debat = self._debate(
+            {"url": "https://stream.example/zaal/index.m3u8", "pdtOffset": 2000}
+        )
+
+        assert debat.stream_url == "https://stream.example/zaal/index.m3u8"
+        assert debat.stream_offset == timedelta(seconds=2)
+
+    def test_a_debate_without_video(self):
+        debat = self._debate(None)
+
+        assert debat.stream_url is None
+        assert debat.stream_offset == timedelta(0)
+
+    @pytest.mark.parametrize(
+        "url", ["http://stream.example/x.m3u8", "file:///etc/passwd", "", 12]
+    )
+    def test_only_an_https_address_is_a_stream(self, url):
+        assert self._debate({"url": url}).stream_url is None
+
+    @pytest.mark.parametrize("offset", ["2000", None, -5, 60_001, True])
+    def test_an_offset_that_makes_no_sense_is_none(self, offset):
+        debat = self._debate({"url": "https://x.example/a", "pdtOffset": offset})
+
+        assert debat.stream_offset == timedelta(0)
+
+    def test_an_offset_at_the_edge_counts(self):
+        assert self._debate({"pdtOffset": 60_000}).stream_offset == timedelta(minutes=1)
+        assert self._debate({"pdtOffset": 0}).stream_offset == timedelta(0)
+        assert self._debate({"pdtOffset": 1500.0}).stream_offset == timedelta(
+            seconds=1.5
+        )

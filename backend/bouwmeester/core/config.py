@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     # today is one query and no HTTP call.
     DEBAT_TIJDLIJN_INTERVAL_SECONDS: int = 10
     DEBAT_TIJDLIJN_ENABLED: bool = True
+    # The text of each turn under its message, from the subtitles of the
+    # stream. Off leaves the timeline as it is.
+    DEBAT_TRANSCRIPT_ENABLED: bool = True
 
     # tkconv (berthub.eu) draait op een privéserver zonder SLA en heeft een
     # eigen poll-ritme, los van de officiële TK-API. Het ritme volgt wanneer

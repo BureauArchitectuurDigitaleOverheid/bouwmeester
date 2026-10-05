@@ -74,6 +74,10 @@ class DdDebat:
     # Oldest first. Empty for a debate read from the agenda: only the
     # detail call carries events.
     events: tuple[DdEvent, ...] = ()
+    # The playlist of the live stream, which names the subtitle track.
+    stream_url: str | None = None
+    # How much later than an event the sound of it is, as the feed says.
+    stream_offset: timedelta = timedelta(0)
 
 
 @dataclass(frozen=True)
@@ -142,6 +146,7 @@ def parse_debate(raw: dict) -> DdDebat | None:
     events.sort(key=lambda e: (e.start, rank.get(e.type, 5)))
 
     categories = raw.get("categoryIds")
+    video = raw.get("video") if isinstance(raw.get("video"), dict) else {}
     return DdDebat(
         id=debate_id,
         name=_text(raw.get("name")),
@@ -157,6 +162,8 @@ def parse_debate(raw: dict) -> DdDebat | None:
             c for c in (categories if isinstance(categories, list) else []) if c
         ),
         events=tuple(events),
+        stream_url=_stream_url(video.get("url")),
+        stream_offset=_offset(video.get("pdtOffset")),
     )
 
 
@@ -316,6 +323,20 @@ def _type_fits(activiteit_soort: str | None, debate_type: str | None) -> bool:
     a = _norm(activiteit_soort)
     b = _norm(debate_type)
     return a == b or a.startswith(b) or b.startswith(a)
+
+
+def _stream_url(value: object) -> str | None:
+    """Only an https address: it is fetched by the worker."""
+    url = _text(value)
+    return url if url.startswith("https://") else None
+
+
+def _offset(value: object) -> timedelta:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return timedelta(0)
+    if not 0 <= value <= 60_000:
+        return timedelta(0)
+    return timedelta(milliseconds=value)
 
 
 def start_of(debat: DdDebat) -> datetime | None:

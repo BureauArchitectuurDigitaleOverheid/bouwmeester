@@ -276,6 +276,32 @@ class TestFetchSince:
         assert [c.start for c in cues] == [m + timedelta(seconds=1) for m in grid[-5:]]
         assert position == grid[-1] + STEP
 
+    async def test_without_history_it_can_start_at_a_moment_given(self):
+        """Laid on the grid of the playlist, at the file that moment is in."""
+        grid = _grid(20)
+        server = Server(grid, grid[-5:])
+        async with server.client() as client:
+            cues, position = await subs.fetch_since(
+                client,
+                PLAYLIST_URL,
+                None,
+                max_segments=100,
+                since=grid[3] + timedelta(seconds=1),
+            )
+
+        assert [c.start for c in cues] == [m + timedelta(seconds=1) for m in grid[3:]]
+        assert position == grid[-1] + STEP
+
+    async def test_a_moment_given_after_the_playlist_starts_is_just_the_playlist(self):
+        grid = _grid(20)
+        server = Server(grid, grid[-5:])
+        async with server.client() as client:
+            cues, _ = await subs.fetch_since(
+                client, PLAYLIST_URL, None, max_segments=100, since=grid[-2]
+            )
+
+        assert len(cues) == 5
+
     async def test_only_what_is_new_is_fetched(self):
         grid = _grid(20)
         server = Server(grid, grid[-5:])

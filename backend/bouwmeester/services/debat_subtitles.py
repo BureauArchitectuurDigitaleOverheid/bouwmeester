@@ -21,6 +21,7 @@ Measured on two running debates on 5 October 2026:
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -224,11 +225,14 @@ async def fetch_since(
     after: datetime | None,
     *,
     max_segments: int,
+    since: datetime | None = None,
 ) -> tuple[list[Cue], datetime | None]:
     """The lines after `after`, oldest first, and where to go on next time.
 
     `after` is the end of the last file read before. Without it there is no
-    history and this starts at the playlist. With it, the stretch between
+    history and this starts at the playlist, or at `since` when that is
+    given: the moment the caller wants to have from, which is then laid on
+    the grid of the playlist. With it, the stretch between
     then and the playlist is closed by asking for files by time, so a round
     that took long misses nothing. If the trail goes cold the missing
     stretch is skipped with a warning and the playlist is picked up again.
@@ -240,6 +244,9 @@ async def fetch_since(
     cues: list[Cue] = []
     position = after
     count = 0
+    if position is None and since is not None and since < listed[0].start:
+        steps = math.ceil((listed[0].start - since).total_seconds() / SEGMENT_SECONDS)
+        position = listed[0].start - steps * timedelta(seconds=SEGMENT_SECONDS)
 
     if position is not None:
         while position < listed[0].start - NUDGE and count < max_segments:
