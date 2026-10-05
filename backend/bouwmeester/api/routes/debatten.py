@@ -88,15 +88,18 @@ class _Teams:
 async def _teams_for(
     mattermost: MattermostService, db: AsyncSession, person: Person | None
 ) -> _Teams:
-    """The teams the bot is in and this person is a member of.
+    """The teams the bot is in, for a person with a linked account.
 
-    Both halves matter. The bot creates the channel, so it has to be in the
-    team; and it does so on behalf of this person, who therefore has to be
-    in it too. Without the second half anyone with the permission could
-    have a channel made in a team they cannot even see.
+    The linked account is what the channel is made on behalf of: that
+    person is added to it. Whether the person is a member of the team is
+    deliberately not a condition. It was, and in production the membership
+    check answered "no" for someone who is in the team, which took the
+    button away from exactly the people it is for. Until it is clear why,
+    the answer is only logged when a channel is started (see
+    `_log_membership`).
 
-    Without a person (local development without a login) every team of the
-    bot counts.
+    Without a person (local development without a login) there is no
+    account to add, and every team of the bot counts as well.
     """
     try:
         if not await mattermost.is_enabled():
@@ -115,19 +118,12 @@ async def _teams_for(
                 )
                 return result
             result.mattermost_user_id = mapping.mattermost_user_id
-            team_ids = [
-                team_id
-                for team_id in team_ids
-                if await mattermost.is_team_member(team_id, mapping.mattermost_user_id)
-            ]
     except (MattermostUnavailableError, ValueError):
         logger.warning("Teams van de bot niet op te vragen", exc_info=True)
         return _Teams(melding="Mattermost is nu niet bereikbaar.", unavailable=True)
 
     if not permissions:
         result.melding = "De bot is van geen enkel Mattermost-team lid."
-    elif not team_ids:
-        result.melding = "Je bent geen lid van een team waar de bot in zit."
     result.teams = sorted(
         (
             DebatTeam(
@@ -143,6 +139,35 @@ async def _teams_for(
     return result
 
 
+async def _log_membership(
+    mattermost: MattermostService, team_id: str, mattermost_user_id: str | None
+) -> None:
+    """Write down what Mattermost says about this person and this team.
+
+    Diagnosis only; it decides nothing and must never stand in the way.
+    The membership check said "not a member" in production for someone
+    who is one, and it cannot be reproduced against a local Mattermost.
+    One line per start shows what the real server answers.
+    """
+    if not mattermost_user_id:
+        return
+    try:
+        member = await mattermost.is_team_member(team_id, mattermost_user_id)
+        logger.info(
+            "Teamlidmaatschap volgens Mattermost: account %s in team %s: %s",
+            mattermost_user_id,
+            team_id,
+            "lid" if member else "geen lid",
+        )
+    except Exception:
+        logger.info(
+            "Teamlidmaatschap van account %s in team %s niet op te vragen",
+            mattermost_user_id,
+            team_id,
+            exc_info=True,
+        )
+
+
 @router.get("/aankomend", response_model=AankomendeDebattenResponse)
 async def list_aankomende_debatten(
     current_user: OptionalUser,
@@ -152,9 +177,9 @@ async def list_aankomende_debatten(
 ) -> AankomendeDebattenResponse:
     """The meetings of the coming weeks, with the channel if there is one.
 
-    The agenda of the Tweede Kamer is the same for everyone, so that part
-    is not filtered. Teams and channels are: only those of teams this
-    person is in.
+    The agenda of the Tweede Kamer is the same for everyone, so this is
+    not filtered on organisation. Teams and channels are those of the bot,
+    for whoever has a linked Mattermost account.
     """
     try:
         async with httpx.AsyncClient(timeout=_TK_TIMEOUT) as client:
@@ -233,7 +258,7 @@ async def start_debat(
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("parlementair:review")),
 ) -> DebatStartResponse:
-    """Set up a channel for one meeting, in a team this person is in.
+    """Set up a channel for one meeting, in one of the bot's teams.
 
     Answers 200 also when no channel was made: a cancelled meeting or a
     missing Mattermost permission is an outcome with a reason to show, not
@@ -255,6 +280,8 @@ async def start_debat(
                 detail=allowed.melding
                 or "Je kunt in dit team geen kanaal laten opzetten.",
             )
+
+        await _log_membership(mattermost, body.team_id, allowed.mattermost_user_id)
 
         result = await DebatKanaalService(db, mattermost).start_in_team(
             activiteit_id=str(body.activiteit_id),

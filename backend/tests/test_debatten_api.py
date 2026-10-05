@@ -684,13 +684,16 @@ TWO_TEAMS = {
 
 @pytest.mark.asyncio
 class TestOnBehalfOfAPerson:
-    """The bot creates the channel, but for someone. That someone has to
-    be in the team: otherwise the permission in Bouwmeester would reach
-    into teams of Mattermost the person cannot even see."""
+    """The channel is made on behalf of whoever presses, so a linked
+    Mattermost account is needed. Team membership is not a condition: the
+    check for it answered "no" in production for someone who was in the
+    team, and took the button away from the people it is for."""
 
-    async def test_only_teams_the_person_is_in_are_offered(
+    async def test_linked_account_gets_every_team_of_the_bot(
         self, db_session, people, monkeypatch
     ):
+        """Also a team Mattermost says this person is not in. That answer
+        was wrong in production, so it must not decide."""
         from tests.factories import client_as
 
         _stub_upcoming(monkeypatch, [])
@@ -699,36 +702,73 @@ class TestOnBehalfOfAPerson:
         async with client_as(db_session, people.reviewer) as c:
             resp = await c.get("/api/debatten/aankomend")
 
-        assert resp.status_code == 200
-        assert [t["team_id"] for t in resp.json()["teams"]] == [TEAM]
+        body = resp.json()
+        assert sorted(t["team_id"] for t in body["teams"]) == sorted([TEAM, OTHER_TEAM])
+        assert body["mattermost_melding"] is None
 
-    async def test_channels_in_other_teams_are_not_shown(
+    async def test_start_works_when_mattermost_says_not_a_member(
         self, db_session, people, monkeypatch
     ):
         from tests.factories import client_as
 
         activiteit = _activiteit()
-        for team_id, name in ((TEAM, "debat-mijn"), (OTHER_TEAM, "debat-ander")):
-            db_session.add(
-                DebatSessie(
-                    activiteit_id=activiteit.id,
-                    onderwerp="x",
-                    team_id=team_id,
-                    channel_id=f"chan{uuid.uuid4().hex}"[:26],
-                    channel_name=name,
-                )
-            )
-        await db_session.flush()
-        _stub_upcoming(monkeypatch, [activiteit])
-        _stub_mattermost(monkeypatch, **TWO_TEAMS)
+        mm = FakeMattermost()
+        _stub_mattermost(monkeypatch, **{**TWO_TEAMS, "members": {}})
+        _stub_service(monkeypatch, mm, activiteit)
 
         async with client_as(db_session, people.reviewer) as c:
-            resp = await c.get("/api/debatten/aankomend")
+            resp = await c.post(
+                "/api/debatten/start",
+                json={"activiteit_id": activiteit.id, "team_id": TEAM},
+            )
 
-        kanalen = resp.json()["debatten"][0]["kanalen"]
-        assert [k["channel_name"] for k in kanalen] == ["debat-mijn"]
+        assert resp.status_code == 200
+        assert resp.json()["outcome"] == "created"
 
-    async def test_start_in_a_team_the_person_is_not_in_is_403(
+    async def test_start_works_when_membership_cannot_be_asked(
+        self, db_session, people, monkeypatch
+    ):
+        """The membership question is diagnosis. It never stands in the way."""
+        from tests.factories import client_as
+
+        activiteit = _activiteit()
+        mm = FakeMattermost()
+        _stub_mattermost(monkeypatch, **{**TWO_TEAMS, "members": RuntimeError("kapot")})
+        _stub_service(monkeypatch, mm, activiteit)
+
+        async with client_as(db_session, people.reviewer) as c:
+            resp = await c.post(
+                "/api/debatten/start",
+                json={"activiteit_id": activiteit.id, "team_id": TEAM},
+            )
+
+        assert resp.json()["outcome"] == "created"
+
+    async def test_what_mattermost_says_about_membership_is_logged(
+        self, db_session, people, monkeypatch, caplog
+    ):
+        """This line is how we find out what production answers."""
+        from tests.factories import client_as
+
+        activiteit = _activiteit()
+        _stub_mattermost(monkeypatch, **{**TWO_TEAMS, "members": {}})
+        _stub_service(monkeypatch, FakeMattermost(), activiteit)
+
+        with caplog.at_level("INFO", logger="bouwmeester.api.routes.debatten"):
+            async with client_as(db_session, people.reviewer) as c:
+                await c.post(
+                    "/api/debatten/start",
+                    json={"activiteit_id": activiteit.id, "team_id": TEAM},
+                )
+
+        regel = next(
+            r.getMessage() for r in caplog.records if "Teamlidmaat" in r.getMessage()
+        )
+        assert "mmreviewer0000000000000000" in regel
+        assert TEAM in regel
+        assert "geen lid" in regel
+
+    async def test_start_in_a_team_the_bot_is_not_in_is_403(
         self, db_session, people, monkeypatch
     ):
         from tests.factories import client_as
@@ -741,7 +781,10 @@ class TestOnBehalfOfAPerson:
         async with client_as(db_session, people.reviewer) as c:
             resp = await c.post(
                 "/api/debatten/start",
-                json={"activiteit_id": activiteit.id, "team_id": OTHER_TEAM},
+                json={
+                    "activiteit_id": activiteit.id,
+                    "team_id": "team00000000000000000000zz",
+                },
             )
 
         assert resp.status_code == 403
@@ -788,26 +831,6 @@ class TestOnBehalfOfAPerson:
         assert len(body["debatten"]) == 1
         assert start.status_code == 403
         assert "Koppel je Mattermost-account" in start.json()["detail"]
-
-    async def test_membership_that_cannot_be_checked_is_not_a_no(
-        self, db_session, people, monkeypatch
-    ):
-        from tests.factories import client_as
-
-        _stub_upcoming(monkeypatch, [])
-        _stub_mattermost(
-            monkeypatch, **{**TWO_TEAMS, "members": MattermostUnavailableError("x")}
-        )
-
-        async with client_as(db_session, people.reviewer) as c:
-            lijst = await c.get("/api/debatten/aankomend")
-            start = await c.post(
-                "/api/debatten/start",
-                json={"activiteit_id": str(uuid.uuid4()), "team_id": TEAM},
-            )
-
-        assert lijst.json()["mattermost_melding"] == "Mattermost is nu niet bereikbaar."
-        assert start.status_code == 503
 
     async def test_without_the_permission_both_routes_are_403(
         self, db_session, people, monkeypatch
