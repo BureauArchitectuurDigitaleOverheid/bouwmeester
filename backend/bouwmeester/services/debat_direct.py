@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 DD_API_URL = "https://cdn.debatdirect.tweedekamer.nl/api"
 DD_SITE_URL = "https://debatdirect.tweedekamer.nl"
 
+# The widths of the columns an event is stored in.
+EVENT_TYPE_MAX = 32
+OBJECT_ID_MAX = 64
+
 EVENT_SPEAKER = "speaker"
 EVENT_INTERRUPTER = "interrupter"
 EVENT_CHAIRMAN = "chairman"
@@ -120,7 +124,12 @@ def parse_debate(raw: dict) -> DdDebat | None:
         kind = _text(item.get("eventType"))
         if start is None or not kind:
             continue
-        object_id = _text(item.get("objectId"))
+        # Cut to what the database holds. Ids are 36 characters and
+        # kinds a word, but this API is not ours: a value that does not
+        # fit would make the row fail after the message was posted, and
+        # the message would then be posted again on every tick.
+        kind = kind[:EVENT_TYPE_MAX]
+        object_id = _text(item.get("objectId"))[:OBJECT_ID_MAX]
         key = (raw_start, kind, object_id)
         if key in seen:
             continue
@@ -291,7 +300,7 @@ def similarity(a: str, b: str) -> float:
 
 # The thresholds the measurement used: over four days, 46 of 48 listenable
 # debates matched on these and none was ambiguous.
-_MIN_SIMILARITY = 0.80
+MIN_SIMILARITY = 0.80
 _MAX_START_DIFFERENCE = timedelta(minutes=90)
 
 
@@ -309,6 +318,45 @@ def _type_fits(activiteit_soort: str | None, debate_type: str | None) -> bool:
     return a == b or a.startswith(b) or b.startswith(a)
 
 
+def start_of(debat: DdDebat) -> datetime | None:
+    """When a debate started, or is planned to if it has not yet."""
+    return debat.started_at or debat.starts_at
+
+
+def later_parts(
+    onderwerp: str, known_ids: list[str], debates: list[DdDebat]
+) -> list[DdDebat]:
+    """Parts of a debate that came after the parts already known.
+
+    Debat Direct cuts a plenary debate in two around a break, and the
+    second part only appears when it starts. It is recognised by carrying
+    the same subject and the same kind as a known part, and by starting
+    after it.
+
+    Deliberately not through `match_debates` again. That compares with the
+    planned start of the activiteit, and once a debate has started Debat
+    Direct overwrites its planned start with the real one: a debate that
+    began two hours late would then no longer match itself, and its second
+    part would never be found.
+    """
+    known = [debat for debat in debates if debat.id in known_ids]
+    starts = [start for debat in known if (start := start_of(debat)) is not None]
+    if not starts:
+        return []
+    first = min(starts)
+    kinds = {debat.debate_type for debat in known}
+    found = [
+        debat
+        for debat in debates
+        if debat.id not in known_ids
+        and debat.debate_type in kinds
+        and similarity(onderwerp, debat.name) >= MIN_SIMILARITY
+        and (start := start_of(debat)) is not None
+        and start > first
+    ]
+    return sorted(found, key=lambda d: start_of(d).timestamp())  # type: ignore[union-attr]
+
+
 def match_debates(activiteit: Activiteit, debates: list[DdDebat]) -> list[DdDebat]:
     """The Debat Direct debates that are this activiteit, oldest first.
 
@@ -323,14 +371,11 @@ def match_debates(activiteit: Activiteit, debates: list[DdDebat]) -> list[DdDeba
     alike = [
         debat
         for debat in debates
-        if similarity(activiteit.onderwerp, debat.name) >= _MIN_SIMILARITY
+        if similarity(activiteit.onderwerp, debat.name) >= MIN_SIMILARITY
         and _type_fits(activiteit.soort, debat.debate_type)
     ]
     if not alike:
         return []
-
-    def start_of(debat: DdDebat) -> datetime | None:
-        return debat.started_at or debat.starts_at
 
     if activiteit.aanvang is not None:
         on_time = [

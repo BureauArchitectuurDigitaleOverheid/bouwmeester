@@ -474,10 +474,10 @@ class TestTimeline:
         assert any(t.startswith("▶️ **Hervat** · [11:34](") for t in mm.texts)
         assert "_Voorzitter is nu Kamerlid B_ · 12:42" in mm.texts
         # One message per turn: 153 speaker and interrupter events, of
-        # which 21 are someone carrying on. The 75 chairman events are not
+        # which 20 are someone carrying on. The 75 chairman events are not
         # in the channel.
-        assert len(mm.turns) == 132
-        assert len(mm.texts) == 137
+        assert len(mm.turns) == 133
+        assert len(mm.texts) == 138
         # Every event is remembered, posted or not.
         assert await _rows(db_session, sessie) == 233
         assert {channel for channel, _ in mm.posts} == {sessie.channel_id}
@@ -502,6 +502,97 @@ class TestTimeline:
         tijden = [t.split("[")[1][:5] for t in mm.turns]
         assert tijden == sorted(tijden)
         assert len(tijden) > 10
+
+    async def test_after_a_break_the_same_speaker_is_a_new_turn(
+        self, db_session, monkeypatch
+    ):
+        """The minister spoke before the suspension and again after it.
+        Without a message after "Hervat" the channel does not say who."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session)
+
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=10),
+            START.replace(hour=11, minute=36, second=0),
+            step=20,
+        )
+
+        hervat = next(i for i, t in enumerate(mm.texts) if t.startswith("▶️ **Hervat**"))
+        assert mm.texts[hervat + 1].startswith("**Bewindspersoon A")
+
+    async def test_a_gap_in_following_is_not_posted_in_one_burst(
+        self, db_session, monkeypatch
+    ):
+        """The worker, or Debat Direct, was away for half an hour. What was
+        missed is history, like before joining."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        gap_start = START.replace(hour=10, minute=20, second=0)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), gap_start)
+        before = len(mm.texts)
+
+        back = gap_start + timedelta(minutes=30)
+        await _run(db_session, mm, feed, back, back + timedelta(seconds=30), step=10)
+
+        after = mm.texts[before:]
+        assert after[0].startswith(
+            "⏭️ Ik was er even niet. Wat er tussen 10:19 en 10:39"
+        )
+        assert "spreekbeurten) staat op [Debat Direct](" in after[0]
+        # Only the last ten minutes follow, not all thirty.
+        assert len(after) < 15
+        assert sum(1 for t in mm.texts if t.startswith("⏭️")) == 1
+
+    async def test_a_short_hiccup_is_simply_caught_up(self, db_session, monkeypatch):
+        """Two minutes away is not a gap worth a message."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        pause = START.replace(hour=10, minute=20, second=0)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), pause)
+
+        back = pause + timedelta(minutes=2)
+        await _run(db_session, mm, feed, back, back + timedelta(seconds=30), step=10)
+
+        assert not any(t.startswith("⏭️") for t in mm.texts)
+
+    async def test_a_debate_is_not_polled_long_before_it_starts(
+        self, db_session, monkeypatch
+    ):
+        """Found the evening before, it would be asked for its events
+        thousands of times before anyone speaks."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+
+        early = START - timedelta(hours=3)
+        await _run(db_session, mm, feed, early, early + timedelta(minutes=12), step=60)
+        assert sessie.tijdlijn_status == TIJDLIJN_GEKOPPELD
+        assert "debate" not in feed.calls
+
+        soon = START - timedelta(minutes=14)
+        await _run(db_session, mm, feed, soon, soon + timedelta(seconds=20), step=10)
+        assert "debate" in feed.calls
+
+    async def test_a_message_that_does_not_arrive_shows_in_the_result(
+        self, db_session, monkeypatch
+    ):
+        """Otherwise the heartbeat says "ok" over a timeline that is stuck."""
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        await _sessie(db_session)
+        await _run(db_session, mm, feed, START - timedelta(minutes=10), START)
+
+        mm.fail_posts = 1
+        feed.now = START + timedelta(minutes=2)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert result.fouten == 1
 
     async def test_a_restart_posts_nothing_twice(self, db_session, monkeypatch):
         """Everything done is in the database, not in the process."""
@@ -721,6 +812,52 @@ class TestEnding:
         # Not closed after the first part ended, although that was hours ago.
         assert sessie.tijdlijn_status == TIJDLIJN_LOOPT
         assert sum(1 for t in mm.texts if "Het debat is begonnen" in t) == 2
+
+    async def test_a_second_part_is_found_when_the_debate_started_late(
+        self, db_session, monkeypatch
+    ):
+        """Once started, Debat Direct replaces the planned start by the
+        real one. A debate that began two hours late no longer matches the
+        planned time of its activiteit, and its second part was never
+        found."""
+        late = timedelta(hours=2)
+        first = dd.DdDebat(
+            **{
+                **FULL.__dict__,
+                "starts_at": FULL.starts_at + late,
+                "started_at": FULL.started_at + late,
+                "ended_at": FULL.ended_at + late,
+                "events": tuple(
+                    dd.DdEvent(e.start + late, e.type, e.object_id, e.raw_start)
+                    for e in FULL.events
+                ),
+            }
+        )
+        second_start = first.ended_at + timedelta(hours=1)
+        second = dd.DdDebat(
+            **{
+                **FULL.__dict__,
+                "id": "deel-2",
+                "starts_at": second_start,
+                "started_at": second_start,
+                "ended_at": None,
+                "events": (),
+            }
+        )
+        # Linked before the start, on the planned time; the delay only
+        # shows once the debate is running.
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        feed.now = START - timedelta(minutes=30)
+        await DebatTijdlijnService(db_session, mm).tick(feed.now)
+        assert sessie.debat_direct_ids == [FULL.id]
+
+        feed.parts = [first, second]
+        at = second_start + timedelta(minutes=1)
+        await _run(db_session, mm, feed, at, at + timedelta(minutes=6), step=120)
+
+        assert sessie.debat_direct_ids == [FULL.id, "deel-2"]
 
 
 @pytest.mark.asyncio

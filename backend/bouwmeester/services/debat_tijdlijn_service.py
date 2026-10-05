@@ -67,6 +67,15 @@ END_GRACE = timedelta(hours=3)
 # the timeline joined a debate that was already running. Posting them would
 # put a hundred messages in the channel at once.
 BACKLOG_AGE = timedelta(minutes=3)
+# The same for a debate the timeline was already following, with more
+# patience: after the worker or Debat Direct was away for a while, what was
+# missed is history too. Without this half an hour of absence comes back as
+# fifty messages in one burst.
+GAP_AGE = timedelta(minutes=10)
+# A debate is not asked for its events until this long before its planned
+# start. Every poll downloads the whole debate, and a debate found the
+# evening before would be polled thousands of times for nothing.
+POLL_BEFORE_START = timedelta(minutes=15)
 
 _HTTP_TIMEOUT = 15.0
 _SPEAKING = (dd.EVENT_SPEAKER, dd.EVENT_INTERRUPTER)
@@ -339,8 +348,7 @@ class DebatTijdlijnService:
         except dd.DebatDirectError:
             return
         known = list(sessie.debat_direct_ids or [])
-        found = [p.id for p in dd.match_debates(self._as_activiteit(sessie), agenda)]
-        new = [debate_id for debate_id in found if debate_id not in known]
+        new = [p.id for p in dd.later_parts(sessie.onderwerp, known, agenda)]
         if new:
             # A new list, not an append: a JSON column only notices a
             # change when the value itself is replaced.
@@ -392,8 +400,14 @@ class DebatTijdlijnService:
         # carries on does not get a second one.
         last_turn: dict[str, tuple[str, str]] = {}
         for r in rows:
-            if r[1] in _SPEAKING and r[4]:
+            if not r[4]:
+                continue
+            if r[1] in _SPEAKING:
                 last_turn[r[0]] = (r[1], r[3])
+            else:
+                # A break or a new chairman was posted in between: whoever
+                # speaks next is a new turn, also if it is the same person.
+                last_turn.pop(r[0], None)
 
         last_end: datetime | None = None
         for debate_id in list(sessie.debat_direct_ids or []):
@@ -404,6 +418,12 @@ class DebatTijdlijnService:
                     if r[0] == debate_id and r[1] == dd.EVENT_DEBATE_END
                 ]
                 last_end = max([last_end, *end_rows]) if last_end else max(end_rows)
+                continue
+            if (
+                debate_id not in started_parts
+                and sessie.aanvang is not None
+                and now < sessie.aanvang - POLL_BEFORE_START
+            ):
                 continue
             try:
                 debat = await dd.fetch_debate(client, debate_id)
@@ -422,10 +442,10 @@ class DebatTijdlijnService:
                 continue
             sprekers = await self._sprekers_for(client, debat)
 
-            backlog: list[dd.DdEvent] = []
-            if debate_id not in started_parts:
-                backlog = [e for e in new if now - e.start > BACKLOG_AGE]
-                new = [e for e in new if now - e.start <= BACKLOG_AGE]
+            joining = debate_id not in started_parts
+            too_old = BACKLOG_AGE if joining else GAP_AGE
+            backlog = [e for e in new if now - e.start > too_old]
+            new = [e for e in new if now - e.start <= too_old]
             for event in backlog:
                 await self._remember(sessie.id, debate_id, event, None)
                 if event.type == dd.EVENT_DEBATE_END:
@@ -435,11 +455,23 @@ class DebatTijdlijnService:
                 beurten = sum(1 for e in backlog if e.type in _SPEAKING)
                 url = dd.debate_url(debat)
                 waar = f"[Debat Direct]({url})" if url else "Debat Direct"
+                if joining:
+                    melding = (
+                        f"🎧 Ik luister mee vanaf {_hhmm(now)}. Het debat "
+                        f"was toen al bezig; de {beurten} spreekbeurten "
+                        f"daarvoor staan op {waar}."
+                    )
+                else:
+                    melding = (
+                        f"⏭️ Ik was er even niet. Wat er tussen "
+                        f"{_hhmm(backlog[0].start)} en {_hhmm(backlog[-1].start)} "
+                        f"gebeurde ({beurten} spreekbeurten) staat op {waar}."
+                    )
+                    # What came before the gap says nothing about who
+                    # speaks after it.
+                    last_turn.pop(debate_id, None)
                 post_id = await self.mattermost.send_channel_message(
-                    sessie.channel_id,
-                    f"🎧 Ik luister mee vanaf {_hhmm(now)}. Het debat "
-                    f"was toen al bezig; de {beurten} spreekbeurten daarvoor "
-                    f"staan op {waar}.",
+                    sessie.channel_id, melding
                 )
                 if post_id:
                     result.berichten += 1
@@ -465,10 +497,15 @@ class DebatTijdlijnService:
                         logger.warning(
                             "Tijdlijnbericht voor %s niet geplaatst", debate_id
                         )
+                        # Counted, so the heartbeat shows a timeline that
+                        # is stuck instead of "ok".
+                        result.fouten += 1
                         break
                     result.berichten += 1
                     if event.type in _SPEAKING:
                         last_turn[debate_id] = (event.type, event.object_id)
+                    else:
+                        last_turn.pop(debate_id, None)
                 await self._remember(sessie.id, debate_id, event, post_id)
                 # Per event: a message that is in the channel has to be in
                 # the database, or a restart posts it a second time.

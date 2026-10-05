@@ -103,6 +103,22 @@ class TestParse:
         debat = _debat(events=[event, dict(event)])
         assert len(debat.events) == 1
 
+    def test_values_are_cut_to_what_the_database_holds(self):
+        """A row that does not fit fails after the message was posted, and
+        the message is then posted again on every tick."""
+        debat = _debat(
+            events=[
+                {
+                    "eventStart": "2026-10-01T10:00:00+0200",
+                    "eventType": "x" * 50,
+                    "objectId": "y" * 100,
+                }
+            ]
+        )
+        (event,) = debat.events
+        assert len(event.type) == 32
+        assert len(event.object_id) == 64
+
     def test_odd_events_are_skipped_not_fatal(self):
         debat = _debat(
             events=[
@@ -261,6 +277,15 @@ class TestSimilarity:
             >= 0.92
         )
 
+    def test_a_short_name_inside_a_long_subject_is_the_same_debate(self):
+        """Without the bonus for containment these score far too low:
+        Debat Direct shows the first words, OData the whole title."""
+        lang = (
+            "Mensenrechtenbeleid en de inzet van Nederland in de "
+            "Mensenrechtenraad van de Verenigde Naties en andere fora"
+        )
+        assert dd.similarity("Mensenrechtenbeleid", lang) == 0.92
+
     def test_accents_brackets_and_case_do_not_matter(self):
         assert (
             dd.similarity(
@@ -370,3 +395,83 @@ class TestMatch:
 
     def test_nothing_to_match_against(self):
         assert dd.match_debates(_activiteit(), []) == []
+
+
+class TestLaterParts:
+    def _first(self, **overrides):
+        values = {
+            "id": "d1",
+            "name": "Algemene Financiële Beschouwingen",
+            "debateType": "Plenair debat",
+            "startsAt": "2026-10-01T12:15:00+0200",
+            "startedAt": "2026-10-01T12:15:00+0200",
+        }
+        values.update(overrides)
+        return _debat(**values)
+
+    def _second(self, **overrides):
+        values = {
+            "id": "d2",
+            "name": "Algemene Financiële Beschouwingen (voortzetting)",
+            "debateType": "Plenair debat",
+            "startsAt": "2026-10-01T16:00:00+0200",
+        }
+        values.update(overrides)
+        return _debat(**values)
+
+    def test_same_subject_and_kind_after_the_known_part(self):
+        found = dd.later_parts(
+            "Algemene Financiële Beschouwingen", ["d1"], [self._second(), self._first()]
+        )
+        assert [d.id for d in found] == ["d2"]
+
+    def test_works_however_late_the_first_part_started(self):
+        """It compares with the known part, not with the planned time of
+        the activiteit, which the debate may have left far behind."""
+        first = self._first(startedAt="2026-10-01T15:30:00+0200")
+        second = self._second(startsAt="2026-10-01T20:00:00+0200")
+        found = dd.later_parts(
+            "Algemene Financiële Beschouwingen", ["d1"], [first, second]
+        )
+        assert [d.id for d in found] == ["d2"]
+
+    def test_another_kind_with_the_same_subject_is_not_a_part(self):
+        second = self._second(debateType="Stemmingen")
+        assert (
+            dd.later_parts(
+                "Algemene Financiële Beschouwingen", ["d1"], [self._first(), second]
+            )
+            == []
+        )
+
+    def test_an_earlier_debate_is_not_a_later_part(self):
+        second = self._second(startsAt="2026-10-01T09:00:00+0200")
+        assert (
+            dd.later_parts(
+                "Algemene Financiële Beschouwingen", ["d1"], [self._first(), second]
+            )
+            == []
+        )
+
+    def test_another_subject_is_not_a_part(self):
+        second = self._second(name="Mensenrechtenbeleid")
+        assert (
+            dd.later_parts(
+                "Algemene Financiële Beschouwingen", ["d1"], [self._first(), second]
+            )
+            == []
+        )
+
+    def test_a_known_part_is_not_found_again(self):
+        assert (
+            dd.later_parts("Algemene Financiële Beschouwingen", ["d1"], [self._first()])
+            == []
+        )
+
+    def test_without_the_known_part_on_the_agenda_nothing_is_guessed(self):
+        assert (
+            dd.later_parts(
+                "Algemene Financiële Beschouwingen", ["d1"], [self._second()]
+            )
+            == []
+        )
