@@ -22,6 +22,7 @@ from sqlalchemy import case, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.config import get_settings
 from bouwmeester.models.debat_sessie import (
     TIJDLIJN_AFGELAST,
     TIJDLIJN_AFGELOPEN,
@@ -36,6 +37,7 @@ from bouwmeester.services.debat_kanaal_service import (
     channel_header,
     format_moment,
 )
+from bouwmeester.services.debat_transcript_service import DebatTranscript
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_utils import (
     escape_mattermost_prose as _escape,
@@ -174,6 +176,8 @@ class DebatTijdlijnService:
         # Per day, for the length of one tick.
         self._sprekers: dict[str, dict[str, dd.Spreker]] = {}
         self._agenda: dict[str, list[dd.DdDebat]] = {}
+        # The debates read in this tick, for whoever needs them after.
+        self._debates: dict[str, dd.DdDebat] = {}
 
     async def close(self) -> None:
         await self.mattermost.close()
@@ -257,7 +261,19 @@ class DebatTijdlijnService:
             sessie.tijdlijn_gecontroleerd_at = now
             await self._find_more_parts(sessie, client, now)
 
+        fouten = result.fouten
         await self._post_new_events(sessie, client, now, result)
+        if (
+            get_settings().DEBAT_TRANSCRIPT_ENABLED
+            and sessie.tijdlijn_status == TIJDLIJN_LOOPT
+            # While a message of the timeline waits to be posted, its turn
+            # is not known yet, and what is said in it would be filed
+            # under the speaker before. The subtitles keep for an hour.
+            and result.fouten == fouten
+        ):
+            await DebatTranscript(self.session, self.mattermost).update(
+                sessie, self._debates, client, now, result
+            )
 
     async def _read_activiteit(
         self, sessie: DebatSessie, client: httpx.AsyncClient
@@ -467,6 +483,7 @@ class DebatTijdlijnService:
                 continue
             if debat is None or not debat.events:
                 continue
+            self._debates[debate_id] = debat
 
             new = [
                 e
@@ -576,7 +593,8 @@ class DebatTijdlijnService:
                         last_turn[debate_id] = (event.type, event.object_id)
                     else:
                         last_turn.pop(debate_id, None)
-                await self._remember(sessie.id, debate_id, event, post_id)
+                kop = tekst if post_id and event.type in _SPEAKING else None
+                await self._remember(sessie.id, debate_id, event, post_id, kop)
                 # Per event: a message that is in the channel has to be in
                 # the database, or a restart posts it a second time.
                 await self.session.commit()
@@ -626,6 +644,7 @@ class DebatTijdlijnService:
         debate_id: str,
         event: dd.DdEvent,
         post_id: str | None,
+        kop: str | None = None,
     ) -> None:
         stmt = (
             insert(DebatSpreekbeurt)
@@ -636,6 +655,7 @@ class DebatTijdlijnService:
                 event_start=event.start,
                 object_id=event.object_id,
                 post_id=post_id,
+                kop=kop,
             )
             .on_conflict_do_nothing(constraint="uq_debat_spreekbeurt_event")
         )
