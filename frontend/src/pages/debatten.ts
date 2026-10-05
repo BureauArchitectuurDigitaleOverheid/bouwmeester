@@ -1,4 +1,4 @@
-import type { AankomendDebat, DebatStartResult, DebatTeam } from '@/types/debat';
+import type { AankomendDebat, DebatKanaal, DebatStartResult, DebatTeam } from '@/types/debat';
 
 const AMSTERDAM = 'Europe/Amsterdam';
 
@@ -78,27 +78,59 @@ export function filterDebatten(debatten: AankomendDebat[], query: string): Aanko
 }
 
 /**
- * The team the page works in: the chosen one if it is still on offer,
- * otherwise the first where a channel can be made, otherwise the first.
+ * The team a channel goes into: the chosen one if it is still on offer, or
+ * the only one there is. With several teams and no choice there is none.
  *
- * Not only teams where the bot may create: a channel that exists in a team
- * has to stay visible when the bot has since lost that right.
+ * Deliberately no default among several. The first version picked the first
+ * team where the bot may create a channel, and a debate channel then landed
+ * in a team that had nothing to do with it. Where a channel goes is a choice
+ * for the person, not for the sort order.
  */
 export function kiesTeam(teams: DebatTeam[], gekozen: string | null): DebatTeam | null {
-  return (
-    teams.find((team) => team.team_id === gekozen) ??
-    teams.find((team) => team.can_create_channel) ??
-    teams[0] ??
-    null
-  );
+  const chosen = teams.find((team) => team.team_id === gekozen);
+  if (chosen) return chosen;
+  return teams.length === 1 ? teams[0] : null;
+}
+
+/**
+ * The channels to show on a row: the one in the chosen team, or all of them
+ * while no team is chosen, so an existing channel is never hidden.
+ */
+export function zichtbareKanalen(debat: AankomendDebat, teamId: string | null): DebatKanaal[] {
+  return teamId === null ? debat.kanalen : debat.kanalen.filter((k) => k.team_id === teamId);
+}
+
+const TEAM_KEY = 'bouwmeester.debatten.team';
+
+/** The team chosen last time, in this browser. */
+export function leesGekozenTeam(): string | null {
+  try {
+    return localStorage.getItem(TEAM_KEY);
+  } catch {
+    // Private mode or blocked storage: the choice just does not survive.
+    return null;
+  }
+}
+
+export function bewaarGekozenTeam(teamId: string): void {
+  try {
+    localStorage.setItem(TEAM_KEY, teamId);
+  } catch {
+    // See above.
+  }
 }
 
 /** What to tell the person who pressed start, and whether it is bad news. */
-export function startMelding(result: DebatStartResult): { tekst: string; fout: boolean } {
+export function startMelding(
+  result: DebatStartResult,
+  teamNaam?: string | null,
+): { tekst: string; fout: boolean } {
   const kanaal = result.kanaal ? `~${result.kanaal.channel_name}` : 'Het kanaal';
+  // Name the team: with several, "in Mattermost" does not say where to look.
+  const waar = teamNaam ? `in team ${teamNaam}` : 'in Mattermost';
   switch (result.outcome) {
     case 'created':
-      return { tekst: `${kanaal} staat klaar in Mattermost.`, fout: false };
+      return { tekst: `${kanaal} staat klaar ${waar}.`, fout: false };
     case 'exists':
       return { tekst: `Er was al een kanaal voor dit debat: ${kanaal}.`, fout: false };
     case 'in_progress':

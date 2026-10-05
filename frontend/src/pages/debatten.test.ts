@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AankomendDebat, DebatStartResult } from '@/types/debat';
 import {
   filterDebatten,
   formatRegel,
   formatTijd,
   groepeerPerDag,
+  bewaarGekozenTeam,
   kiesTeam,
+  leesGekozenTeam,
+  zichtbareKanalen,
   startMelding,
 } from './debatten';
 
@@ -115,20 +118,77 @@ describe('kiesTeam', () => {
     expect(kiesTeam([open, dicht], 'dicht')).toBe(dicht);
   });
 
-  it('prefers a team where a channel can be made when nothing is chosen', () => {
-    expect(kiesTeam([dicht, open], null)).toBe(open);
+  it('picks no team by itself when there are several', () => {
+    // A channel once landed in the first team of the list this way.
+    expect(kiesTeam([open, dicht], null)).toBeNull();
+    expect(kiesTeam([dicht, open], null)).toBeNull();
   });
 
-  it('falls back to the first team when none can create', () => {
-    expect(kiesTeam([dicht], null)).toBe(dicht);
+  it('takes the only team there is', () => {
+    expect(kiesTeam([open], null)).toBe(open);
   });
 
-  it('ignores a choice that is no longer on offer', () => {
+  it('ignores a remembered choice that is no longer on offer', () => {
+    expect(kiesTeam([open, dicht], 'weg')).toBeNull();
     expect(kiesTeam([open], 'weg')).toBe(open);
   });
 
   it('is null without teams', () => {
     expect(kiesTeam([], 'x')).toBeNull();
+  });
+});
+
+describe('zichtbareKanalen', () => {
+  const a = { team_id: 'a', channel_name: 'debat-a', channel_url: null };
+  const b = { team_id: 'b', channel_name: 'debat-b', channel_url: null };
+
+  it('shows the channel of the chosen team', () => {
+    expect(zichtbareKanalen(debat({ kanalen: [a, b] }), 'b')).toEqual([b]);
+  });
+
+  it('shows none when the chosen team has no channel yet', () => {
+    // So the button appears: this debate can still be started there.
+    expect(zichtbareKanalen(debat({ kanalen: [a] }), 'b')).toEqual([]);
+  });
+
+  it('shows every channel while no team is chosen', () => {
+    expect(zichtbareKanalen(debat({ kanalen: [a, b] }), null)).toEqual([a, b]);
+  });
+});
+
+describe('the remembered team', () => {
+  /** A stand-in for the browser's storage; the test environment has none. */
+  function stubStorage(overrides: Partial<Storage> = {}) {
+    const items = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => void items.set(key, value),
+      ...overrides,
+    });
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('survives a reload', () => {
+    stubStorage();
+    expect(leesGekozenTeam()).toBeNull();
+    bewaarGekozenTeam('team-x');
+    expect(leesGekozenTeam()).toBe('team-x');
+  });
+
+  it('does not break the page when storage is blocked', () => {
+    const blocked = () => {
+      throw new Error('blocked');
+    };
+    stubStorage({ getItem: blocked, setItem: blocked });
+    expect(leesGekozenTeam()).toBeNull();
+    expect(() => bewaarGekozenTeam('team-x')).not.toThrow();
+  });
+
+  it('does not break the page when there is no storage at all', () => {
+    vi.stubGlobal('localStorage', undefined);
+    expect(leesGekozenTeam()).toBeNull();
+    expect(() => bewaarGekozenTeam('team-x')).not.toThrow();
   });
 });
 
@@ -146,6 +206,12 @@ describe('startMelding', () => {
       tekst: '~debat-x-6-okt staat klaar in Mattermost.',
       fout: false,
     });
+  });
+
+  it('names the team, so it is clear where the channel is', () => {
+    expect(startMelding(result({}), 'NLDD').tekst).toBe(
+      '~debat-x-6-okt staat klaar in team NLDD.',
+    );
   });
 
   it('is not an error when the channel was already there', () => {

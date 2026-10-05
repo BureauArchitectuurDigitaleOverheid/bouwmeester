@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import { useAankomendeDebatten, useStartDebat } from '@/hooks/useDebatten';
 import { useToast } from '@/contexts/ToastContext';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -11,7 +11,10 @@ import {
   filterDebatten,
   formatRegel,
   groepeerPerDag,
+  bewaarGekozenTeam,
   kiesTeam,
+  leesGekozenTeam,
+  zichtbareKanalen,
   startMelding,
 } from './debatten';
 
@@ -50,15 +53,15 @@ interface DebatRowProps {
 }
 
 function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowProps) {
-  // A debate can have a channel in another team than the one selected; then
-  // it can still be started here.
-  const kanaal = debat.kanalen.find((k) => k.team_id === teamId) ?? null;
+  const kanalen = zichtbareKanalen(debat, teamId);
   return (
     <nldd-list-item>
       <nldd-text-cell text={debat.onderwerp} supporting-text={formatRegel(debat)} />
       {/* One cell per thing on the right, not a row container inside a cell:
           a cell is as wide as its content and a container as wide as its
-          cell, so the two measure each other and both end at zero. */}
+          cell, so the two measure each other and both end at zero. Cells sit
+          flush against each other, so the room between them is a spacer
+          cell. */}
       {debat.agenda_url && (
         <nldd-cell horizontal-alignment="right">
           <nldd-link
@@ -69,12 +72,17 @@ function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowP
           />
         </nldd-cell>
       )}
-      {kanaal ? (
-        <nldd-cell horizontal-alignment="right">
-          <KanaalLink kanaal={kanaal} />
-        </nldd-cell>
-      ) : (
-        canStart && (
+      {kanalen.map((kanaal) => (
+        <Fragment key={kanaal.team_id}>
+          <nldd-spacer-cell size="16" />
+          <nldd-cell horizontal-alignment="right">
+            <KanaalLink kanaal={kanaal} />
+          </nldd-cell>
+        </Fragment>
+      ))}
+      {kanalen.length === 0 && canStart && (
+        <>
+          <nldd-spacer-cell size="16" />
           <nldd-cell horizontal-alignment="right">
             <NlddButton
               variant="secondary"
@@ -87,7 +95,7 @@ function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowP
               onClick={() => onStart(debat)}
             />
           </nldd-cell>
-        )
+        </>
       )}
     </nldd-list-item>
   );
@@ -98,7 +106,7 @@ export function DebattenPage() {
   const start = useStartDebat();
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState('');
-  const [chosenTeam, setChosenTeam] = useState<string | null>(null);
+  const [chosenTeam, setChosenTeam] = useState<string | null>(leesGekozenTeam);
 
   const teams = useMemo(() => data?.teams ?? [], [data]);
   const team = kiesTeam(teams, chosenTeam);
@@ -120,13 +128,13 @@ export function DebattenPage() {
         { activiteitId: debat.activiteit_id, teamId },
         {
           onSuccess: (result) => {
-            const { tekst, fout } = startMelding(result);
+            const { tekst, fout } = startMelding(result, team?.team_name);
             (fout ? showError : showSuccess)(tekst);
           },
         },
       );
     },
-    [start, teamId, showError, showSuccess],
+    [start, teamId, team, showError, showSuccess],
   );
 
   // Only without data. A refetch that fails in the background (after a
@@ -141,11 +149,18 @@ export function DebattenPage() {
     );
   }
 
+  const handleTeam = (teamId: string) => {
+    setChosenTeam(teamId);
+    bewaarGekozenTeam(teamId);
+  };
+
   const melding =
     data.mattermost_melding ??
     (team && !team.can_create_channel
       ? 'De bot mag in dit team geen kanalen aanmaken. Een Mattermost-beheerder kan dat aanzetten.'
       : null);
+  // Several teams and none chosen: say so, instead of a page without buttons.
+  const kiesEerst = !data.mattermost_melding && teams.length > 1 && team === null;
 
   return (
     <nldd-container gap="24">
@@ -156,11 +171,17 @@ export function DebattenPage() {
               <DebatSearchField value={search} onChange={setSearch} />
             </nldd-container>
             {teams.length > 1 && (
+              // The dropdown's label is only an accessible name, so a chosen
+              // team would stand there without saying what it is for.
+              <nldd-text size="sm" color="secondary">Kanaal komt in team</nldd-text>
+            )}
+            {teams.length > 1 && (
               <Select
-                aria-label="Mattermost-team"
-                width="224px"
+                label="Team voor het kanaal"
+                placeholder="Kies een team"
+                width="256px"
                 value={teamId ?? ''}
-                onChange={(e) => setChosenTeam(e.target.value)}
+                onChange={(e) => handleTeam(e.target.value)}
                 options={teams.map((t) => ({ value: t.team_id, label: t.team_name ?? t.team_id }))}
               />
             )}
@@ -171,6 +192,13 @@ export function DebattenPage() {
       {melding && (
         <nldd-text size="sm" color="secondary">
           {melding} Kanalen opzetten kan hier nu niet; de agenda hieronder klopt wel.
+        </nldd-text>
+      )}
+
+      {kiesEerst && (
+        <nldd-text size="sm" color="secondary">
+          Kies hierboven eerst het Mattermost-team waar het kanaal in moet komen. Daarna
+          verschijnt per vergadering de knop om een kanaal op te zetten.
         </nldd-text>
       )}
 
