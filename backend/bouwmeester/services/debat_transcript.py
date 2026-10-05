@@ -25,6 +25,7 @@ MESSAGE_LIMIT = 1800
 MESSAGE_MINIMUM = 500
 # How much of what the chairman said goes under a suspension or the end.
 CLOSING_LIMIT = 300
+CLOSING_MINIMUM = 60
 
 _SENTENCE_END = re.compile(r"[.?!…][\"'”’)]?\s")
 _RUNS_ON = re.compile(r"\.\.\.\s+(?=[a-zà-ÿ])")
@@ -114,7 +115,9 @@ def last_sentences(text: str, limit: int = CLOSING_LIMIT) -> str:
         return text
     window = text[-limit:]
     starts = [found.end() for found in _SENTENCE_END.finditer(window)]
-    if starts and starts[0] < len(window):
+    # Whole sentences, unless that leaves next to nothing: "Ja." after a
+    # long sentence says less than the end of that sentence.
+    if starts and len(window) - starts[0] >= CLOSING_MINIMUM:
         return window[starts[0] :].strip()
     space = window.find(" ")
     return "…" + (window[space:] if space >= 0 else window)

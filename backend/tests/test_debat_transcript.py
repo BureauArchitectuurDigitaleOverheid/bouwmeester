@@ -232,6 +232,14 @@ class TestClosing:
             "Dank aan de leden. Ik schors de vergadering tot kwart over twee."
         )
 
+    def test_a_scrap_after_a_long_sentence_is_not_all_that_is_shown(self):
+        text = "woord " * 100 + "tot kwart over twee. Ja."
+
+        shown = last_sentences(text, limit=80)
+
+        assert shown.endswith("tot kwart over twee. Ja.")
+        assert shown.startswith("… woord")
+
     def test_one_sentence_that_is_too_long_is_cut_at_a_word(self):
         text = "woord " * 100 + "einde"
 
@@ -928,7 +936,56 @@ class TestTranscript:
 
         await _play(db_session, mm, feed, 5)
 
-        assert mm.channel[1].endswith("\nVoorzitter: Ik schors.")
+        assert mm.channel[1].endswith("\nVoorzitter: Een mededeling. Ik schors.")
+
+    async def test_the_end_after_a_suspension_does_not_repeat_the_announcement(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(
+            ("chairman", 1, "v"), ("suspended", 2, ""), ("debate_end", 4, "")
+        )
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Ik schors tot twee uur.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6)
+
+        assert mm.channel[1].endswith("\nVoorzitter: Ik schors tot twee uur.")
+        assert "Voorzitter:" not in mm.channel[2]
+
+    async def test_a_second_suspension_gets_what_was_said_after_the_resumption(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(
+            ("chairman", 1, "v"),
+            ("suspended", 2, ""),
+            ("continued", 3, ""),
+            ("suspended", 4, ""),
+        )
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        cues = [_cue(65, "Ik schors tot twee uur."), _cue(190, "Ik schors opnieuw.")]
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6)
+
+        assert mm.channel[1].endswith("\nVoorzitter: Ik schors tot twee uur.")
+        assert mm.channel[3].endswith("\nVoorzitter: Ik schors opnieuw.")
+
+    async def test_the_words_under_a_suspension_are_written_once(
+        self, db_session, monkeypatch
+    ):
+        debat = _debat(("chairman", 1, "v"), ("suspended", 2, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(65, "Ik schors.")])
+        mm = Mattermost()
+        await _sessie(db_session)
+
+        await _play(db_session, mm, feed, 6)
+
+        assert len(mm.updates) == 1
 
     async def test_words_that_cannot_be_put_under_a_suspension_count_as_an_error(
         self, db_session, monkeypatch

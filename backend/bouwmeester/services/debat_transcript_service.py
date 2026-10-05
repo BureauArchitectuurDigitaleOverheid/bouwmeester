@@ -225,13 +225,16 @@ class DebatTranscript:
         ).all()
         turns: list[_Turn] = []
         current: _Turn | None = None
-        # What the chairman said last, since anyone else spoke.
+        # What was said from the chair since a member last spoke, or since
+        # the last suspension. Not only on rows of the chairman: what is
+        # said after a resumption or a change of chairman is kept on the row
+        # of that event.
         chairman = ""
         for row_id, kind, who, post_id, kop, tekst, geplaatst, vervolg in rows:
-            if kind == dd.EVENT_CHAIRMAN:
-                chairman = tekst or ""
-            elif kind in _SPEAKING:
+            if kind in _SPEAKING:
                 chairman = ""
+            elif kind not in _CLOSING:
+                chairman = append_text(chairman, tekst or "")
             if post_id:
                 current = None
                 if kind in _CLOSING and kop and chairman:
@@ -250,6 +253,10 @@ class DebatTranscript:
                             closing=True,
                         )
                     )
+                if kind in _CLOSING:
+                    # Said once. A second suspension, or the end after a
+                    # suspension, does not repeat it.
+                    chairman = ""
                 if kind in _SPEAKING and kop:
                     current = _Turn(
                         row_id,
@@ -299,9 +306,14 @@ class DebatTranscript:
             if len(text) == turn.geplaatst:
                 continue
             if turn.closing:
+                # `tekst_geplaatst` of this row counts the chairman's words
+                # shown under it, which are kept on other rows.
                 if await self._rewrite(turn.post_id, render_closing(turn.kop, text)):
                     await self._keep(turn.row_id, tekst_geplaatst=len(text))
                 else:
+                    logger.warning(
+                        "Woorden van de voorzitter bij %s niet geplaatst", turn.row_id
+                    )
                     result.fouten += 1
                 continue
             pieces = split_text(text)
