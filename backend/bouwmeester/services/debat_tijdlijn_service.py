@@ -12,6 +12,7 @@ is in the database, so a restart continues where the last tick stopped.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
@@ -32,11 +33,13 @@ from bouwmeester.models.debat_sessie import (
     DebatSpreekbeurt,
 )
 from bouwmeester.services import debat_direct as dd
+from bouwmeester.services import debat_stem as stem
 from bouwmeester.services.debat_kanaal_service import (
     AMSTERDAM,
     channel_header,
     format_moment,
 )
+from bouwmeester.services.debat_stemmen_service import Budget, DebatStemmen
 from bouwmeester.services.debat_transcript_service import DebatTranscript
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_utils import (
@@ -180,6 +183,9 @@ class DebatTijdlijnService:
         self._agenda: dict[str, list[dd.DdDebat]] = {}
         # The debates read in this tick, for whoever needs them after.
         self._debates: dict[str, dd.DdDebat] = {}
+        # How many debates this tick looks at: they share what a tick may
+        # spend on telling voices apart.
+        self._sessies = 1
 
     async def close(self) -> None:
         await self.mattermost.close()
@@ -197,6 +203,12 @@ class DebatTijdlijnService:
             | DebatSessie.tijdlijn_status.in_((TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT)),
         )
         sessie_ids = list((await self.session.execute(stmt)).scalars().all())
+        # A voice does not outlive its debate: what is not followed any
+        # more is forgotten here, whatever the reason it dropped out, and
+        # so is what has not been used for a while.
+        stem.VOICES.keep_only(sessie_ids)
+        stem.VOICES.expire(now)
+        self._sessies = len(sessie_ids)
         if not sessie_ids:
             return result
         if not await self.mattermost.is_enabled():
@@ -226,6 +238,18 @@ class DebatTijdlijnService:
         sessie = await self.session.get(DebatSessie, sessie_id)
         if sessie is None or sessie.channel_id is None:
             return
+        await self._step(sessie, client, now, result)
+        if sessie.tijdlijn_status not in _ACTIVE:
+            # Over or cancelled: the voices go at once, not a tick later.
+            stem.VOICES.forget(sessie_id)
+
+    async def _step(
+        self,
+        sessie: DebatSessie,
+        client: httpx.AsyncClient,
+        now: datetime,
+        result: TickResult,
+    ) -> None:
         due = (
             sessie.tijdlijn_gecontroleerd_at is None
             or now - sessie.tijdlijn_gecontroleerd_at >= RECHECK_EVERY
@@ -273,9 +297,25 @@ class DebatTijdlijnService:
             # under the speaker before. The subtitles keep for an hour.
             and result.fouten == fouten
         ):
-            await DebatTranscript(self.session, self.mattermost).update(
-                sessie, self._debates, client, now, result
-            )
+            await DebatTranscript(
+                self.session, self.mattermost, await self._stemmen()
+            ).update(sessie, self._debates, client, now, result)
+
+    async def _stemmen(self) -> DebatStemmen | None:
+        """What tells the voices apart, or ``None`` when that is not done.
+
+        Without the model a line stays in the turn the time put it in,
+        which is how it was before voices were listened to.
+        """
+        settings = get_settings()
+        if not settings.DEBAT_STEMMEN_ENABLED:
+            return None
+        # Reading the model takes a moment the first time; after that this
+        # is a lookup.
+        embedder = await asyncio.to_thread(stem.load, settings.DEBAT_STEM_MODEL_PATH)
+        if embedder is None:
+            return None
+        return DebatStemmen(self.session, embedder, Budget.share(self._sessies))
 
     async def _read_activiteit(
         self, sessie: DebatSessie, client: httpx.AsyncClient

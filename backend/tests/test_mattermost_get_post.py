@@ -140,3 +140,40 @@ class TestClassificatieFoutafhandeling:
         assert result.is_lead is True
         assert result.failed is False
         assert result.confidence == pytest.approx(0.9)
+
+
+def _service_deleting(monkeypatch, outcome, seen: list[str]):
+    """MattermostService waarvan een DELETE ``outcome`` teruggeeft."""
+
+    class FakeClient:
+        async def delete(self, url):
+            seen.append(url)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+    async def fake_get_client(self):
+        return FakeClient()
+
+    monkeypatch.setattr(MattermostService, "_get_client", fake_get_client)
+    return MattermostService(None)
+
+
+@pytest.mark.asyncio
+class TestDeletePost:
+    async def test_een_post_wordt_verwijderd(self, monkeypatch):
+        seen: list[str] = []
+        svc = _service_deleting(monkeypatch, _response(200, {"status": "OK"}), seen)
+
+        assert await svc.delete_post("abc") is True
+        assert seen == ["/api/v4/posts/abc"]
+
+    async def test_een_weigering_is_geen_succes(self, monkeypatch):
+        svc = _service_deleting(monkeypatch, _response(403), [])
+
+        assert await svc.delete_post("abc") is False
+
+    async def test_een_storing_is_geen_succes(self, monkeypatch):
+        svc = _service_deleting(monkeypatch, httpx.ConnectError("weg"), [])
+
+        assert await svc.delete_post("abc") is False

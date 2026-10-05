@@ -17,6 +17,7 @@ from bouwmeester.models.debat_markering import (  # noqa: F401
     DebatMarkeringVermelding,
 )
 from bouwmeester.models.debat_sessie import (  # noqa: F401
+    DebatOndertitel,
     DebatSessie,
     DebatSpreekbeurt,
 )
@@ -109,6 +110,7 @@ __all__ = [
     "CorpusNode",
     "DebatMarkering",
     "DebatMarkeringVermelding",
+    "DebatOndertitel",
     "DebatSessie",
     "DebatSpreekbeurt",
     "CorpusNodeStatus",

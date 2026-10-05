@@ -40,7 +40,7 @@ from bouwmeester.services.debat_tijdlijn_service import (
     LOOKAHEAD,
 )
 from bouwmeester.services.debat_transcript_service import (
-    _ORDER,
+    ORDER,
     Turn,
     _moment,
     load_turns,
@@ -58,9 +58,11 @@ from bouwmeester.services.mattermost_service import MattermostService
 logger = logging.getLogger(__name__)
 
 # How far past the end of a turn the subtitles have to be read before its
-# text counts as complete. A line is filed under the turn it starts in, and
-# the moment of an event is not exact to the second.
-MARGIN = timedelta(seconds=10)
+# text counts as complete. The moment of an event is seconds off, and the
+# lines around it are put with the right speaker by voice, which takes
+# half a minute and the delay of the audio. Read sooner, a question at the
+# edge of a turn is read as the neighbour's.
+MARGIN = timedelta(seconds=75)
 # Turns per debate per round. Normally one or two are waiting; this is for
 # after the model was away, so that catching up does not hold up the other
 # debates or keep the heartbeat silent for minutes.
@@ -271,7 +273,7 @@ class DebatVraagWorker:
                         DebatSpreekbeurt.event_type == dd.EVENT_DEBATE_END,
                     ),
                 )
-                .order_by(*_ORDER)
+                .order_by(*ORDER)
             )
         ).all()
         next_message: dict[uuid.UUID, datetime] = {}

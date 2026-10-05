@@ -92,6 +92,12 @@ class Settings(BaseSettings):
     # A turn is finished some 45 seconds before its text is complete, so
     # looking more often than this finds nothing sooner.
     DEBAT_VRAGEN_INTERVAL_SECONDS: int = 15
+    # Around a change of speaker the voice decides whose line it is, not
+    # the moment of the event, which is seconds off. Needs the speaker model
+    # at the path below; the image downloads it at build. Without that file
+    # this step is skipped and a line stays where the time put it.
+    DEBAT_STEMMEN_ENABLED: bool = True
+    DEBAT_STEM_MODEL_PATH: str = "/models/voxceleb_resnet34_LM.onnx"
 
     # tkconv (berthub.eu) draait op een privéserver zonder SLA en heeft een
     # eigen poll-ritme, los van de officiële TK-API. Het ritme volgt wanneer
