@@ -175,9 +175,10 @@ class TestChannelName:
         )
 
     def test_accents_and_punctuation(self):
-        a = _activiteit(onderwerp="Eurogroep/Ecofinraad d.d. 8 & 9 oktober (Kostić)")
+        a = _activiteit(onderwerp="Eurogroep/Ecofinraad d.d. 8 & 9 oktober (Curaçao)")
         assert (
-            channel_name(a) == "debat-eurogroep-ecofinraad-d-d-8-9-oktober-kostic-6-okt"
+            channel_name(a)
+            == "debat-eurogroep-ecofinraad-d-d-8-9-oktober-curacao-6-okt"
         )
 
     @pytest.mark.parametrize("with_nummer", [False, True])

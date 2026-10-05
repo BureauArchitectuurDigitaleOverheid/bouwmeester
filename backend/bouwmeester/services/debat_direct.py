@@ -84,7 +84,7 @@ class Spreker:
 
     @property
     def label(self) -> str:
-        """`Kathmann (GroenLinks-PvdA)`, or the function for a minister.
+        """`Kamerlid A (CDA)`, or the function for a minister.
 
         The party right behind the name, not in a column of its own.
         """
