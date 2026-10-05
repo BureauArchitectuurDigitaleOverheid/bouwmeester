@@ -1772,6 +1772,8 @@ class TestForgetting:
             "tekst_geplaatst",
             "tekst_geplaatst_hash",
             "vervolg_post_ids",
+            "beoordeeld_at",
+            "beoordeel_pogingen",
         }
         assert set(sessie.ondertitels[feed.parts[0].id]) == {
             "url",
@@ -1929,3 +1931,57 @@ class TestDirect:
             )
         ).scalar_one()
         assert text.split()[-2:] == ["r178.", "r182."]
+
+
+class TestMemory:
+    """The API shares its container with the worker. The model is not
+    loaded when that could get the container killed."""
+
+    def _files(self, tmp_path, limit: str, usage: str):
+        (tmp_path / "max").write_text(limit)
+        (tmp_path / "current").write_text(usage)
+        return ((str(tmp_path / "max"), str(tmp_path / "current")),)
+
+    def test_what_is_left_is_the_limit_minus_what_is_used(self, tmp_path):
+        paths = self._files(tmp_path, "1073741824\n", "536870912\n")
+
+        assert stem.memory_left(paths) == 536870912
+
+    @pytest.mark.parametrize("limit", ["max", "9223372036854771712"])
+    def test_no_limit_is_no_limit(self, tmp_path, limit):
+        assert stem.memory_left(self._files(tmp_path, limit, "1000")) is None
+
+    def test_not_being_able_to_tell_counts_as_no_limit(self, tmp_path):
+        assert stem.memory_left(((str(tmp_path / "x"), str(tmp_path / "y")),)) is None
+
+    def test_the_second_place_is_looked_at_when_the_first_is_not_there(self, tmp_path):
+        paths = (
+            ("/nonexistent/a", "/nonexistent/b"),
+            *self._files(tmp_path, "1000", "400"),
+        )
+
+        assert stem.memory_left(paths) == 600
+
+    def test_too_little_memory_and_the_model_is_not_loaded(
+        self, tmp_path, monkeypatch, caplog
+    ):
+        model = tmp_path / "model.onnx"
+        model.write_bytes(b"x")
+        loaded = []
+        monkeypatch.setattr(stem, "Embedder", lambda path: loaded.append(path))
+        monkeypatch.setattr(stem, "memory_left", lambda: stem.MEMORY_NEEDED - 1)
+
+        with caplog.at_level("WARNING"):
+            assert stem._load(str(model)) is None
+
+        assert loaded == []
+        assert "Te weinig geheugen" in caplog.text
+
+    @pytest.mark.parametrize("free", [None, 400 * 2**20])
+    def test_enough_memory_and_it_is(self, tmp_path, monkeypatch, free):
+        model = tmp_path / "model.onnx"
+        model.write_bytes(b"x")
+        monkeypatch.setattr(stem, "Embedder", lambda path: "model")
+        monkeypatch.setattr(stem, "memory_left", lambda: free)
+
+        assert stem._load(str(model)) == "model"

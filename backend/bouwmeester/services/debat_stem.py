@@ -113,6 +113,38 @@ class Embedder:
         return out / norm
 
 
+# What the model takes: 70 MB loaded and up to 170 MB while it works
+# (measured), with room to spare for the audio of a round.
+MEMORY_NEEDED = 400 * 2**20
+_CGROUP = (
+    ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+    (
+        "/sys/fs/cgroup/memory/memory.limit_in_bytes",
+        "/sys/fs/cgroup/memory/memory.usage_in_bytes",
+    ),
+)
+
+
+def memory_left(paths=_CGROUP) -> int | None:  # type: ignore[no-untyped-def]
+    """How many bytes the container may still use, or ``None`` if unlimited.
+
+    Read from the cgroup, which is what kills a container. Not being able
+    to tell counts as unlimited: on a laptop there is no such file.
+    """
+    for limit_path, usage_path in paths:
+        try:
+            with open(limit_path) as f:
+                limit = f.read().strip()
+            with open(usage_path) as f:
+                usage = int(f.read().strip())
+        except (OSError, ValueError):
+            continue
+        if not limit.isdigit() or int(limit) >= 2**60:
+            return None
+        return int(limit) - usage
+    return None
+
+
 # Per path: the model, or None when it could not be loaded. Looked at once
 # per process, so a missing model is one line in the log and not one per
 # round.
@@ -130,6 +162,18 @@ def _load(path: str) -> Embedder | None:
     if not path or not os.path.isfile(path):
         logger.info(
             "Geen sprekermodel op %s: regels blijven op tijd bij een spreker", path
+        )
+        return None
+    free = memory_left()
+    if free is not None and free < MEMORY_NEEDED:
+        # The API runs in the same container as the worker. A container
+        # that is killed for its memory takes both down, and a line under
+        # the wrong speaker is not worth that.
+        logger.warning(
+            "Te weinig geheugen voor het sprekermodel (%d MB vrij, %d MB nodig): "
+            "regels blijven op tijd bij een spreker",
+            free // 2**20,
+            MEMORY_NEEDED // 2**20,
         )
         return None
     try:
