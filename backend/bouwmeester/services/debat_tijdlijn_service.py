@@ -59,6 +59,8 @@ GIVE_UP_AFTER = timedelta(hours=16)
 # How often the activiteit and the agenda are read again while waiting, and
 # while a debate runs to find a second part after a break.
 RECHECK_EVERY = timedelta(minutes=5)
+# And how soon after a reading of the agenda that failed.
+RECHECK_SOON = timedelta(minutes=1)
 # A debate counts as over this long after its last part ended. Debat Direct
 # cuts a plenary debate in two around a break, and the second part only
 # appears when it starts.
@@ -79,6 +81,17 @@ POLL_BEFORE_START = timedelta(minutes=15)
 
 _HTTP_TIMEOUT = 15.0
 _SPEAKING = (dd.EVENT_SPEAKER, dd.EVENT_INTERRUPTER)
+# What the channel would have been told. A missed stretch with any of these
+# in it is said to have been missed; one with only the chairman giving the
+# floor is not.
+_ANNOUNCED = (
+    *_SPEAKING,
+    dd.EVENT_DEBATE_START,
+    dd.EVENT_SUSPENDED,
+    dd.EVENT_CONTINUED,
+    dd.EVENT_CHAIRMAN_CHANGE,
+    dd.EVENT_DEBATE_END,
+)
 
 _ACTIVE = (None, TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT)
 
@@ -161,8 +174,6 @@ class DebatTijdlijnService:
         # Per day, for the length of one tick.
         self._sprekers: dict[str, dict[str, dd.Spreker]] = {}
         self._agenda: dict[str, list[dd.DdDebat]] = {}
-        # Parts the agenda says have started, whatever the planned time.
-        self._started: set[str] = set()
 
     async def close(self) -> None:
         await self.mattermost.close()
@@ -348,17 +359,20 @@ class DebatTijdlijnService:
         try:
             agenda = await self._agenda_for(client, sessie.aanvang)
         except dd.DebatDirectError:
+            # Not in five minutes but in one: this reading is also what
+            # notices a debate that starts early.
+            sessie.tijdlijn_gecontroleerd_at = now - RECHECK_EVERY + RECHECK_SOON
             return
         known = list(sessie.debat_direct_ids or [])
         # A debate can start well before its planned time: plenary items
         # were measured up to 38 minutes early. The agenda says so, and it
-        # is read here anyway.
+        # is read here anyway. Its start, the real one once
+        # the debate runs, replaces an appointment that is later, so the
+        # next ticks know it too.
         for part in agenda:
             start = dd.start_of(part)
-            if part.id in known and (
-                part.started_at is not None or (start is not None and start <= now)
-            ):
-                self._started.add(part.id)
+            if part.id in known and start is not None and start < sessie.aanvang:
+                sessie.aanvang = start
         new = [p.id for p in dd.later_parts(sessie.onderwerp, known, agenda)]
         if new:
             # A new list, not an append: a JSON column only notices a
@@ -442,7 +456,6 @@ class DebatTijdlijnService:
                 continue
             if (
                 debate_id not in started_parts
-                and debate_id not in self._started
                 and sessie.aanvang is not None
                 and now < sessie.aanvang - POLL_BEFORE_START
             ):
@@ -470,31 +483,41 @@ class DebatTijdlijnService:
                 too_old = BACKLOG_AGE
             old = [e for e in new if now - e.start > too_old]
             new = [e for e in new if now - e.start <= too_old]
-            # Old and from before something already seen: the feed added or
+            # Old and from before the last message: the feed added or
             # corrected an event afterwards. Nothing was missed, so nothing
-            # is said. Old and after everything seen: the timeline was away.
-            last_seen = max((r[2] for r in rows if r[0] == debate_id), default=None)
-            missed = [e for e in old if last_seen is None or e.start > last_seen]
+            # is said. Old and after the last message: the timeline was
+            # away, or could not post. The last message, not the last row:
+            # a row without a message is also written while posting fails.
+            last_posted = max(
+                (r[2] for r in rows if r[0] == debate_id and r[4]), default=None
+            )
+            missed = [e for e in old if last_posted is None or e.start > last_posted]
             beurten = sum(1 for e in missed if e.type in _SPEAKING)
             is_over = any(e.type == dd.EVENT_DEBATE_END for e in missed)
-            if missed and (beurten or is_over):
+            if any(e.type in _ANNOUNCED for e in missed):
                 url = dd.debate_url(debat)
                 waar = f"[Debat Direct]({url})" if url else "Debat Direct"
                 aantal = "1 spreekbeurt" if beurten == 1 else f"{beurten} spreekbeurten"
-                if joining:
-                    staan = "staat" if beurten == 1 else "staan"
+                staan = "staat" if beurten == 1 else "staan"
+                if joining and is_over:
+                    melding = (
+                        f"🎧 Dit debat was al afgelopen toen ik om {_hhmm(now)} "
+                        f"aanhaakte; de {aantal} {staan} op {waar}."
+                    )
+                elif joining:
                     melding = (
                         f"🎧 Ik luister mee vanaf {_hhmm(now)}. Het debat "
                         f"was toen al bezig; de {aantal} daarvoor {staan} op {waar}."
                     )
                 else:
+                    hoeveel = f" ({aantal})" if beurten else ""
                     melding = (
                         f"⏭️ Ik was er even niet. Wat er tussen "
                         f"{_hhmm(missed[0].start)} en {_hhmm(missed[-1].start)} "
-                        f"gebeurde ({aantal}) staat op {waar}."
+                        f"gebeurde{hoeveel} staat op {waar}."
                     )
-                if is_over:
-                    melding += " Het debat is inmiddels afgelopen."
+                    if is_over:
+                        melding += " Het debat is inmiddels afgelopen."
                 post_id = await self.mattermost.send_channel_message(
                     sessie.channel_id, melding
                 )
@@ -507,6 +530,8 @@ class DebatTijdlijnService:
                         "Melding over gemist deel voor %s niet geplaatst", debate_id
                     )
                     result.fouten += 1
+                    if await self._stop_if_channel_gone(sessie):
+                        return
                     continue
                 result.berichten += 1
                 # What came before the gap says nothing about who speaks
@@ -543,6 +568,8 @@ class DebatTijdlijnService:
                         # Counted, so the heartbeat shows a timeline that
                         # is stuck instead of "ok".
                         result.fouten += 1
+                        if await self._stop_if_channel_gone(sessie):
+                            return
                         break
                     result.berichten += 1
                     if event.type in _SPEAKING:
@@ -564,6 +591,19 @@ class DebatTijdlijnService:
         if parts and all(p in ended for p in parts) and last_end is not None:
             if now - last_end > END_GRACE:
                 sessie.tijdlijn_status = TIJDLIJN_AFGELOPEN
+
+    async def _stop_if_channel_gone(self, sessie: DebatSessie) -> bool:
+        """After a message that failed: is there still a channel to post in?
+
+        Someone can archive the channel while the debate runs. Without this
+        the message is tried again on every tick until the debate drops out
+        of sight the next day, with an error in the heartbeat each time.
+        """
+        if not await self.mattermost.channel_is_gone(sessie.channel_id):
+            return False
+        logger.info("Kanaal %s bestaat niet meer; tijdlijn gestopt", sessie.channel_id)
+        sessie.tijdlijn_status = TIJDLIJN_AFGELOPEN
+        return True
 
     async def _was_there_before(self, sessie_id: uuid.UUID, debat: dd.DdDebat) -> bool:
         """Whether the channel existed before this part of the debate began.
