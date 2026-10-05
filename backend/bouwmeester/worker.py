@@ -3,6 +3,7 @@ and running the persistent Mattermost websocket."""
 
 import asyncio
 import logging
+import time
 import traceback
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -273,6 +274,41 @@ async def _mattermost_websocket_loop(settings) -> None:  # type: ignore[no-untyp
         await asyncio.sleep(5)
 
 
+async def _debat_tijdlijn_loop(settings) -> None:  # type: ignore[no-untyped-def]
+    """Post who speaks when, in the channels of debates that are on today."""
+    if not settings.DEBAT_TIJDLIJN_ENABLED:
+        logger.info("Debat-tijdlijn staat uit (DEBAT_TIJDLIJN_ENABLED=false)")
+        return
+    from bouwmeester.services.debat_tijdlijn_service import DebatTijdlijnService
+
+    await health_tick("debat_tijdlijn", status="starting")
+    last_heartbeat = 0.0
+    while True:
+        detail = None
+        try:
+            async with async_session() as session:
+                service = DebatTijdlijnService(session)
+                try:
+                    result = await service.tick()
+                finally:
+                    await service.close()
+            if result.berichten or result.gekoppeld or result.fouten:
+                logger.info("Debat-tijdlijn: %s", result.summary())
+            detail = result.summary()
+            status = "error" if result.fouten else "ok"
+        except Exception as exc:
+            logger.exception("Error in debat-tijdlijn tick")
+            detail = _short_error(exc)
+            status = "error"
+
+        # The loop ticks every few seconds; the heartbeat does not have to.
+        if status == "error" or time.monotonic() - last_heartbeat > 60.0:
+            last_heartbeat = time.monotonic()
+            await health_tick("debat_tijdlijn", status=status, detail=detail)
+
+        await asyncio.sleep(settings.DEBAT_TIJDLIJN_INTERVAL_SECONDS)
+
+
 async def _cleanup_obsolete_heartbeats() -> None:
     """Verwijder heartbeat-rijen van loops die niet meer bestaan.
 
@@ -447,6 +483,7 @@ async def main() -> None:
         asyncio.create_task(_mattermost_retry_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_dagelijks_loop(settings)),
         asyncio.create_task(_overheidsorganisaties_wekelijks_loop(settings)),
+        asyncio.create_task(_debat_tijdlijn_loop(settings)),
     ]
     await asyncio.gather(*tasks)
 

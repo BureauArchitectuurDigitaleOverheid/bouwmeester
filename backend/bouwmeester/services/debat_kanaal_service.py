@@ -260,19 +260,28 @@ def channel_display_name(activiteit: Activiteit) -> str:
     return _fit(onderwerp, CHANNEL_DISPLAY_NAME_MAX - len(suffix)) + suffix
 
 
-def channel_header(activiteit: Activiteit) -> str:
+def channel_header(
+    activiteit: Activiteit, *, zaal: str | None = None, stream_url: str | None = None
+) -> str:
     """What stands above the channel: kind, time, and where to follow it.
 
-    No room: the TK API has `Locatie` empty for every activiteit until the
-    day itself.
+    Room and stream are only known on the day itself, from Debat Direct:
+    the TK API has `Locatie` empty for every activiteit, and Debat Direct
+    does not know a debate weeks ahead. Until then the header links to the
+    front page of Debat Direct.
     """
     delen = [f"**{escape_mattermost_md(activiteit.soort or 'Debat')}**"]
     moment = format_moment(activiteit)
     if moment:
         delen.append(moment)
+    if zaal:
+        delen.append(escape_mattermost_md(zaal))
     if activiteit.nummer:
         delen.append(f"[Agenda]({activiteit_url(activiteit.nummer)})")
-    delen.append(f"[Debat Direct]({DEBAT_DIRECT_URL})")
+    if stream_url:
+        delen.append(f"[Livestream]({stream_url})")
+    else:
+        delen.append(f"[Debat Direct]({DEBAT_DIRECT_URL})")
     return " · ".join(delen)
 
 
