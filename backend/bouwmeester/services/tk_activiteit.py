@@ -75,6 +75,16 @@ class Activiteit:
     agendapunten: tuple[Agendapunt, ...]
     # A closed meeting is not broadcast.
     besloten: bool = False
+    # A meeting that is moved does not keep its id: the old activiteit stays
+    # with status "Verplaatst" and a new one, with a new `Id` and a new
+    # `Nummer`, takes its place. These two links are the only thing that
+    # says they are one debate. Measured on the 1000 convocaties registered
+    # from 27 March to 5 October 2026 (one activiteit each): 72 were moved,
+    # 66 of those name exactly one successor and 6 none; a successor lists
+    # all its predecessors, not only the last one (87 have one, 15 two, 4
+    # three, 1 four), and every one of those 133 has status "Verplaatst".
+    vervangen_door: tuple[str, ...] = ()
+    vervangen_vanuit: tuple[str, ...] = ()
 
 
 def _parse_moment(value: object) -> datetime | None:
@@ -145,6 +155,12 @@ def _parse_agendapunt(raw: dict) -> Agendapunt:
     )
 
 
+def _linked_ids(value: object) -> tuple[str, ...]:
+    """The ids of the activiteiten a link points at, without doubles."""
+    ids = (_text(row.get("Id")) for row in _rows(value))
+    return tuple(dict.fromkeys(i for i in ids if i))
+
+
 def parse_activiteit(raw: dict) -> Activiteit:
     """Turn one Activiteit from the API into what the channel needs.
 
@@ -178,6 +194,8 @@ def parse_activiteit(raw: dict) -> Activiteit:
         besloten=raw.get("Besloten") is True,
         bewindspersonen=bewindspersonen,
         agendapunten=tuple(agendapunten),
+        vervangen_door=_linked_ids(raw.get("VervangenDoor")),
+        vervangen_vanuit=_linked_ids(raw.get("VervangenVanuit")),
     )
 
 
@@ -190,7 +208,9 @@ _EXPAND = (
     "$expand=Document($select=DocumentNummer,Soort,Onderwerp,Verwijderd),"
     "Zaak($select=Nummer,Soort,Onderwerp,Verwijderd;"
     "$expand=Document($select=DocumentNummer,Soort,Onderwerp,Verwijderd))),"
-    "ActiviteitActor($select=ActorNaam,Relatie,Functie,Verwijderd)"
+    "ActiviteitActor($select=ActorNaam,Relatie,Functie,Verwijderd),"
+    "VervangenDoor($select=Id,Verwijderd),"
+    "VervangenVanuit($select=Id,Verwijderd)"
 )
 
 

@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -53,6 +54,7 @@ from bouwmeester.services.debat_transcript_service import (
     AFTER_END,
     ORDER,
     derive_text,
+    load_turns,
 )
 
 logger = logging.getLogger(__name__)
@@ -161,6 +163,45 @@ class Line:
     done: bool
 
 
+def as_turns(rows: Sequence[tuple[uuid.UUID, str, datetime, str | None]]) -> list[Turn]:
+    """The events of one part as the voices see them.
+
+    `rows` are (id, kind, moment, who) in the order of the timeline. Also
+    for whoever wants to know where a line can still go: asked of the same
+    turns, `candidates` and `nearest` give the answer the voices will give.
+    """
+    return [
+        Turn(
+            row_id,
+            start,
+            rows[index + 1][2] if index + 1 < len(rows) else None,
+            (who or None) if kind in _VOICED else None,
+            kind == dd.EVENT_DEBATE_END,
+        )
+        for index, (row_id, kind, start, who) in enumerate(rows)
+    ]
+
+
+def message_of(
+    turns: Sequence[Turn], messages: Collection[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """Per event, the message its lines are shown under.
+
+    `messages` are the events that are a message, as `load_turns` names
+    them. What follows a message belongs under it until the next one: the
+    chairman saying a word, the same speaker carrying on. An event before
+    the first message is under none.
+    """
+    found: dict[uuid.UUID, uuid.UUID] = {}
+    current: uuid.UUID | None = None
+    for turn in turns:
+        if turn.row_id in messages:
+            current = turn.row_id
+        if current is not None:
+            found[turn.row_id] = current
+    return found
+
+
 def candidates(turns: list[Turn], moment: datetime) -> list[Turn]:
     """The turns a line at `moment` can belong to, going by the voices.
 
@@ -245,6 +286,10 @@ class DebatStemmen:
         self.cache = cache
         # How many lines went to another turn in the part being done.
         self.moved = 0
+        # The part being done, and the events of it whose message has been
+        # read for questions. Looked up when a line is about to move.
+        self._part: tuple[uuid.UUID, str] | None = None
+        self._read: set[uuid.UUID] | None = None
 
     async def update(
         self,
@@ -255,6 +300,7 @@ class DebatStemmen:
         now: datetime,
     ) -> None:
         """Learn and decide for one part of a debate."""
+        self._part, self._read = (sessie_id, debate_id), None
         lines = await self._lines(sessie_id, debate_id, now)
         # A line that waited long enough stays where it is, also when the
         # voices cannot be used at all.
@@ -355,16 +401,24 @@ class DebatStemmen:
                 .order_by(*ORDER)
             )
         ).all()
-        return [
-            Turn(
-                row_id,
-                start,
-                rows[index + 1][2] if index + 1 < len(rows) else None,
-                (who or None) if kind in _VOICED else None,
-                kind == dd.EVENT_DEBATE_END,
-            )
-            for index, (row_id, kind, start, who) in enumerate(rows)
-        ]
+        return as_turns([tuple(row) for row in rows])
+
+    async def _was_read(self, turns: list[Turn], row_ids: set[uuid.UUID]) -> bool:
+        """Whether one of these events is under a message that was read.
+
+        A turn is read for questions once, and each question is a thread
+        under its message with the words as they stood. The marking waits
+        for the lines around a turn to be decided about, so this is only
+        true when the two disagreed: audio that appeared after the turn was
+        read, or a second worker during a deploy.
+        """
+        if self._read is None:
+            assert self._part is not None
+            messages = await load_turns(self.session, *self._part)
+            under = message_of(turns, {m.row_id for m in messages})
+            read = {m.row_id for m in messages if m.beoordeeld_at is not None}
+            self._read = {row for row, message in under.items() if message in read}
+        return not self._read.isdisjoint(row_ids)
 
     async def _embed(self, samples: np.ndarray) -> np.ndarray | None:
         self.budget.seconds -= len(samples) / audio.SAMPLE_RATE
@@ -476,8 +530,17 @@ class DebatStemmen:
                 # a later round, when more may have been learned.
                 continue
             target = nearest(turns, person, line.start)
-            await self._assign(line, target.row_id)
             held.lines.pop(line.id, None)
+            if target.row_id != line.row_id and await self._was_read(
+                turns, {target.row_id, line.row_id} - {None}
+            ):
+                # A line that moves now would take a question away from
+                # under its thread, or put one in a turn nobody reads
+                # again. A line under the wrong speaker is the smaller
+                # mistake: it stays.
+                await self._settle([line.id])
+                continue
+            await self._assign(line, target.row_id)
 
     async def _assign(self, line: Line, row_id: uuid.UUID) -> bool:
         """Keep what the voices decided. ``True`` when the line moved."""

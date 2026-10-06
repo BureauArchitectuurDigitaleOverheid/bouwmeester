@@ -158,6 +158,19 @@ def load(path: str) -> Embedder | None:
     return _loaded[path]
 
 
+def available(path: str) -> bool | None:
+    """Whether there is a model at `path` to use, without loading it.
+
+    ``None`` while nobody has tried to load it: the timeline does that on
+    the first round it has something to listen to. For whoever needs to
+    know whether lines will be decided about, and must not be the one that
+    loads the model a second time next to the timeline.
+    """
+    if path not in _loaded:
+        return None
+    return _loaded[path] is not None
+
+
 def _load(path: str) -> Embedder | None:
     if not path or not os.path.isfile(path):
         logger.info(
