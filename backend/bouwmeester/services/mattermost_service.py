@@ -623,13 +623,18 @@ class MattermostService:
     async def update_post(
         self, post_id: str, message: str, props: dict | None = None
     ) -> bool:
-        """Update an existing Mattermost post."""
+        """Change the text of an existing Mattermost post.
+
+        As a patch, which changes only what is sent. A full update takes
+        "pinned" and "has reactions" from the post it is given, so one
+        without them unpins the message and hides the reactions under it.
+        """
         client = await self._get_client()
         try:
-            payload: dict = {"id": post_id, "message": message}
+            payload: dict = {"message": message}
             if props:
                 payload["props"] = props
-            resp = await client.put(f"/api/v4/posts/{post_id}", json=payload)
+            resp = await client.put(f"/api/v4/posts/{post_id}/patch", json=payload)
             resp.raise_for_status()
             return True
         except httpx.HTTPError:

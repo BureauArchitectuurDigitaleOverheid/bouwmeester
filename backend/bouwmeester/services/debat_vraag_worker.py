@@ -263,6 +263,9 @@ class _Pause:
 _pause = _Pause()
 # How long one turn may take, model and all. Measured: 3 to 14 seconds.
 JUDGE_TIMEOUT = 60.0
+# How long one round may spend on working reactions in, in seconds, before
+# it goes on to the turns. Enough for a few replies on a slow Mattermost.
+REACTIES_BUDGET = 20.0
 # The pauses add up to a quarter of an hour before a turn is given up on.
 MAX_ATTEMPTS = 6
 PAUSE_FIRST = timedelta(seconds=30)
@@ -344,9 +347,17 @@ class DebatVraagWorker:
         A round in which this breaks still reads its turns.
         """
         try:
-            ronde = await DebatVraagStatusService(
-                self.session, self.mattermost
-            ).werk_bij()
+            # With a limit: a slow Mattermost must not keep the turns of a
+            # running debate from being read. What is not done waits, with
+            # its mark, for the next round.
+            ronde = await asyncio.wait_for(
+                DebatVraagStatusService(self.session, self.mattermost).werk_bij(),
+                timeout=REACTIES_BUDGET,
+            )
+        except TimeoutError:
+            await self.session.rollback()
+            logger.warning("Reacties op vragen niet af binnen %ds", REACTIES_BUDGET)
+            return
         except Exception:
             await self.session.rollback()
             logger.exception("Reacties op vragen niet verwerkt")

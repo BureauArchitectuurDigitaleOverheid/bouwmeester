@@ -139,7 +139,9 @@ class DebatVraagStatusService:
                     DebatMarkering.reacties_gewijzigd_at > now - GEEF_OP_NA,
                     DebatMarkering.thread_post_id.is_not(None),
                 )
-                .order_by(DebatMarkering.reacties_gewijzigd_at)
+                # Newest first: who clicked just now is waiting, and rows
+                # that keep failing must not hold up the ones after them.
+                .order_by(DebatMarkering.reacties_gewijzigd_at.desc())
                 .limit(MAX_PER_RONDE)
             )
         ).all()

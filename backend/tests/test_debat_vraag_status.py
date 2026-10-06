@@ -34,6 +34,7 @@ from bouwmeester.models.debat_markering import (
 from bouwmeester.models.debat_sessie import DebatSessie
 from bouwmeester.models.mattermost_user import MattermostUser
 from bouwmeester.services import debat_vraag_status_service as mod
+from bouwmeester.services import debat_vraag_worker
 from bouwmeester.services import mattermost_websocket_service as ws_mod
 from bouwmeester.services.debat_kanaal_service import stukken_message
 from bouwmeester.services.debat_statusregel import splits, statusregel
@@ -456,6 +457,38 @@ def _client(status_code: int, body) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.MockTransport(handler), base_url="http://mattermost.example"
     )
+
+
+class TestUpdatePost:
+    async def test_changes_only_the_text_so_reactions_and_pin_stay(self, monkeypatch):
+        seen: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"id": "post1"})
+
+        service = MattermostService(None)
+
+        async def client():
+            return httpx.AsyncClient(
+                transport=httpx.MockTransport(handler),
+                base_url="http://mattermost.example",
+            )
+
+        monkeypatch.setattr(service, "_get_client", client)
+
+        assert await service.update_post("post1", "nieuwe tekst", {"a": 1}) is True
+
+        # A patch: a full update without "has reactions" and "pinned" hides
+        # the reactions under the post and unpins it.
+        assert (seen[0].method, seen[0].url.path) == (
+            "PUT",
+            "/api/v4/posts/post1/patch",
+        )
+        assert json.loads(seen[0].content) == {
+            "message": "nieuwe tekst",
+            "props": {"a": 1},
+        }
 
 
 class TestGetPostReactions:
@@ -1244,6 +1277,44 @@ class TestMattermostFaalt:
         assert (await _lees(db_session, markering.id)).status == STATUS_BEANTWOORD
         assert _stand(mm.messages[reply]) == "✅ beantwoord"
 
+    async def test_a_reply_that_fails_alone_keeps_the_mark(self, db_session):
+        mm = FakeMattermost()
+        markering = await _markering(db_session, mm, await _sessie(db_session))
+        reply, beurt = markering.thread_post_id, markering.beurt_post_id
+        await _reageer(db_session, mm, reply, PERSOON_A, REACTIE_BEANTWOORD)
+        # The reply is written first: only that write fails.
+        mm.fail_updates = 1
+
+        ronde = await _ronde(db_session, mm)
+
+        assert (ronde.bijgewerkt, ronde.mislukt) == (0, 1)
+        assert [post_id for post_id, _ in mm.updates] == [beurt]
+        assert (await _lees(db_session, markering.id)).reacties_gewijzigd_at is not None
+
+        ronde = await _ronde(db_session, mm)
+
+        assert (ronde.bijgewerkt, ronde.mislukt) == (1, 0)
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
+        assert (await _lees(db_session, markering.id)).reacties_gewijzigd_at is None
+
+    async def test_the_newest_reactions_go_first(self, db_session, monkeypatch):
+        mm = FakeMattermost()
+        sessie_id = await _sessie(db_session)
+        oud = await _markering(db_session, mm, sessie_id, 1)
+        nieuw = await _markering(db_session, mm, sessie_id, 2)
+        await _reageer(db_session, mm, oud.thread_post_id, PERSOON_A, REACTIE_OPGEPAKT)
+        await _reageer(
+            db_session, mm, nieuw.thread_post_id, PERSOON_A, REACTIE_BEANTWOORD
+        )
+        monkeypatch.setattr(mod, "MAX_PER_RONDE", 1)
+
+        await _ronde(db_session, mm)
+
+        # Who clicked last is served first; a row that keeps failing can
+        # then never hold up the ones that came after it.
+        assert (await _lees(db_session, nieuw.id)).status == STATUS_BEANTWOORD
+        assert (await _lees(db_session, oud.id)).status == STATUS_OPEN
+
     @pytest.mark.parametrize("hoe", ["fail_updates", "raise_updates", "fail_reads"])
     async def test_a_write_that_fails_is_made_up_for(self, db_session, hoe):
         mm = FakeMattermost()
@@ -1909,6 +1980,35 @@ class TestDeRondeVanDeVragen:
         assert result.fouten == 0
         assert (await _lees(db_session, markering.id)).status == STATUS_BEANTWOORD
         assert _stand(mm.messages[markering.thread_post_id]) == "✅ beantwoord"
+
+    async def test_reactions_that_take_too_long_do_not_hold_up_the_round(
+        self, db_session, monkeypatch
+    ):
+        mm = FakeMattermost()
+        markering = await _markering(db_session, mm, await _sessie(db_session))
+        # Read now: the round rolls back, and the object is stale after.
+        reply = markering.thread_post_id
+        await _reageer(db_session, mm, reply, PERSOON_A, REACTIE_BEANTWOORD)
+
+        begonnen = []
+
+        async def traag(post_id):
+            begonnen.append(post_id)
+            await asyncio.sleep(30)
+
+        monkeypatch.setattr(mm, "get_post_reactions", traag)
+        monkeypatch.setattr(debat_vraag_worker, "REACTIES_BUDGET", 0.05)
+
+        # Without the limit this takes the half minute of the slow call.
+        result = await asyncio.wait_for(
+            DebatVraagWorker(db_session, mm, llm=None).tick(), timeout=5
+        )
+
+        assert begonnen == [reply]
+        assert result.fouten == 0
+        # The reply was not touched; the mark is cleared only after a round
+        # that wrote everything, so this one is tried again.
+        assert mm.updates == []
 
     async def test_reactions_that_break_do_not_stop_the_round(
         self, db_session, monkeypatch
