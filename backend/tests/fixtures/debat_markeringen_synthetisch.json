@@ -1,0 +1,739 @@
+{
+ "_toelichting": "Een verzonnen debat. Geen zin komt uit een echte vergadering: personen, partijen, plaatsen, bedragen en data bestaan niet. Het dekt elke soort markering en elke lastige negatieve uit het codeboek (scripts/debat_eval/README.md). Twee keer staat een zin met opzet in de beurt van een ander, zoals dat gebeurt wanneer regels alleen op tijd aan een spreker worden toegewezen.",
+ "debat": {
+  "onderwerp": "Initiatiefnota over veilige fietsenstallingen bij stations",
+  "soort": "Notaoverleg",
+  "bewindspersonen": [
+   {
+    "naam": "Bewindspersoon A",
+    "functie": "minister van Voorbeelden"
+   }
+  ],
+  "stukken": [
+   "Initiatiefnota over veilige fietsenstallingen bij stations",
+   "Reactie van het kabinet op de initiatiefnota over veilige fietsenstallingen bij stations"
+  ],
+  "initiatiefnemers": true
+ },
+ "beurten": [
+  {
+   "nr": 1,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:02:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Ik open de vergadering. Aan de orde is de initiatiefnota van het lid E over veilige fietsenstallingen bij stations. Ik heet de initiatiefnemer, de minister en de leden welkom. De spreektijd is vier minuten per fractie. Het woord is aan Kamerlid A."
+  },
+  {
+   "nr": 2,
+   "soort": "speaker",
+   "spreker": "Kamerlid A (X)",
+   "fractie": "X",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:04:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank u wel, voorzitter. Allereerst dank aan de initiatiefnemer voor deze nota. Elk jaar worden er in ons land ruim 480.000 fietsen gestolen, waarvan een kwart bij een station. Dat is geen klein bier. Mijn eerste vraag is aan de initiatiefnemer: waarom kiest zij voor één landelijke norm en niet voor afspraken per gemeente? Heeft zij daarover met de vervoerders gesproken? Dan heb ik een aantal vragen aan de minister. Klopt het dat het budget voor bewaakte stallingen volgend jaar met 12 miljoen euro wordt verlaagd? En zo ja, hoe verhoudt zich dat tot de ambitie om het aantal diefstallen te halveren? Het kabinet schrijft in zijn reactie dat de gemeenten aan zet zijn. Dat vind ik te makkelijk. Wie betaalt de rekening als een gemeente het geld niet heeft? Kan de minister dat toelichten? Tot slot, voorzitter. Hoe heeft het zover kunnen komen dat een fiets bij het station vogelvrij is? Ik zou graag vóór de begrotingsbehandeling een brief van de minister ontvangen met een overzicht van de bezetting van alle bewaakte stallingen per provincie. Dank u wel."
+  },
+  {
+   "nr": 3,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:06:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank u wel. Er is een interruptie van Kamerlid B."
+  },
+  {
+   "nr": 4,
+   "soort": "interrupter",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:08:00+01:00",
+   "onderbroken": "Kamerlid A (X)",
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Kamerlid A zegt dat de gemeenten het niet kunnen betalen. Maar is zij het dan met mij eens dat de vervoerders ook een verantwoordelijkheid hebben? Bent u bereid daar samen een voorstel voor te doen?"
+  },
+  {
+   "nr": 5,
+   "soort": "speaker",
+   "spreker": "Kamerlid A (X)",
+   "fractie": "X",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:10:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Ja, dat ben ik met Kamerlid B eens. De vervoerders verdienen aan de reiziger en mogen dus meebetalen."
+  },
+  {
+   "nr": 6,
+   "soort": "interrupter",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:12:00+01:00",
+   "onderbroken": "Kamerlid A (X)",
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dat is helder. Maar gelooft Kamerlid A de minister dan niet als hij zegt dat er genoeg geld is?"
+  },
+  {
+   "nr": 7,
+   "soort": "speaker",
+   "spreker": "Kamerlid A (X)",
+   "fractie": "X",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:14:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Ik geloof de minister wel, maar ik zie de cijfers niet. Misschien kunnen wij de minister er in de tweede termijn nog van overtuigen dat het anders moet."
+  },
+  {
+   "nr": 8,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:16:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dan is het woord aan Kamerlid B voor zijn inbreng."
+  },
+  {
+   "nr": 9,
+   "soort": "speaker",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:18:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter. Vorige maand stond ik op het station van Voorbeeldstad. Driehonderd fietsen, geen enkele beugel. Niemand kan mij vertellen waar de 30 miljoen uit het vorige akkoord aan is uitgegeven. Dat is toch vreemd. In het voorjaar heb ik de minister gevraagd of hij de besteding wilde laten onderzoeken; daar is toen niets op gekomen. Het kabinet moet ophouden met wijzen naar anderen. Dan mijn vragen. Is de minister bereid om met de vervoerders afspraken te maken over camera's in elke stalling? Wanneer kan de Kamer de uitkomst daarvan verwachten? En wat gaat dat kosten? Die laatste vraag stel ik aan zowel de initiatiefnemer als de minister. Sinds 1 januari 2025 geldt in Dorpstede een proef met gratis bewaakt stallen. Ik overweeg op dit punt in de tweede termijn een motie in te dienen."
+  },
+  {
+   "nr": 10,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:20:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank u wel. Het woord is aan Kamerlid C."
+  },
+  {
+   "nr": 11,
+   "soort": "speaker",
+   "spreker": "Kamerlid C (Z)",
+   "fractie": "Z",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:22:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank, voorzitter. De grote vraag is of een landelijke norm wel uitvoerbaar is. Hoe voorkomen we dat kleine stations de dupe worden? In de nota staat dat 140 stations nu geen bewaakte stalling hebben. Hoe wil de initiatiefnemer die stations helpen? Dan de handhaving. Gemeenten mogen sinds vorig jaar fietsen na twee weken weghalen. Werkt dat in de praktijk? Graag een reactie van de minister. Ik ben ook benieuwd hoe de minister aankijkt tegen een meldplicht voor heling via internet. Kan de minister de Kamer daarover informeren? En ik kondig alvast aan dat ik een motie zal indienen over de stallingen bij kleine stations."
+  },
+  {
+   "nr": 12,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:24:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank. Ik schors de vergadering tot kwart voor elf."
+  },
+  {
+   "nr": 13,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:26:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Ik heropen de vergadering. Het woord is aan de initiatiefnemer."
+  },
+  {
+   "nr": 14,
+   "soort": "speaker",
+   "spreker": "Kamerlid E (V)",
+   "fractie": "V",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:28:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank, voorzitter, en dank aan de leden voor hun vragen. Kamerlid A vroeg waarom wij kiezen voor één landelijke norm. Het antwoord is eenvoudig: een dief stopt niet bij de gemeentegrens. Kamerlid C vroeg hoe wij de kleine stations willen helpen. Daarvoor stellen wij een fonds voor van 8 miljoen euro per jaar. Het kabinet wijst in zijn reactie vooral naar bestaande afspraken. Dat vinden wij te mager. Wat de kosten van camera's betreft: die kennen wij niet. Ik hoor graag van de minister of hij die cijfers heeft."
+  },
+  {
+   "nr": 15,
+   "soort": "interrupter",
+   "spreker": "Kamerlid C (Z)",
+   "fractie": "Z",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:30:00+01:00",
+   "onderbroken": "Kamerlid E (V)",
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Een fonds klinkt goed, maar wie vult het? Rekent u daarbij op het kabinet of op de vervoerders?"
+  },
+  {
+   "nr": 16,
+   "soort": "speaker",
+   "spreker": "Kamerlid E (V)",
+   "fractie": "V",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:32:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Op allebei, voorzitter. Dat is ook de reden dat wij de minister hebben uitgenodigd om mee te denken."
+  },
+  {
+   "nr": 17,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:34:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dan gaan we naar de eerste termijn van het kabinet. Het woord is aan de minister."
+  },
+  {
+   "nr": 18,
+   "soort": "speaker",
+   "spreker": "Bewindspersoon A (minister van Voorbeelden)",
+   "fractie": null,
+   "is_bewindspersoon": true,
+   "start": "2030-01-14T10:36:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank, voorzitter. Ik begin met het geld en kom daarna op de handhaving; op de camera's kom ik straks terug. Het budget voor bewaakte stallingen wordt niet verlaagd: er is volgend jaar 54 miljoen euro beschikbaar, evenveel als dit jaar. Kamerlid A vroeg om een overzicht van de bezetting per provincie. Dat zeg ik toe: de Kamer krijgt die brief vóór de begrotingsbehandeling. Dan de besteding van het geld uit het vorige akkoord. Ik zal dat laten uitzoeken en kom daar in het voorjaar schriftelijk op terug. Over de heling via internet kan ik kort zijn: wij zijn op dit moment met de handelsplatforms in gesprek over een meldplicht. Mijn collega van Vervoer heeft de Kamer vorige week toegezegd dat zij de proef in Dorpstede zal evalueren. Daar wil ik niet op vooruitlopen."
+  },
+  {
+   "nr": 19,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:38:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Er is een interruptie van Kamerlid B."
+  },
+  {
+   "nr": 20,
+   "soort": "interrupter",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:40:00+01:00",
+   "onderbroken": "Bewindspersoon A (minister van Voorbeelden)",
+   "onderbroken_is_bewindspersoon": true,
+   "tekst": "De minister zegt dat hij erop terugkomt in het voorjaar. Kan dat niet eerder? De begroting wordt in november behandeld."
+  },
+  {
+   "nr": 21,
+   "soort": "speaker",
+   "spreker": "Bewindspersoon A (minister van Voorbeelden)",
+   "fractie": null,
+   "is_bewindspersoon": true,
+   "start": "2030-01-14T10:42:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Ik ga kijken of dat lukt, maar ik kan het niet beloven. Dan toch nog een keer, voorzitter: wat kosten die camera's?"
+  },
+  {
+   "nr": 22,
+   "soort": "interrupter",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:44:00+01:00",
+   "onderbroken": "Bewindspersoon A (minister van Voorbeelden)",
+   "onderbroken_is_bewindspersoon": true,
+   "tekst": "Dat weet ik nu niet uit mijn hoofd. Ik zal de Kamer die cijfers vóór de tweede termijn doen toekomen."
+  },
+  {
+   "nr": 23,
+   "soort": "speaker",
+   "spreker": "Bewindspersoon A (minister van Voorbeelden)",
+   "fractie": null,
+   "is_bewindspersoon": true,
+   "start": "2030-01-14T10:46:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dan de camera's zelf. Ik ben bereid om daarover met de vervoerders in gesprek te gaan. Ik zeg erbij: dat is een inspanning en geen garantie."
+  },
+  {
+   "nr": 24,
+   "soort": "interrupter",
+   "spreker": "Kamerlid A (X)",
+   "fractie": "X",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:48:00+01:00",
+   "onderbroken": "Bewindspersoon A (minister van Voorbeelden)",
+   "onderbroken_is_bewindspersoon": true,
+   "tekst": "Ik hoor de minister nu iets toezeggen, en dat waardeer ik. Als hij ook toezegt dat de Kamer vóór de zomer de uitkomst hoort, dan scheelt dat mij een motie. Kan hij dat toezeggen?"
+  },
+  {
+   "nr": 25,
+   "soort": "speaker",
+   "spreker": "Bewindspersoon A (minister van Voorbeelden)",
+   "fractie": null,
+   "is_bewindspersoon": true,
+   "start": "2030-01-14T10:50:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Ja, dat kan ik toezeggen. De Kamer hoort vóór de zomer hoe het gesprek is verlopen."
+  },
+  {
+   "nr": 26,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:52:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank. Dan gaan we naar de tweede termijn van de Kamer. Het woord is aan Kamerlid A."
+  },
+  {
+   "nr": 27,
+   "soort": "speaker",
+   "spreker": "Kamerlid A (X)",
+   "fractie": "X",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:54:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter. Ik heb nog geen antwoord gekregen op mijn vraag wie de rekening betaalt als een gemeente het geld niet heeft. Kan de minister daar alsnog op ingaan?"
+  },
+  {
+   "nr": 28,
+   "soort": "speaker",
+   "spreker": "Kamerlid C (Z)",
+   "fractie": "Z",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:56:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter, dank aan de minister. Ik dien de volgende motie in. De Kamer, gehoord de beraadslaging, constaterende dat 140 stations geen bewaakte stalling hebben, overwegende dat reizigers daar hun fiets niet veilig kunnen achterlaten, verzoekt de regering om samen met de vervoerders een plan te maken voor een bewaakte stalling bij elk station en de Kamer daarover vóór 1 maart te informeren, en gaat over tot de orde van de dag. Ik hoop dat de minister deze motie ziet als steun in de rug."
+  },
+  {
+   "nr": 29,
+   "soort": "interrupter",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:58:00+01:00",
+   "onderbroken": "Kamerlid C (Z)",
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter, een punt van orde. Als de minister kort antwoordt, kunnen we dan elk nog één interruptie krijgen?"
+  },
+  {
+   "nr": 30,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T11:00:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dat sta ik toe. Ik lees eerst de toezeggingen voor. De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie. De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord. Ik sluit de vergadering."
+  }
+ ],
+ "items": [
+  {
+   "beurt": 2,
+   "soort": "feitelijke_claim",
+   "citaat": "Elk jaar worden er in ons land ruim 480.000 fietsen gestolen, waarvan een kwart bij een station.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 2,
+   "soort": "vraag",
+   "citaat": "Klopt het dat het budget voor bewaakte stallingen volgend jaar met 12 miljoen euro wordt verlaagd? En zo ja, hoe verhoudt zich dat tot de ambitie om het aantal diefstallen te halveren?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 2,
+   "soort": "vraag",
+   "citaat": "Wie betaalt de rekening als een gemeente het geld niet heeft? Kan de minister dat toelichten?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "the request points back at the sentence before it"
+  },
+  {
+   "beurt": 2,
+   "soort": "verzoek_om_brief",
+   "citaat": "Ik zou graag vóór de begrotingsbehandeling een brief van de minister ontvangen met een overzicht van de bezetting van alle bewaakte stallingen per provincie.",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 9,
+   "soort": "feitelijke_claim",
+   "citaat": "Driehonderd fietsen, geen enkele beugel.",
+   "gericht_aan": null,
+   "onzeker": true,
+   "herhaling": false,
+   "notitie": "an anecdote, not something a ministry can look up"
+  },
+  {
+   "beurt": 9,
+   "soort": "vraag",
+   "citaat": "Is de minister bereid om met de vervoerders afspraken te maken over camera's in elke stalling? Wanneer kan de Kamer de uitkomst daarvan verwachten?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 9,
+   "soort": "vraag",
+   "citaat": "En wat gaat dat kosten? Die laatste vraag stel ik aan zowel de initiatiefnemer als de minister.",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "to both; the addressee comes after the question"
+  },
+  {
+   "beurt": 9,
+   "soort": "feitelijke_claim",
+   "citaat": "Sinds 1 januari 2025 geldt in Dorpstede een proef met gratis bewaakt stallen.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 9,
+   "soort": "motie",
+   "citaat": "Ik overweeg op dit punt in de tweede termijn een motie in te dienen.",
+   "gericht_aan": null,
+   "onzeker": true,
+   "herhaling": false,
+   "notitie": "considered, not announced"
+  },
+  {
+   "beurt": 11,
+   "soort": "feitelijke_claim",
+   "citaat": "In de nota staat dat 140 stations nu geen bewaakte stalling hebben.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 11,
+   "soort": "vraag",
+   "citaat": "Gemeenten mogen sinds vorig jaar fietsen na twee weken weghalen. Werkt dat in de praktijk? Graag een reactie van de minister.",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "the addressee comes after the question"
+  },
+  {
+   "beurt": 11,
+   "soort": "vraag",
+   "citaat": "Ik ben ook benieuwd hoe de minister aankijkt tegen een meldplicht voor heling via internet. Kan de minister de Kamer daarover informeren?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "\"informeren\" without a moment or a form: a question, not a request for a letter"
+  },
+  {
+   "beurt": 11,
+   "soort": "motie",
+   "citaat": "En ik kondig alvast aan dat ik een motie zal indienen over de stallingen bij kleine stations.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 14,
+   "soort": "feitelijke_claim",
+   "citaat": "Daarvoor stellen wij een fonds voor van 8 miljoen euro per jaar.",
+   "gericht_aan": null,
+   "onzeker": true,
+   "herhaling": false,
+   "notitie": "the figure of a proposal, not a fact"
+  },
+  {
+   "beurt": 14,
+   "soort": "vraag",
+   "citaat": "Ik hoor graag van de minister of hij die cijfers heeft.",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "asked by the initiatiefnemer"
+  },
+  {
+   "beurt": 18,
+   "soort": "feitelijke_claim",
+   "citaat": "er is volgend jaar 54 miljoen euro beschikbaar, evenveel als dit jaar",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 18,
+   "soort": "toezegging",
+   "citaat": "Dat zeg ik toe: de Kamer krijgt die brief vóór de begrotingsbehandeling.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 18,
+   "soort": "toezegging",
+   "citaat": "Ik zal dat laten uitzoeken en kom daar in het voorjaar schriftelijk op terug.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 20,
+   "soort": "vraag",
+   "citaat": "De minister zegt dat hij erop terugkomt in het voorjaar. Kan dat niet eerder?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "an interruption of the minister"
+  },
+  {
+   "beurt": 21,
+   "soort": "toezegging",
+   "citaat": "Ik ga kijken of dat lukt, maar ik kan het niet beloven.",
+   "gericht_aan": null,
+   "onzeker": true,
+   "herhaling": false,
+   "notitie": "an effort he explicitly does not promise"
+  },
+  {
+   "beurt": 21,
+   "soort": "vraag",
+   "citaat": "wat kosten die camera's?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": true,
+   "notitie": "asked again by the member; stands in the turn of the minister"
+  },
+  {
+   "beurt": 22,
+   "soort": "toezegging",
+   "citaat": "Ik zal de Kamer die cijfers vóór de tweede termijn doen toekomen.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "said by the minister; stands in the turn of the member"
+  },
+  {
+   "beurt": 23,
+   "soort": "toezegging",
+   "citaat": "Ik ben bereid om daarover met de vervoerders in gesprek te gaan.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 24,
+   "soort": "vraag",
+   "citaat": "Kan hij dat toezeggen?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 25,
+   "soort": "toezegging",
+   "citaat": "Ja, dat kan ik toezeggen. De Kamer hoort vóór de zomer hoe het gesprek is verlopen.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 27,
+   "soort": "vraag",
+   "citaat": "Ik heb nog geen antwoord gekregen op mijn vraag wie de rekening betaalt als een gemeente het geld niet heeft. Kan de minister daar alsnog op ingaan?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": true,
+   "notitie": "the same question as in the first term"
+  },
+  {
+   "beurt": 28,
+   "soort": "motie",
+   "citaat": "verzoekt de regering om samen met de vervoerders een plan te maken voor een bewaakte stalling bij elk station en de Kamer daarover vóór 1 maart te informeren, en gaat over tot de orde van de dag",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
+  },
+  {
+   "beurt": 30,
+   "soort": "toezegging",
+   "citaat": "De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": true,
+   "notitie": "the chairman reads the list"
+  },
+  {
+   "beurt": 30,
+   "soort": "toezegging",
+   "citaat": "De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": true,
+   "notitie": "the chairman reads the list"
+  }
+ ],
+ "negatieven": [
+  {
+   "beurt": 2,
+   "type": "aan_initiatiefnemers",
+   "citaat": "Mijn eerste vraag is aan de initiatiefnemer: waarom kiest zij voor één landelijke norm en niet voor afspraken per gemeente?"
+  },
+  {
+   "beurt": 2,
+   "type": "aan_initiatiefnemers",
+   "citaat": "Heeft zij daarover met de vervoerders gesproken?",
+   "notitie": "\"zij\" after the initiatiefnemer was named"
+  },
+  {
+   "beurt": 2,
+   "type": "over_kabinet",
+   "citaat": "Het kabinet schrijft in zijn reactie dat de gemeenten aan zet zijn."
+  },
+  {
+   "beurt": 2,
+   "type": "retorisch",
+   "citaat": "Hoe heeft het zover kunnen komen dat een fiets bij het station vogelvrij is?"
+  },
+  {
+   "beurt": 4,
+   "type": "aan_kamerlid",
+   "citaat": "Maar is zij het dan met mij eens dat de vervoerders ook een verantwoordelijkheid hebben? Bent u bereid daar samen een voorstel voor te doen?",
+   "notitie": "an interruption of a member that names no bewindspersoon: the code skips the turn"
+  },
+  {
+   "beurt": 6,
+   "type": "aan_kamerlid",
+   "citaat": "Maar gelooft Kamerlid A de minister dan niet als hij zegt dat er genoeg geld is?",
+   "notitie": "names the minister, asks the member"
+  },
+  {
+   "beurt": 7,
+   "type": "over_kabinet",
+   "citaat": "Misschien kunnen wij de minister er in de tweede termijn nog van overtuigen dat het anders moet.",
+   "notitie": "said to a member about the minister"
+  },
+  {
+   "beurt": 9,
+   "type": "stelling",
+   "citaat": "Niemand kan mij vertellen waar de 30 miljoen uit het vorige akkoord aan is uitgegeven.",
+   "notitie": "a reproach; there is a question in it only for who writes one"
+  },
+  {
+   "beurt": 9,
+   "type": "aangehaald",
+   "citaat": "In het voorjaar heb ik de minister gevraagd of hij de besteding wilde laten onderzoeken",
+   "notitie": "his own question from an earlier debate"
+  },
+  {
+   "beurt": 9,
+   "type": "oproep",
+   "citaat": "Het kabinet moet ophouden met wijzen naar anderen."
+  },
+  {
+   "beurt": 11,
+   "type": "stelling",
+   "citaat": "De grote vraag is of een landelijke norm wel uitvoerbaar is.",
+   "notitie": "\"de grote vraag is\" as a figure of speech"
+  },
+  {
+   "beurt": 11,
+   "type": "algemeen",
+   "citaat": "Hoe voorkomen we dat kleine stations de dupe worden?",
+   "notitie": "no addressee, and the initiatiefnemer answers too"
+  },
+  {
+   "beurt": 11,
+   "type": "aan_initiatiefnemers",
+   "citaat": "Hoe wil de initiatiefnemer die stations helpen?"
+  },
+  {
+   "beurt": 14,
+   "type": "aangehaald",
+   "citaat": "Kamerlid A vroeg waarom wij kiezen voor één landelijke norm."
+  },
+  {
+   "beurt": 14,
+   "type": "aangehaald",
+   "citaat": "Kamerlid C vroeg hoe wij de kleine stations willen helpen."
+  },
+  {
+   "beurt": 14,
+   "type": "over_kabinet",
+   "citaat": "Het kabinet wijst in zijn reactie vooral naar bestaande afspraken."
+  },
+  {
+   "beurt": 15,
+   "type": "aan_initiatiefnemers",
+   "citaat": "Rekent u daarbij op het kabinet of op de vervoerders?",
+   "notitie": "names the cabinet, asks the initiatiefnemer"
+  },
+  {
+   "beurt": 18,
+   "type": "later_in_debat",
+   "citaat": "op de camera's kom ik straks terug",
+   "notitie": "later in the same answer"
+  },
+  {
+   "beurt": 18,
+   "type": "aangehaald",
+   "citaat": "Kamerlid A vroeg om een overzicht van de bezetting per provincie."
+  },
+  {
+   "beurt": 18,
+   "type": "lopend_beleid",
+   "citaat": "wij zijn op dit moment met de handelsplatforms in gesprek over een meldplicht",
+   "notitie": "what is going on, nothing promised"
+  },
+  {
+   "beurt": 18,
+   "type": "toezegging_van_ander",
+   "citaat": "Mijn collega van Vervoer heeft de Kamer vorige week toegezegd dat zij de proef in Dorpstede zal evalueren."
+  },
+  {
+   "beurt": 24,
+   "type": "toezegging_aangehaald",
+   "citaat": "Ik hoor de minister nu iets toezeggen",
+   "notitie": "a member about a promise"
+  },
+  {
+   "beurt": 24,
+   "type": "geen_motie",
+   "citaat": "dan scheelt dat mij een motie",
+   "notitie": "a motion that does not come"
+  },
+  {
+   "beurt": 28,
+   "type": "oproep",
+   "citaat": "Ik hoop dat de minister deze motie ziet als steun in de rug."
+  },
+  {
+   "beurt": 29,
+   "type": "orde",
+   "citaat": "Als de minister kort antwoordt, kunnen we dan elk nog één interruptie krijgen?"
+  }
+ ]
+}
