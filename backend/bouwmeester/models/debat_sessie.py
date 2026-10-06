@@ -161,6 +161,12 @@ class DebatSpreekbeurt(Base):
         String(64), nullable=False, server_default=""
     )
     post_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    # The kind of the turn this event went into, where that is not what the
+    # event itself says. Someone who gets the floor is often entered as
+    # interrupter and seconds later as speaker: one turn, of the kind that
+    # came last. `event_type` stays what the feed said, because that is
+    # what an event is recognised by. On every row of such a turn.
+    beurt_soort: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # The first line of the message, kept so the message can be written
     # again with the text under it.
     kop: Mapped[str | None] = mapped_column(Text, nullable=True)

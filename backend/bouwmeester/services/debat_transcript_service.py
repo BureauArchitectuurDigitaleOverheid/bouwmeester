@@ -74,6 +74,11 @@ SILENT_IS_OVER = timedelta(hours=1)
 # Mattermost refuses a message over 16383 characters. Only reachable by
 # late words piling into a message that may not continue below itself.
 MESSAGE_MAX = 16000
+# In `tekst_geplaatst_hash`, where the digest of the text goes: the first
+# line of this turn changed, so every message of it is written again
+# whatever its text. No digest is this word, so the turn counts as not
+# written until it has been.
+WRITE_AGAIN = "opnieuw"
 
 
 @dataclass
@@ -161,7 +166,7 @@ class DebatTranscript:
                 await self._listen(sessie, debate_id, client, now)
             # Also when nothing is new: what could not be written before
             # is written now.
-            await self._write(sessie_id, channel_id, debate_id, result)
+            await self.write(sessie_id, channel_id, debate_id, result)
 
     async def _listen(
         self,
@@ -311,13 +316,19 @@ class DebatTranscript:
         sessie.ondertitels = {**state, debate_id: dict(entry)}
         return True
 
-    async def _write(
+    async def write(
         self,
         sessie_id: uuid.UUID,
         channel_id: str,
         debate_id: str,
         result,  # type: ignore[no-untyped-def]
     ) -> None:
+        """Make the messages of one part say what the rows say.
+
+        The one place a message of a turn is put together: first line,
+        text, and the questions counted under it. Whoever changes a first
+        line changes the row and leaves the message to this.
+        """
         turns = await load_turns(self.session, sessie_id, debate_id)
         if all(turn.is_written(turn.text) for turn in turns):
             return
@@ -529,6 +540,7 @@ async def load_turns(
                 DebatSpreekbeurt.tekst_geplaatst_hash,
                 DebatSpreekbeurt.vervolg_post_ids,
                 DebatSpreekbeurt.beoordeeld_at,
+                DebatSpreekbeurt.beurt_soort,
             )
             .where(
                 DebatSpreekbeurt.sessie_id == sessie_id,
@@ -556,7 +568,14 @@ async def load_turns(
         placed_key,
         vervolg,
         read,
+        turn_kind,
     ) in rows:
+        if kind in _SPEAKING and turn_kind:
+            # Two events of one person in two roles, seconds apart, are
+            # one turn; the timeline decided which kind. From here on the
+            # row is that kind: its text goes under the one message, and
+            # whoever reads the turn for questions reads it as that kind.
+            kind = turn_kind
         if kind in _SPEAKING:
             chairman = ""
         elif kind not in _CLOSING:

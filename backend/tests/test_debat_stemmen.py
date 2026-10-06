@@ -1788,6 +1788,7 @@ class TestForgetting:
             "event_start",
             "object_id",
             "post_id",
+            "beurt_soort",
             "kop",
             "tekst_geplaatst",
             "tekst_geplaatst_hash",

@@ -21,6 +21,7 @@ from bouwmeester.services.debat_subtitles import Cue
 from bouwmeester.services.debat_tijdlijn_service import (
     DebatTijdlijnService,
     TickResult,
+    heading_as,
 )
 from bouwmeester.services.debat_transcript import (
     MESSAGE_LIMIT,
@@ -37,6 +38,7 @@ from bouwmeester.services.debat_transcript_service import (
     MESSAGE_MAX,
     DebatTranscript,
     derive_text,
+    load_turns,
 )
 from bouwmeester.services.mattermost_service import PostNotFoundError
 from tests.test_debat_tijdlijn import (
@@ -780,7 +782,7 @@ class TestTranscript:
             )
         await db_session.flush()
 
-        await DebatTranscript(db_session, mm)._write(
+        await DebatTranscript(db_session, mm).write(
             sessie.id, sessie.channel_id, "d1", TickResult()
         )
 
@@ -1527,3 +1529,324 @@ class TestTextThatChanges:
 
         assert mm.channel[1].endswith("\nIk rond af.")
         assert mm.channel[2].endswith("\nVoorzitter: Dank u. Ik schors.")
+
+
+def _seconds(seconds: float) -> float:
+    """For `_debat`, which counts in minutes."""
+    return seconds / 60
+
+
+async def _speaking_rows(db_session) -> list[DebatSpreekbeurt]:
+    rows = await db_session.execute(
+        select(DebatSpreekbeurt)
+        .where(DebatSpreekbeurt.event_type.in_(("speaker", "interrupter")))
+        .order_by(
+            DebatSpreekbeurt.event_start,
+            DebatSpreekbeurt.event_type,
+            DebatSpreekbeurt.object_id,
+        )
+        .execution_options(populate_existing=True)
+    )
+    return list(rows.scalars())
+
+
+def _turns_in(mm: Mattermost) -> list[str]:
+    return [text for text in mm.channel if text.startswith(("**", "↳"))]
+
+
+@pytest.mark.asyncio
+class TestTwoEventsOneTurn:
+    """Debat Direct enters someone who gets the floor as interrupter and
+    seconds later as speaker. That is one turn, in the channel and for
+    whoever reads the turns."""
+
+    async def _follow(self, db_session, monkeypatch, events, cues=(), until=4.0):
+        feed = Feed(monkeypatch, parts=[_stream(_debat(*events))])
+        Subtitles(monkeypatch, feed, list(cues))
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, until)
+        return mm, sessie, feed
+
+    # 3 seconds apart both events are in one reading of the feed; 15 seconds
+    # apart the first is in the channel before the second exists.
+    @pytest.mark.parametrize("apart", [3, 15])
+    async def test_interrupter_and_then_speaker_is_one_message_of_a_speaker(
+        self, db_session, monkeypatch, apart
+    ):
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("speaker", _seconds(60 + apart), "a"),
+        ]
+        cues = [_cue(64, "Eerste zin."), _cue(80, "Tweede zin.")]
+
+        mm, sessie, _ = await self._follow(db_session, monkeypatch, events, cues)
+
+        assert len(mm.channel) == 2
+        message = mm.channel[1]
+        assert message.startswith("**Onbekende spreker** · [")
+        assert "interruptie" not in message
+        # What was said under either event is under the one message.
+        assert message.endswith("\nEerste zin. Tweede zin.")
+        # It was posted as what the feed said at that moment.
+        assert mm.posts[1][1].startswith("↳ **Onbekende spreker**")
+        assert mm.posts[1][1].endswith(" · interruptie")
+
+        first, second = await _speaking_rows(db_session)
+        # The rows are still the events that were seen.
+        assert (first.event_type, second.event_type) == ("interrupter", "speaker")
+        assert first.event_start == START + timedelta(seconds=60)
+        assert second.event_start == START + timedelta(seconds=60 + apart)
+        assert (first.object_id, second.object_id) == ("a", "a")
+        assert first.post_id and second.post_id is None
+        assert first.beurt_soort == "speaker"
+        assert first.kop == message.split("\n")[0]
+        assert (first.tekst, second.tekst) == ("Eerste zin.", "Tweede zin.")
+
+        (turn,) = await load_turns(db_session, sessie.id, sessie.debat_direct_ids[0])
+        assert turn.key == ("speaker", "a")
+        assert turn.row_id == first.id
+        assert turn.text == "Eerste zin. Tweede zin."
+
+    async def test_the_link_stays_the_one_to_where_the_turn_began(
+        self, db_session, monkeypatch
+    ):
+        events = [("interrupter", _seconds(60), "a"), ("speaker", _seconds(75), "a")]
+        mm, _, _ = await self._follow(db_session, monkeypatch, events)
+
+        assert mm.channel[1] == heading_as(mm.posts[1][1], "speaker")
+        assert "?event=interrupter" in mm.channel[1]
+
+    async def test_after_a_restart_the_turn_is_still_a_speakers(
+        self, db_session, monkeypatch
+    ):
+        """A fresh service every ten seconds, as after a restart, against
+        one service that sees everything in one reading: the same channel
+        and the same rows. Carrying on as speaker two minutes later is the
+        same turn, which only holds when the kind of the turn is read back;
+        an interruption after that is a new one."""
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("speaker", _seconds(63), "a"),
+            ("speaker", _seconds(120), "a"),
+            ("interrupter", _seconds(200), "a"),
+        ]
+
+        mm, sessie, feed = await self._follow(db_session, monkeypatch, events)
+        stepwise = [
+            (r.event_type, r.event_start, bool(r.post_id), r.beurt_soort, r.kop)
+            for r in await _speaking_rows(db_session)
+        ]
+        turns = _turns_in(mm)
+        assert len(turns) == 2
+        assert turns[0].startswith("**Onbekende spreker**")
+        assert turns[1].startswith("↳ **Onbekende spreker**")
+
+        # And once more from nothing, everything in one tick.
+        await db_session.execute(
+            delete(DebatSpreekbeurt).where(DebatSpreekbeurt.sessie_id == sessie.id)
+        )
+        at_once = Mattermost()
+        feed.now = START + timedelta(seconds=215)
+        service = DebatTijdlijnService(db_session, at_once)
+        await service.tick(feed.now)
+        assert _turns_in(at_once) == turns
+        assert [
+            (r.event_type, r.event_start, bool(r.post_id), r.beurt_soort, r.kop)
+            for r in await _speaking_rows(db_session)
+        ] == stepwise
+
+    async def test_the_chairman_giving_the_floor_in_between_changes_nothing(
+        self, db_session, monkeypatch
+    ):
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("chairman", _seconds(62), "v"),
+            ("speaker", _seconds(64), "a"),
+        ]
+        mm, _, _ = await self._follow(db_session, monkeypatch, events)
+
+        assert len(_turns_in(mm)) == 1
+        assert mm.channel[1].startswith("**Onbekende spreker**")
+
+    async def test_when_someone_else_spoke_in_between_it_is_a_new_turn(
+        self, db_session, monkeypatch
+    ):
+        """A speaker who answers an interruption shows up again."""
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("speaker", _seconds(62), "b"),
+            ("speaker", _seconds(64), "a"),
+        ]
+        mm, _, _ = await self._follow(db_session, monkeypatch, events)
+
+        turns = _turns_in(mm)
+        assert len(turns) == 3
+        assert turns[0].startswith("↳ ")
+        assert [r.beurt_soort for r in await _speaking_rows(db_session)] == [None] * 3
+
+    async def test_a_suspension_in_between_makes_it_a_new_turn(
+        self, db_session, monkeypatch
+    ):
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("suspended", _seconds(62), ""),
+            ("continued", _seconds(64), ""),
+            ("speaker", _seconds(66), "a"),
+        ]
+        mm, _, _ = await self._follow(db_session, monkeypatch, events)
+
+        turns = _turns_in(mm)
+        assert len(turns) == 2
+        assert turns[0].startswith("↳ ")
+        assert turns[1].startswith("**")
+
+    @pytest.mark.parametrize(("after", "messages"), [(50, 1), (51, 2)])
+    async def test_only_within_fifty_seconds_of_the_start_of_the_turn(
+        self, db_session, monkeypatch, after, messages
+    ):
+        """Later than that it is someone who interrupted and was given the
+        floor afterwards: measured from 61 seconds on."""
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("speaker", _seconds(60 + after), "a"),
+        ]
+        mm, _, _ = await self._follow(db_session, monkeypatch, events)
+
+        turns = _turns_in(mm)
+        assert len(turns) == messages
+        assert turns[0].startswith("**" if messages == 1 else "↳ ")
+
+    async def test_speaker_and_then_interrupter_is_one_interruption(
+        self, db_session, monkeypatch
+    ):
+        """The event that came last is the correction of the first."""
+        events = [("speaker", _seconds(60), "a"), ("interrupter", _seconds(75), "a")]
+        cues = [_cue(64, "Mag ik"), _cue(80, "iets vragen?")]
+        mm, sessie, _ = await self._follow(db_session, monkeypatch, events, cues)
+
+        assert len(mm.channel) == 2
+        assert mm.channel[1].startswith("↳ **Onbekende spreker** · [")
+        assert mm.channel[1].endswith(" · interruptie\nMag ik iets vragen?")
+        (turn,) = await load_turns(db_session, sessie.id, sessie.debat_direct_ids[0])
+        assert turn.key == ("interrupter", "a")
+
+    @pytest.mark.parametrize(
+        "order", [("interrupter", "speaker"), ("speaker", "interrupter")]
+    )
+    async def test_in_the_same_second_it_is_a_speaker_whichever_came_first(
+        self, db_session, monkeypatch, order
+    ):
+        events = [(kind, _seconds(60), "a") for kind in order]
+        cues = [_cue(64, "Voorzitter, dank.")]
+        mm, sessie, _ = await self._follow(db_session, monkeypatch, events, cues)
+
+        assert len(mm.channel) == 2
+        assert mm.channel[1].startswith("**Onbekende spreker** · [")
+        assert mm.channel[1].endswith("\nVoorzitter, dank.")
+        (turn,) = await load_turns(db_session, sessie.id, sessie.debat_direct_ids[0])
+        assert turn.key == ("speaker", "a")
+        assert turn.text == "Voorzitter, dank."
+        # Every row of the turn says which turn it went into, also the one
+        # that has no message.
+        entered_as_interrupter, _ = await _speaking_rows(db_session)
+        assert entered_as_interrupter.event_type == "interrupter"
+        assert entered_as_interrupter.beurt_soort == "speaker"
+
+    async def test_a_turn_that_changes_twice_ends_as_what_came_last(
+        self, db_session, monkeypatch
+    ):
+        """Seen once in 170 debates: interrupter, speaker 2 seconds later,
+        interrupter again 27 seconds after that. It was an interruption."""
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("speaker", _seconds(62), "a"),
+            ("interrupter", _seconds(89), "a"),
+        ]
+        cues = [_cue(62.5, "Een."), _cue(70, "Twee."), _cue(95, "Drie.")]
+        mm, sessie, _ = await self._follow(db_session, monkeypatch, events, cues)
+
+        assert len(mm.channel) == 2
+        assert mm.channel[1].startswith("↳ **Onbekende spreker** · [")
+        assert mm.channel[1].endswith(" · interruptie\nEen. Twee. Drie.")
+        rows = await _speaking_rows(db_session)
+        assert [r.event_type for r in rows] == ["interrupter", "speaker", "interrupter"]
+        # The row in the middle says by itself which turn it went into.
+        assert rows[1].beurt_soort == "interrupter"
+        # Only the row with the message has a first line to write again.
+        assert [r.kop is not None for r in rows] == [True, False, False]
+        assert [r.tekst_geplaatst_hash for r in rows[1:]] == [None, None]
+        (turn,) = await load_turns(db_session, sessie.id, sessie.debat_direct_ids[0])
+        assert turn.key == ("interrupter", "a")
+        assert turn.text == "Een. Twee. Drie."
+
+    async def test_a_message_that_could_not_be_rewritten_is_rewritten_later(
+        self, db_session, monkeypatch
+    ):
+        events = [("interrupter", _seconds(60), "a"), ("speaker", _seconds(75), "a")]
+        feed = Feed(monkeypatch, parts=[_stream(_debat(*events))])
+        Subtitles(monkeypatch, feed, [])
+        mm = Mattermost()
+        await _sessie(db_session)
+        await _play(db_session, mm, feed, _seconds(80))
+        assert mm.channel[1].startswith("↳ ")
+
+        mm.fail_updates = 1
+        feed.now = START + timedelta(seconds=90)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert result.fouten == 1
+        assert mm.channel[1].startswith("↳ ")
+        (first, _) = await _speaking_rows(db_session)
+        assert not first.kop.startswith("↳ ")
+
+        feed.now = START + timedelta(seconds=100)
+        result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
+
+        assert result.fouten == 0
+        assert mm.channel[1] == first.kop
+        # And then it is done: not written again on every tick.
+        written = len(mm.updates)
+        feed.now = START + timedelta(seconds=110)
+        await DebatTijdlijnService(db_session, mm).tick(feed.now)
+        assert len(mm.updates) == written
+
+    async def test_also_without_the_transcription(self, db_session, monkeypatch):
+        monkeypatch.setattr(get_settings(), "DEBAT_TRANSCRIPT_ENABLED", False)
+        events = [("interrupter", _seconds(60), "a"), ("speaker", _seconds(75), "a")]
+
+        mm, _, _ = await self._follow(db_session, monkeypatch, events)
+
+        assert len(mm.channel) == 2
+        assert mm.channel[1] == heading_as(mm.posts[1][1], "speaker")
+        assert len(mm.updates) == 1
+
+    async def test_only_the_rows_of_this_turn_change(self, db_session, monkeypatch):
+        """Not an earlier turn of the same person, and not someone else who
+        was given the floor in the same second."""
+        events = [
+            ("speaker", _seconds(10), "b"),
+            ("speaker", _seconds(60), "a"),
+            ("speaker", _seconds(60), "b"),
+            ("interrupter", _seconds(75), "b"),
+        ]
+        mm, sessie, _ = await self._follow(db_session, monkeypatch, events)
+
+        turns = _turns_in(mm)
+        assert [t.startswith("↳ ") for t in turns] == [False, False, True]
+        rows = await _speaking_rows(db_session)
+        assert [(r.object_id, r.event_type, r.beurt_soort) for r in rows] == [
+            ("b", "speaker", None),
+            ("a", "speaker", None),
+            ("b", "speaker", "interrupter"),
+            ("b", "interrupter", None),
+        ]
+        keys = [
+            turn.key
+            for turn in await load_turns(
+                db_session, sessie.id, sessie.debat_direct_ids[0]
+            )
+        ]
+        assert keys == [("speaker", "b"), ("speaker", "a"), ("interrupter", "b")]
+        # The two other messages were not touched.
+        assert len(mm.updates) == 1
