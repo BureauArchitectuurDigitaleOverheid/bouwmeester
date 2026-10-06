@@ -227,6 +227,10 @@ class _Teams:
     # Mattermost could not be asked: not a "no", so not a 403.
     unavailable: bool = False
     mattermost_user_id: str | None = None
+    # The person is, as far as Mattermost says, in none of the bot's teams,
+    # and gets all of them so the page is not dead. Fine for starting a
+    # channel; not a reason to show what every team did.
+    every_team: bool = False
 
     @property
     def team_ids(self) -> set[str]:
@@ -283,6 +287,7 @@ async def _teams_for(
                     ", ".join(sorted(permissions)),
                 )
                 team_ids = list(permissions)
+                result.every_team = True
     except (MattermostUnavailableError, ValueError):
         logger.warning("Teams van de bot niet op te vragen", exc_info=True)
         return _Teams(melding="Mattermost is nu niet bereikbaar.", unavailable=True)
@@ -563,7 +568,10 @@ async def list_gevolgde_debatten(
     mattermost = MattermostService(db)
     try:
         allowed = await _teams_for(mattermost, db, current_user)
-        if not allowed.team_ids:
+        # The history of a team is for who is in it. Someone who gets every
+        # team as a safety net would otherwise read the channels and the
+        # question counts of all of them, as far back as they go.
+        if not allowed.team_ids or allowed.every_team:
             return empty
         base_url = _browser_base(await mattermost.base_url())
     finally:

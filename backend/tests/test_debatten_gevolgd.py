@@ -668,6 +668,26 @@ class TestWhoSeesWhat:
         assert resp.json()["debatten"] == []
         assert resp.json()["totaal"] == 1
 
+    async def test_who_is_in_none_of_the_teams_gets_no_history(
+        self, db_session, people, monkeypatch
+    ):
+        """The page offers every team to someone Mattermost says is in none,
+        so that starting a channel is not blocked by a wrong answer. That
+        net is not a reason to show what every team followed."""
+        from tests.factories import client_as
+
+        await _add(db_session, _sessie(), _sessie(team_id=OTHER_TEAM))
+        _stub_upcoming(monkeypatch, [])
+        _stub_mattermost(monkeypatch, **{**TWO_TEAMS, "members": {}})
+
+        async with client_as(db_session, people.reader) as c:
+            resp = await c.get(URL)
+            teams = (await c.get("/api/debatten/aankomend")).json()["teams"]
+
+        assert resp.json() == {"debatten": [], "totaal": 0, "limit": 20, "offset": 0}
+        # The net itself is still there for starting.
+        assert len(teams) == 2
+
     async def test_without_a_linked_account_there_is_nothing(
         self, db_session, people, monkeypatch
     ):
