@@ -30,6 +30,15 @@ STATUS_MOVED = "Verplaatst"
 # expected at the table. "Afgemeld" is its own relation, so someone who
 # cancelled does not show up under this one.
 _RELATIE_BEWINDSPERSOON = "Bewindspersoon"
+# A member of parliament who wrote the initiatiefnota or initiatiefwet the
+# meeting is about, and sits at the table to answer questions on it.
+# Measured on 6 October 2026 on the 33 meetings since January 2025 that
+# were held and have "initiatief" or "voorstel van wet van" in their
+# subject: 20 carry this relation and 13 do not, among them 9 of the 15
+# plenary debates on an initiatiefwet. Meetings that are still planned
+# carry none. So: who is listed is an initiatiefnemer; an empty list says
+# nothing.
+_RELATIE_INITIATIEFNEMER = "Initiatiefnemer"
 
 
 class TkApiError(RuntimeError):
@@ -62,6 +71,13 @@ class Bewindspersoon:
 
 
 @dataclass(frozen=True)
+class Initiatiefnemer:
+    # As the API writes it: initials and surname ("A.B. Voorbeeld").
+    naam: str
+    fractie: str | None
+
+
+@dataclass(frozen=True)
 class Activiteit:
     id: str
     nummer: str | None
@@ -85,6 +101,9 @@ class Activiteit:
     # three, 1 four), and every one of those 133 has status "Verplaatst".
     vervangen_door: tuple[str, ...] = ()
     vervangen_vanuit: tuple[str, ...] = ()
+    # The members who answer for their own proposal, when the API lists
+    # them. See `_RELATIE_INITIATIEFNEMER` for how often it does.
+    initiatiefnemers: tuple[Initiatiefnemer, ...] = ()
 
 
 def _parse_moment(value: object) -> datetime | None:
@@ -182,6 +201,16 @@ def parse_activiteit(raw: dict) -> Activiteit:
         and _text(actor.get("ActorNaam"))
     )
 
+    initiatiefnemers = tuple(
+        Initiatiefnemer(
+            naam=_text(actor.get("ActorNaam")),
+            fractie=_text(actor.get("ActorFractie")) or None,
+        )
+        for actor in _rows(raw.get("ActiviteitActor"))
+        if _text(actor.get("Relatie")) == _RELATIE_INITIATIEFNEMER
+        and _text(actor.get("ActorNaam"))
+    )
+
     return Activiteit(
         id=_text(raw.get("Id")),
         nummer=_text(raw.get("Nummer")) or None,
@@ -196,6 +225,7 @@ def parse_activiteit(raw: dict) -> Activiteit:
         agendapunten=tuple(agendapunten),
         vervangen_door=_linked_ids(raw.get("VervangenDoor")),
         vervangen_vanuit=_linked_ids(raw.get("VervangenVanuit")),
+        initiatiefnemers=initiatiefnemers,
     )
 
 
@@ -208,7 +238,7 @@ _EXPAND = (
     "$expand=Document($select=DocumentNummer,Soort,Onderwerp,Verwijderd),"
     "Zaak($select=Nummer,Soort,Onderwerp,Verwijderd;"
     "$expand=Document($select=DocumentNummer,Soort,Onderwerp,Verwijderd))),"
-    "ActiviteitActor($select=ActorNaam,Relatie,Functie,Verwijderd),"
+    "ActiviteitActor($select=ActorNaam,ActorFractie,Relatie,Functie,Verwijderd),"
     "VervangenDoor($select=Id,Verwijderd),"
     "VervangenVanuit($select=Id,Verwijderd)"
 )

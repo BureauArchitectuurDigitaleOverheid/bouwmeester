@@ -743,7 +743,9 @@ class TestWhichTurns:
         when = (START + timedelta(seconds=700)).astimezone(UTC)
         assert await _at(db_session, a) == when
         assert await _at(db_session, b) == when
-        assert "2 spreekbeurten gelezen, 2 vragen, 0 fouten" in result.summary()
+        assert (
+            "2 spreekbeurten gelezen, 2 vragen, 0 moties, 0 fouten" in result.summary()
+        )
 
     async def test_a_turn_that_was_read_is_not_read_again(
         self, db_session, monkeypatch, handed

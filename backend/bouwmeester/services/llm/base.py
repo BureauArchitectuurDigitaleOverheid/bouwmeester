@@ -469,6 +469,8 @@ class BaseLLMService(ABC):
         tekst: str,
         onderbroken: str | None = None,
         initiatiefnemers: bool = False,
+        initiatiefnemer_namen: list[str] | None = None,
+        spreker_is_initiatiefnemer: bool = False,
     ) -> DebatVragenResult:
         """Haal uit één spreekbeurt de vragen aan de bewindspersoon.
 
@@ -478,6 +480,8 @@ class BaseLLMService(ABC):
         `onderbroken` is bij een interruptie wie er het woord had.
         `initiatiefnemers` zegt dat er naast de bewindspersoon Kamerleden
         zitten die zelf vragen beantwoorden, zoals bij een initiatiefnota.
+        `initiatiefnemer_namen` zijn hun namen als die bekend zijn, en
+        `spreker_is_initiatiefnemer` zegt dat deze beurt van een van hen is.
 
         PUBLIC: een debat is openbaar en wordt uitgezonden.
         """
@@ -494,6 +498,8 @@ class BaseLLMService(ABC):
             tekst=tekst,
             onderbroken=onderbroken,
             initiatiefnemers=initiatiefnemers,
+            initiatiefnemer_namen=initiatiefnemer_namen,
+            spreker_is_initiatiefnemer=spreker_is_initiatiefnemer,
         )
         # Twee pogingen voor een onleesbaar antwoord, geen voor een
         # onbereikbaar model. Een beurt komt maar één keer langs, dus een

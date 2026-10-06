@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -86,7 +87,19 @@ FIXTURE = json.loads(
     ).read_text(encoding="utf-8")
 )
 BEURTEN = FIXTURE["beurten"]
-VOORZITTER, KAMERLID_A, KAMERLID_B, KAMERLID_C, INTERRUPTIE, _ = BEURTEN
+VOORZITTER, KAMERLID_A, KAMERLID_B_MET_MOTIE, KAMERLID_C, INTERRUPTIE, _ = BEURTEN
+# The turn of Kamerlid B says a motie is being considered, and that is
+# marked by rule. The tests that count the questions of that turn use it
+# without that sentence; the ones on moties use it whole.
+ZIN_MOTIE = next(
+    zin
+    for zin in re.split(r"(?<=[.?!]) ", KAMERLID_B_MET_MOTIE["tekst"])
+    if "motie" in zin
+)
+KAMERLID_B = {
+    **KAMERLID_B_MET_MOTIE,
+    "tekst": " ".join(KAMERLID_B_MET_MOTIE["tekst"].replace(ZIN_MOTIE, "").split()),
+}
 
 CHANNEL = "chandebat0000000000000000"
 TEAM = "teamdebat00000000000000000"

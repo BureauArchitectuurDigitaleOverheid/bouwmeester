@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from bouwmeester.models.debat_markering import (
+    SOORT_MOTIE,
+    SOORT_VRAAG,
     STATUS_BEANTWOORD,
     STATUS_OPEN,
     STATUS_TOEGEWEZEN,
@@ -51,12 +53,30 @@ _MARKER: dict[str, tuple[str, str]] = {
     STATUS_VERWORPEN: ("❌", "geen vraag"),
 }
 
+# The same for a motie. The reactions and the statuses are those of a
+# question; only the words differ, because a motie is not answered: the
+# bewindspersoon gives an oordeel on it. Reading that oordeel from the
+# debate is not built. Until it is, the tick says that it was given, and
+# which one it was is for whoever ticks to say in the thread.
+_MARKER_MOTIE: dict[str, tuple[str, str]] = {
+    STATUS_BEANTWOORD: ("✅", "oordeel gegeven"),
+    STATUS_TOEGEWEZEN: ("👀", "opgepakt"),
+    STATUS_VERVALT: ("🚫", "hoeft geen oordeel"),
+    STATUS_VERWORPEN: ("❌", "geen motie"),
+}
+_MARKERS: dict[str, dict[str, tuple[str, str]]] = {
+    SOORT_VRAAG: _MARKER,
+    SOORT_MOTIE: _MARKER_MOTIE,
+}
+
 # In the pinned message of a debate channel, so that the reactions can be
 # found without the bot putting four of them under every reply.
 LEGENDA = (
     "Reageer op een gemarkeerde vraag met ✅ beantwoord · 👀 ik pak dit op · "
-    "🚫 hoeft geen antwoord · ❌ geen vraag. De laatste reactie telt; haal je "
-    "je reactie weg, dan telt ze niet meer."
+    "🚫 hoeft geen antwoord · ❌ geen vraag. Bij een motie betekenen ze: ✅ "
+    "oordeel gegeven · 👀 ik pak dit op · 🚫 hoeft geen oordeel · ❌ geen "
+    "motie. De laatste reactie telt; haal je je reactie weg, dan telt ze "
+    "niet meer."
 )
 
 
@@ -104,8 +124,14 @@ def stand_uit_reacties(reacties: Sequence[dict], bot_user_id: str) -> Stand:
     return Stand(status=status, mattermost_user_id=user_id, sinds=sinds)
 
 
-def stand_marker(status: str, door: str = "") -> tuple[str, str]:
-    """The icon and the few words that say where a question stands.
+def stand_marker(
+    status: str, door: str = "", soort: str = SOORT_VRAAG
+) -> tuple[str, str]:
+    """The icon and the few words that say where a markering stands.
+
+    In the words of its kind: a question is "beantwoord", a motie has its
+    "oordeel gegeven". A kind without words of its own gets those of a
+    question.
 
     Two empty strings for an open question and for a status that is not
     known here. Apart and not as one string: whoever lays out the reply
@@ -116,7 +142,7 @@ def stand_marker(status: str, door: str = "") -> tuple[str, str]:
     for a message. It is shown for a question that is picked up only: who
     ticked off an answer matters less than who is working on one.
     """
-    icoon, woorden = _MARKER.get(status, ("", ""))
+    icoon, woorden = _MARKERS.get(soort, _MARKER).get(status, ("", ""))
     if door and status == STATUS_TOEGEWEZEN:
         woorden = f"{woorden} door {door}"
     return icoon, woorden

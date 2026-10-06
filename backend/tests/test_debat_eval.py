@@ -54,6 +54,7 @@ from debat_eval.variants import (  # noqa: E402
     ANCHOR,
     PROMPT_VARIANTS,
     VariantError,
+    before_anchor,
     has_question_form,
     is_motion_text,
 )
@@ -386,10 +387,9 @@ class TestVariants:
     def test_the_production_variant_changes_nothing(self):
         assert PROMPT_VARIANTS["productie"](self._prompt()) == self._prompt()
 
-    @pytest.mark.parametrize("name", sorted(set(PROMPT_VARIANTS) - {"productie"}))
-    def test_a_variant_adds_its_text_before_the_heading_it_hooks_onto(self, name):
+    def test_a_variant_adds_its_text_before_the_heading_it_hooks_onto(self):
         prompt = self._prompt()
-        changed = PROMPT_VARIANTS[name](prompt)
+        changed = before_anchor(prompt, "## Een alinea om te proberen\nTekst.\n\n")
         assert len(changed) > len(prompt)
         head, tail = prompt.split(ANCHOR)
         assert changed.startswith(head)
@@ -399,7 +399,7 @@ class TestVariants:
 
     def test_a_variant_fails_when_the_heading_is_gone(self):
         with pytest.raises(VariantError):
-            PROMPT_VARIANTS["beide"]("Een prompt zonder die kop.")
+            before_anchor("Een prompt zonder die kop.", "Een alinea.")
 
     @pytest.mark.parametrize(
         "quote",
@@ -500,6 +500,25 @@ class TestTheProductionPathOnTheFixture:
         # The repeated question that landed in the turn of the minister is
         # the one thing nobody can find: that turn is skipped.
         assert (vraag.optional, vraag.optional_found) == (2, 1)
+
+        # The moties are found by rule, whatever the oracle says: all six
+        # of the made-up debate, the one in a turn the model never saw
+        # included, and nothing in the turn of the minister who repeats a
+        # dictum or of the member who talks about moties of earlier.
+        motie = scores["motie"]
+        assert (motie.required, motie.found, motie.optional_found) == (5, 5, 1)
+        assert motie.false_positives == []
+        assert outcomes[30]["reden"] == ""
+        assert outcomes[30]["aanroepen"] == 0
+        assert [m["soort"] for m in outcomes[30]["gemarkeerd"]] == ["motie"]
+        assert outcomes[31]["reden"] == "bewindspersoon"
+        assert outcomes[32]["gemarkeerd"] == []
+        # A question and two moties in one turn: each once.
+        assert [m["soort"] for m in outcomes[29]["gemarkeerd"]] == [
+            "vraag",
+            "motie",
+            "motie",
+        ]
 
         report = build_report(run, golds)
         assert "Run orakel" in report

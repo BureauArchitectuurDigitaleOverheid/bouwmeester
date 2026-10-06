@@ -26,7 +26,7 @@ import asyncio
 import logging
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -99,6 +99,12 @@ NEVER_MOVES_AFTER = timedelta(minutes=3)
 # debates or keep the heartbeat silent for minutes.
 MAX_TURNS = 10
 
+# How long a debate on an initiatief is kept without the names of its
+# initiatiefnemers before the TK API is asked again. Meetings that are
+# still planned carry no names, so they are added on the day at the
+# earliest; when exactly is not known.
+REREAD_INITIATIEFNEMERS = timedelta(minutes=10)
+
 _HTTP_TIMEOUT = 15.0
 # The link to the moment, as the timeline wrote it in the first line.
 _MOMENT_LINK = re.compile(r"· \[\d\d:\d\d\]\((https://[^\s()]+)\)")
@@ -109,6 +115,7 @@ class VraagTickResult:
     sessies: int = 0
     beoordeeld: int = 0
     vragen: int = 0
+    moties: int = 0
     fouten: int = 0
     # False when there was something to read and no model to read it.
     model: bool = True
@@ -118,7 +125,7 @@ class VraagTickResult:
             return "geen taalmodel ingesteld"
         return (
             f"{self.sessies} debatten, {self.beoordeeld} spreekbeurten gelezen, "
-            f"{self.vragen} vragen, {self.fouten} fouten"
+            f"{self.vragen} vragen, {self.moties} moties, {self.fouten} fouten"
         )
 
 
@@ -228,6 +235,17 @@ def rows_in_play(
         if row_id is not None:
             found.add(row_id)
     return found
+
+
+def _names_may_follow(context: DebatContext, now: datetime) -> bool:
+    """Whether to ask again for who the initiatiefnemers of a debate are."""
+    if not context.initiatiefnemers or context.initiatiefnemer_namen:
+        return False
+    # A context that was handed in and not read here is left as it is.
+    return (
+        context.gelezen_at is not None
+        and now - context.gelezen_at >= REREAD_INITIATIEFNEMERS
+    )
 
 
 class _Pause:
@@ -582,7 +600,8 @@ class DebatVraagWorker:
             await self._mark(turn.row_id, now)
             result.beoordeeld += 1
             if outcome.uitkomst == UITKOMST_GEMARKEERD:
-                result.vragen += len(outcome.markering_ids)
+                result.vragen += len(outcome.markering_ids) - outcome.moties
+                result.moties += outcome.moties
 
     async def _lines(self, turn: Turn, offset: timedelta) -> tuple[Line, ...]:
         """The subtitle lines the text of a turn is made of, in its order.
@@ -654,8 +673,10 @@ class DebatVraagWorker:
         onderwerp: str,
         client: httpx.AsyncClient,
     ) -> DebatContext:
-        if sessie_id in self.contexts:
-            return self.contexts[sessie_id]
+        known = self.contexts.get(sessie_id)
+        now = datetime.now(UTC)
+        if known is not None and not _names_may_follow(known, now):
+            return known
         try:
             activiteit = await tk_activiteit.fetch_activiteit(activiteit_id, client)
         except tk_activiteit.TkApiError:
@@ -664,6 +685,8 @@ class DebatVraagWorker:
         if activiteit is None:
             # The subject alone is enough to read a turn by. Not kept, so
             # the next turn asks again for who is at the table.
-            return DebatContext(onderwerp=onderwerp)
-        self.contexts[sessie_id] = DebatContext.from_activiteit(activiteit)
+            return known or DebatContext(onderwerp=onderwerp)
+        self.contexts[sessie_id] = replace(
+            DebatContext.from_activiteit(activiteit), gelezen_at=now
+        )
         return self.contexts[sessie_id]

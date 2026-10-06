@@ -1007,6 +1007,8 @@ def build_debat_vragen_prompt(
     tekst: str,
     onderbroken: str | None = None,
     initiatiefnemers: bool = False,
+    initiatiefnemer_namen: list[str] | None = None,
+    spreker_is_initiatiefnemer: bool = False,
 ) -> str:
     """Prompt die uit één spreekbeurt de vragen aan de bewindspersoon haalt.
 
@@ -1021,6 +1023,16 @@ def build_debat_vragen_prompt(
     minister werden gemarkeerd, een interruptie waarin "u" de onderbroken
     spreker was, en nieuwe vragen die als herhaling werden weggezet omdat
     ze over hetzelfde onderwerp gingen als een openstaande vraag.
+
+    Daarna gemeten op vier debatten (zie `scripts/debat_eval`): ruim een
+    kwart van de markeringen was geen vraag aan de bewindspersoon, vooral
+    beweringen waar het model een vraag van maakte en zinnen over het
+    kabinet in plaats van aan het kabinet. De alinea's "De vraag staat in
+    het citaat" en "Over het kabinet is niet aan het kabinet" haalden daar
+    in twee runs ongeveer twaalf van de ruim vijftig foute markeringen
+    weg. Dat was niet genoeg, dus dezelfde regels staan ook als controle
+    in de code (`lees_antwoord`); de prompt scheelt het model werk, de
+    code beslist.
     """
     aan_tafel = (
         "\n".join(f"- {b}" for b in bewindspersonen)
@@ -1050,6 +1062,15 @@ def build_debat_vragen_prompt(
             f"Dit is een interruptie van {spreker}. Wie er wordt onderbroken"
             " is niet bekend."
         )
+    elif spreker_is_initiatiefnemer:
+        wat = (
+            f"Dit is een spreekbeurt van {spreker}, een van de initiatiefnemers."
+            " De initiatiefnemers beantwoorden in dit debat zelf vragen van"
+            " Kamerleden. Een vraag die de spreker herhaalt om hem te"
+            " beantwoorden telt niet. Alleen wat de spreker zelf uitdrukkelijk"
+            ' aan de bewindspersoon vraagt telt ("ik ben benieuwd hoe de'
+            ' minister daartegen aankijkt").'
+        )
     else:
         wat = f"Dit is een spreekbeurt van {spreker}."
     if len(tekst) > MAX_BEURT_IN_PROMPT:
@@ -1066,6 +1087,15 @@ def build_debat_vragen_prompt(
             " die het voorstel hebben geschreven en er zelf vragen over"
             " beantwoorden."
         )
+        if initiatiefnemer_namen:
+            # Met de namen erbij is ook "mevrouw Voorbeeld, hoe ziet u dat"
+            # te herkennen als een vraag aan een initiatiefnemer.
+            aan_tafel += (
+                " Dat zijn:\n"
+                + "\n".join(f"- {naam}" for naam in initiatiefnemer_namen)
+                + "\nEen vraag aan een van hen, ook bij naam, is geen vraag aan"
+                " de bewindspersoon."
+            )
         zonder_aanhef = (
             "- nergens uit blijkt aan wie de vraag is gericht. In dit debat"
             " antwoorden ook de initiatiefnemers, dus een vraag in het"
@@ -1141,11 +1171,36 @@ def build_debat_vragen_prompt(
         " Een interruptie telt alleen als de bewindspersoon wordt"
         " onderbroken of in de vraag wordt genoemd;\n"
         f"{zonder_aanhef}"
+        "## De vraag staat in het citaat\n"
+        "Een vraag telt alleen als de spreker hem stelt. In het citaat moeten de"
+        " woorden staan waarmee de spreker iets vraagt: een vraagzin"
+        ' ("Kan de minister", "Hoe", "Waarom", "Is het kabinet bereid") of een'
+        ' uitdrukkelijk verzoek ("ik vraag de minister", "graag een reactie",'
+        ' "ik hoor graag"). Maak van een bewering geen vraag. "Niemand kan'
+        ' zeggen waar dat bedrag op is gebaseerd" is een verwijt en geen vraag,'
+        " ook al kun je er een goede vraag van maken. Hetzelfde geldt voor"
+        ' "dat is ons nooit uitgelegd", "het is mij niet duidelijk'
+        ' hoe" en "de grote vraag is of". Kun je in het citaat niet de woorden'
+        " aanwijzen waarmee de spreker vraagt, markeer dan niets.\n\n"
+        "## Over het kabinet is niet aan het kabinet\n"
+        "Dat het kabinet, de minister of de staatssecretaris in een zin"
+        " voorkomt, maakt het nog geen vraag aan hen. Niet markeren:\n"
+        '- wat de spreker over het kabinet zegt of vindt ("het kabinet kiest'
+        ' hier niet voor", "de minister was daar zuinig over");\n'
+        "- wat de spreker tegen een ander Kamerlid over het kabinet zegt"
+        ' ("laten we het kabinet daarvan proberen te overtuigen");\n'
+        '- een oproep zonder vraag ("het kabinet moet hiermee stoppen", "ik'
+        ' hoop dat de minister dat doet");\n'
+        '- een vraag die de spreker eerder stelde en nu navertelt ("ik heb de'
+        ' minister toen gevraagd of").\n\n'
         "## Wat verder niet telt\n"
         "- Retorische vragen, en vragen die de spreker zelf beantwoordt.\n"
         "- Vragen over de orde van de vergadering.\n"
         "- Een standpunt, een oproep of een aangekondigde motie zonder"
-        " vraag erin.\n\n"
+        " vraag erin.\n"
+        '- De tekst van een motie die wordt voorgelezen ("De Kamer, gehoord'
+        " de beraadslaging, ... verzoekt de regering ... en gaat over tot de"
+        ' orde van de dag"). Dat is een motie en geen vraag.\n\n'
         "## Eén vraag of meer\n"
         "Vragen die over hetzelfde gaan en direct op elkaar volgen neem je"
         " samen als één vraag. Vragen over verschillende onderwerpen zijn"

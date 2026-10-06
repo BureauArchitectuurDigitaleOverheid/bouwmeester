@@ -53,7 +53,7 @@ def apply_check(
 
 # The kinds the production code marks today. A kind that is added there is
 # added here, and its gold items start to count.
-MARKED_KINDS: tuple[str, ...] = (gold_file.KIND_VRAAG,)
+MARKED_KINDS: tuple[str, ...] = (gold_file.KIND_VRAAG, gold_file.KIND_MOTIE)
 
 
 def score_run(
