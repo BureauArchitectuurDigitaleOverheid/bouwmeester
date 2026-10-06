@@ -1,11 +1,14 @@
 """Shared fixtures for API tests.
 
 Uses the running PostgreSQL database with per-test transaction rollback
-so tests never commit real data.
+so tests never commit real data.  Under pytest-xdist every worker migrates
+a database of its own next to the configured one and drops it afterwards
+(see ``_worker_database.py`` for why).
 """
 
 import os
 import uuid
+import zlib
 from datetime import date, timedelta
 from typing import Any
 
@@ -20,12 +23,118 @@ from sqlalchemy.pool import NullPool
 # get_settings() call below (it is @lru_cache, so this must run first).
 os.environ.setdefault("DEV_NO_AUTH", "1")
 
+from tests._worker_database import (  # noqa: E402
+    drop_worker_database,
+    use_worker_database,
+)
+
+# Has to happen before the first get_settings() too: it points DATABASE_URL
+# at the database of this xdist worker.
+_WORKER_DATABASE = use_worker_database()
+
+
+def pytest_sessionfinish(session):
+    if _WORKER_DATABASE is not None:
+        drop_worker_database(_WORKER_DATABASE)
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--shard",
+        default=None,
+        metavar="I/N",
+        help=(
+            "Run only shard I of N (1-based), for CI jobs that run next to "
+            "each other. Without it every test runs."
+        ),
+    )
+
+
+def _shard(config) -> tuple[int, int] | None:
+    value = config.getoption("--shard")
+    if value is None:
+        return None
+    try:
+        index, total = (int(part) for part in value.split("/"))
+    except ValueError:
+        raise pytest.UsageError(f"--shard takes I/N, like 1/3, not {value!r}") from None
+    if not 1 <= index <= total:
+        raise pytest.UsageError(f"--shard {value}: I must be between 1 and N")
+    return index, total
+
+
+def shard_of(nodeid: str, total: int) -> int:
+    """The shard (1-based) a test belongs to.
+
+    By a checksum of the test's own id, not by file and not by position: the
+    slow tests sit together in a handful of files, and a test must not move
+    to another shard because someone added a test above it.  crc32 and not
+    ``hash()``, which differs from one process to the next.
+    """
+    return zlib.crc32(nodeid.encode()) % total + 1
+
+
+def pytest_collection_modifyitems(config, items):
+    shard = _shard(config)
+    if shard is None:
+        return
+    index, total = shard
+    keep, leave = [], []
+    for item in items:
+        (keep if shard_of(item.nodeid, total) == index else leave).append(item)
+    if leave:
+        config.hook.pytest_deselected(items=leave)
+        items[:] = keep
+
+
 from bouwmeester.core.config import get_settings  # noqa: E402
 from bouwmeester.core.database import get_db  # noqa: E402
 from bouwmeester.core.session_store import SessionStore  # noqa: E402
 from bouwmeester.middleware.session import ServerSideSessionMiddleware  # noqa: E402
 
 settings = get_settings()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _one_tls_context_for_all_http_clients():
+    """Read the CA bundle once, not for every ``httpx.AsyncClient``.
+
+    The services that follow a debate open a client per tick, and every
+    client loads the whole CA bundle into a TLS context of its own: some
+    milliseconds each.  A test that replays a debate ticks hundreds of times
+    and never makes a connection, so in the replay tests a quarter of the
+    time went to reading certificates nobody used.
+
+    Only the default context (``verify=True``, no client certificate) is
+    shared, which is what httpx itself recommends doing.  The name patched
+    is not public API: when a new httpx no longer has it, nothing is patched
+    and the tests are only slower.
+    """
+    import httpx._transports.default as transport
+
+    original = getattr(transport, "create_ssl_context", None)
+    if original is None:
+        yield
+        return
+
+    shared: dict[tuple, Any] = {}
+
+    def create_ssl_context(verify=True, cert=None, trust_env=True):
+        if verify is not True or cert is not None:
+            return original(verify=verify, cert=cert, trust_env=trust_env)
+        key = (
+            trust_env,
+            os.environ.get("SSL_CERT_FILE"),
+            os.environ.get("SSL_CERT_DIR"),
+        )
+        if key not in shared:
+            shared[key] = original(verify=verify, cert=cert, trust_env=trust_env)
+        return shared[key]
+
+    patch = pytest.MonkeyPatch()
+    patch.setattr(transport, "create_ssl_context", create_ssl_context)
+    yield
+    patch.undo()
 
 
 @pytest.fixture(autouse=True)
