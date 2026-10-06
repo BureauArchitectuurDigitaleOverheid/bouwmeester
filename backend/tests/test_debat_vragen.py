@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -42,6 +42,7 @@ from bouwmeester.services.debat_statusregel import (
     statusregel,
     voeg_samen,
 )
+from bouwmeester.services.debat_vraag_moment import Line
 from bouwmeester.services.debat_vraag_service import (
     UITKOMST_AL_BEOORDEELD,
     UITKOMST_GEEN_VRAAG,
@@ -269,14 +270,10 @@ async def _markeringen(session: AsyncSession, sessie_id: uuid.UUID) -> list:
 
 class TestStatusregel:
     def test_one_open_question_is_the_line_from_the_plan(self):
-        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)]) == (
-            "❓ Vraag gemarkeerd · staat open"
-        )
+        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)]) == ("❓ 1 vraag · open")
 
     def test_several_open_questions_are_one_line(self):
-        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)] * 3) == (
-            "❓ 3 vragen gemarkeerd · staan open"
-        )
+        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)] * 3) == ("❓ 3 vragen · open")
 
     def test_mixed_states_are_counted_per_state(self):
         regel = statusregel(
@@ -287,14 +284,20 @@ class TestStatusregel:
                 (SOORT_VRAAG, STATUS_ANTWOORD_KLAAR),
             ]
         )
-        assert regel == (
-            "❓ 4 vragen gemarkeerd · 2 open · 1 antwoord klaar · 1 beantwoord"
+        assert regel == ("❓ 4 vragen · 2 open · 1 antwoord klaar · 1 beantwoord")
+
+    def test_one_state_that_is_not_open_is_said_in_one_word_too(self):
+        assert statusregel([(SOORT_VRAAG, STATUS_BEANTWOORD)]) == (
+            "❓ 1 vraag · beantwoord"
+        )
+        assert statusregel([(SOORT_VRAAG, STATUS_ANTWOORD_KLAAR)] * 2) == (
+            "❓ 2 vragen · antwoord klaar"
         )
 
     def test_a_rejected_question_does_not_count(self):
         assert statusregel(
             [(SOORT_VRAAG, STATUS_VERWORPEN), (SOORT_VRAAG, STATUS_OPEN)]
-        ) == ("❓ Vraag gemarkeerd · staat open")
+        ) == ("❓ 1 vraag · open")
         assert statusregel([(SOORT_VRAAG, STATUS_VERWORPEN)]) == ""
 
     def test_nothing_marked_is_no_line(self):
@@ -315,17 +318,15 @@ class TestStatusregel:
 
     def test_the_status_writer_keeps_a_body_that_grew(self):
         """The transcript grew between two writes of the status line."""
-        eerst = met_status("kop\neen zin.", "❓ Vraag gemarkeerd · staat open")
+        eerst = met_status("kop\neen zin.", "❓ 1 vraag · open")
         gegroeid = met_body(eerst, "kop\neen zin. En nog een zin.")
-        daarna = met_status(gegroeid, "❓ 2 vragen gemarkeerd · staan open")
-        assert daarna == (
-            "kop\neen zin. En nog een zin.\n\n---\n❓ 2 vragen gemarkeerd · staan open"
-        )
+        daarna = met_status(gegroeid, "❓ 2 vragen · open")
+        assert daarna == ("kop\neen zin. En nog een zin.\n\n---\n❓ 2 vragen · open")
 
     def test_the_body_writer_keeps_the_status(self):
-        bericht = voeg_samen("kop", "❓ Vraag gemarkeerd · staat open")
+        bericht = voeg_samen("kop", "❓ 1 vraag · open")
         assert met_body(bericht, "kop\nmeer tekst") == (
-            "kop\nmeer tekst\n\n---\n❓ Vraag gemarkeerd · staat open"
+            "kop\nmeer tekst\n\n---\n❓ 1 vraag · open"
         )
 
     def test_an_empty_status_removes_the_block(self):
@@ -444,17 +445,24 @@ class TestVindCitaat:
 
 def _thread(**extra) -> str:
     values = {
-        "spreker": "Kamerlid A (BBB)",
-        "fractie": "BBB",
+        "volgnummer": 12,
         "gericht_aan": "de minister",
         "citaat": Q_ARTSEN,
         "samenvatting": "Wordt er bezuinigd op bedrijfsartsen bij de politie?",
         "stuk": None,
         "moment": datetime.fromisoformat("2026-10-05T10:02:23+02:00"),
         "moment_url": MOMENT_URL,
+        "vraag_moment": datetime.fromisoformat("2026-10-05T10:09:40+02:00"),
     }
     values.update(extra)
     return format_vraag_thread(**values)
+
+
+# The link of the turn, opened five seconds before the question of 10:09:40.
+VRAAG_URL = (
+    "https://debatdirect.example/debat?event=speaker2026-10-05T10%3A09%3A35%2B0200"
+)
+NOOT = "_Citaten komen letterlijk uit het automatische transcript._"
 
 
 class TestEenCitaatZegtIets:
@@ -472,31 +480,59 @@ class TestEenCitaatZegtIets:
 
 
 class TestFormatVraagThread:
-    def test_says_what_was_asked_by_whom_and_when(self):
-        tekst = _thread()
-        kop = tekst.split("\n")[0]
-        assert kop == (
-            f"❓ **Vraag aan de minister** · Kamerlid A (BBB) · [10:02]({MOMENT_URL})"
+    def test_the_whole_reply(self):
+        assert _thread(stuk="Kabinetsreactie") == (
+            "❓ **Wordt er bezuinigd op bedrijfsartsen bij de politie?**\n"
+            f"Vraag 12 · aan de minister · [10:09]({VRAAG_URL})\n"
+            "📄 Kabinetsreactie\n"
+            f"> {Q_ARTSEN}\n"
+            "\n"
+            f"{NOOT}"
         )
-        assert f"> {Q_ARTSEN}" in tekst
-        assert "Wordt er bezuinigd op bedrijfsartsen bij de politie?" in tekst
 
-    def test_the_time_is_shown_in_amsterdam(self):
-        utc = datetime.fromisoformat("2026-10-05T08:02:23+00:00")
-        assert "[10:02](" in _thread(moment=utc)
+    def test_a_later_reply_in_the_thread_ends_with_the_quote(self):
+        assert _thread(first_in_thread=False) == (
+            "❓ **Wordt er bezuinigd op bedrijfsartsen bij de politie?**\n"
+            f"Vraag 12 · aan de minister · [10:09]({VRAAG_URL})\n"
+            f"> {Q_ARTSEN}"
+        )
 
-    def test_the_quote_is_marked_as_automatic_transcript(self):
-        assert "automatische transcript" in _thread()
+    def test_only_the_question_is_bold(self):
+        tekst = _thread(stuk="Kabinetsreactie")
+        assert tekst.count("**") == 2
+        assert tekst.split("\n")[0].count("**") == 2
 
-    def test_the_party_is_added_when_the_label_does_not_carry_it(self):
-        assert "· Kamerlid A (BBB) ·" in _thread(spreker="Kamerlid A")
-        assert "(BBB) (BBB)" not in _thread()
-        assert "· Kamerlid A ·" in _thread(spreker="Kamerlid A", fractie=None)
+    def test_who_asks_is_not_in_it(self):
+        # The reply hangs under the message of the speaker.
+        assert "Kamerlid" not in _thread()
+        assert "BBB" not in _thread()
+
+    def test_the_time_is_that_of_the_question_in_amsterdam(self):
+        utc = datetime.fromisoformat("2026-10-05T08:09:40+00:00")
+        assert f"· [10:09]({VRAAG_URL})" in _thread(vraag_moment=utc)
+
+    def test_without_the_moment_of_the_question_it_is_the_start_of_the_turn(self):
+        regel = _thread(vraag_moment=None).split("\n")[1]
+        assert regel == (
+            f"Vraag 12 · aan de minister · [10:02]({MOMENT_URL})"
+            " (begin van de spreekbeurt)"
+        )
+        assert "begin van de spreekbeurt" not in _thread()
+
+    def test_a_link_without_a_moment_in_it_still_opens_the_turn(self):
+        url = "https://debatdirect.example/debat?event=speaker1"
+        assert f"· [10:09]({url})" in _thread(moment_url=url)
 
     def test_without_a_link_the_time_is_plain(self):
-        assert " · 10:02" in _thread(moment_url=None).split("\n")[0]
+        assert _thread(moment_url=None).split("\n")[1].endswith(" · 10:09")
         assert "](" not in _thread(moment_url=None)
+        assert (
+            _thread(moment_url=None, vraag_moment=None)
+            .split("\n")[1]
+            .endswith(" · 10:02 (begin van de spreekbeurt)")
+        )
 
+    @pytest.mark.parametrize("vraag_moment", [None, "2026-10-05T10:09:40+02:00"])
     @pytest.mark.parametrize(
         "url",
         [
@@ -504,36 +540,52 @@ class TestFormatVraagThread:
             "http://debatdirect.example/x",
             "https://debatdirect.example/x) [klik](https://kwaad.example",
             "https://debatdirect.example/x y",
+            "https://debatdirect.example/x) [klik](https://kwaad.example"
+            "?event=speaker2026-10-05T10%3A02%3A23%2B0200",
+            "https://debatdirect.example/x"
+            "?event=speaker2026-10-05T10%3A02%3A23%2B0200&x=) [klik](y",
         ],
     )
-    def test_a_link_that_could_break_out_is_left_out(self, url):
-        tekst = _thread(moment_url=url)
+    def test_a_link_that_could_break_out_is_left_out(self, url, vraag_moment):
+        moment = vraag_moment and datetime.fromisoformat(vraag_moment)
+        tekst = _thread(moment_url=url, vraag_moment=moment)
         assert "](" not in tekst
         assert "kwaad" not in tekst
 
     def test_the_document_is_named_only_when_there_is_one(self):
-        assert "Gaat over" not in _thread()
-        tekst = _thread(stuk="Kabinetsreactie [concept]")
-        # With the question, above the quote; the note about the transcript
-        # is about the quote and closes the message.
-        assert "\nGaat over: Kabinetsreactie \\[concept\\]\n\n> " in tekst
-        assert tekst.endswith("spreekbeurt._")
+        assert "📄" not in _thread()
+        regels = _thread(stuk="Kabinetsreactie [concept]").split("\n")
+        # Between the line about the question and the quote.
+        assert regels[2] == "📄 Kabinetsreactie \\[concept\\]"
+        assert regels[1].startswith("Vraag 12")
+        assert regels[3].startswith("> ")
+
+    def test_the_note_about_the_transcript_only_under_the_first_reply(self):
+        assert _thread().endswith(f"\n> {Q_ARTSEN}\n\n{NOOT}")
+        assert "transcript" not in _thread(first_in_thread=False)
+
+    def test_no_empty_lines_but_the_one_that_ends_the_quote(self):
+        assert _thread(stuk="Stuk").split("\n").count("") == 1
+        assert "" not in _thread(stuk="Stuk", first_in_thread=False).split("\n")
+        for tekst in (_thread(), _thread(first_in_thread=False)):
+            assert tekst == tekst.strip()
 
     def test_text_from_outside_is_escaped(self):
         tekst = _thread(
-            spreker="@all (BBB)",
             gericht_aan="de **minister**",
             citaat="Kan de minister @channel [dit](https://kwaad.example) lezen?",
-            samenvatting="@here ~town-square _nu_",
+            samenvatting="@here ~town-square _nu_ **vet**",
+            stuk="@all **stuk**",
         )
         # No at-sign survives, escaped or not: a model can write the
         # backslash itself, and then the escape is what frees the mention.
         assert "@" not in tekst
-        assert "all (BBB)" in tekst
         # Who it is put to is said in our words, not the model's.
-        assert "**Vraag aan de minister**" in tekst
+        assert "· aan de minister ·" in tekst
         assert "channel \\[dit\\](https: //kwaad.example)" in tekst
-        assert "here \\~town-square \\_nu\\_" in tekst
+        kop = tekst.split("\n")[0]
+        assert kop == "❓ **here \\~town-square \\_nu\\_ \\*\\*vet\\*\\***"
+        assert "📄 all \\*\\*stuk\\*\\*" in tekst
 
     def test_a_backslash_from_the_model_cannot_free_a_mention(self):
         tekst = _thread(
@@ -541,12 +593,12 @@ class TestFormatVraagThread:
         )
 
         assert "@" not in tekst
-        assert "\\" not in tekst.split("\n")[1]
+        assert "\\" not in tekst.split("\n")[0]
 
     def test_an_address_does_not_become_a_link(self):
         tekst = _thread(samenvatting="zie https://kwaad.example en www.kwaad.example")
 
-        assert "://" not in tekst.split("\n")[1]
+        assert "://" not in tekst.split("\n")[0]
         assert "www." not in tekst
 
     @pytest.mark.parametrize(
@@ -563,12 +615,16 @@ class TestFormatVraagThread:
         ],
     )
     def test_who_it_is_put_to_is_one_of_a_few(self, aan, verwacht):
-        assert f"**Vraag aan {verwacht}**" in _thread(gericht_aan=aan)
+        assert f"Vraag 12 · aan {verwacht} · [" in _thread(gericht_aan=aan)
 
     def test_a_quote_cannot_leave_its_block(self):
         tekst = _thread(citaat="Eerste regel.\n\n# Kop\n@channel")
         citaat = [r for r in tekst.split("\n") if r.startswith(">")]
         assert citaat == ["> Eerste regel. \\# Kop channel"]
+
+    def test_a_summary_cannot_leave_its_line(self):
+        tekst = _thread(samenvatting="Een vraag\n\n# Kop\n> citaat")
+        assert tekst.split("\n")[0] == "❓ **Een vraag \\# Kop > citaat**"
 
     def test_a_very_long_quote_is_cut(self):
         tekst = _thread(citaat="woord " * 400)
@@ -576,13 +632,57 @@ class TestFormatVraagThread:
         assert len(regel) <= mod.MAX_CITAAT + 2
         assert regel.endswith("…")
 
-    def test_without_a_summary_there_is_no_empty_line_for_it(self):
-        regels = _thread(samenvatting="").split("\n")
-        assert regels[1] == ""
-        assert regels[2].startswith(">")
+    def test_the_dots_of_a_line_that_runs_on_are_not_shown(self):
+        tekst = _thread(citaat="Kan de minister... zeggen wanneer dat... komt?")
+        assert "> Kan de minister zeggen wanneer dat komt?" in tekst
+
+    def test_dots_that_end_a_sentence_stay(self):
+        tekst = _thread(citaat="Dat is... Nee. Kan de minister dat zeggen?")
+        assert "> Dat is... Nee. Kan de minister dat zeggen?" in tekst
+
+    def test_what_was_left_out_between_two_pieces_stays_marked(self):
+        tekst = _thread(citaat="Kan de minister dat (...) zeggen voor de zomer?")
+        assert "> Kan de minister dat (...) zeggen voor de zomer?" in tekst
+
+    @pytest.mark.parametrize("samenvatting", ["", "   ", "@", "\\"])
+    def test_without_a_summary_the_first_sentence_of_the_quote_is_the_question(
+        self, samenvatting
+    ):
+        tekst = _thread(
+            samenvatting=samenvatting,
+            citaat="Kan de minister dat toezeggen? Ik hoor het graag. Dank.",
+        )
+        assert tekst.split("\n")[0] == "❓ **Kan de minister dat toezeggen?**"
+        assert "> Kan de minister dat toezeggen? Ik hoor het graag. Dank." in tekst
+
+    def test_a_first_sentence_that_goes_on_and_on_is_cut(self):
+        kop = _thread(samenvatting="", citaat="woord " * 100).split("\n")[0]
+        assert kop.startswith("❓ **woord woord")
+        assert kop.endswith("…**")
+        assert len(kop) <= mod.MAX_KOP + len("❓ ****")
+
+    def test_a_quote_without_an_end_of_sentence_is_the_question_as_a_whole(self):
+        kop = _thread(samenvatting="", citaat="wanneer komt de brief").split("\n")[0]
+        assert kop == "❓ **wanneer komt de brief**"
+
+    def test_the_first_sentence_is_read_past_the_dots_of_a_line_that_runs_on(self):
+        kop = _thread(
+            samenvatting="", citaat="Kan de minister... zeggen wanneer? Dank."
+        ).split("\n")[0]
+        assert kop == "❓ **Kan de minister zeggen wanneer?**"
+
+    def test_a_number_with_a_dot_in_it_does_not_end_the_sentence(self):
+        kop = _thread(
+            samenvatting="", citaat="Komt die 1.5 miljoen er nog? Graag een reactie."
+        ).split("\n")[0]
+        assert kop == "❓ **Komt die 1.5 miljoen er nog?**"
+
+    def test_nothing_at_all_to_say_is_still_not_four_asterisks(self):
+        kop = _thread(samenvatting="@", citaat="@@@@@@@@@@@@@").split("\n")[0]
+        assert kop == "❓ **Vraag**"
 
     def test_an_empty_addressee_is_the_bewindspersoon(self):
-        assert "**Vraag aan de bewindspersoon**" in _thread(gericht_aan="")
+        assert "· aan de bewindspersoon ·" in _thread(gericht_aan="")
 
 
 # --- reading the answer ------------------------------------------------
@@ -1149,15 +1249,21 @@ class TestMarkeren:
         assert [r.thread_post_id for r in rows] == [p for _, _, _, p in mm.replies]
         eerste = mm.replies[0][2]
         assert f"> {Q_ARTSEN}" in eerste
-        assert "Kamerlid A (BBB)" in eerste
-        assert f"[10:02]({MOMENT_URL})" in eerste
-        assert "automatische transcript" in eerste
-        assert "Gaat over" not in eerste
+        assert eerste.split("\n")[0] == "❓ **Wordt er bezuinigd op bedrijfsartsen?**"
+        # No lines were handed in with this turn: the time is the turn's.
+        assert eerste.split("\n")[1] == (
+            f"Vraag 1 · aan de minister · [10:02]({MOMENT_URL})"
+            " (begin van de spreekbeurt)"
+        )
+        assert een.vraag_moment is None
+        assert "📄" not in eerste
+        # Said once in the thread, under the first reply.
+        assert eerste.endswith(NOOT)
+        assert mm.replies[1][2].split("\n")[1].startswith("Vraag 2 · ")
+        assert "transcript" not in mm.replies[1][2]
 
         # The message of the turn keeps its text and gets the status line.
-        assert mm.messages[post_id] == (
-            f"{body}\n\n---\n❓ 2 vragen gemarkeerd · staan open"
-        )
+        assert mm.messages[post_id] == (f"{body}\n\n---\n❓ 2 vragen · open")
         assert len(mm.updates) == 1
 
     async def test_the_document_a_question_names_is_in_the_thread(self, db_session):
@@ -1169,7 +1275,7 @@ class TestMarkeren:
             _beurt(sessie_id, KAMERLID_B, mm.turn()), CONTEXT
         )
 
-        assert f"\nGaat over: {FIXTURE['stukken'][1]}\n" in mm.replies[0][2]
+        assert f"\n📄 {FIXTURE['stukken'][1]}\n> " in mm.replies[0][2]
         stuk = (
             await db_session.execute(
                 select(DebatMarkering.stuk).where(DebatMarkering.sessie_id == sessie_id)
@@ -1202,7 +1308,7 @@ class TestMarkeren:
             _beurt(sessie_id, KAMERLID_B, mm.turn()), CONTEXT
         )
 
-        assert "Gaat over" not in mm.replies[0][2]
+        assert "📄" not in mm.replies[0][2]
 
     async def test_a_turn_without_a_question_leaves_nothing(self, db_session):
         sessie_id = await _sessie(db_session)
@@ -1264,7 +1370,7 @@ class TestMarkeren:
         )
         tekst = mm.replies[0][2]
         assert "channel lees dit" in tekst
-        assert "**Vraag aan de minister**" in tekst
+        assert "· aan de minister ·" in tekst
         assert "@" not in tekst
 
 
@@ -1384,7 +1490,7 @@ class TestEenVraagIsEenToestand:
         # The numbering goes on where the debate was.
         assert [(r[0], r[1]) for r in rows][-1] == (3, Q_TERMIJNEN)
         assert mm.messages[opnieuw.post_id] == (
-            "**Kamerlid A (BBB)** · 11:40\n\n---\n❓ Vraag gemarkeerd · staat open"
+            "**Kamerlid A (BBB)** · 11:40\n\n---\n❓ 1 vraag · open"
         )
 
     async def test_a_number_the_model_made_up_gives_a_new_question(self, db_session):
@@ -1616,9 +1722,7 @@ class TestMattermostFaalt:
         assert Q_CAMPAGNE in mm.replies[1][2]
         rows = await _markeringen(db_session, sessie_id)
         assert all(r[2] and r[4] for r in rows)
-        assert mm.messages[post_id] == (
-            "kop\n\n---\n❓ 2 vragen gemarkeerd · staan open"
-        )
+        assert mm.messages[post_id] == ("kop\n\n---\n❓ 2 vragen · open")
 
     async def test_a_thread_that_raises_is_a_thread_that_fails(self, db_session):
         sessie_id, mm, _, svc, post_id = await self._twee_vragen(db_session)
@@ -1638,14 +1742,12 @@ class TestMattermostFaalt:
         mm.fail_sends = 1
 
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
-        assert mm.messages[post_id] == "kop\n\n---\n❓ Vraag gemarkeerd · staat open"
+        assert mm.messages[post_id] == "kop\n\n---\n❓ 1 vraag · open"
 
         # The retry posts the other one and corrects the line.
         svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, mm.turn()), CONTEXT)
-        assert mm.messages[post_id] == (
-            "kop\n\n---\n❓ 2 vragen gemarkeerd · staan open"
-        )
+        assert mm.messages[post_id] == ("kop\n\n---\n❓ 2 vragen · open")
         assert len(mm.replies) == 2
 
     async def test_after_three_failures_a_thread_is_left_alone(self, db_session):
@@ -1720,7 +1822,7 @@ class TestDeStatusregel:
 
         svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
-        assert mm.messages[post_id].endswith("❓ Vraag gemarkeerd · staat open")
+        assert mm.messages[post_id].endswith("❓ 1 vraag · open")
         assert (await _markeringen(db_session, sessie_id))[0][4] is not None
         # The thread itself is not posted again.
         assert len(mm.replies) == 1
@@ -1746,7 +1848,7 @@ class TestDeStatusregel:
 
         svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
-        assert mm.messages[post_id].endswith("❓ Vraag gemarkeerd · staat open")
+        assert mm.messages[post_id].endswith("❓ 1 vraag · open")
 
     async def test_a_message_that_is_gone_is_not_tried_forever(self, db_session):
         sessie_id, mm, svc, post_id = await self._een_vraag(db_session)
@@ -1766,7 +1868,7 @@ class TestDeStatusregel:
 
     async def test_a_line_that_is_already_right_is_not_written(self, db_session):
         sessie_id, mm, svc, post_id = await self._een_vraag(
-            db_session, "kop\n\n---\n❓ Vraag gemarkeerd · staat open"
+            db_session, "kop\n\n---\n❓ 1 vraag · open"
         )
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
         assert mm.updates == []
@@ -1784,7 +1886,7 @@ class TestDeStatusregel:
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
 
         assert mm.messages[post_id] == (
-            "kop\neen zin. En meer.\n\n---\n❓ Vraag gemarkeerd · staat open"
+            "kop\neen zin. En meer.\n\n---\n❓ 1 vraag · open"
         )
 
     async def test_the_props_of_the_message_are_kept(self, db_session):
@@ -1796,10 +1898,242 @@ class TestDeStatusregel:
     async def test_the_block_for_whoever_rewrites_the_message(self, db_session):
         sessie_id, mm, svc, post_id = await self._een_vraag(db_session)
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
-        assert await statusblok_voor_post(db_session, post_id) == (
-            "❓ Vraag gemarkeerd · staat open"
-        )
+        assert await statusblok_voor_post(db_session, post_id) == ("❓ 1 vraag · open")
         assert await statusblok_voor_post(db_session, "ander") == ""
+
+
+# --- when in the turn the question was asked ---------------------------
+
+A_START = datetime.fromisoformat(KAMERLID_A["start"])
+
+
+def _lines_at(tekst: str, cuts: dict[str, float]) -> tuple[Line, ...]:
+    """The text of Kamerlid A as subtitle lines, a new one where each of
+    `cuts` begins, that many seconds into the turn."""
+    marks = sorted((tekst.index(begin), seconds) for begin, seconds in cuts.items())
+    lines = [Line(A_START + timedelta(seconds=1), tekst[: marks[0][0]])]
+    for n, (at, seconds) in enumerate(marks):
+        end = marks[n + 1][0] if n + 1 < len(marks) else len(tekst)
+        lines.append(Line(A_START + timedelta(seconds=seconds), tekst[at:end]))
+    return tuple(lines)
+
+
+def _link(seconds: float) -> str:
+    at = (A_START + timedelta(seconds=seconds)).strftime("%H%%3A%M%%3A%S")
+    return f"https://debatdirect.example/debat?event=speaker2026-10-05T{at}%2B0200"
+
+
+class TestHetMomentVanDeVraag:
+    TEKST = KAMERLID_A["tekst"]
+    # 10:02:23 plus these: 10:07:23, 10:10:43 and 10:13:13.
+    LINES = _lines_at(
+        TEKST,
+        {
+            "Klopt het dat wordt bezuinigd": 300,
+            "Worden die termijnen": 500,
+            "Is de minister bereid om toe te zeggen": 650,
+        },
+    )
+
+    async def _ask(self, db_session, *vragen: dict, **beurt):
+        sessie_id = await _sessie(db_session)
+        mm = FakeMattermost()
+        svc = DebatVraagService(db_session, mm, FakeLLM(antwoord(*vragen)))
+        values = {"lines": self.LINES, **beurt}
+        await svc.beoordeel_beurt(
+            _beurt(sessie_id, KAMERLID_A, mm.turn(), **values), CONTEXT
+        )
+        moments = (
+            (
+                await db_session.execute(
+                    select(DebatMarkering.vraag_moment)
+                    .where(DebatMarkering.sessie_id == sessie_id)
+                    .order_by(DebatMarkering.volgnummer)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return moments, [text.split("\n")[1] for _, _, text, _ in mm.replies]
+
+    async def test_each_question_gets_the_moment_of_the_line_it_begins_in(
+        self, db_session
+    ):
+        moments, regels = await self._ask(
+            db_session, vraag(Q_ARTSEN), vraag(Q_CAMPAGNE)
+        )
+
+        assert moments == [
+            A_START + timedelta(seconds=300),
+            A_START + timedelta(seconds=650),
+        ]
+        # The time of the question, and a link that opens 5 seconds before.
+        assert regels == [
+            f"Vraag 1 · aan de minister · [10:07]({_link(295)})",
+            f"Vraag 2 · aan de minister · [10:13]({_link(645)})",
+        ]
+
+    async def test_a_quote_the_model_repaired_is_found_where_it_stands(
+        self, db_session
+    ):
+        repaired = Q_CAMPAGNE.replace("PTSD-gerealiteerde", "PTSS-gerelateerde")
+        assert repaired not in self.TEKST
+
+        moments, _ = await self._ask(db_session, vraag(repaired))
+
+        assert moments == [A_START + timedelta(seconds=650)]
+
+    async def test_a_quote_in_pieces_has_the_moment_of_its_first_piece(
+        self, db_session
+    ):
+        moments, _ = await self._ask(
+            db_session,
+            vraag(
+                "Klopt het dat wordt bezuinigd [...] "
+                "Worden die termijnen daadwerkelijk gehaald?"
+            ),
+        )
+
+        assert moments == [A_START + timedelta(seconds=300)]
+
+    async def test_a_quote_that_begins_halfway_a_line(self, db_session):
+        moments, _ = await self._ask(db_session, vraag(Q_TERMIJNEN[7:]))
+
+        assert moments == [A_START + timedelta(seconds=500)]
+
+    async def test_without_lines_the_time_is_the_start_of_the_turn(self, db_session):
+        moments, regels = await self._ask(db_session, vraag(Q_ARTSEN), lines=())
+
+        assert moments == [None]
+        assert regels == [
+            f"Vraag 1 · aan de minister · [10:02]({MOMENT_URL})"
+            " (begin van de spreekbeurt)"
+        ]
+
+    async def test_lines_that_are_not_the_text_of_the_turn_are_not_used(
+        self, db_session
+    ):
+        """A line moved to the next turn after the text was read."""
+        moments, regels = await self._ask(
+            db_session, vraag(Q_ARTSEN), lines=self.LINES[:-1]
+        )
+
+        assert moments == [None]
+        assert regels[0].endswith("(begin van de spreekbeurt)")
+
+    async def test_a_line_from_before_the_turn_is_the_start_of_the_turn(
+        self, db_session
+    ):
+        """The voices can give a turn a line from just before its event."""
+        early = (Line(A_START - timedelta(seconds=4), self.TEKST),)
+
+        moments, regels = await self._ask(db_session, vraag(Q_ARTSEN), lines=early)
+
+        assert moments == [A_START]
+        # The moment is known, so nothing is said about it.
+        assert regels == [f"Vraag 1 · aan de minister · [10:02]({MOMENT_URL})"]
+
+    async def test_a_thread_posted_later_says_the_same_moment(self, db_session):
+        sessie_id = await _sessie(db_session)
+        mm = FakeMattermost()
+        mm.fail_sends = 1
+        svc = DebatVraagService(db_session, mm, FakeLLM(antwoord(vraag(Q_ARTSEN))))
+        beurt = _beurt(sessie_id, KAMERLID_A, mm.turn(), lines=self.LINES)
+        await svc.beoordeel_beurt(beurt, CONTEXT)
+        assert mm.replies == []
+
+        # Another service, long after: nothing but the row to go by.
+        await DebatVraagService(db_session, mm, FakeLLM())._haal_achterstand_in(
+            sessie_id
+        )
+
+        assert mm.replies[0][2].split("\n")[1] == (
+            f"Vraag 1 · aan de minister · [10:07]({_link(295)})"
+        )
+
+
+class TestDeNootStaatEenKeerInDeDraad:
+    """That the quotes are literal is said under the first reply that got
+    into the thread, whichever question that is."""
+
+    async def _twee(self, db_session, fail_sends: int = 0):
+        sessie_id = await _sessie(db_session)
+        mm = FakeMattermost()
+        mm.fail_sends = fail_sends
+        svc = DebatVraagService(
+            db_session, mm, FakeLLM(antwoord(vraag(Q_ARTSEN), vraag(Q_CAMPAGNE)))
+        )
+        post_id = mm.turn("kop")
+        await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
+        return sessie_id, mm, svc, post_id
+
+    @staticmethod
+    def _notes(mm) -> list[bool]:
+        return [NOOT in text for _, _, text, _ in mm.replies]
+
+    async def test_two_questions_posted_in_one_call(self, db_session):
+        _, mm, _, _ = await self._twee(db_session)
+
+        assert self._notes(mm) == [True, False]
+        assert mm.replies[0][2].endswith(f"\n\n{NOOT}")
+        assert mm.replies[1][2].endswith(f"> {Q_CAMPAGNE}")
+
+    async def test_when_the_first_post_fails_the_second_question_carries_it(
+        self, db_session
+    ):
+        sessie_id, mm, svc, _ = await self._twee(db_session, fail_sends=1)
+
+        assert [text.split("\n")[1][:7] for _, _, text, _ in mm.replies] == ["Vraag 2"]
+        assert self._notes(mm) == [True]
+
+        # The first question comes in later, under a thread that has it.
+        svc.nieuwe_ronde()
+        await svc._haal_achterstand_in(sessie_id)
+
+        assert [text.split("\n")[1][:7] for _, _, text, _ in mm.replies] == [
+            "Vraag 2",
+            "Vraag 1",
+        ]
+        assert self._notes(mm) == [True, False]
+
+    async def test_when_both_fail_the_first_to_get_in_carries_it(self, db_session):
+        sessie_id, mm, svc, _ = await self._twee(db_session, fail_sends=2)
+        assert mm.replies == []
+
+        svc.nieuwe_ronde()
+        await svc._haal_achterstand_in(sessie_id)
+
+        assert self._notes(mm) == [True, False]
+
+    async def test_a_post_that_raises_leaves_the_note_for_the_next(self, db_session):
+        sessie_id = await _sessie(db_session)
+        mm = FakeMattermost()
+        mm.raise_sends = 1
+        svc = DebatVraagService(
+            db_session, mm, FakeLLM(antwoord(vraag(Q_ARTSEN), vraag(Q_CAMPAGNE)))
+        )
+
+        await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, mm.turn()), CONTEXT)
+
+        assert self._notes(mm) == [True]
+
+    async def test_every_thread_has_its_own(self, db_session):
+        sessie_id, mm, svc, post_id = await self._twee(db_session)
+        svc.llm.answers.append(antwoord(vraag(Q_WENSELIJK)))
+        ander = mm.turn("kop van een ander")
+
+        await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_B, ander), CONTEXT)
+
+        assert [root for _, root, _, _ in mm.replies] == [post_id, post_id, ander]
+        assert self._notes(mm) == [True, False, True]
+
+    async def test_a_question_of_another_debate_under_another_message_does_not_count(
+        self, db_session
+    ):
+        await self._twee(db_session)
+        _, mm, _, _ = await self._twee(db_session)
+
+        assert self._notes(mm) == [True, False]
 
 
 # --- real sessions: what commits, and what two workers do --------------
@@ -1906,6 +2240,77 @@ class TestRealSessions:
         # And afterwards it is simply posted, for everyone.
         assert await twee._post_thread(markering_id) is False
         assert len(mm.replies) == 1
+
+    async def test_two_workers_under_one_message_leave_one_note(self, real):
+        """Two questions of one turn, each posted by another worker at the
+        same moment: both would find the thread empty and both would put
+        the note about the transcript under their reply."""
+        new_session, new_sessie = real
+        sessie_id = await new_sessie()
+        mm = FakeMattermost()
+        mm.fail_sends = 2
+        llm = FakeLLM(antwoord(vraag(Q_ARTSEN), vraag(Q_CAMPAGNE)))
+        een = DebatVraagService(new_session(), mm, llm)
+        twee = DebatVraagService(new_session(), mm, llm)
+        result = await een.beoordeel_beurt(
+            _beurt(sessie_id, KAMERLID_A, mm.turn()), CONTEXT
+        )
+        eerste, tweede = result.markering_ids
+        assert mm.replies == []
+
+        # Worker one is in the middle of posting the first question...
+        mm.gate = asyncio.Event()
+        mm.sending.clear()
+        bezig = asyncio.create_task(een._post_thread(eerste))
+        await asyncio.wait_for(mm.sending.wait(), timeout=5)
+        # ...when worker two comes by for the second, under the same message.
+        mm.sending.clear()
+        # It does not post, and does not wait: a tick must not hang on it.
+        assert await asyncio.wait_for(twee._post_thread(tweede), timeout=5) is False
+        assert not mm.sending.is_set()
+
+        mm.gate.set()
+        assert await asyncio.wait_for(bezig, timeout=5) is True
+        # Not counted as a failure, and posted the next time round.
+        rows = await _markeringen(new_session(), sessie_id)
+        assert [r[3] for r in rows] == [1, 1]
+        assert await twee._post_thread(tweede) is True
+        assert [NOOT in text for _, _, text, _ in mm.replies] == [True, False]
+
+    async def test_two_workers_under_two_messages_do_not_wait_for_each_other(
+        self, real
+    ):
+        new_session, new_sessie = real
+        sessie_id = await new_sessie()
+        mm = FakeMattermost()
+        # Nothing gets in at first, whoever tries and however often.
+        mm.fail_sends = 10
+        een = DebatVraagService(new_session(), mm, FakeLLM(antwoord(vraag(Q_ARTSEN))))
+        twee = DebatVraagService(
+            new_session(), mm, FakeLLM(antwoord(vraag(Q_WENSELIJK)))
+        )
+        (eerste,) = (
+            await een.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, mm.turn()), CONTEXT)
+        ).markering_ids
+        (tweede,) = (
+            await twee.beoordeel_beurt(
+                _beurt(sessie_id, KAMERLID_B, mm.turn()), CONTEXT
+            )
+        ).markering_ids
+        assert mm.replies == []
+        mm.fail_sends = 0
+
+        mm.gate = asyncio.Event()
+        mm.sending.clear()
+        bezig = asyncio.create_task(een._post_thread(eerste))
+        await asyncio.wait_for(mm.sending.wait(), timeout=5)
+        ander = asyncio.create_task(twee._post_thread(tweede))
+        await asyncio.sleep(0.2)
+        mm.gate.set()
+
+        assert await asyncio.wait_for(bezig, timeout=5) is True
+        assert await asyncio.wait_for(ander, timeout=5) is True
+        assert [NOOT in text for _, _, text, _ in mm.replies] == [True, True]
 
     async def test_two_workers_store_a_turn_once(self, real):
         new_session, new_sessie = real
