@@ -48,7 +48,6 @@ from bouwmeester.services.debat_kanaal_service import AMSTERDAM
 from bouwmeester.services.debat_stemmen_service import (
     AFTER,
     BEFORE,
-    RETRY_FOR,
     WAIT,
 )
 from bouwmeester.services.debat_tijdlijn_service import (
@@ -85,11 +84,14 @@ REACH = max(BEFORE, AFTER)
 # 75 seconds for a while, to give the voices time whether they needed it or
 # not; they mostly need less, and now and then minutes.
 MARGIN = REACH
-# A line the voices have not decided about is not looked at by them any
-# more after `RETRY_FOR`, whatever is kept about it: from then on it cannot
-# move. A minute more, because a round of the timeline that began just
-# before that moment still may.
-NEVER_MOVES_AFTER = RETRY_FOR + timedelta(minutes=1)
+# How long a turn waits for a line the voices have not decided about. The
+# voices keep trying for ten minutes (`RETRY_FOR`), for a voice that is
+# learned late or audio that was away; a thread that comes ten minutes
+# after the question is of no use to who has to answer it. Past this the
+# turn is read as it is. A line of a turn that was read is not moved any
+# more (see `_assign` of the voices), so a late decision cannot leave a
+# thread under the wrong speaker: the line stays where the time put it.
+NEVER_MOVES_AFTER = timedelta(minutes=3)
 # Turns per debate per round. Normally one or two are waiting; this is for
 # after the model was away, so that catching up does not hold up the other
 # debates or keep the heartbeat silent for minutes.

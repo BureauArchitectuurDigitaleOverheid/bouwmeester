@@ -79,6 +79,17 @@ SPEAKING = [(60, 1), (188, 2), (230, 1), (360, 3)]
 ASKED_AT = 186
 
 
+@pytest.fixture
+def long_wait(monkeypatch):
+    """A turn waiting as long as the voices keep trying, and a minute.
+
+    How the waiting works is tested with that long wait: the moments in
+    these tests are minutes apart. In production a turn waits three minutes
+    at most; `TestTheWaitHasAnEnd` is about that.
+    """
+    monkeypatch.setattr(mod, "NEVER_MOVES_AFTER", RETRY_FOR + timedelta(minutes=1))
+
+
 class Marks(FakeLLM):
     """A model that finds the one question, in whatever turn it is."""
 
@@ -202,6 +213,7 @@ class TestAQuestionAtTheEdge:
         # than a turn was read before lines were waited for.
         assert await debate.read() == {"a@60": 240, "b@180": 300, "a@240": 420}
 
+    @pytest.mark.usefixtures("long_wait")
     async def test_a_voice_that_is_known_minutes_later_is_waited_for(
         self, db_session, monkeypatch
     ):
@@ -272,6 +284,7 @@ class TestAQuestionAtTheEdge:
         assert not any(done for *_, done in where.values())
         assert await debate.read() == {"a@60": 240, "b@180": 300, "a@240": 420}
 
+    @pytest.mark.usefixtures("long_wait")
     async def test_audio_that_never_comes_does_not_keep_a_turn_waiting_for_ever(
         self, db_session, monkeypatch
     ):
@@ -294,6 +307,7 @@ class TestAQuestionAtTheEdge:
         assert where[Q_WANNEER] == ("interrupter", "b", 180, "tijd", True)
         assert await debate.threads() == ["b@180"]
 
+    @pytest.mark.usefixtures("long_wait")
     async def test_lines_nobody_ever_settles_do_not_keep_a_turn_waiting_for_ever(
         self, db_session, monkeypatch
     ):
@@ -316,7 +330,7 @@ class TestAQuestionAtTheEdge:
         where = await _where(db_session, sessie)
         assert not any(done for *_, done in where.values())
         read = await debate.read()
-        cap = ASKED_AT + NEVER_MOVES_AFTER.total_seconds()
+        cap = ASKED_AT + mod.NEVER_MOVES_AFTER.total_seconds()
         assert cap < read["a@60"] <= cap + 10
         assert set(read) == {"a@60", "b@180", "a@240"}
 
@@ -366,6 +380,7 @@ class TestAPartThatHasEnded:
         assert (await debate.read())["b@180"] == 240 + AFTER_END.total_seconds() + 10
         assert await debate.threads() == ["b@180"]
 
+    @pytest.mark.usefixtures("long_wait")
     async def test_lines_that_wait_at_the_end_are_waited_for_and_then_given_up_on(
         self, db_session, monkeypatch
     ):
@@ -535,8 +550,10 @@ class TestRowsInPlay:
             self._play(185, NEVER_MOVES_AFTER + timedelta(seconds=1), "b@180") == set()
         )
 
-    def test_the_voices_are_given_longer_than_they_take(self):
-        assert NEVER_MOVES_AFTER > RETRY_FOR
+    def test_a_turn_does_not_wait_as_long_as_the_voices_keep_trying(self):
+        """A thread ten minutes after the question helps nobody. What the
+        voices decide later is not applied to a turn that was read."""
+        assert WAIT < NEVER_MOVES_AFTER <= timedelta(minutes=3) < RETRY_FOR
 
     def test_no_lines_nothing_in_play(self):
         assert rows_in_play(self.TURNS, [], _now(300)) == set()
@@ -706,6 +723,7 @@ class TestWhichTurnsWait:
     async def _read(self, db_session, *rows) -> list[bool]:
         return [await _at(db_session, row) is not None for row in rows]
 
+    @pytest.mark.usefixtures("long_wait")
     async def test_a_line_at_the_edge_holds_both_turns_and_no_other(
         self, db_session, monkeypatch
     ):
@@ -848,6 +866,7 @@ class TestWhichTurnsWait:
         await _tick(db_session, mm, FakeLLM(), young + 1)
         assert await self._read(db_session, a, b) == [True, True]
 
+    @pytest.mark.usefixtures("long_wait")
     async def test_a_line_under_the_chairman_inside_a_turn_holds_that_turn(
         self, db_session, monkeypatch
     ):
