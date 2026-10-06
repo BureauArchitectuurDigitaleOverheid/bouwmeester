@@ -12,16 +12,22 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, select, update
+from sqlalchemy import ColumnElement, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
 from bouwmeester.core.permissions import require_permission
+from bouwmeester.models.debat_markering import (
+    SOORT_VRAAG,
+    STATUS_OPEN,
+    DebatMarkering,
+)
 from bouwmeester.models.debat_sessie import (
     TIJDLIJN_AFGELAST,
     TIJDLIJN_AFGELOPEN,
@@ -40,6 +46,8 @@ from bouwmeester.schema.debat import (
     DebatStartResponse,
     DebatTeam,
     DebatVolgenResponse,
+    GevolgdDebat,
+    GevolgdeDebattenResponse,
 )
 from bouwmeester.services import debat_direct as dd
 from bouwmeester.services import debat_stand
@@ -54,7 +62,12 @@ from bouwmeester.services.mattermost_service import (
     MattermostUnavailableError,
 )
 from bouwmeester.services.mattermost_utils import escape_mattermost_prose
-from bouwmeester.services.tk_activiteit import Activiteit, TkApiError, list_upcoming
+from bouwmeester.services.tk_activiteit import (
+    LOOKBACK,
+    Activiteit,
+    TkApiError,
+    list_upcoming,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +79,8 @@ _TK_TIMEOUT = 20.0
 # coming weeks does not change by the minute, and without this every open
 # tab asks the Kamer for up to four pages a minute.
 UPCOMING_SECONDS = 300.0
+# How many days ahead the page looks, unless it asks otherwise.
+UPCOMING_DAGEN = 21
 
 
 class UpcomingCache:
@@ -81,6 +96,14 @@ class UpcomingCache:
 
     def clear(self) -> None:
         self._kept.clear()
+
+    def find(self, activiteit_id: str) -> Activiteit | None:
+        """A meeting as it was last read, without asking the Kamer again."""
+        for _, activiteiten in self._kept.values():
+            for activiteit in activiteiten:
+                if activiteit.id == activiteit_id:
+                    return activiteit
+        return None
 
     def _fresh(self, dagen: int) -> list[Activiteit] | None:
         kept = self._kept.get(dagen)
@@ -114,6 +137,9 @@ _MAX_CHANNEL_CHECKS = 20
 # The statuses in which the timeline still looks at a sessie. The same three
 # its tick selects on; anything else it leaves alone.
 _FOLLOWED = (None, TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT)
+
+# The statuses in which the timeline is done with a sessie.
+_OVER = (TIJDLIJN_AFGELOPEN, TIJDLIJN_AFGELAST)
 
 # What says whether a debate is in a break: the last of these to happen.
 _BREAK_EVENTS = (
@@ -201,6 +227,10 @@ class _Teams:
     # Mattermost could not be asked: not a "no", so not a 403.
     unavailable: bool = False
     mattermost_user_id: str | None = None
+    # The person is, as far as Mattermost says, in none of the bot's teams,
+    # and gets all of them so the page is not dead. Fine for starting a
+    # channel; not a reason to show what every team did.
+    every_team: bool = False
 
     @property
     def team_ids(self) -> set[str]:
@@ -257,6 +287,7 @@ async def _teams_for(
                     ", ".join(sorted(permissions)),
                 )
                 team_ids = list(permissions)
+                result.every_team = True
     except (MattermostUnavailableError, ValueError):
         logger.warning("Teams van de bot niet op te vragen", exc_info=True)
         return _Teams(melding="Mattermost is nu niet bereikbaar.", unavailable=True)
@@ -278,10 +309,44 @@ async def _teams_for(
     return result
 
 
+async def _standen(
+    activiteiten: list[Activiteit], known: dict[str, set[str]], now: datetime
+) -> dict[str, debat_stand.Stand]:
+    """Where each debate stands, from one reading of today's agenda.
+
+    Without Debat Direct there are no marks, and the list comes back as it
+    always did.
+    """
+    standen: dict[str, debat_stand.Stand] = {}
+    agenda = await debat_stand.AGENDA.today(now)
+    for a in activiteiten if agenda else []:
+        stand = debat_stand.stand_of(
+            debat_stand.parts_of(a, agenda or [], known.get(a.id, ()))
+        )
+        if stand is not None:
+            standen[a.id] = stand
+    return standen
+
+
+def _on_the_list(
+    a: Activiteit, standen: dict[str, debat_stand.Stand], now: datetime
+) -> bool:
+    """Whether the upcoming list shows this meeting.
+
+    Past its planned end: only while Debat Direct says it is still on. The
+    list of followed debates leaves out exactly what this lets through, so
+    a debate is on one of the two and never on both.
+    """
+    if a.einde is None or a.einde >= now:
+        return True
+    stand = standen.get(a.id)
+    return stand is not None and stand.stand in debat_stand.STAND_NU
+
+
 @router.get("/aankomend", response_model=AankomendeDebattenResponse)
 async def list_aankomende_debatten(
     current_user: OptionalUser,
-    dagen: int = Query(21, ge=1, le=60),
+    dagen: int = Query(UPCOMING_DAGEN, ge=1, le=60),
     db: AsyncSession = Depends(get_db),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> AankomendeDebattenResponse:
@@ -357,16 +422,7 @@ async def list_aankomende_debatten(
     finally:
         await mattermost.close()
 
-    # Where each debate stands, from one reading of today's agenda. Without
-    # Debat Direct the list comes back as it always did, without the marks.
-    standen: dict[str, debat_stand.Stand] = {}
-    agenda = await debat_stand.AGENDA.today(now)
-    for a in activiteiten if agenda else []:
-        stand = debat_stand.stand_of(
-            debat_stand.parts_of(a, agenda or [], known.get(a.id, ()))
-        )
-        if stand is not None:
-            standen[a.id] = stand
+    standen = await _standen(activiteiten, known, now)
     in_a_break = await _in_a_break(
         db,
         [
@@ -383,14 +439,7 @@ async def list_aankomende_debatten(
                 debat_stand.STAND_GESCHORST, standen[activiteit_id].begonnen_om
             )
 
-    def on_the_list(a: Activiteit) -> bool:
-        # Past its planned end: only while Debat Direct says it is still on.
-        if a.einde is None or a.einde >= now:
-            return True
-        stand = standen.get(a.id)
-        return stand is not None and stand.stand in debat_stand.STAND_NU
-
-    activiteiten = [a for a in activiteiten if on_the_list(a)]
+    activiteiten = [a for a in activiteiten if _on_the_list(a, standen, now)]
 
     return AankomendeDebattenResponse(
         debatten=[
@@ -412,6 +461,228 @@ async def list_aankomende_debatten(
         teams=allowed.teams,
         mattermost_melding=allowed.melding,
     )
+
+
+def _has_channel() -> list[ColumnElement[bool]]:
+    # A claim without a channel is a start that is running or broke off.
+    return [DebatSessie.channel_id.is_not(None), DebatSessie.channel_name.is_not(None)]
+
+
+async def _upcoming_with_a_channel(
+    db: AsyncSession, team_ids: set[str], now: datetime
+) -> set[str] | None:
+    """The meetings the upcoming list shows that have a channel in these teams.
+
+    ``None`` when the agenda of the Kamer cannot be had; the upcoming list
+    then shows nothing either.
+
+    The same reading as the upcoming list uses: kept for five minutes and
+    shared, so the page that asks for both lists costs the Kamer one
+    reading, and usually none.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_TK_TIMEOUT) as client:
+            activiteiten = await UPCOMING.get(client, UPCOMING_DAGEN)
+    except TkApiError:
+        return None
+    ids = [a.id for a in activiteiten]
+    if not ids:
+        return set()
+    rows = (
+        await db.execute(
+            select(DebatSessie.activiteit_id, DebatSessie.debat_direct_ids).where(
+                DebatSessie.activiteit_id.in_(ids),
+                DebatSessie.team_id.in_(team_ids),
+                *_has_channel(),
+            )
+        )
+    ).all()
+    known: dict[str, set[str]] = {}
+    for activiteit_id, parts in rows:
+        known.setdefault(activiteit_id, set()).update(parts or [])
+    if not known:
+        return set()
+    standen = await _standen(activiteiten, known, now)
+    return {
+        a.id for a in activiteiten if a.id in known and _on_the_list(a, standen, now)
+    }
+
+
+async def _counts(
+    db: AsyncSession, sessie_ids: list[uuid.UUID]
+) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, tuple[int, int]]]:
+    """Messages and marked questions per sessie, in one query each."""
+    if not sessie_ids:
+        return {}, {}
+    berichten = {
+        sessie_id: count
+        for sessie_id, count in (
+            await db.execute(
+                select(DebatSpreekbeurt.sessie_id, func.count())
+                .where(
+                    DebatSpreekbeurt.sessie_id.in_(sessie_ids),
+                    DebatSpreekbeurt.post_id.is_not(None),
+                )
+                .group_by(DebatSpreekbeurt.sessie_id)
+            )
+        ).all()
+    }
+    vragen = {
+        sessie_id: (total, still_open)
+        for sessie_id, total, still_open in (
+            await db.execute(
+                select(
+                    DebatMarkering.sessie_id,
+                    func.count(),
+                    func.count().filter(DebatMarkering.status == STATUS_OPEN),
+                )
+                .where(
+                    DebatMarkering.sessie_id.in_(sessie_ids),
+                    DebatMarkering.soort == SOORT_VRAAG,
+                )
+                .group_by(DebatMarkering.sessie_id)
+            )
+        ).all()
+    }
+    return berichten, vragen
+
+
+@router.get("/gevolgd", response_model=GevolgdeDebattenResponse)
+async def list_gevolgde_debatten(
+    current_user: OptionalUser,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    _perm=Depends(require_permission("parlementair:read")),
+) -> GevolgdeDebattenResponse:
+    """The debates the teams of this person followed that are over.
+
+    Newest first. A sessie is here when it has a channel in a team this
+    person is in, the upcoming list does not show its meeting, and it is
+    over: the timeline closed it, or its start has passed. From the
+    database alone; whether a channel still exists is not asked of
+    Mattermost.
+    """
+    now = datetime.now(UTC)
+    empty = GevolgdeDebattenResponse(debatten=[], totaal=0, limit=limit, offset=offset)
+    mattermost = MattermostService(db)
+    try:
+        allowed = await _teams_for(mattermost, db, current_user)
+        # The history of a team is for who is in it. Someone who gets every
+        # team as a safety net would otherwise read the channels and the
+        # question counts of all of them, as far back as they go.
+        if not allowed.team_ids or allowed.every_team:
+            return empty
+        base_url = _browser_base(await mattermost.base_url())
+    finally:
+        await mattermost.close()
+
+    upcoming = await _upcoming_with_a_channel(db, allowed.team_ids, now)
+    # Without the agenda only the reach of the upcoming list is left to go
+    # on: what started longer ago than that is never on it.
+    started_before = now if upcoming is not None else now - LOOKBACK
+    where: list[Any] = [
+        DebatSessie.team_id.in_(allowed.team_ids),
+        *_has_channel(),
+        or_(
+            DebatSessie.tijdlijn_status.in_(_OVER),
+            DebatSessie.aanvang < started_before,
+        ),
+    ]
+    if upcoming:
+        where.append(DebatSessie.activiteit_id.not_in(upcoming))
+
+    totaal = (
+        await db.scalar(select(func.count()).select_from(DebatSessie).where(*where))
+    ) or 0
+    sessies = (
+        (
+            await db.execute(
+                select(DebatSessie)
+                .where(*where)
+                .order_by(
+                    DebatSessie.aanvang.desc().nulls_last(),
+                    DebatSessie.created_at.desc(),
+                    DebatSessie.id,
+                )
+                .limit(limit)
+                .offset(offset)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    berichten, vragen = await _counts(db, [sessie.id for sessie in sessies])
+
+    return GevolgdeDebattenResponse(
+        debatten=[
+            GevolgdDebat(
+                sessie_id=sessie.id,
+                activiteit_id=sessie.activiteit_id,
+                nummer=sessie.activiteit_nummer,
+                onderwerp=sessie.onderwerp,
+                aanvang=sessie.aanvang,
+                agenda_url=(
+                    activiteit_url(sessie.activiteit_nummer)
+                    if sessie.activiteit_nummer
+                    else None
+                ),
+                kanaal=_kanaal(
+                    sessie_id=sessie.id,
+                    team_id=sessie.team_id,
+                    channel_name=sessie.channel_name or "",
+                    tijdlijn_status=sessie.tijdlijn_status,
+                    base_url=base_url,
+                    slug=allowed.slugs.get(sessie.team_id),
+                ),
+                afloop=(
+                    sessie.tijdlijn_status if sessie.tijdlijn_status in _OVER else None
+                ),
+                berichten=berichten.get(sessie.id, 0),
+                vragen=vragen.get(sessie.id, (0, 0))[0],
+                vragen_open=vragen.get(sessie.id, (0, 0))[1],
+            )
+            for sessie in sessies
+        ],
+        totaal=totaal,
+        limit=limit,
+        offset=offset,
+    )
+
+
+async def _ended_without_channel(
+    db: AsyncSession, activiteit_id: str, team_id: str
+) -> bool:
+    """Whether Debat Direct says this debate has ended, and the team has no
+    channel for it.
+
+    A channel set up then stays empty: the audio and the subtitles of the
+    stream are gone within the hour. Told from what is at hand: the agenda
+    of the Kamer as the page last read it, and today's agenda of Debat
+    Direct, kept for half a minute. Without either the start goes ahead as
+    before.
+    """
+    rows = (
+        await db.execute(
+            select(
+                DebatSessie.team_id,
+                DebatSessie.channel_id,
+                DebatSessie.debat_direct_ids,
+            ).where(DebatSessie.activiteit_id == activiteit_id)
+        )
+    ).all()
+    # An existing channel is pointed at, whatever became of the debate.
+    if any(team == team_id and channel_id for team, channel_id, _ in rows):
+        return False
+    activiteit = UPCOMING.find(activiteit_id)
+    if activiteit is None:
+        return False
+    agenda = await debat_stand.AGENDA.today()
+    if not agenda:
+        return False
+    known = {part for _, _, parts in rows for part in parts or []}
+    stand = debat_stand.stand_of(debat_stand.parts_of(activiteit, agenda, known))
+    return stand is not None and stand.stand == debat_stand.STAND_AFGELOPEN
 
 
 def _require_team(allowed: _Teams, team_id: str) -> None:
@@ -451,6 +722,12 @@ async def start_debat(
         # The team comes from the browser, so it is checked against the
         # same list the page was given.
         _require_team(allowed, body.team_id)
+
+        if await _ended_without_channel(db, str(body.activiteit_id), body.team_id):
+            return DebatStartResponse(
+                outcome=StartOutcome.REFUSED.value,
+                melding="Dit debat is afgelopen; er valt niets meer te volgen.",
+            )
 
         result = await DebatKanaalService(db, mattermost).start_in_team(
             activiteit_id=str(body.activiteit_id),

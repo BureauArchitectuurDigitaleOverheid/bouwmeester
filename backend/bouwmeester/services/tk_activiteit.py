@@ -262,7 +262,7 @@ _MAX_PAGES = 4
 # How far back "upcoming" reaches, so a debate that is running now is still
 # in the list. Long ones exist (a wetgevingsoverleg from 11:00 to 23:00);
 # what has ended by now is dropped again further on.
-_LOOKBACK = timedelta(hours=16)
+LOOKBACK = timedelta(hours=16)
 
 
 async def list_upcoming(
@@ -287,7 +287,7 @@ async def list_upcoming(
     Raises `TkApiError` if the API cannot be read.
     """
     now = now or datetime.now(UTC)
-    start = (now - _LOOKBACK).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start = (now - LOOKBACK).strftime("%Y-%m-%dT%H:%M:%SZ")
     end = (now + timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     params = {
         "$filter": (

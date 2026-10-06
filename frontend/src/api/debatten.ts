@@ -1,8 +1,20 @@
 import { apiGet, apiPost } from './client';
-import type { AankomendeDebatten, DebatStartResult, DebatVolgenResult } from '@/types/debat';
+import type {
+  AankomendeDebatten,
+  DebatStartResult,
+  DebatVolgenResult,
+  GevolgdeDebatten,
+} from '@/types/debat';
 
 export async function getAankomendeDebatten(): Promise<AankomendeDebatten> {
   return apiGet<AankomendeDebatten>('/api/debatten/aankomend');
+}
+
+export async function getGevolgdeDebatten(
+  limit: number,
+  offset: number,
+): Promise<GevolgdeDebatten> {
+  return apiGet<GevolgdeDebatten>(`/api/debatten/gevolgd?limit=${limit}&offset=${offset}`);
 }
 
 export async function startDebat(activiteitId: string, teamId: string): Promise<DebatStartResult> {
