@@ -11,6 +11,13 @@ within ten.
 
 What a turn is, is not decided here. `load_turns` of the transcription says
 which words belong under which message, and this reads exactly those.
+
+A turn is read once, so it is read when its text is final. Around a change
+of speaker the voices decide whose a line is, seconds to minutes later, and
+a line can go to the turn before or after. A question read under one
+speaker and then moved to the other would leave a thread under the wrong
+message. So a turn waits for as long as a line can still move into or out
+of it; see `rows_in_play`.
 """
 
 from __future__ import annotations
@@ -23,23 +30,34 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import or_, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.config import get_settings
 from bouwmeester.models.debat_sessie import (
     TIJDLIJN_LOOPT,
+    DebatOndertitel,
     DebatSessie,
     DebatSpreekbeurt,
 )
 from bouwmeester.services import debat_direct as dd
+from bouwmeester.services import debat_stem as stem
+from bouwmeester.services import debat_stemmen_service as stemmen
 from bouwmeester.services import tk_activiteit
 from bouwmeester.services.debat_kanaal_service import AMSTERDAM
+from bouwmeester.services.debat_stemmen_service import (
+    AFTER,
+    BEFORE,
+    RETRY_FOR,
+    WAIT,
+)
 from bouwmeester.services.debat_tijdlijn_service import (
     END_GRACE,
     GIVE_UP_AFTER,
     LOOKAHEAD,
 )
 from bouwmeester.services.debat_transcript_service import (
+    AFTER_END,
     ORDER,
     Turn,
     _moment,
@@ -57,12 +75,21 @@ from bouwmeester.services.mattermost_service import MattermostService
 
 logger = logging.getLogger(__name__)
 
+# How far around a change of speaker a line can be the other person's, as
+# the voices have it.
+REACH = max(BEFORE, AFTER)
 # How far past the end of a turn the subtitles have to be read before its
-# text counts as complete. The moment of an event is seconds off, and the
-# lines around it are put with the right speaker by voice, which takes
-# half a minute and the delay of the audio. Read sooner, a question at the
-# edge of a turn is read as the neighbour's.
-MARGIN = timedelta(seconds=75)
+# text counts as complete: far enough that every line the voices can still
+# give to this turn has been read. From there on it is the lines that say
+# whether the turn has to wait (`rows_in_play`), not the clock. This was
+# 75 seconds for a while, to give the voices time whether they needed it or
+# not; they mostly need less, and now and then minutes.
+MARGIN = REACH
+# A line the voices have not decided about is not looked at by them any
+# more after `RETRY_FOR`, whatever is kept about it: from then on it cannot
+# move. A minute more, because a round of the timeline that began just
+# before that moment still may.
+NEVER_MOVES_AFTER = RETRY_FOR + timedelta(minutes=1)
 # Turns per debate per round. Normally one or two are waiting; this is for
 # after the model was away, so that catching up does not hold up the other
 # debates or keep the heartbeat silent for minutes.
@@ -116,8 +143,9 @@ def text_is_complete(
     entry: dict,
     next_message: datetime | None,
     part_end: datetime | None,
+    now: datetime | None = None,
 ) -> bool:
-    """Whether nothing more will be added to a turn.
+    """Whether no new line will be added to a turn.
 
     `entry` is where the reading of the subtitles of its part stands,
     `next_message` the start of the first message after it, `part_end` the
@@ -130,10 +158,70 @@ def text_is_complete(
     # never gets a margin beyond it. Past the end is complete.
     if part_end is not None and position > part_end:
         return True
+    # And it stops by the clock. The stream ends when the debate does, so
+    # the reading may never get past the end at all, and the last turns
+    # would wait for a margin that does not come.
+    if part_end is not None and now is not None and now > part_end + AFTER_END:
+        return True
     if next_message is None:
         return False
     offset = timedelta(milliseconds=entry.get("offset_ms") or 0)
     return position >= next_message + offset + MARGIN
+
+
+def voices_listen() -> bool:
+    """Whether lines are being decided about by voice in this process.
+
+    The same two things the timeline goes by. Without the model no line is
+    ever marked as decided, and a turn must not wait for that. As long as
+    nobody has looked for the model, at the start of the process, it
+    counts as there: the lines kept from before a restart can still move
+    once the voices are learned again.
+    """
+    settings = get_settings()
+    if not settings.DEBAT_STEMMEN_ENABLED:
+        return False
+    return stem.available(settings.DEBAT_STEM_MODEL_PATH) is not False
+
+
+def rows_in_play(
+    turns: list[stemmen.Turn],
+    lines: list[tuple[datetime, uuid.UUID | None]],
+    now: datetime,
+) -> set[uuid.UUID]:
+    """The events whose text can still change by a line moving.
+
+    `turns` are the events of one part as the voices see them, `lines` the
+    lines of it that are not decided about, each with its moment and the
+    event it is under now. Asked of the code that moves them:
+
+    * A line the voices have not looked at yet, because the events around
+      it may not all be in, can end up under anything it is near.
+    * After that, a line near a change of speaker can go to the nearest
+      turn of whoever is around that change, and can leave where it is.
+    * A line that is not near a change stays where it is, and so does one
+      the voices have given up on.
+    """
+    found: set[uuid.UUID] = set()
+    for start, row_id in lines:
+        if now - start > NEVER_MOVES_AFTER:
+            continue
+        if now - start < WAIT:
+            reached = [turn for turn in turns if turn.distance(start) <= REACH]
+        else:
+            around = stemmen.candidates(turns, start)
+            persons = dict.fromkeys(turn.person for turn in around)
+            reached = [
+                stemmen.nearest(turns, person, start)
+                for person in persons
+                if person is not None
+            ]
+            if not reached:
+                continue
+        found.update(turn.row_id for turn in reached)
+        if row_id is not None:
+            found.add(row_id)
+    return found
 
 
 class _Pause:
@@ -221,7 +309,7 @@ class DebatVraagWorker:
                 if _pause.waiting(sessie_id, now):
                     continue
                 try:
-                    waiting = await self._waiting(sessie_id)
+                    waiting = await self._waiting(sessie_id, now)
                     if not waiting:
                         continue
                     if vragen is None:
@@ -242,8 +330,8 @@ class DebatVraagWorker:
             return DebatVraagService(self.session, self.mattermost, self.llm)
         return await DebatVraagService.create(self.session, self.mattermost)
 
-    async def _waiting(self, sessie_id: uuid.UUID) -> list[_Waiting]:
-        """The turns of a debate that are over and have not been read."""
+    async def _waiting(self, sessie_id: uuid.UUID, now: datetime) -> list[_Waiting]:
+        """The turns of a debate that are over, final and not read yet."""
         sessie = (
             await self.session.execute(
                 select(DebatSessie.debat_direct_ids, DebatSessie.ondertitels).where(
@@ -255,8 +343,8 @@ class DebatVraagWorker:
             return []
         parts, ondertitels = list(sessie[0] or []), dict(sessie[1] or {})
 
-        # Every message of the debate in the order of the channel, and
-        # where each part ended. A turn is over when a message follows it.
+        # Every event of the debate in the order of the channel, and where
+        # each part ended. A turn is over when a message follows it.
         marks = (
             await self.session.execute(
                 select(
@@ -265,21 +353,18 @@ class DebatVraagWorker:
                     DebatSpreekbeurt.event_type,
                     DebatSpreekbeurt.event_start,
                     DebatSpreekbeurt.post_id,
+                    DebatSpreekbeurt.object_id,
                 )
-                .where(
-                    DebatSpreekbeurt.sessie_id == sessie_id,
-                    or_(
-                        DebatSpreekbeurt.post_id.is_not(None),
-                        DebatSpreekbeurt.event_type == dd.EVENT_DEBATE_END,
-                    ),
-                )
+                .where(DebatSpreekbeurt.sessie_id == sessie_id)
                 .order_by(*ORDER)
             )
         ).all()
         next_message: dict[uuid.UUID, datetime] = {}
         ends: dict[str, datetime] = {}
+        events: dict[str, list[tuple]] = {}
         previous: uuid.UUID | None = None
-        for row_id, debate_id, kind, start, post_id in marks:
+        for row_id, debate_id, kind, start, post_id, who in marks:
+            events.setdefault(debate_id, []).append((row_id, kind, start, who))
             if kind == dd.EVENT_DEBATE_END:
                 ends[debate_id] = start
             if post_id:
@@ -287,26 +372,82 @@ class DebatVraagWorker:
                     next_message[previous] = start
                 previous = row_id
 
+        # The parts whose lines the voices decide about: with a model, and
+        # with audio to listen to. In any other part a line stays where
+        # the time put it, and nothing is waited for.
+        heard = [
+            debate_id
+            for debate_id in parts
+            if (ondertitels.get(debate_id) or {}).get("audio")
+        ]
+        open_lines = await self._open_lines(sessie_id, heard, now)
+
         waiting: list[_Waiting] = []
         for debate_id in parts:
             entry = dict(ondertitels.get(debate_id) or {})
             turns = await load_turns(self.session, sessie_id, debate_id)
+            unsettled: set[uuid.UUID] = set()
+            if debate_id in open_lines:
+                voiced = stemmen.as_turns(events.get(debate_id, []))
+                under = stemmen.message_of(voiced, {turn.row_id for turn in turns})
+                unsettled = {
+                    under[row_id]
+                    for row_id in rows_in_play(voiced, open_lines[debate_id], now)
+                    if row_id in under
+                }
             floor: Turn | None = None
             for turn in turns:
                 if turn.closing:
                     # A suspension or the end, with the words of the
                     # chairman under it. Nobody's turn at speaking.
                     continue
-                if turn.beoordeeld_at is None and text_is_complete(
-                    entry, next_message.get(turn.row_id), ends.get(debate_id)
+                if (
+                    turn.beoordeeld_at is None
+                    and turn.row_id not in unsettled
+                    and text_is_complete(
+                        entry, next_message.get(turn.row_id), ends.get(debate_id), now
+                    )
                 ):
                     waiting.append(_Waiting(turn, floor, turns[0].start))
                 if turn.key[0] == dd.EVENT_SPEAKER:
                     floor = turn
         # In the order they were spoken: a question asked again has to
-        # find the first time it was asked.
+        # find the first time it was asked. A turn that waits for a line
+        # does not hold up the ones after it, which can be minutes; a
+        # question it repeats from a later turn is then filed under that
+        # later one.
         waiting.sort(key=lambda w: w.turn.start)
         return waiting[:MAX_TURNS]
+
+    async def _open_lines(
+        self, sessie_id: uuid.UUID, parts: list[str], now: datetime
+    ) -> dict[str, list[tuple[datetime, uuid.UUID | None]]]:
+        """Per part, the lines the voices have not decided about yet.
+
+        One question for the whole debate, and none at all when the voices
+        are not listened to. Normally a handful of lines: the last half
+        minute, and what waits for a voice that is not known yet.
+        """
+        if not parts or not voices_listen():
+            return {}
+        rows = await self.session.execute(
+            select(
+                DebatOndertitel.debat_direct_id,
+                DebatOndertitel.start,
+                DebatOndertitel.spreekbeurt_id,
+            )
+            .where(
+                DebatOndertitel.sessie_id == sessie_id,
+                DebatOndertitel.debat_direct_id.in_(parts),
+                DebatOndertitel.stem_klaar.is_(False),
+                DebatOndertitel.start >= now - NEVER_MOVES_AFTER,
+            )
+            .order_by(DebatOndertitel.start)
+        )
+        found: dict[str, list[tuple[datetime, uuid.UUID | None]]] = {}
+        for debate_id, start, row_id in rows.all():
+            found.setdefault(debate_id, []).append((start, row_id))
+        return found
 
     async def _read(
         self,
