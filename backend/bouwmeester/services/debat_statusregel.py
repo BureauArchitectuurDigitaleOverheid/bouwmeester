@@ -45,6 +45,7 @@ from bouwmeester.models.debat_markering import (
     STATUS_BEANTWOORD,
     STATUS_OPEN,
     STATUS_TOEGEWEZEN,
+    STATUS_VERVALT,
     STATUS_VERWORPEN,
 )
 
@@ -65,6 +66,11 @@ _STATUS_LABEL: dict[str, tuple[str, str, str]] = {
     STATUS_TOEGEWEZEN: ("wordt opgepakt", "worden opgepakt", "opgepakt"),
     STATUS_ANTWOORD_KLAAR: ("antwoord klaar", "antwoord klaar", "antwoord klaar"),
     STATUS_BEANTWOORD: ("beantwoord", "beantwoord", "beantwoord"),
+    STATUS_VERVALT: (
+        "hoeft geen antwoord",
+        "hoeven geen antwoord",
+        "hoeft geen antwoord",
+    ),
 }
 
 

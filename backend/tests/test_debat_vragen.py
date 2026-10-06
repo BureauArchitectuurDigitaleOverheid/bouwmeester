@@ -218,6 +218,11 @@ class FakeMattermost:
         self.messages[post_id] = message
         return True
 
+    async def add_reaction(self, post_id, emoji_name) -> bool:
+        # The one reaction the bot puts under a new reply. What reactions
+        # do is tested in `test_debat_vraag_status`.
+        return True
+
 
 async def _sessie(session: AsyncSession) -> uuid.UUID:
     sessie = DebatSessie(

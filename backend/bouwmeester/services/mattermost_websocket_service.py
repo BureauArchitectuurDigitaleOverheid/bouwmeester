@@ -286,8 +286,11 @@ class MattermostWebsocketService:
         if event == "reaction_added":
             await self._dispatch_reaction_added(msg)
             return
-        # Andere events (`post_edited`, `post_deleted`, `reaction_removed`)
-        # worden in een latere PR ingehaakt.
+        if event == "reaction_removed":
+            await self._dispatch_reaction_removed(msg)
+            return
+        # Andere events (`post_edited`, `post_deleted`) worden in een latere
+        # PR ingehaakt.
 
     async def _dispatch_posted(self, msg: dict) -> None:
         data = msg.get("data") or {}
@@ -532,6 +535,67 @@ class MattermostWebsocketService:
                 await service.close()
             return True
 
+    async def _handle_vraag_reactie(self, post_id: str, emoji_name: str) -> bool:
+        """Note a reaction on the reply of a marked question in a debate.
+
+        Returns whether the post is such a reply, so the caller knows not
+        to look for another meaning of the same emoji.
+
+        All this does is mark the markering: one statement on an index.
+        Which status follows, and writing it to the channel, is for the
+        round of the questions (`DebatVraagStatusService`). That keeps the
+        read loop from waiting for Mattermost, makes a burst of clicks one
+        write, and survives a restart between the click and the write.
+
+        Who reacted is not looked at: anyone in the channel may say what
+        became of a question. Never raises: a database that is away is a
+        reaction that is not handled here, not a websocket that reconnects.
+        """
+        from bouwmeester.services.debat_vraag_status_service import (
+            is_status_reactie,
+            markeer_reactie,
+        )
+
+        # Before the database: most reactions in most channels are a
+        # thumbs-up on something else.
+        if not is_status_reactie(emoji_name):
+            return False
+        try:
+            async with async_session() as session:
+                try:
+                    handled = await markeer_reactie(session, post_id)
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+        except Exception:
+            logger.exception(
+                "Kon niet opzoeken of post %s het antwoord op een vraag is", post_id
+            )
+            return False
+        return handled
+
+    async def _dispatch_reaction_removed(self, msg: dict) -> None:
+        """A reaction that is taken away can only matter to a question.
+
+        The other reactions the bot listens to are buttons: pressing one
+        does something, and letting go does not undo it. On the reply of a
+        question a reaction is a state, and taking it away changes it.
+        """
+        reaction = self._parse_reaction(msg)
+        if reaction is None:
+            return
+        user_id = reaction.get("user_id")
+        post_id = reaction.get("post_id")
+        emoji_name = reaction.get("emoji_name")
+        if not user_id or not post_id or not emoji_name:
+            return
+        # The same guard as for a reaction that is added, for the same
+        # reason: see there.
+        if self._bot_user_id is None or user_id == self._bot_user_id:
+            return
+        await self._handle_vraag_reactie(post_id, emoji_name)
+
     async def _dispatch_reaction_added(self, msg: dict) -> None:
         """Verwerk een ``reaction_added`` event als trigger voor een
         suggested-lead approval.
@@ -580,6 +644,12 @@ class MattermostWebsocketService:
         # en zonder deze volgorde zou een wegklik op een alert in het
         # suggested-lead-pad belanden, daar niets vinden en stil verdwijnen.
         if await self._handle_debat_start(post_id, emoji_name, user_id):
+            return
+
+        # Before the two below: "x" and "white_check_mark" mean something
+        # there as well, and a reply of a question is never one of their
+        # posts.
+        if await self._handle_vraag_reactie(post_id, emoji_name):
             return
 
         if await self._verwerk_kamerstuk_reactie(post_id, emoji_name):

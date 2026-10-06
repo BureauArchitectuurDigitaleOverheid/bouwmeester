@@ -597,6 +597,29 @@ class MattermostService:
             )
             return False
 
+    async def get_post_reactions(self, post_id: str) -> list[dict] | None:
+        """The reactions that are on a post now, each with who and when.
+
+        ``None`` when they could not be fetched, which is not the same as
+        an empty list: no reactions means something to the caller. A post
+        that is gone raises ``PostNotFoundError``, as `get_post` does.
+        """
+        client = await self._get_client()
+        try:
+            resp = await client.get(f"/api/v4/posts/{post_id}/reactions")
+            if resp.status_code == 404:
+                raise PostNotFoundError(post_id)
+            resp.raise_for_status()
+            # Mattermost answers `null` and not `[]` for a post without
+            # reactions.
+            data = resp.json() or []
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Kon de reacties op post %s niet ophalen", post_id)
+            return None
+        if not isinstance(data, list):
+            return None
+        return [r for r in data if isinstance(r, dict)]
+
     async def update_post(
         self, post_id: str, message: str, props: dict | None = None
     ) -> bool:

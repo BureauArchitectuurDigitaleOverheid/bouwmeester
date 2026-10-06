@@ -1,0 +1,84 @@
+"""Remember who said what became of a marked question, and when
+
+People who follow a debate put a reaction on the reply of a question:
+answered, picked up, needs no answer, not a question. The status column was
+there already. What is added is whose reaction decided it and since when,
+and a mark for "the reactions on this reply changed": the websocket sets
+it, the round of the questions reads the reactions and writes the result.
+
+The index on `thread_post_id` is for the websocket: every reaction in every
+channel asks whether its post is the reply of a markering.
+
+Revision ID: e3b5c7d92f46
+Revises: d1a2b4c86e35
+Create Date: 2026-10-06
+
+"""
+
+import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
+
+revision: str = "e3b5c7d92f46"
+down_revision: str | None = "d1a2b4c86e35"
+branch_labels: str | None = None
+depends_on: str | None = None
+
+
+def upgrade() -> None:
+    op.add_column(
+        "debat_markering",
+        sa.Column("status_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.add_column(
+        "debat_markering",
+        sa.Column(
+            "status_door_mattermost_user_id", sa.String(length=26), nullable=True
+        ),
+    )
+    op.add_column(
+        "debat_markering",
+        sa.Column(
+            "status_door_person_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey(
+                "person.id",
+                name="fk_debat_markering_status_door_person_id",
+                ondelete="SET NULL",
+            ),
+            nullable=True,
+        ),
+    )
+    op.add_column(
+        "debat_markering",
+        sa.Column("reacties_gewijzigd_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index(
+        "ix_debat_markering_thread_post_id", "debat_markering", ["thread_post_id"]
+    )
+    op.create_index(
+        "ix_debat_markering_status_door_person_id",
+        "debat_markering",
+        ["status_door_person_id"],
+    )
+    op.create_index(
+        "ix_debat_markering_reacties_gewijzigd_at",
+        "debat_markering",
+        ["reacties_gewijzigd_at"],
+        postgresql_where=sa.text("reacties_gewijzigd_at IS NOT NULL"),
+    )
+
+
+def downgrade() -> None:
+    op.drop_index("ix_debat_markering_reacties_gewijzigd_at", "debat_markering")
+    op.drop_index("ix_debat_markering_status_door_person_id", "debat_markering")
+    op.drop_index("ix_debat_markering_thread_post_id", "debat_markering")
+    op.drop_column("debat_markering", "reacties_gewijzigd_at")
+    op.drop_constraint(
+        "fk_debat_markering_status_door_person_id",
+        "debat_markering",
+        type_="foreignkey",
+    )
+    op.drop_column("debat_markering", "status_door_person_id")
+    op.drop_column("debat_markering", "status_door_mattermost_user_id")
+    op.drop_column("debat_markering", "status_at")

@@ -45,6 +45,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.models.debat_markering import (
     SOORT_VRAAG,
     STATUS_OPEN,
+    STATUS_TOEGEWEZEN,
+    STATUS_VERWORPEN,
     VERMELDING_HERHALING,
     DebatMarkering,
     DebatMarkeringVermelding,
@@ -57,6 +59,7 @@ from bouwmeester.services.debat_statusregel import (
     met_status,
     statusregel,
 )
+from bouwmeester.services.debat_vraag_reacties import REACTIE_HINT, stand_marker
 from bouwmeester.services.llm.base import (
     DEBAT_VRAGEN_ONBEREIKBAAR,
     BaseLLMService,
@@ -87,6 +90,10 @@ MAX_POST_POGINGEN = 3
 MAX_CITAAT = 600
 MAX_SAMENVATTING = 240
 MAX_GERICHT_AAN = 80
+# What is left of a rejected markering in the channel: one line.
+MAX_VERWORPEN = 120
+# A Mattermost username is at most 64 characters.
+MAX_DOOR = 64
 
 UITKOMST_OVERGESLAGEN = "overgeslagen"
 UITKOMST_AL_BEOORDEELD = "al_beoordeeld"
@@ -360,17 +367,35 @@ def format_vraag_thread(
     stuk: str | None,
     moment: datetime,
     moment_url: str | None,
+    status: str = STATUS_OPEN,
+    door: str | None = None,
 ) -> str:
     """The reply under the message of a turn that is the thread of a question.
 
     Everything in it comes from outside: the names from Debat Direct, the
     quote from the transcript, the summary from a model that read the
     transcript. All of it is escaped.
+
+    `status` is where the question stands and `door` who picked it up, as
+    the reactions on the reply have it. Both go in front of the first line,
+    so the state of every question can be read down the left side of a
+    thread without opening anything. The reply is made from the row every
+    time, never from what is in the channel: editing it twice gives the
+    same text, and nothing in it can get lost.
     """
     wie = _vrij(_kort(spreker, 120))
     if fractie and fractie.lower() not in spreker.lower():
         wie = f"{wie} ({_vrij(fractie)})"
     tijd = _hhmm(moment)
+    if status == STATUS_VERWORPEN:
+        # One struck line instead of the whole reply struck through. In
+        # Mattermost a strike does not carry over a line break or into a
+        # quote, so the reply would keep its height with tildes in it; and
+        # what was not a question should not take up six lines. The quote
+        # and the summary stay in the row, and taking the reaction away
+        # brings the whole reply back.
+        wat = _vrij(_kort(samenvatting or citaat, MAX_VERWORPEN))
+        return f"{stand_marker(status)} · ~~{wie} · {tijd} · {wat}~~"
     if moment_url and _VEILIGE_URL.match(moment_url):
         tijd = f"[{tijd}]({moment_url})"
     regels = [f"{ICOON_VRAAG} **Vraag aan {aan_wie(gericht_aan)}** · {wie} · {tijd}"]
@@ -385,6 +410,9 @@ def format_vraag_thread(
         "_Het citaat komt letterlijk uit het automatische transcript; de tijd"
         " is het begin van de spreekbeurt._"
     )
+    marker = stand_marker(status, _vrij(_kort(door or "", MAX_DOOR)))
+    if marker:
+        regels[0] = f"{marker} · {regels[0]}"
     return "\n".join(regels)
 
 
@@ -535,6 +563,41 @@ async def statusblok_voor_post(session: AsyncSession, post_id: str) -> str:
         )
     ).all()
     return statusregel([(r[0], r[1]) for r in rows])
+
+
+async def schrijf_statusregel(
+    session: AsyncSession, mattermost: MattermostService, post_id: str
+) -> bool:
+    """Put the status block under the message of a turn.
+
+    Reads the message first and replaces only the status block, so the
+    transcript that is in it stays. ``True`` when the line is as it
+    should be, or never will be because the message is gone.
+    """
+    blok = await statusblok_voor_post(session, post_id)
+    try:
+        post = await mattermost.get_post(post_id)
+    except PostNotFoundError:
+        logger.info("Bericht %s is weg; geen statusregel", post_id)
+        return True
+    except Exception:
+        logger.exception("Bericht %s niet te lezen voor de statusregel", post_id)
+        return False
+    if not post:
+        return False
+    huidig = str(post.get("message") or "")
+    nieuw = met_status(huidig, blok)
+    if nieuw == huidig:
+        return True
+    try:
+        # The props go back as they came: an update without them is an
+        # update that clears them.
+        return bool(
+            await mattermost.update_post(post_id, nieuw, post.get("props") or None)
+        )
+    except Exception:
+        logger.exception("Statusregel op bericht %s niet geschreven", post_id)
+        return False
 
 
 class DebatVraagService:
@@ -728,6 +791,10 @@ class DebatVraagService:
     ) -> list[tuple[int, str, str, uuid.UUID]]:
         """The open questions of this speaker, as (number, who, summary, id).
 
+        A question someone picked up is still waiting for its answer, so it
+        is in the list: asked again, it is the same question and not a
+        second thread.
+
         Only their own. A question is the same question when the same
         member asks it again; two members who ask about the same thing each
         expect an answer. On a real debate the model, given everyone's open
@@ -749,7 +816,7 @@ class DebatVraagService:
                 .where(
                     DebatMarkering.sessie_id == sessie_id,
                     DebatMarkering.soort == SOORT_VRAAG,
-                    DebatMarkering.status == STATUS_OPEN,
+                    DebatMarkering.status.in_((STATUS_OPEN, STATUS_TOEGEWEZEN)),
                     DebatMarkering.spreker == spreker,
                 )
                 .order_by(DebatMarkering.volgnummer.desc())
@@ -912,7 +979,22 @@ class DebatVraagService:
                 .values(post_pogingen=DebatMarkering.post_pogingen + 1)
             )
         await self.session.commit()
+        if post_id:
+            await self._zet_hint(post_id)
         return bool(post_id)
+
+    async def _zet_hint(self, post_id: str) -> None:
+        """Put one reaction under a new reply, as something to click.
+
+        One, not the four that mean something: four under every reply is
+        more bot than debate, and the pinned message of the channel lists
+        them. After the commit and never retried: a reply without it is
+        still a reply, and people can pick the reaction themselves.
+        """
+        try:
+            await self.mattermost.add_reaction(post_id, REACTIE_HINT)
+        except Exception:
+            logger.warning("Reactie onder thread %s niet gezet", post_id, exc_info=True)
 
     async def _haal_achterstand_in(self, sessie_id: uuid.UUID) -> int:
         """Try again what an earlier call could not put in the channel."""
@@ -969,38 +1051,7 @@ class DebatVraagService:
                 await self.session.commit()
 
     async def _schrijf_statusregel(self, post_id: str) -> bool:
-        """Put the status block under the message of a turn.
-
-        Reads the message first and replaces only the status block, so the
-        transcript that is in it stays. ``True`` when the line is as it
-        should be, or never will be because the message is gone.
-        """
-        blok = await statusblok_voor_post(self.session, post_id)
-        try:
-            post = await self.mattermost.get_post(post_id)
-        except PostNotFoundError:
-            logger.info("Bericht %s is weg; geen statusregel", post_id)
-            return True
-        except Exception:
-            logger.exception("Bericht %s niet te lezen voor de statusregel", post_id)
-            return False
-        if not post:
-            return False
-        huidig = str(post.get("message") or "")
-        nieuw = met_status(huidig, blok)
-        if nieuw == huidig:
-            return True
-        try:
-            # The props go back as they came: an update without them is an
-            # update that clears them.
-            return bool(
-                await self.mattermost.update_post(
-                    post_id, nieuw, post.get("props") or None
-                )
-            )
-        except Exception:
-            logger.exception("Statusregel op bericht %s niet geschreven", post_id)
-            return False
+        return await schrijf_statusregel(self.session, self.mattermost, post_id)
 
 
 def _noemt_bewindspersoon(tekst: str) -> bool:

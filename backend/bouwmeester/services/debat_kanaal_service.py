@@ -28,6 +28,7 @@ from sqlalchemy import delete, null, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.core.config import get_settings
 from bouwmeester.models.debat_sessie import (
     TIJDLIJN_AFGELAST,
     TIJDLIJN_AFGELOPEN,
@@ -35,6 +36,7 @@ from bouwmeester.models.debat_sessie import (
 )
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.parlementair_item import ParlementairItem
+from bouwmeester.services.debat_vraag_reacties import LEGENDA
 from bouwmeester.services.mattermost_service import (
     CHANNEL_DISPLAY_NAME_MAX,
     CHANNEL_NAME_MAX,
@@ -355,11 +357,17 @@ def stukken_message(
     samenvattingen: dict[str, str] | None = None,
     *,
     now: datetime | None = None,
+    vragen: bool = False,
 ) -> str:
     """The pinned message: what is on the agenda, with links.
 
     A summary is added where Bouwmeester already has one for that document
     (it came in as an alert earlier). Nothing is summarised here.
+
+    With `vragen`, for a channel in which questions are marked, it ends
+    with which reaction on a marked question means what. Here and not in a
+    message of its own: this is the one message people are pointed to, and
+    a second pin is one more thing above the debate.
     """
     samenvattingen = samenvattingen or {}
     kop = [f"#### Geagendeerde stukken: {escape_mattermost_md(activiteit.onderwerp)}"]
@@ -379,6 +387,10 @@ def stukken_message(
         f"_Uit de agenda van de Tweede Kamer, opgehaald op {moment_nu.day} "
         f"{_MAANDEN[moment_nu.month - 1]} om {moment_nu:%H:%M}._"
     )
+    if vragen:
+        # Part of the foot, so it is still there when the agenda is cut
+        # for length.
+        voet = f"{LEGENDA}\n\n{voet}"
 
     def build(with_summaries: bool, limit: int | None) -> str:
         if activiteit.agendapunten:
@@ -728,7 +740,12 @@ class DebatKanaalService:
 
         samenvattingen = await self._summaries(activiteit)
         post_id = await self.mattermost.send_channel_message(
-            channel_id, stukken_message(activiteit, samenvattingen)
+            channel_id,
+            stukken_message(
+                activiteit,
+                samenvattingen,
+                vragen=get_settings().DEBAT_VRAGEN_ENABLED,
+            ),
         )
         if post_id:
             if not await self.mattermost.pin_post(post_id):
@@ -964,7 +981,11 @@ class DebatKanaalService:
 
         await self._update_channel_texts(existing.channel_id, activiteit)
         if existing.stukken_post_id:
-            bericht = stukken_message(activiteit, await self._summaries(activiteit))
+            bericht = stukken_message(
+                activiteit,
+                await self._summaries(activiteit),
+                vragen=get_settings().DEBAT_VRAGEN_ENABLED,
+            )
             if not await self.mattermost.update_post(existing.stukken_post_id, bericht):
                 logger.warning(
                     "Stukkenbericht %s niet bijgewerkt", existing.stukken_post_id

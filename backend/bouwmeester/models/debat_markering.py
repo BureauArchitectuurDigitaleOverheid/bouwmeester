@@ -40,11 +40,19 @@ SOORT_FEITELIJKE_CLAIM = "feitelijke_claim"
 SOORT_MOTIE = "motie"
 SOORT_VERZOEK_OM_BRIEF = "verzoek_om_brief"
 
-# Where a markering stands. Only `open` is set today.
+# Where a markering stands. A markering starts as `open`; the people who
+# follow the debate set the others with a reaction on its reply (see
+# `debat_vraag_reacties`). `antwoord_klaar` is not set by anything yet.
 STATUS_OPEN = "open"
+# Someone said they are on it.
 STATUS_TOEGEWEZEN = "toegewezen"
 STATUS_ANTWOORD_KLAAR = "antwoord_klaar"
 STATUS_BEANTWOORD = "beantwoord"
+# A real question that needs no answer from us: rhetorical, answered
+# elsewhere, or not ours. No longer open, still a question.
+STATUS_VERVALT = "vervalt"
+# Not a question at all: the marking was wrong. The row is kept, with its
+# quote and summary, because that is what the prompt is improved with.
 STATUS_VERWORPEN = "verworpen"
 
 # How a later turn relates to a markering. Only `herhaling` is written
@@ -66,6 +74,15 @@ class DebatMarkering(Base):
             "sessie_id", "volgnummer", name="uq_debat_markering_volgnummer"
         ),
         Index("ix_debat_markering_beurt_post_id", "beurt_post_id"),
+        # Every reaction in every channel of the bot asks "is this the
+        # reply of a markering", so that has to be one lookup.
+        Index("ix_debat_markering_thread_post_id", "thread_post_id"),
+        # The few rows whose reactions changed and are not worked in yet.
+        Index(
+            "ix_debat_markering_reacties_gewijzigd_at",
+            "reacties_gewijzigd_at",
+            postgresql_where=text("reacties_gewijzigd_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -95,6 +112,31 @@ class DebatMarkering(Base):
     )
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, server_default=STATUS_OPEN
+    )
+
+    # Since when the status is what it is, and whose reaction made it so.
+    # All NULL for a markering nobody reacted to; after a reaction was
+    # taken away again only `status_at` is set, to when that was noticed.
+    status_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    status_door_mattermost_user_id: Mapped[str | None] = mapped_column(
+        String(26), nullable=True
+    )
+    # The person behind that Mattermost user, if the account is linked.
+    status_door_person_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("person.id", ondelete="SET NULL"),
+        nullable=True,
+        # Removing a person looks up every row that points at them.
+        index=True,
+    )
+    # When a reaction was last put on or taken off the reply. NULL means
+    # the status, the reply and the status line all show the reactions as
+    # they are. The websocket only sets this; the round of the questions
+    # reads the reactions and writes what follows from them.
+    reacties_gewijzigd_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     channel_id: Mapped[str] = mapped_column(String(26), nullable=False)
