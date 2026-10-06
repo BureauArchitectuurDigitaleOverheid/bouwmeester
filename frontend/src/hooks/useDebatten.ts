@@ -1,5 +1,12 @@
-import { useQuery } from '@tanstack/react-query';
-import { getAankomendeDebatten, hervatDebat, startDebat, stopDebat } from '@/api/debatten';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import {
+  getAankomendeDebatten,
+  getGevolgdeDebatten,
+  hervatDebat,
+  startDebat,
+  stopDebat,
+} from '@/api/debatten';
+import { volgendeOffset } from '@/pages/debatten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
 import type { DebatStartResult, DebatVolgenResult } from '@/types/debat';
@@ -14,6 +21,24 @@ export function useAankomendeDebatten() {
     // reads Debat Direct at most once per half minute, whoever asks.
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
+  });
+}
+
+const GEVOLGD_PAGE = 20;
+
+/**
+ * The debates that were followed and are over, a page at a time.
+ *
+ * No interval: what is over does not change by the minute. A start, a stop
+ * or a resume invalidates it along with the upcoming list.
+ */
+export function useGevolgdeDebatten() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.debatten.gevolgd(),
+    queryFn: ({ pageParam }) => getGevolgdeDebatten(GEVOLGD_PAGE, pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (_last, pages) => volgendeOffset(pages),
+    staleTime: 60 * 1000,
   });
 }
 

@@ -1,8 +1,26 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AankomendDebat, DebatKanaal, DebatStartResult } from '@/types/debat';
+import type {
+  AankomendDebat,
+  DebatKanaal,
+  DebatStartResult,
+  GevolgdDebat,
+  GevolgdeDebatten,
+} from '@/types/debat';
 import {
+  afloopBadge,
   filterDebatten,
+  filterGevolgd,
+  formatBerichten,
   formatDebatRegel,
+  formatGevolgdMoment,
+  formatGevolgdRegel,
+  formatVragen,
+  gevolgdeDebatten,
+  kanaalLinkLabel,
+  kanStarten,
+  volgBadge,
+  volgendeOffset,
+  wordtNuGevolgd,
   formatRegel,
   formatTijd,
   groepeerPerDag,
@@ -433,9 +451,9 @@ describe('kanaalActie', () => {
 describe('volgTekst', () => {
   const gestopt = kanaal({ tijdlijn_status: 'afgelopen', wordt_gevolgd: false });
 
-  it('says a running debate is followed', () => {
-    expect(volgTekst(debat({ stand: 'bezig' }), [kanaal()])).toBe('wordt gevolgd');
-    expect(volgTekst(debat({ stand: 'geschorst' }), [kanaal()])).toBe('wordt gevolgd');
+  it('leaves a running debate that is followed to the badge', () => {
+    expect(volgTekst(debat({ stand: 'bezig' }), [kanaal()])).toBeNull();
+    expect(volgTekst(debat({ stand: 'geschorst' }), [kanaal()])).toBeNull();
   });
 
   it('says nothing about a debate that is still to come', () => {
@@ -453,9 +471,7 @@ describe('volgTekst', () => {
   });
 
   it('prefers the channel that is followed when another was stopped', () => {
-    expect(volgTekst(debat({ stand: 'bezig' }), [gestopt, kanaal({ team_id: 'u' })])).toBe(
-      'wordt gevolgd',
-    );
+    expect(volgTekst(debat({ stand: 'bezig' }), [gestopt, kanaal({ team_id: 'u' })])).toBeNull();
   });
 
   it('says nothing without a channel', () => {
@@ -489,11 +505,234 @@ describe('formatDebatRegel', () => {
     expect(formatDebatRegel(voorbij)).toMatch(/^16:30 tot 21:30 · /);
   });
 
-  it('ends with what the bot does', () => {
+  it('ends with that following was stopped, and leaves being followed to the badge', () => {
     const nu = debat({ stand: 'bezig', begonnen_om: '2026-10-06T16:34:00+02:00' });
-    expect(formatDebatRegel(nu, [kanaal()])).toMatch(/ · wordt gevolgd$/);
+    expect(formatDebatRegel(nu, [kanaal()])).toBe(formatDebatRegel(nu));
     expect(
       formatDebatRegel(debat(), [kanaal({ tijdlijn_status: 'afgelopen', wordt_gevolgd: false })]),
     ).toMatch(/ · volgen gestopt$/);
+  });
+});
+
+describe('wordtNuGevolgd and volgBadge', () => {
+  const gestopt = kanaal({ tijdlijn_status: 'afgelopen', wordt_gevolgd: false });
+
+  it.each(['bezig', 'geschorst'] as const)('a debate that is %s and followed has the badge', (stand) => {
+    expect(wordtNuGevolgd(debat({ stand }), [kanaal()])).toBe(true);
+    expect(volgBadge(debat({ stand }), [kanaal()])).toEqual({
+      label: 'Wordt gevolgd',
+      color: 'lintblauw',
+    });
+  });
+
+  it('is another color than the badge for where the debate stands', () => {
+    const nu = debat({ stand: 'bezig' });
+    expect(volgBadge(nu, [kanaal()])?.color).not.toBe(standBadge(nu)?.color);
+  });
+
+  it.each([null, 'niet_begonnen', 'afgelopen'] as const)(
+    'a debate that is %s has none, channel or not',
+    (stand) => {
+      expect(wordtNuGevolgd(debat({ stand }), [kanaal()])).toBe(false);
+      expect(volgBadge(debat({ stand }), [kanaal()])).toBeNull();
+    },
+  );
+
+  it('has none when following was stopped, or without a channel', () => {
+    expect(volgBadge(debat({ stand: 'bezig' }), [gestopt])).toBeNull();
+    expect(volgBadge(debat({ stand: 'bezig' }), [])).toBeNull();
+  });
+
+  it('one followed channel among several is enough', () => {
+    expect(volgBadge(debat({ stand: 'bezig' }), [gestopt, kanaal({ team_id: 'u' })])).not.toBeNull();
+  });
+});
+
+describe('kanStarten', () => {
+  it.each([null, 'niet_begonnen', 'bezig', 'geschorst'] as const)(
+    'offers the button for a debate that is %s and has no channel',
+    (stand) => {
+      expect(kanStarten(debat({ stand }), [], true)).toBe(true);
+    },
+  );
+
+  it('does not offer it for a debate that has ended: the channel would stay empty', () => {
+    expect(kanStarten(debat({ stand: 'afgelopen' }), [], true)).toBe(false);
+  });
+
+  it('does not offer it when there is a channel already', () => {
+    expect(kanStarten(debat(), [kanaal()], true)).toBe(false);
+  });
+
+  it('does not offer it where the bot may not create a channel', () => {
+    expect(kanStarten(debat(), [], false)).toBe(false);
+  });
+});
+
+describe('kanaalLinkLabel', () => {
+  it('starts with the visible label and names the channel and the debate', () => {
+    expect(kanaalLinkLabel('Digitaliserende overheid', kanaal())).toBe(
+      'Open kanaal ~debat-x-6-okt van Digitaliserende overheid',
+    );
+  });
+});
+
+function gevolgd(overrides: Partial<GevolgdDebat> = {}): GevolgdDebat {
+  return {
+    sessie_id: 's1',
+    activiteit_id: 'a1',
+    nummer: '2026A05428',
+    onderwerp: 'Digitaliserende overheid',
+    aanvang: '2026-10-06T14:30:00Z',
+    agenda_url: null,
+    kanaal: kanaal({ tijdlijn_status: 'afgelopen', wordt_gevolgd: false }),
+    afloop: 'afgelopen',
+    berichten: 0,
+    vragen: 0,
+    vragen_open: 0,
+    ...overrides,
+  };
+}
+
+function page(debatten: GevolgdDebat[], offset: number, totaal: number): GevolgdeDebatten {
+  return { debatten, totaal, limit: 20, offset };
+}
+
+describe('formatGevolgdMoment', () => {
+  it('shows day, date with the year and time, in Dutch time', () => {
+    expect(formatGevolgdMoment(gevolgd())).toBe('di 6 okt 2026, 16:30');
+  });
+
+  it('says so when the start is unknown', () => {
+    expect(formatGevolgdMoment(gevolgd({ aanvang: null }))).toBe('Datum onbekend');
+  });
+});
+
+describe('formatVragen', () => {
+  it('says how many were marked and how many are open', () => {
+    expect(formatVragen(12, 3)).toBe('12 vragen gemarkeerd, 3 open');
+  });
+
+  it('uses the singular for one', () => {
+    expect(formatVragen(1, 1)).toBe('1 vraag gemarkeerd, 1 open');
+    expect(formatVragen(2, 1)).toBe('2 vragen gemarkeerd, 1 open');
+  });
+
+  it('says so when none is open any more', () => {
+    expect(formatVragen(4, 0)).toBe('4 vragen gemarkeerd, geen open');
+  });
+
+  it('says nothing when no question was marked', () => {
+    expect(formatVragen(0, 0)).toBeNull();
+  });
+});
+
+describe('formatBerichten', () => {
+  it('counts the messages, singular for one', () => {
+    expect(formatBerichten(48)).toBe('48 berichten');
+    expect(formatBerichten(1)).toBe('1 bericht');
+  });
+
+  it('says nothing for a channel nothing was written in', () => {
+    expect(formatBerichten(0)).toBeNull();
+  });
+});
+
+describe('formatGevolgdRegel', () => {
+  it('is the moment alone when nothing came of it', () => {
+    expect(formatGevolgdRegel(gevolgd())).toBe('di 6 okt 2026, 16:30');
+  });
+
+  it('adds the messages and the questions', () => {
+    expect(formatGevolgdRegel(gevolgd({ berichten: 48, vragen: 12, vragen_open: 3 }))).toBe(
+      'di 6 okt 2026, 16:30 · 48 berichten · 12 vragen gemarkeerd, 3 open',
+    );
+  });
+
+  it('leaves out what is zero', () => {
+    expect(formatGevolgdRegel(gevolgd({ berichten: 5 }))).toBe('di 6 okt 2026, 16:30 · 5 berichten');
+  });
+});
+
+describe('afloopBadge', () => {
+  it('marks a debate that was cancelled or moved', () => {
+    expect(afloopBadge(gevolgd({ afloop: 'afgelast' }))).toEqual({
+      label: 'Afgelast of verplaatst',
+      color: 'oranje',
+    });
+  });
+
+  it.each(['afgelopen', null] as const)('says nothing for %s: stopped and ended look the same', (afloop) => {
+    expect(afloopBadge(gevolgd({ afloop }))).toBeNull();
+  });
+});
+
+describe('gevolgdeDebatten', () => {
+  it('is empty without pages', () => {
+    expect(gevolgdeDebatten([])).toEqual([]);
+  });
+
+  it('puts the pages after each other in the order they came', () => {
+    const [a, b, c] = ['a', 'b', 'c'].map((id) => gevolgd({ sessie_id: id }));
+    expect(gevolgdeDebatten([page([a, b], 0, 3), page([c], 2, 3)])).toEqual([a, b, c]);
+  });
+
+  it('keeps a debate once when the list shifted between two pages', () => {
+    const [a, b, c] = ['a', 'b', 'c'].map((id) => gevolgd({ sessie_id: id }));
+    const ids = gevolgdeDebatten([page([a, b], 0, 4), page([b, c], 2, 4)]).map((d) => d.sessie_id);
+    expect(ids).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('volgendeOffset', () => {
+  const twee = [gevolgd({ sessie_id: 'a' }), gevolgd({ sessie_id: 'b' })];
+
+  it('is where the last page stopped while there is more', () => {
+    expect(volgendeOffset([page(twee, 0, 5)])).toBe(2);
+    expect(volgendeOffset([page(twee, 0, 5), page(twee, 2, 5)])).toBe(4);
+  });
+
+  it('is nothing once everything has been read', () => {
+    expect(volgendeOffset([page(twee, 0, 2)])).toBeUndefined();
+    expect(volgendeOffset([page(twee, 0, 5), page(twee, 3, 5)])).toBeUndefined();
+  });
+
+  it('is nothing after an empty page, whatever the total says', () => {
+    expect(volgendeOffset([page([], 4, 9)])).toBeUndefined();
+  });
+
+  it('is nothing without pages', () => {
+    expect(volgendeOffset([])).toBeUndefined();
+  });
+});
+
+describe('filterGevolgd', () => {
+  const lijst = [
+    gevolgd({ sessie_id: 'a', onderwerp: 'Digitaliserende overheid' }),
+    gevolgd({
+      sessie_id: 'b',
+      onderwerp: 'Leefomgeving',
+      nummer: '2026A00001',
+      kanaal: kanaal({ channel_name: 'debat-leefomgeving-2-okt' }),
+    }),
+  ];
+  const ids = (query: string) => filterGevolgd(lijst, query).map((d) => d.sessie_id);
+
+  it('returns everything for an empty query', () => {
+    expect(filterGevolgd(lijst, '  ')).toBe(lijst);
+  });
+
+  it('matches on the subject, whatever the case', () => {
+    expect(ids('DIGITAL')).toEqual(['a']);
+  });
+
+  it('matches on the nummer and on the channel name', () => {
+    expect(ids('2026a00001')).toEqual(['b']);
+    expect(ids('2-okt')).toEqual(['b']);
+  });
+
+  it('needs every word', () => {
+    expect(ids('leefomgeving 2-okt')).toEqual(['b']);
+    expect(ids('leefomgeving overheid')).toEqual([]);
   });
 });
