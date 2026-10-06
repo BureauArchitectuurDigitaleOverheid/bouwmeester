@@ -390,6 +390,16 @@ def continues(previous: DdDebat, debat: DdDebat) -> bool:
     """
     if _recurs(previous) or _recurs(debat):
         return False
+    if (
+        previous.location_id
+        and debat.location_id
+        and previous.location_id != debat.location_id
+    ):
+        # A debate goes on in the room it was in. Meetings of different
+        # committees can carry almost the same name (procedurevergaderingen
+        # scored 0.80 and more on each other on 2 July 2026) and follow
+        # each other within the hour, in another room.
+        return False
     start = start_of(debat)
     if start is None or previous.ended_at is None:
         return False

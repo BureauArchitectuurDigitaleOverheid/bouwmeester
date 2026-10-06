@@ -22,6 +22,7 @@ import httpx
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.debat_sessie import (
@@ -381,6 +382,10 @@ class DebatTijdlijnService:
 
         fouten = result.fouten
         await self._post_new_events(sessie, client, now, result)
+        # Taken here, before the headings: a heading that cannot be
+        # rewritten is counted as an error too, and it must not keep the
+        # text of the whole debate from being read.
+        all_posted = result.fouten == fouten
         await self._write_changed(sessie, result)
         if (
             get_settings().DEBAT_TRANSCRIPT_ENABLED
@@ -388,7 +393,7 @@ class DebatTijdlijnService:
             # While a message of the timeline waits to be posted, its turn
             # is not known yet, and what is said in it would be filed
             # under the speaker before. The subtitles keep for an hour.
-            and result.fouten == fouten
+            and all_posted
         ):
             await DebatTranscript(
                 self.session, self.mattermost, await self._stemmen()
@@ -487,7 +492,8 @@ class DebatTijdlijnService:
             return False
 
         sessie.debat_direct_ids = [part.id for part in parts]
-        sessie.tijdlijn_status = TIJDLIJN_GEKOPPELD
+        if not await self._move_status(sessie, None, TIJDLIJN_GEKOPPELD):
+            return False
         first = parts[0]
         header = channel_header(
             activiteit, zaal=first.location_name, stream_url=dd.debate_url(first)
@@ -743,7 +749,10 @@ class DebatTijdlijnService:
                     last_end = max(last_end, event.start) if last_end else event.start
 
             if sessie.tijdlijn_status == TIJDLIJN_GEKOPPELD:
-                sessie.tijdlijn_status = TIJDLIJN_LOOPT
+                if not await self._move_status(
+                    sessie, TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT
+                ):
+                    return
 
         parts = list(sessie.debat_direct_ids or [])
         if parts and all(p in ended for p in parts) and last_end is not None:
@@ -761,6 +770,40 @@ class DebatTijdlijnService:
             return False
         logger.info("Kanaal %s bestaat niet meer; tijdlijn gestopt", sessie.channel_id)
         sessie.tijdlijn_status = TIJDLIJN_AFGELOPEN
+        return True
+
+    async def _move_status(
+        self, sessie: DebatSessie, expected: str | None, new: str
+    ) -> bool:
+        """Take the timeline a step further, unless someone stopped it.
+
+        The sessie was read at the start of the round. In the seconds since,
+        someone can have pressed "stoppen met volgen". Writing the status
+        from what was read then would undo that without a word: the channel
+        says it was stopped and the bot goes on. So the step is only taken
+        from the status it was read with; otherwise the status of now is
+        taken over and the round leaves the debate alone.
+        """
+        moved = (
+            await self.session.execute(
+                update(DebatSessie)
+                .where(
+                    DebatSessie.id == sessie.id,
+                    DebatSessie.tijdlijn_status.is_not_distinct_from(expected),
+                )
+                .values(tijdlijn_status=new)
+                .execution_options(synchronize_session=False)
+            )
+        ).rowcount
+        if not moved:
+            await self.session.refresh(sessie, ["tijdlijn_status"])
+            logger.info(
+                "Tijdlijn van %s is intussen %s; deze ronde laat het zo",
+                sessie.id,
+                sessie.tijdlijn_status,
+            )
+            return False
+        set_committed_value(sessie, "tijdlijn_status", new)
         return True
 
     async def _was_there_before(self, sessie_id: uuid.UUID, debat: dd.DdDebat) -> bool:

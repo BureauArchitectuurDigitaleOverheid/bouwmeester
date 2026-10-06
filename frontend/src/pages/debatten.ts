@@ -1,3 +1,4 @@
+import type { EntityColor } from '@/types';
 import type { AankomendDebat, DebatKanaal, DebatStartResult, DebatTeam } from '@/types/debat';
 
 const AMSTERDAM = 'Europe/Amsterdam';
@@ -62,6 +63,90 @@ export function groepeerPerDag(debatten: AankomendDebat[]): DebatDag[] {
     dag.debatten.push(debat);
   }
   return [...dagen.values()];
+}
+
+/** On right now: running, or in a break of a debate that is not over. */
+export function isNuBezig(debat: AankomendDebat): boolean {
+  return debat.stand === 'bezig' || debat.stand === 'geschorst';
+}
+
+/**
+ * Splits the list in what is on right now and the rest per day.
+ *
+ * What is on comes first, the one that has run longest on top; without a
+ * real start the planned one decides. The rest keeps the order the API gave.
+ */
+export function verdeelDebatten(debatten: AankomendDebat[]): {
+  nu: AankomendDebat[];
+  dagen: DebatDag[];
+} {
+  const since = (debat: AankomendDebat): number => {
+    const moment = debat.begonnen_om ?? debat.aanvang;
+    // Without any time: after the ones that have one.
+    return moment ? new Date(moment).getTime() : Number.POSITIVE_INFINITY;
+  };
+  const nu = debatten
+    .filter(isNuBezig)
+    .map((debat, index) => ({ debat, index }))
+    // The index keeps the order of the API between two that started together.
+    .sort((a, b) => {
+      const [sa, sb] = [since(a.debat), since(b.debat)];
+      return sa === sb ? a.index - b.index : sa - sb;
+    })
+    .map(({ debat }) => debat);
+  return { nu, dagen: groepeerPerDag(debatten.filter((debat) => !isNuBezig(debat))) };
+}
+
+/** The badge that says where a debate stands; none for one that is still to come. */
+export function standBadge(debat: AankomendDebat): { label: string; color: EntityColor } | null {
+  switch (debat.stand) {
+    case 'bezig':
+      return { label: 'Nu bezig', color: 'groen' };
+    case 'geschorst':
+      return { label: 'Geschorst', color: 'geel' };
+    case 'afgelopen':
+      return { label: 'Afgelopen', color: 'coolgray' };
+    default:
+      return null;
+  }
+}
+
+export type KanaalActie = 'stoppen' | 'hervatten';
+
+/**
+ * What can be done with the following of a debate in this channel.
+ *
+ * Stopping for one that is followed. Resuming only for one that was stopped
+ * while the debate is not over: a timeline that ended with its debate, or a
+ * debate that was cancelled, has nothing left to follow.
+ */
+export function kanaalActie(debat: AankomendDebat, kanaal: DebatKanaal): KanaalActie | null {
+  if (!kanaal.sessie_id) return null;
+  if (kanaal.wordt_gevolgd) return 'stoppen';
+  if (kanaal.tijdlijn_status === 'afgelopen' && debat.stand !== 'afgelopen') return 'hervatten';
+  return null;
+}
+
+/** What the bot does with a debate, going by the channels on the row. */
+export function volgTekst(debat: AankomendDebat, kanalen: DebatKanaal[]): string | null {
+  // Before it starts a channel is simply there; that it will be followed is
+  // what the stop button says.
+  if (isNuBezig(debat) && kanalen.some((kanaal) => kanaal.wordt_gevolgd)) return 'wordt gevolgd';
+  if (kanalen.some((kanaal) => kanaalActie(debat, kanaal) === 'hervatten')) return 'volgen gestopt';
+  return null;
+}
+
+/**
+ * The line under the subject. For a debate that is on: since when it runs
+ * instead of when it was planned. Then kind, committee, and what the bot
+ * does with it.
+ */
+export function formatDebatRegel(debat: AankomendDebat, kanalen: DebatKanaal[] = []): string {
+  const tijd =
+    isNuBezig(debat) && debat.begonnen_om
+      ? `Begonnen om ${time.format(new Date(debat.begonnen_om))}`
+      : formatTijd(debat);
+  return [tijd, debat.soort, debat.commissie, volgTekst(debat, kanalen)].filter(Boolean).join(' · ');
 }
 
 /** Matches every word of the query somewhere in subject, kind or committee. */

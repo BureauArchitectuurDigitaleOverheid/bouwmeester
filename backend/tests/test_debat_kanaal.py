@@ -19,7 +19,12 @@ import pytest
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.models.debat_sessie import DebatSessie
+from bouwmeester.models.debat_sessie import (
+    TIJDLIJN_AFGELAST,
+    TIJDLIJN_GEKOPPELD,
+    TIJDLIJN_LOOPT,
+    DebatSessie,
+)
 from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
 from bouwmeester.models.parlementair_item import ParlementairItem
 from bouwmeester.services import debat_kanaal_service as mod
@@ -27,6 +32,7 @@ from bouwmeester.services.debat_kanaal_service import (
     REACTIE_UITLUISTEREN,
     DebatKanaalService,
     StartOutcome,
+    change_message,
     channel_display_name,
     channel_header,
     channel_name,
@@ -421,6 +427,12 @@ class FakeMattermost:
         self.username = "marieke"
         self.closed = False
         self.gone: set[str] = set()
+        # What a channel says now, as far as a test cares: header, purpose
+        # and display name by channel id.
+        self.channels: dict[str, dict] = {}
+        self.updated: list[tuple[str, dict]] = []
+        self.edited: list[tuple[str, str]] = []
+        self.edit_error: Exception | None = None
 
     def _id(self, prefix: str) -> str:
         # Random, not counted: `channel_id` is unique in the database, and
@@ -445,7 +457,23 @@ class FakeMattermost:
         return channel_id in self.gone
 
     async def get_channel(self, channel_id: str):
-        return {"id": channel_id, "team_id": self.team_id} if self.team_id else None
+        if not self.team_id:
+            return None
+        return {
+            "id": channel_id,
+            "team_id": self.team_id,
+            **self.channels.get(channel_id, {}),
+        }
+
+    async def update_channel(self, channel_id: str, **fields) -> bool:
+        self.updated.append((channel_id, fields))
+        return True
+
+    async def update_post(self, post_id: str, message: str, props=None) -> bool:
+        if self.edit_error is not None:
+            raise self.edit_error
+        self.edited.append((post_id, message))
+        return True
 
     async def send_channel_message(self, channel_id, text, props=None, root_id=None):
         if not self.post_ok and root_id is None:
@@ -502,6 +530,19 @@ def _patch_fetch(monkeypatch, result):
         if isinstance(result, Exception):
             raise result
         return result
+
+    monkeypatch.setattr(mod, "fetch_activiteit", fake_fetch)
+    return asked
+
+
+def _patch_fetch_many(monkeypatch, *activiteiten: Activiteit):
+    """Make the TK API know several activiteiten, each by its id."""
+    known = {a.id: a for a in activiteiten}
+    asked: list[str] = []
+
+    async def fake_fetch(activiteit_id, client, base_url=None):
+        asked.append(activiteit_id)
+        return known.get(activiteit_id)
 
     monkeypatch.setattr(mod, "fetch_activiteit", fake_fetch)
     return asked
@@ -1207,7 +1248,7 @@ class TestClaim:
             svc_two = DebatKanaalService(two, FakeMattermost())
 
             # Session two looks first and sees nothing...
-            assert await svc_two._find(activiteit.id, TEAM) is None
+            assert await svc_two._find(activiteit, TEAM) is None
             # ...then session one claims and commits...
             claimed, _ = await svc_one._claim(activiteit, TEAM, None, USER)
             assert isinstance(claimed, uuid.UUID)
@@ -1216,12 +1257,12 @@ class TestClaim:
             real_find = svc_two._find
             calls = 0
 
-            async def stale_find(activiteit_id, team_id):
+            async def stale_find(activiteit, team_id):
                 nonlocal calls
                 calls += 1
                 if calls == 1:
                     return None
-                return await real_find(activiteit_id, team_id)
+                return await real_find(activiteit, team_id)
 
             monkeypatch.setattr(svc_two, "_find", stale_find)
             lost, existing = await svc_two._claim(activiteit, TEAM, None, USER)
@@ -1588,3 +1629,899 @@ class TestReactionReachesTheService:
 
         assert handled is True
         assert closed == [True]
+
+
+class TestChangeMessage:
+    def test_new_time_names_the_old_one(self):
+        nieuw = _activiteit(
+            aanvang=datetime(2099, 10, 8, 10, 0, tzinfo=AMS),
+            einde=datetime(2099, 10, 8, 14, 0, tzinfo=AMS),
+        )
+        tekst = change_message(
+            nieuw,
+            old_aanvang=datetime(2099, 10, 6, 16, 30, tzinfo=AMS),
+            new_time=True,
+            new_subject=False,
+        )
+        assert tekst == (
+            "📅 De vergadering is gewijzigd: nu op donderdag 8 oktober, "
+            "10:00 tot 14:00 (was dinsdag 6 oktober, 16:30)."
+        )
+
+    def test_new_subject_is_escaped(self):
+        tekst = change_message(
+            _activiteit(onderwerp="Wadden [en](http://x) meer"),
+            old_aanvang=None,
+            new_time=False,
+            new_subject=True,
+        )
+        assert tekst.startswith(
+            "📅 De vergadering is gewijzigd: het onderwerp is nu **"
+        )
+        assert "[en](http://x)" not in tekst
+
+    def test_both(self):
+        tekst = change_message(
+            _activiteit(), old_aanvang=None, new_time=True, new_subject=True
+        )
+        assert "nu op dinsdag 6 oktober, 16:30 tot 19:30; het onderwerp is nu" in tekst
+        assert "(was" not in tekst
+
+    def test_moved_without_a_visible_difference_still_says_something(self):
+        tekst = change_message(
+            _activiteit(), old_aanvang=None, new_time=False, new_subject=False
+        )
+        assert tekst == (
+            "📅 De vergadering is gewijzigd: de Kamer heeft haar opnieuw in de "
+            "agenda gezet."
+        )
+
+
+def _moved_pair(**new_overrides) -> tuple[Activiteit, Activiteit]:
+    """A meeting that was moved, as the TK API has it: the old activiteit
+    stays with status Verplaatst and a note in its subject, the new date is
+    a new activiteit with another id and nummer that names the old one."""
+    old_id, new_id = str(uuid.uuid4()), str(uuid.uuid4())
+    oud = _activiteit(
+        id=old_id,
+        nummer="2099A02489",
+        onderwerp="Digitaliserende overheid (verplaatst naar 8 oktober 2099)",
+        status="Verplaatst",
+        vervangen_door=(new_id,),
+    )
+    values = {
+        "id": new_id,
+        "nummer": "2099A06595",
+        "aanvang": datetime(2099, 10, 8, 10, 0, tzinfo=AMS),
+        "einde": datetime(2099, 10, 8, 14, 0, tzinfo=AMS),
+        "vervangen_vanuit": (old_id,),
+    }
+    values.update(new_overrides)
+    return oud, _activiteit(**values)
+
+
+async def _channel_for(session, monkeypatch, mm, activiteit) -> tuple:
+    """Start the channel for `activiteit` as it stood before any change."""
+    eerst = _activiteit(id=activiteit.id, nummer=activiteit.nummer)
+    _patch_fetch(monkeypatch, eerst)
+    item = await _item(session, activiteit.id)
+    result = await _start(session, mm, item)
+    assert result.outcome is StartOutcome.CREATED
+    return item, result
+
+
+async def _team_sessies(session: AsyncSession, *ids: str) -> list[DebatSessie]:
+    # The service writes by statement, so what the session holds is old.
+    # Read over it instead of expiring everything: an expired item cannot
+    # be handed to `start` again.
+    stmt = (
+        select(DebatSessie)
+        .where(DebatSessie.activiteit_id.in_(ids))
+        .execution_options(populate_existing=True)
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
+def _change_lines(mm: FakeMattermost) -> list[str]:
+    return [t for _, t in mm.channel_posts if t.startswith("📅")]
+
+
+@pytest.mark.asyncio
+class TestMovedMeeting:
+    """The convocatie of the new date is a convocatie for another
+    activiteit. It is the same debate, so it is the same channel."""
+
+    async def test_button_under_the_new_convocatie_finds_the_old_channel(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+        assert len(mm.created) == 1
+        assert mm.replies[-1] == (
+            f"Er is al een kanaal voor dit debat: ~{first.channel_name}"
+        )
+
+    async def test_the_row_follows_the_meeting(self, db_session, monkeypatch):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        await _channel_for(db_session, monkeypatch, mm, oud)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        (sessie,) = await _team_sessies(db_session, oud.id, nieuw.id)
+        assert sessie.activiteit_id == nieuw.id
+        assert sessie.activiteit_nummer == "2099A06595"
+        assert sessie.aanvang == nieuw.aanvang
+        assert sessie.onderwerp == "Digitaliserende overheid"
+
+    async def test_the_channel_says_so_once(self, db_session, monkeypatch):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+        item = await _item(db_session, nieuw.id)
+
+        await _start(db_session, mm, item)
+        await _start(db_session, mm, item)
+
+        assert _change_lines(mm) == [
+            "📅 De vergadering is gewijzigd: nu op donderdag 8 oktober, "
+            "10:00 tot 14:00 (was dinsdag 6 oktober, 16:30)."
+        ]
+        assert [ch for ch, t in mm.channel_posts if t.startswith("📅")] == [
+            first.channel_id
+        ]
+
+    async def test_header_name_and_agenda_follow(self, db_session, monkeypatch):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        (sessie,) = await _team_sessies(db_session, oud.id)
+        stukken_post_id = sessie.stukken_post_id
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        ((channel_id, fields),) = mm.updated
+        assert channel_id == first.channel_id
+        assert fields["header"] == channel_header(nieuw)
+        assert "donderdag 8 oktober, 10:00 tot 14:00" in fields["header"]
+        assert "2099A06595" in fields["header"]
+        assert fields["display_name"] == "Digitaliserende overheid (8 okt)"
+        ((post_id, bericht),) = mm.edited
+        assert post_id == stukken_post_id
+        assert "donderdag 8 oktober, 10:00 tot 14:00" in bericht
+
+    async def test_only_what_differs_is_sent_to_mattermost(
+        self, db_session, monkeypatch
+    ):
+        """Mattermost posts a system message for every header it is given."""
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        mm.channels[first.channel_id] = {
+            "header": "oud",
+            "purpose": channel_purpose(nieuw),
+            "display_name": channel_display_name(nieuw),
+        }
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert mm.updated == [(first.channel_id, {"header": channel_header(nieuw)})]
+
+    async def test_button_under_the_old_convocatie_leads_to_the_same_channel(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        old_item, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        asked = _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, old_item)
+
+        assert asked == [oud.id, nieuw.id]
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+        (sessie,) = await _team_sessies(db_session, oud.id, nieuw.id)
+        assert sessie.activiteit_id == nieuw.id
+        assert len(_change_lines(mm)) == 1
+
+    async def test_old_and_new_button_in_any_order_give_one_channel(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair()
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+        mm = FakeMattermost()
+
+        # Nobody started it before the move: the old button sets up the
+        # channel for the new date.
+        first = await _start(db_session, mm, await _item(db_session, oud.id))
+        second = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert first.outcome is StartOutcome.CREATED
+        assert "donderdag 8 oktober, 10:00 tot 14:00" in mm.replies[0]
+        assert second.outcome is StartOutcome.EXISTS
+        assert second.channel_id == first.channel_id
+        (sessie,) = await _team_sessies(db_session, oud.id, nieuw.id)
+        assert sessie.activiteit_id == nieuw.id
+        # Started for the new date, so nothing changed since.
+        assert _change_lines(mm) == []
+        assert mm.updated == []
+
+    async def test_moved_more_than_once(self, db_session, monkeypatch):
+        """The meeting as it stands now names every predecessor (15 of
+        107 successors have two, 4 three, 1 four)."""
+        eerste, nieuw = _moved_pair()
+        tweede_id = str(uuid.uuid4())
+        nieuw = _activiteit(
+            id=nieuw.id,
+            nummer=nieuw.nummer,
+            aanvang=nieuw.aanvang,
+            einde=nieuw.einde,
+            vervangen_vanuit=(tweede_id, eerste.id),
+        )
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, eerste)
+        _patch_fetch_many(monkeypatch, eerste, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+
+    async def test_the_timeline_starts_over_for_the_new_date(
+        self, db_session, monkeypatch
+    ):
+        """On the old date the timeline said the debate was moved and
+        stopped. The new date has to be followed again."""
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        await _channel_for(db_session, monkeypatch, mm, oud)
+        await db_session.execute(
+            update(DebatSessie)
+            .where(DebatSessie.activiteit_id == oud.id)
+            .values(
+                tijdlijn_status=TIJDLIJN_AFGELAST,
+                tijdlijn_gecontroleerd_at=datetime.now(UTC),
+                debat_direct_ids=["x"],
+            )
+        )
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        (sessie,) = await _team_sessies(db_session, nieuw.id)
+        assert sessie.tijdlijn_status is None
+        assert sessie.tijdlijn_gecontroleerd_at is None
+        # SQL NULL, not the JSON value null: the timeline tests for NULL.
+        is_null = await db_session.scalar(
+            select(DebatSessie.debat_direct_ids.is_(None)).where(
+                DebatSessie.id == sessie.id
+            )
+        )
+        assert is_null is True
+        assert len(_change_lines(mm)) == 1
+
+    @pytest.mark.parametrize("status", [TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT])
+    async def test_a_debate_the_timeline_follows_is_left_alone(
+        self, db_session, monkeypatch, status
+    ):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        await db_session.execute(
+            update(DebatSessie)
+            .where(DebatSessie.activiteit_id == oud.id)
+            .values(tijdlijn_status=status)
+        )
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        # Still no second channel.
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+        (sessie,) = await _team_sessies(db_session, oud.id, nieuw.id)
+        assert sessie.activiteit_id == oud.id
+        assert sessie.tijdlijn_status == status
+        assert _change_lines(mm) == []
+        assert mm.updated == []
+
+    async def test_channel_of_the_old_date_in_another_team_is_not_this_one(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        await _channel_for(db_session, monkeypatch, mm, oud)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        mm.team_id = "team00000000000000000000bb"
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.CREATED
+        assert len(await _team_sessies(db_session, oud.id, nieuw.id)) == 2
+        assert _change_lines(mm) == []
+
+    async def test_archived_channel_of_the_old_date_is_set_up_again(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        mm.gone.add(first.channel_id)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.CREATED
+        (sessie,) = await _team_sessies(db_session, oud.id, nieuw.id)
+        assert sessie.activiteit_id == nieuw.id
+        assert sessie.channel_id == result.channel_id != first.channel_id
+
+    async def test_two_channels_from_before_this_rule_stay_two(
+        self, db_session, monkeypatch
+    ):
+        """Old and new each got a channel already. The new one answers for
+        itself, and the old row is not forced onto a key that is taken."""
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, old_channel = await _channel_for(db_session, monkeypatch, mm, oud)
+        new_item, new_channel = await _channel_for(db_session, monkeypatch, mm, nieuw)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, new_item)
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == new_channel.channel_id != old_channel.channel_id
+        assert len(await _team_sessies(db_session, oud.id, nieuw.id)) == 2
+
+    async def test_the_row_of_the_meeting_itself_goes_before_a_predecessor(
+        self, db_session, monkeypatch
+    ):
+        """Also when the channel of the old date is the newer of the two:
+        the unique key is on the id, so that row is the one to answer."""
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, new_channel = await _channel_for(db_session, monkeypatch, mm, nieuw)
+        await db_session.execute(
+            update(DebatSessie)
+            .where(DebatSessie.activiteit_id == nieuw.id)
+            .values(created_at=datetime.now(UTC) - timedelta(days=3))
+        )
+        await _channel_for(db_session, monkeypatch, mm, oud)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == new_channel.channel_id
+
+    def _moved_twice(self) -> tuple[Activiteit, Activiteit, Activiteit]:
+        eerste, nieuw = _moved_pair()
+        tweede = _activiteit(status="Verplaatst", vervangen_door=(nieuw.id,))
+        nieuw = _activiteit(
+            id=nieuw.id,
+            nummer=nieuw.nummer,
+            aanvang=nieuw.aanvang,
+            einde=nieuw.einde,
+            vervangen_vanuit=(eerste.id, tweede.id),
+        )
+        return eerste, tweede, nieuw
+
+    @pytest.mark.parametrize("claim_first", [True, False])
+    async def test_predecessor_with_a_channel_goes_before_a_broken_claim(
+        self, db_session, monkeypatch, claim_first
+    ):
+        """A claim for one of the old dates that never got its channel
+        must not answer with silence while another old date has one."""
+        eerste, tweede, nieuw = self._moved_twice()
+        mm = FakeMattermost()
+
+        async def claim():
+            db_session.add(
+                DebatSessie(activiteit_id=tweede.id, onderwerp="x", team_id=TEAM)
+            )
+            await db_session.flush()
+
+        if claim_first:
+            await claim()
+        _, first = await _channel_for(db_session, monkeypatch, mm, eerste)
+        if not claim_first:
+            await claim()
+        _patch_fetch_many(monkeypatch, eerste, tweede, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+
+    async def test_new_activiteit_at_the_same_time_still_follows(
+        self, db_session, monkeypatch
+    ):
+        """Nothing a reader would see changed, but the agenda link in the
+        header is keyed on the nummer and the timeline on the id."""
+        start = datetime(2099, 10, 6, 16, 30, tzinfo=AMS)
+        oud, nieuw = _moved_pair(aanvang=start, einde=start + timedelta(hours=3))
+        mm = FakeMattermost()
+        await _channel_for(db_session, monkeypatch, mm, oud)
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        (sessie,) = await _team_sessies(db_session, oud.id, nieuw.id)
+        assert sessie.activiteit_id == nieuw.id
+        assert _change_lines(mm) == [
+            "📅 De vergadering is gewijzigd: de Kamer heeft haar opnieuw in de "
+            "agenda gezet."
+        ]
+        ((_, fields),) = mm.updated
+        assert "2099A06595" in fields["header"]
+
+    async def test_of_two_old_channels_the_newest_answers(
+        self, db_session, monkeypatch
+    ):
+        """Both old dates got a channel before this rule existed. The one
+        people were sent to last is the one to keep sending them to."""
+        eerste, tweede, nieuw = self._moved_twice()
+        mm = FakeMattermost()
+        await _channel_for(db_session, monkeypatch, mm, tweede)
+        _, newest = await _channel_for(db_session, monkeypatch, mm, eerste)
+        await db_session.execute(
+            update(DebatSessie)
+            .where(DebatSessie.activiteit_id == tweede.id)
+            .values(created_at=datetime.now(UTC) - timedelta(days=30))
+        )
+        _patch_fetch_many(monkeypatch, eerste, tweede, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == newest.channel_id
+
+    async def test_a_failing_update_still_gives_the_link(self, db_session, monkeypatch):
+        oud, nieuw = _moved_pair()
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, oud)
+        mm.edit_error = RuntimeError("Mattermost zegt nee")
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, nieuw.id))
+
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+        assert mm.replies[-1].startswith("Er is al een kanaal voor dit debat")
+
+
+@pytest.mark.asyncio
+class TestMovedButNotCertain:
+    """Where the API does not say which meeting it became, the answer is
+    the one from before: start the channel for the new date yourself."""
+
+    async def _press_old(
+        self,
+        db_session,
+        monkeypatch,
+        oud,
+        *others,
+        answer="Deze vergadering is verplaatst.",
+    ):
+        _patch_fetch_many(monkeypatch, oud, *others)
+        mm = FakeMattermost()
+        result = await _start(db_session, mm, await _item(db_session, oud.id))
+        assert result.outcome is StartOutcome.REFUSED
+        assert mm.replies[-1].startswith(answer)
+        assert mm.created == []
+        return result
+
+    async def test_no_successor_named(self, db_session, monkeypatch):
+        """6 of 72 moved meetings: merged, turned into a written round,
+        or without a new date yet."""
+        oud, _ = _moved_pair()
+        oud = _activiteit(id=oud.id, status="Verplaatst")
+        await self._press_old(db_session, monkeypatch, oud)
+
+    async def test_two_successors_named(self, db_session, monkeypatch):
+        oud, nieuw = _moved_pair()
+        ander = _activiteit(vervangen_vanuit=(oud.id,))
+        oud = _activiteit(
+            id=oud.id, status="Verplaatst", vervangen_door=(nieuw.id, ander.id)
+        )
+        await self._press_old(db_session, monkeypatch, oud, nieuw, ander)
+
+    async def test_successor_is_gone(self, db_session, monkeypatch):
+        oud, _ = _moved_pair()
+        await self._press_old(db_session, monkeypatch, oud)
+
+    async def test_successor_is_another_kind_of_meeting(self, db_session, monkeypatch):
+        """9 of 133 links: mostly a debate that became written input."""
+        oud, nieuw = _moved_pair(soort="Inbreng schriftelijk overleg")
+        await self._press_old(db_session, monkeypatch, oud, nieuw)
+
+    async def test_successor_has_no_date_yet(self, db_session, monkeypatch):
+        """11 of 50 moved meetings: "nieuwe datum volgt". Nothing can be
+        followed on a day that is not known."""
+        oud, nieuw = _moved_pair(aanvang=None, einde=None)
+        await self._press_old(db_session, monkeypatch, oud, nieuw)
+
+    async def test_a_channel_does_not_move_to_a_meeting_without_a_date(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair(aanvang=None, einde=None)
+        gepland = _activiteit(id=oud.id, nummer=oud.nummer)
+        _patch_fetch_many(monkeypatch, gepland)
+        mm = FakeMattermost()
+        first = await _start(db_session, mm, await _item(db_session, oud.id))
+        assert first.outcome is StartOutcome.CREATED
+        said = len(mm.messages)
+
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+        await _start(db_session, mm, await _item(db_session, oud.id))
+
+        sessie = (
+            await db_session.execute(
+                select(DebatSessie).where(DebatSessie.channel_id == first.channel_id)
+            )
+        ).scalar_one()
+        assert sessie.activiteit_id == oud.id
+        assert not any(
+            "De vergadering is gewijzigd" in text for _, text, _ in mm.messages[said:]
+        )
+
+    async def test_successor_was_moved_again_without_saying_where(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair(status="Verplaatst")
+        await self._press_old(db_session, monkeypatch, oud, nieuw)
+
+    async def test_new_date_that_is_off_is_answered_as_itself(
+        self, db_session, monkeypatch
+    ):
+        """What stands in the way is said about the meeting as it is now,
+        the same words as under the convocatie of the new date."""
+        oud, nieuw = _moved_pair(status="Geannuleerd")
+        await self._press_old(
+            db_session,
+            monkeypatch,
+            oud,
+            nieuw,
+            answer="Deze vergadering is geannuleerd.",
+        )
+
+    async def test_new_date_that_is_closed(self, db_session, monkeypatch):
+        oud, nieuw = _moved_pair(besloten=True)
+        await self._press_old(
+            db_session,
+            monkeypatch,
+            oud,
+            nieuw,
+            answer="Deze vergadering is besloten",
+        )
+
+    async def test_new_date_that_is_over(self, db_session, monkeypatch):
+        gisteren = datetime.now(UTC) - timedelta(days=1)
+        oud, nieuw = _moved_pair(aanvang=gisteren, einde=gisteren + timedelta(hours=2))
+        await self._press_old(
+            db_session,
+            monkeypatch,
+            oud,
+            nieuw,
+            answer="Deze vergadering is al geweest.",
+        )
+
+    async def test_same_subject_and_committee_is_not_the_same_debate(
+        self, db_session, monkeypatch
+    ):
+        """48 of 1000 activiteiten share subject and committee with
+        another one without being linked: the debate that returns every
+        half year. Each gets its own channel."""
+        voorjaar = _activiteit(nummer="2099A00001")
+        najaar = _activiteit(
+            nummer="2099A00002", aanvang=datetime(2099, 11, 26, 10, 0, tzinfo=AMS)
+        )
+        mm = FakeMattermost()
+        _, first = await _channel_for(db_session, monkeypatch, mm, voorjaar)
+        _patch_fetch(monkeypatch, najaar)
+
+        result = await _start(db_session, mm, await _item(db_session, najaar.id))
+
+        assert result.outcome is StartOutcome.CREATED
+        assert result.channel_id != first.channel_id
+        assert _change_lines(mm) == []
+
+
+@pytest.mark.asyncio
+class TestSameMeetingChanged:
+    """A revised convocatie on the same activiteit: 253 of 1000. The key
+    already finds the channel; the channel has to hear what changed."""
+
+    async def _changed(self, db_session, monkeypatch, **overrides):
+        activiteit = _activiteit()
+        mm = FakeMattermost()
+        item, first = await _channel_for(db_session, monkeypatch, mm, activiteit)
+        nu = _activiteit(id=activiteit.id, **overrides)
+        _patch_fetch(monkeypatch, nu)
+        result = await _start(db_session, mm, item)
+        assert result.outcome is StartOutcome.EXISTS
+        assert result.channel_id == first.channel_id
+        assert len(mm.created) == 1
+        (sessie,) = await _team_sessies(db_session, activiteit.id)
+        return mm, item, nu, sessie
+
+    async def test_another_time(self, db_session, monkeypatch):
+        later = datetime(2099, 10, 6, 18, 0, tzinfo=AMS)
+        mm, item, nu, sessie = await self._changed(
+            db_session, monkeypatch, aanvang=later, einde=later + timedelta(hours=2)
+        )
+
+        assert sessie.aanvang == later
+        assert _change_lines(mm) == [
+            "📅 De vergadering is gewijzigd: nu op dinsdag 6 oktober, "
+            "18:00 tot 20:00 (was dinsdag 6 oktober, 16:30)."
+        ]
+        ((_, fields),) = mm.updated
+        assert "18:00 tot 20:00" in fields["header"]
+
+        # Pressed again: nothing new to say.
+        await _start(db_session, mm, item)
+        assert len(_change_lines(mm)) == 1
+        assert len(mm.updated) == 1
+
+    async def test_another_subject(self, db_session, monkeypatch):
+        mm, _, _, sessie = await self._changed(
+            db_session, monkeypatch, onderwerp="Digitale autonomie"
+        )
+
+        assert sessie.onderwerp == "Digitale autonomie"
+        assert _change_lines(mm) == [
+            "📅 De vergadering is gewijzigd: het onderwerp is nu "
+            "**Digitale autonomie**."
+        ]
+
+    async def test_nothing_changed_nothing_said(self, db_session, monkeypatch):
+        mm, _, _, _ = await self._changed(db_session, monkeypatch)
+
+        assert _change_lines(mm) == []
+        assert mm.updated == []
+        assert mm.edited == []
+
+    async def test_only_the_agenda_changed_is_not_announced(
+        self, db_session, monkeypatch
+    ):
+        """Known gap: the row does not keep the agenda or who comes, so a
+        revision of only those cannot be told from no revision."""
+        mm, _, _, _ = await self._changed(
+            db_session, monkeypatch, agendapunten=(), bewindspersonen=()
+        )
+
+        assert _change_lines(mm) == []
+
+    async def test_a_time_the_api_does_not_give_is_not_a_change(
+        self, db_session, monkeypatch
+    ):
+        mm, _, _, sessie = await self._changed(
+            db_session, monkeypatch, aanvang=None, einde=None, onderwerp=""
+        )
+
+        assert sessie.aanvang == datetime(2099, 10, 6, 16, 30, tzinfo=AMS)
+        assert sessie.onderwerp == "Digitaliserende overheid"
+        assert _change_lines(mm) == []
+
+    async def test_a_missing_time_does_not_erase_the_one_we_had(
+        self, db_session, monkeypatch
+    ):
+        """The subject did change; the time is only missing. Without a
+        time the timeline would never look for this debate."""
+        mm, _, _, sessie = await self._changed(
+            db_session, monkeypatch, aanvang=None, einde=None, onderwerp="Wadden"
+        )
+
+        assert sessie.onderwerp == "Wadden"
+        assert sessie.aanvang == datetime(2099, 10, 6, 16, 30, tzinfo=AMS)
+        assert len(_change_lines(mm)) == 1
+
+    async def test_a_missing_subject_does_not_erase_the_one_we_had(
+        self, db_session, monkeypatch
+    ):
+        later = datetime(2099, 10, 6, 18, 0, tzinfo=AMS)
+        mm, _, _, sessie = await self._changed(
+            db_session, monkeypatch, aanvang=later, einde=None, onderwerp=""
+        )
+
+        assert sessie.aanvang == later
+        assert sessie.onderwerp == "Digitaliserende overheid"
+        assert "onderwerp" not in _change_lines(mm)[0]
+        ((_, fields),) = mm.updated
+        assert fields["display_name"] == "Digitaliserende overheid (6 okt)"
+
+    @pytest.mark.parametrize(
+        "status", [TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT, TIJDLIJN_AFGELAST]
+    )
+    async def test_once_the_timeline_has_the_row_it_is_not_touched(
+        self, db_session, monkeypatch, status
+    ):
+        """The timeline puts the real start in `aanvang` (up to 38 minutes
+        early) and room and stream in the header. That is not a changed
+        meeting, and must not be written back to the appointment."""
+        activiteit = _activiteit()
+        mm = FakeMattermost()
+        item, _ = await _channel_for(db_session, monkeypatch, mm, activiteit)
+        echt_begin = activiteit.aanvang - timedelta(minutes=20)
+        await db_session.execute(
+            update(DebatSessie)
+            .where(DebatSessie.activiteit_id == activiteit.id)
+            .values(tijdlijn_status=status, aanvang=echt_begin)
+        )
+        _patch_fetch(monkeypatch, activiteit)
+
+        result = await _start(db_session, mm, item)
+
+        assert result.outcome is StartOutcome.EXISTS
+        (sessie,) = await _team_sessies(db_session, activiteit.id)
+        assert sessie.aanvang == echt_begin
+        assert sessie.tijdlijn_status == status
+        assert _change_lines(mm) == []
+        assert mm.updated == []
+
+    async def test_same_nummer_under_another_id_is_not_matched(
+        self, db_session, monkeypatch
+    ):
+        """Nummer and id are one to one (1000 of 1000), so the nummer is
+        not a second key: only the id and the links say "same debate"."""
+        activiteit = _activiteit(nummer="2099A07777")
+        mm = FakeMattermost()
+        await _channel_for(db_session, monkeypatch, mm, activiteit)
+        opnieuw = _activiteit(nummer="2099A07777")
+        _patch_fetch(monkeypatch, opnieuw)
+
+        result = await _start(db_session, mm, await _item(db_session, opnieuw.id))
+
+        assert result.outcome is StartOutcome.CREATED
+
+
+@pytest.mark.asyncio
+class TestChangeAtTheSameMoment:
+    async def test_two_presses_say_it_once(self, _test_engine, monkeypatch):
+        """Two people press under the new convocatie at the same moment.
+
+        Both read the row of the old date before either writes. With one
+        shared session the second would already see the first write; two
+        real sessions show that the update itself has to decide.
+        """
+        oud, nieuw = _moved_pair()
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+        one = AsyncSession(bind=_test_engine, expire_on_commit=False)
+        two = AsyncSession(bind=_test_engine, expire_on_commit=False)
+        mm = FakeMattermost()
+        try:
+            one.add(
+                DebatSessie(
+                    activiteit_id=oud.id,
+                    activiteit_nummer=oud.nummer,
+                    onderwerp="Digitaliserende overheid",
+                    aanvang=datetime(2099, 10, 6, 16, 30, tzinfo=AMS),
+                    team_id=TEAM,
+                    channel_id=mm._id("chan"),
+                    channel_name="debat-digitaliserende-overheid-6-okt",
+                )
+            )
+            await one.commit()
+            svc_one = DebatKanaalService(one, mm)
+            svc_two = DebatKanaalService(two, mm)
+
+            seen_one = await svc_one._find(nieuw, TEAM)
+            seen_two = await svc_two._find(nieuw, TEAM)
+            await two.rollback()
+            assert seen_one == seen_two
+            assert seen_one.activiteit_id == oud.id
+
+            await svc_one._follow_change(seen_one, nieuw)
+            await svc_two._follow_change(seen_two, nieuw)
+
+            assert len(_change_lines(mm)) == 1
+            assert len(mm.updated) == 1
+            rows = await _team_sessies(two, oud.id, nieuw.id)
+            assert [r.activiteit_id for r in rows] == [nieuw.id]
+        finally:
+            await two.rollback()
+            await one.rollback()
+            await one.execute(
+                delete(DebatSessie).where(
+                    DebatSessie.activiteit_id.in_([oud.id, nieuw.id])
+                )
+            )
+            await one.commit()
+            await one.close()
+            await two.close()
+
+    async def test_a_row_for_the_new_date_that_appeared_meanwhile_wins(
+        self, _test_engine, monkeypatch
+    ):
+        """The row of the old date was read, and before it could follow
+        the move a row for the new date was there. The unique key refuses
+        the update; nothing is said and the session still works."""
+        oud, nieuw = _moved_pair()
+        one = AsyncSession(bind=_test_engine, expire_on_commit=False)
+        mm = FakeMattermost()
+        try:
+            one.add(
+                DebatSessie(
+                    activiteit_id=oud.id,
+                    onderwerp="Digitaliserende overheid",
+                    aanvang=datetime(2099, 10, 6, 16, 30, tzinfo=AMS),
+                    team_id=TEAM,
+                    channel_id=mm._id("chan"),
+                    channel_name="debat-oud",
+                )
+            )
+            await one.commit()
+            svc = DebatKanaalService(one, mm)
+            seen = await svc._find(nieuw, TEAM)
+            assert seen.activiteit_id == oud.id
+            one.add(
+                DebatSessie(
+                    activiteit_id=nieuw.id,
+                    onderwerp="Digitaliserende overheid",
+                    aanvang=nieuw.aanvang,
+                    team_id=TEAM,
+                    channel_id=mm._id("chan"),
+                    channel_name="debat-nieuw",
+                )
+            )
+            await one.commit()
+
+            await svc._follow_change(seen, nieuw)
+
+            assert _change_lines(mm) == []
+            assert mm.updated == []
+            rows = await _team_sessies(one, oud.id, nieuw.id)
+            assert sorted(r.channel_name for r in rows) == ["debat-nieuw", "debat-oud"]
+            assert (await svc._find(nieuw, TEAM)).channel_name == "debat-nieuw"
+        finally:
+            await one.rollback()
+            await one.execute(
+                delete(DebatSessie).where(
+                    DebatSessie.activiteit_id.in_([oud.id, nieuw.id])
+                )
+            )
+            await one.commit()
+            await one.close()
+
+    async def test_old_and_new_button_at_once_make_one_channel(
+        self, _test_engine, monkeypatch
+    ):
+        """One presses under the old convocatie, one under the new, and
+        no channel exists. Both end up on the new activiteit, so the
+        unique key decides as it does for two presses on one button."""
+        oud, nieuw = _moved_pair()
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+        one = AsyncSession(bind=_test_engine, expire_on_commit=False)
+        two = AsyncSession(bind=_test_engine, expire_on_commit=False)
+        mm = FakeMattermost()
+        try:
+            via_old = await _press(one, mm, oud.id)
+            via_new = await _press(two, mm, nieuw.id)
+
+            assert via_old.outcome is StartOutcome.CREATED
+            assert via_new.outcome is StartOutcome.EXISTS
+            assert via_new.channel_id == via_old.channel_id
+            assert len(mm.created) == 1
+        finally:
+            await two.rollback()
+            await one.rollback()
+            await one.execute(
+                delete(DebatSessie).where(
+                    DebatSessie.activiteit_id.in_([oud.id, nieuw.id])
+                )
+            )
+            await one.commit()
+            await one.close()
+            await two.close()

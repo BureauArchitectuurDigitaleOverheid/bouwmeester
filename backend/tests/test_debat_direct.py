@@ -605,6 +605,26 @@ class TestLaterParts:
         )
         assert [d.id for d in found] == ["d2"]
 
+    def test_a_debate_goes_on_in_the_room_it_was_in(self):
+        """Meetings of different committees can carry almost the same name
+        and follow each other within the hour, in another room."""
+        first = self._first(locationId="zaal-1")
+
+        elsewhere = dd.later_parts(
+            first.name, ["d1"], [self._second(locationId="zaal-2"), first]
+        )
+        same_room = dd.later_parts(
+            first.name, ["d1"], [self._second(locationId="zaal-1"), first]
+        )
+        unknown = dd.later_parts(
+            first.name, ["d1"], [self._second(locationId=None), first]
+        )
+
+        assert elsewhere == []
+        assert [d.id for d in same_room] == ["d2"]
+        # A part without a room is not held against it.
+        assert [d.id for d in unknown] == ["d2"]
+
     def test_works_however_late_the_first_part_started(self):
         """It compares with the known part, not with the planned time of
         the activiteit, which the debate may have left far behind."""

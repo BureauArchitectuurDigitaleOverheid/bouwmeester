@@ -1568,6 +1568,31 @@ class TestTwoEventsOneTurn:
         await _play(db_session, mm, feed, until)
         return mm, sessie, feed
 
+    async def test_a_heading_that_cannot_be_rewritten_does_not_stop_the_text(
+        self, db_session, monkeypatch
+    ):
+        """The message exists but Mattermost refuses the rewrite, round
+        after round. That is an error, and it must not keep the text of
+        everyone else in the debate from being read."""
+        events = [
+            ("interrupter", _seconds(60), "a"),
+            ("speaker", _seconds(75), "a"),
+            ("speaker", _seconds(120), "b"),
+        ]
+        cues = [_cue(64, "Van a."), _cue(125, "Van b.")]
+        feed = Feed(monkeypatch, parts=[_stream(_debat(*events))])
+        Subtitles(monkeypatch, feed, cues)
+        mm = Mattermost()
+        await _sessie(db_session)
+        # The interruption is in the channel; its speaker event is not
+        # there yet.
+        await _play(db_session, mm, feed, 1.2)
+        mm.broken.add(mm.order[1])
+
+        await _play(db_session, mm, feed, 4.0, start=1.25)
+
+        assert mm.channel[2].endswith("\nVan b.")
+
     # 3 seconds apart both events are in one reading of the feed; 15 seconds
     # apart the first is in the channel before the second exists.
     @pytest.mark.parametrize("apart", [3, 15])
@@ -1791,11 +1816,13 @@ class TestTwoEventsOneTurn:
         await _play(db_session, mm, feed, _seconds(80))
         assert mm.channel[1].startswith("↳ ")
 
-        mm.fail_updates = 1
+        # Both who write the message in a round fail: the timeline for the
+        # heading, and the transcript that would write it with the text.
+        mm.fail_updates = 2
         feed.now = START + timedelta(seconds=90)
         result = await DebatTijdlijnService(db_session, mm).tick(feed.now)
 
-        assert result.fouten == 1
+        assert result.fouten >= 1
         assert mm.channel[1].startswith("↳ ")
         (first, _) = await _speaking_rows(db_session)
         assert not first.kop.startswith("↳ ")
