@@ -231,6 +231,43 @@ class TestParse:
         a = parse_activiteit(raw)
         assert [p.volgorde for p in a.agendapunten] == [1, None]
 
+    def test_without_links_there_are_none(self):
+        a = parse_activiteit(_raw())
+        assert a.vervangen_door == ()
+        assert a.vervangen_vanuit == ()
+
+    def test_a_moved_meeting_names_its_successor(self):
+        new_id = "c5a66917-742b-4aed-bebf-16a3e97a169a"
+        a = parse_activiteit(
+            _raw(
+                Status="Verplaatst", VervangenDoor=[{"Id": new_id, "Verwijderd": False}]
+            )
+        )
+        assert a.vervangen_door == (new_id,)
+
+    def test_a_successor_names_every_predecessor_once(self):
+        """Moved twice: the meeting as it stands lists both old ones."""
+        first = "11111111-1111-4111-8111-111111111111"
+        second = "22222222-2222-4222-8222-222222222222"
+        a = parse_activiteit(
+            _raw(VervangenVanuit=[{"Id": first}, {"Id": second}, {"Id": first}])
+        )
+        assert a.vervangen_vanuit == (first, second)
+
+    def test_a_deleted_or_broken_link_is_not_a_link(self):
+        a = parse_activiteit(
+            _raw(
+                VervangenVanuit=[
+                    {"Id": "11111111-1111-4111-8111-111111111111", "Verwijderd": True},
+                    {"Id": None},
+                    "geen object",
+                ],
+                VervangenDoor="geen lijst",
+            )
+        )
+        assert a.vervangen_vanuit == ()
+        assert a.vervangen_door == ()
+
 
 def _client(handler) -> tuple[httpx.AsyncClient, list[httpx.Request]]:
     seen: list[httpx.Request] = []
@@ -262,7 +299,15 @@ class TestFetch:
             "Besloten",
         ):
             assert veld in params["$select"]
-        for entiteit in ("Agendapunt(", "Zaak(", "Document(", "ActiviteitActor("):
+        for entiteit in (
+            "Agendapunt(",
+            "Zaak(",
+            "Document(",
+            "ActiviteitActor(",
+            # What ties a moved meeting to its new date.
+            "VervangenDoor(",
+            "VervangenVanuit(",
+        ):
             assert entiteit in params["$expand"]
         assert "Volgorde" in params["$expand"]
         assert "Relatie" in params["$expand"]
