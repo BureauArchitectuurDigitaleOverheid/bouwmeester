@@ -70,6 +70,7 @@ from bouwmeester.services.debat_vraag_service import (
     DebatVraagService,
     is_bewindspersoon,
 )
+from bouwmeester.services.debat_vraag_status_service import DebatVraagStatusService
 from bouwmeester.services.llm.base import BaseLLMService
 from bouwmeester.services.mattermost_service import MattermostService
 
@@ -262,6 +263,9 @@ class _Pause:
 _pause = _Pause()
 # How long one turn may take, model and all. Measured: 3 to 14 seconds.
 JUDGE_TIMEOUT = 60.0
+# How long one round may spend on working reactions in, in seconds, before
+# it goes on to the turns. Enough for a few replies on a slow Mattermost.
+REACTIES_BUDGET = 20.0
 # The pauses add up to a quarter of an hour before a turn is given up on.
 MAX_ATTEMPTS = 6
 PAUSE_FIRST = timedelta(seconds=30)
@@ -292,6 +296,7 @@ class DebatVraagWorker:
         """Read the turns that have finished since the last round."""
         now = now or datetime.now(UTC)
         result = VraagTickResult()
+        await self._reacties()
         # The debates the timeline is following, and for a few hours after
         # their end: that long the timeline keeps them running as well.
         stmt = select(DebatSessie.id).where(
@@ -329,6 +334,41 @@ class DebatVraagWorker:
                     result.fouten += 1
                     logger.exception("Vragen van sessie %s liepen vast", sessie_id)
         return result
+
+    async def _reacties(self) -> None:
+        """Work in what people said became of a question, with a reaction.
+
+        First in the round, before any turn is read: someone who clicks
+        waits for this, and reading turns can take a minute. Also for a
+        debate that is over, which is when most answers are ticked off; so
+        not per debate that is running, but for every markering the
+        websocket marked. By the real clock, like those marks.
+
+        A round in which this breaks still reads its turns.
+        """
+        try:
+            # With a limit: a slow Mattermost must not keep the turns of a
+            # running debate from being read. What is not done waits, with
+            # its mark, for the next round.
+            ronde = await asyncio.wait_for(
+                DebatVraagStatusService(self.session, self.mattermost).werk_bij(),
+                timeout=REACTIES_BUDGET,
+            )
+        except TimeoutError:
+            await self.session.rollback()
+            logger.warning("Reacties op vragen niet af binnen %ds", REACTIES_BUDGET)
+            return
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Reacties op vragen niet verwerkt")
+            return
+        if ronde.gewijzigd or ronde.mislukt:
+            logger.info(
+                "Reacties op vragen: %d bijgewerkt, %d gewijzigd, %d wachten",
+                ronde.bijgewerkt,
+                ronde.gewijzigd,
+                ronde.mislukt,
+            )
 
     async def _service(self) -> DebatVraagService | None:
         if self.llm is not None:

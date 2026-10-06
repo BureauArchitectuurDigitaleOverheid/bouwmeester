@@ -45,6 +45,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bouwmeester.models.debat_markering import (
     SOORT_VRAAG,
     STATUS_OPEN,
+    STATUS_TOEGEWEZEN,
+    STATUS_VERWORPEN,
     VERMELDING_HERHALING,
     DebatMarkering,
     DebatMarkeringVermelding,
@@ -66,6 +68,7 @@ from bouwmeester.services.debat_vraag_moment import (
     moment_of_position,
     question_url,
 )
+from bouwmeester.services.debat_vraag_reacties import REACTIE_HINT, stand_marker
 from bouwmeester.services.llm.base import (
     DEBAT_VRAGEN_ONBEREIKBAAR,
     BaseLLMService,
@@ -96,6 +99,10 @@ MAX_POST_POGINGEN = 3
 MAX_CITAAT = 600
 MAX_SAMENVATTING = 240
 MAX_GERICHT_AAN = 80
+# What is left of a rejected markering in the channel: one line.
+MAX_VERWORPEN = 120
+# A Mattermost username is at most 64 characters.
+MAX_DOOR = 64
 
 UITKOMST_OVERGESLAGEN = "overgeslagen"
 UITKOMST_AL_BEOORDEELD = "al_beoordeeld"
@@ -400,6 +407,8 @@ def format_vraag_thread(
     moment_url: str | None,
     vraag_moment: datetime | None = None,
     first_in_thread: bool = True,
+    status: str = STATUS_OPEN,
+    door: str | None = None,
 ) -> str:
     """The reply under the message of a turn that is the thread of a question.
 
@@ -420,11 +429,28 @@ def format_vraag_thread(
     it. With `vraag_moment` the time shown is that of the question, and
     the link opens just before it. Without it, both are the turn's and the
     line says so.
+
+    `status` is where the question stands and `door` who picked it up, as
+    the reactions on the reply have it. The icon in front of the question
+    becomes that of the status, and the words go into the line below, so
+    the state of every question can be read down the left side of a
+    thread. The reply is made from the row every time, never from what is
+    in the channel: writing it twice gives the same text, and nothing in
+    it can get lost.
     """
     # The dots of a subtitle line that runs on are taken out for reading,
     # as in the message of the turn. Only here, after the quote was found:
     # looking for it needs the text as it is.
     gezegd = _RUNS_ON.sub(" ", citaat)
+    kop = _kop(samenvatting, gezegd)
+    icoon, stand = stand_marker(status, _vrij(_kort(door or "", MAX_DOOR)))
+    if status == STATUS_VERWORPEN:
+        # One struck line instead of the whole reply struck through. In
+        # Mattermost a strike does not carry over a line break or into a
+        # quote, and what was not a question should not take up four
+        # lines. The quote and the summary stay in the row, and taking the
+        # reaction away brings the whole reply back.
+        return f"{icoon} ~~Vraag {volgnummer} · {kop}~~ · {stand}"
     tijd = _hhmm(vraag_moment or moment)
     link = None
     if vraag_moment is not None:
@@ -436,10 +462,10 @@ def format_vraag_thread(
         tijd = f"[{tijd}]({link})"
     if vraag_moment is None:
         tijd = f"{tijd} {BEGIN_BEURT}"
-    regels = [
-        f"{ICOON_VRAAG} **{_kop(samenvatting, gezegd)}**",
-        f"Vraag {volgnummer} · aan {aan_wie(gericht_aan)} · {tijd}",
-    ]
+    meta = [f"Vraag {volgnummer}", f"aan {aan_wie(gericht_aan)}", tijd]
+    if stand:
+        meta.insert(1, stand)
+    regels = [f"{icoon or ICOON_VRAAG} **{kop}**", " · ".join(meta)]
     if stuk:
         regels.append(f"{ICOON_STUK} {_vrij(_kort(stuk, 300))}")
     regels.append(f"> {_vrij(_kort(gezegd, MAX_CITAAT))}")
@@ -616,6 +642,41 @@ async def statusblok_voor_post(session: AsyncSession, post_id: str) -> str:
         )
     ).all()
     return statusregel([(r[0], r[1]) for r in rows])
+
+
+async def schrijf_statusregel(
+    session: AsyncSession, mattermost: MattermostService, post_id: str
+) -> bool:
+    """Put the status block under the message of a turn.
+
+    Reads the message first and replaces only the status block, so the
+    transcript that is in it stays. ``True`` when the line is as it
+    should be, or never will be because the message is gone.
+    """
+    blok = await statusblok_voor_post(session, post_id)
+    try:
+        post = await mattermost.get_post(post_id)
+    except PostNotFoundError:
+        logger.info("Bericht %s is weg; geen statusregel", post_id)
+        return True
+    except Exception:
+        logger.exception("Bericht %s niet te lezen voor de statusregel", post_id)
+        return False
+    if not post:
+        return False
+    huidig = str(post.get("message") or "")
+    nieuw = met_status(huidig, blok)
+    if nieuw == huidig:
+        return True
+    try:
+        # The props go back as they came: an update without them is an
+        # update that clears them.
+        return bool(
+            await mattermost.update_post(post_id, nieuw, post.get("props") or None)
+        )
+    except Exception:
+        logger.exception("Statusregel op bericht %s niet geschreven", post_id)
+        return False
 
 
 class DebatVraagService:
@@ -809,6 +870,10 @@ class DebatVraagService:
     ) -> list[tuple[int, str, str, uuid.UUID]]:
         """The open questions of this speaker, as (number, who, summary, id).
 
+        A question someone picked up is still waiting for its answer, so it
+        is in the list: asked again, it is the same question and not a
+        second thread.
+
         Only their own. A question is the same question when the same
         member asks it again; two members who ask about the same thing each
         expect an answer. On a real debate the model, given everyone's open
@@ -830,7 +895,7 @@ class DebatVraagService:
                 .where(
                     DebatMarkering.sessie_id == sessie_id,
                     DebatMarkering.soort == SOORT_VRAAG,
-                    DebatMarkering.status == STATUS_OPEN,
+                    DebatMarkering.status.in_((STATUS_OPEN, STATUS_TOEGEWEZEN)),
                     DebatMarkering.spreker == spreker,
                 )
                 .order_by(DebatMarkering.volgnummer.desc())
@@ -1014,7 +1079,7 @@ class DebatVraagService:
             await self.session.execute(
                 update(DebatMarkering)
                 .where(DebatMarkering.id == markering_id)
-                .values(thread_post_id=post_id)
+                .values(thread_post_id=post_id, met_noot=first)
             )
         else:
             logger.warning("Thread voor markering %s niet geplaatst", markering_id)
@@ -1024,7 +1089,22 @@ class DebatVraagService:
                 .values(post_pogingen=DebatMarkering.post_pogingen + 1)
             )
         await self.session.commit()
+        if post_id:
+            await self._zet_hint(post_id)
         return bool(post_id)
+
+    async def _zet_hint(self, post_id: str) -> None:
+        """Put one reaction under a new reply, as something to click.
+
+        One, not the four that mean something: four under every reply is
+        more bot than debate, and the pinned message of the channel lists
+        them. After the commit and never retried: a reply without it is
+        still a reply, and people can pick the reaction themselves.
+        """
+        try:
+            await self.mattermost.add_reaction(post_id, REACTIE_HINT)
+        except Exception:
+            logger.warning("Reactie onder thread %s niet gezet", post_id, exc_info=True)
 
     async def _haal_achterstand_in(self, sessie_id: uuid.UUID) -> int:
         """Try again what an earlier call could not put in the channel."""
@@ -1081,38 +1161,7 @@ class DebatVraagService:
                 await self.session.commit()
 
     async def _schrijf_statusregel(self, post_id: str) -> bool:
-        """Put the status block under the message of a turn.
-
-        Reads the message first and replaces only the status block, so the
-        transcript that is in it stays. ``True`` when the line is as it
-        should be, or never will be because the message is gone.
-        """
-        blok = await statusblok_voor_post(self.session, post_id)
-        try:
-            post = await self.mattermost.get_post(post_id)
-        except PostNotFoundError:
-            logger.info("Bericht %s is weg; geen statusregel", post_id)
-            return True
-        except Exception:
-            logger.exception("Bericht %s niet te lezen voor de statusregel", post_id)
-            return False
-        if not post:
-            return False
-        huidig = str(post.get("message") or "")
-        nieuw = met_status(huidig, blok)
-        if nieuw == huidig:
-            return True
-        try:
-            # The props go back as they came: an update without them is an
-            # update that clears them.
-            return bool(
-                await self.mattermost.update_post(
-                    post_id, nieuw, post.get("props") or None
-                )
-            )
-        except Exception:
-            logger.exception("Statusregel op bericht %s niet geschreven", post_id)
-            return False
+        return await schrijf_statusregel(self.session, self.mattermost, post_id)
 
 
 def _vraag_moment(beurt: Beurt, plek: int) -> datetime | None:
