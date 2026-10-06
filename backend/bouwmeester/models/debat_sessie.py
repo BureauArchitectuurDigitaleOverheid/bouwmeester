@@ -50,15 +50,19 @@ class DebatSessie(Base):
         server_default=text("gen_random_uuid()"),
     )
 
-    # `Id` of the Activiteit in the TK OData API.
+    # `Id` of the Activiteit in the TK OData API. Of the meeting as it
+    # stands: when the Kamer moves a meeting the new date is a new
+    # activiteit, and the row follows it there the next time someone
+    # presses start (see `DebatKanaalService._find`).
     activiteit_id: Mapped[str] = mapped_column(String(36), nullable=False)
     # `Nummer`, such as 2026A06386: what a human recognises and what the
     # page on tweedekamer.nl is keyed on.
     activiteit_nummer: Mapped[str | None] = mapped_column(String(32), nullable=True)
     onderwerp: Mapped[str] = mapped_column(Text, nullable=False)
-    # As read when the channel was set up. 10% of activiteiten is cancelled
-    # or moved (25 of 250 measured), so whoever uses this on the day itself
-    # reads it again.
+    # As read when the channel was set up, or when start was pressed again
+    # after the meeting changed. 10% of activiteiten is cancelled or moved
+    # (25 of 250 measured), so whoever uses this on the day itself reads it
+    # again.
     aanvang: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

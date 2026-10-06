@@ -17,18 +17,22 @@ import logging
 import re
 import unicodedata
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import NamedTuple
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, null, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.models.debat_sessie import DebatSessie
+from bouwmeester.models.debat_sessie import (
+    TIJDLIJN_AFGELAST,
+    TIJDLIJN_AFGELOPEN,
+    DebatSessie,
+)
 from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
 from bouwmeester.models.parlementair_item import ParlementairItem
 from bouwmeester.services.mattermost_service import (
@@ -193,6 +197,14 @@ def _local(moment: datetime) -> datetime:
     return moment.astimezone(AMSTERDAM)
 
 
+def _format_start(moment: datetime) -> str:
+    start = _local(moment)
+    return (
+        f"{_WEEKDAGEN[start.weekday()]} {start.day} {_MAANDEN[start.month - 1]}, "
+        f"{start:%H:%M}"
+    )
+
+
 def format_moment(activiteit: Activiteit) -> str:
     """`dinsdag 6 oktober, 16:30 tot 21:30`, in Dutch local time.
 
@@ -202,10 +214,7 @@ def format_moment(activiteit: Activiteit) -> str:
     if activiteit.aanvang is None:
         return ""
     start = _local(activiteit.aanvang)
-    tekst = (
-        f"{_WEEKDAGEN[start.weekday()]} {start.day} {_MAANDEN[start.month - 1]}, "
-        f"{start:%H:%M}"
-    )
+    tekst = _format_start(activiteit.aanvang)
     if activiteit.einde is not None:
         end = _local(activiteit.einde)
         # An end on another day is not an end time anyone reads as such.
@@ -394,6 +403,30 @@ def stukken_message(
     return bericht[:_MESSAGE_MAX]
 
 
+def change_message(
+    activiteit: Activiteit,
+    *,
+    old_aanvang: datetime | None,
+    new_time: bool,
+    new_subject: bool,
+) -> str:
+    """The one line in the channel that says the meeting changed."""
+    delen = []
+    if new_time:
+        deel = f"nu op {format_moment(activiteit)}"
+        if old_aanvang is not None:
+            deel += f" (was {_format_start(old_aanvang)})"
+        delen.append(deel)
+    if new_subject:
+        delen.append(
+            f"het onderwerp is nu **{escape_mattermost_md(activiteit.onderwerp)}**"
+        )
+    if not delen:
+        # Moved to a new activiteit with the same time and subject.
+        delen.append("de Kamer heeft haar opnieuw in de agenda gezet")
+    return f"📅 De vergadering is gewijzigd: {'; '.join(delen)}."
+
+
 class StartOutcome(enum.Enum):
     CREATED = "created"
     EXISTS = "exists"
@@ -429,6 +462,19 @@ class _Existing(NamedTuple):
     channel_id: str | None
     channel_name: str | None
     created_at: datetime
+    # What the row says about the meeting, to see whether it changed.
+    activiteit_id: str
+    onderwerp: str
+    aanvang: datetime | None
+    tijdlijn_status: str | None
+    stukken_post_id: str | None
+
+
+# The states of the timeline in which a row may follow the meeting to a new
+# activiteit, next to "not looked for yet": given up on, because the old
+# activiteit was moved or never showed up on Debat Direct. A debate that is
+# linked or running is left alone.
+_MAY_FOLLOW_A_MOVE = (TIJDLIJN_AFGELAST, TIJDLIJN_AFGELOPEN)
 
 
 class DebatKanaalService:
@@ -536,6 +582,13 @@ class DebatKanaalService:
         try:
             async with httpx.AsyncClient(timeout=_TK_TIMEOUT) as client:
                 activiteit = await fetch_activiteit(str(activiteit_id), client)
+                if activiteit is not None and activiteit.status == STATUS_MOVED:
+                    # The button under the first convocatie leads to the
+                    # same channel as the one under the convocatie of the
+                    # new date.
+                    activiteit = await self._successor(activiteit, client) or (
+                        activiteit
+                    )
         except TkApiError:
             logger.warning(
                 "Activiteit %s niet op te halen", activiteit_id, exc_info=True
@@ -601,6 +654,7 @@ class DebatKanaalService:
                 # not a lost race, so not something to stay silent about.
                 return StartResult(StartOutcome.FAILED, self._generic_failure)
             if existing.channel_id:
+                await self._follow_change(existing, activiteit)
                 if mattermost_user_id:
                     await self.mattermost.add_channel_member(
                         existing.channel_id, mattermost_user_id
@@ -738,18 +792,205 @@ class DebatKanaalService:
         channel = await self.mattermost.get_channel(channel_id)
         return (channel or {}).get("team_id") or None
 
-    async def _find(self, activiteit_id: str, team_id: str) -> _Existing | None:
-        stmt = select(
-            DebatSessie.id,
-            DebatSessie.channel_id,
-            DebatSessie.channel_name,
-            DebatSessie.created_at,
-        ).where(
-            DebatSessie.activiteit_id == activiteit_id,
-            DebatSessie.team_id == team_id,
+    async def _find(self, activiteit: Activiteit, team_id: str) -> _Existing | None:
+        """The row that stands for this debate in this team, if there is one.
+
+        What "this debate" is, measured on the 1000 convocaties registered
+        from 27 March to 5 October 2026:
+
+        * Each belongs to exactly one activiteit, and no activiteit has two
+          of them. A revised convocatie (339 of the 1000 are called
+          "Herziene convocatie") is a new version of the same document:
+          253 times on an activiteit that kept its id and its nummer, with
+          another time, agenda or bewindspersoon. The id finds those.
+        * The other 86 are the convocatie of a successor: the meeting was
+          moved, the old activiteit stays behind as "Verplaatst" and the
+          new date is a new activiteit with another id and another nummer
+          (0 of 66 kept the nummer), which gets a convocatie of its own.
+          The successor lists every predecessor, so a channel that was
+          started for any of them is this debate.
+        * The nummer is one to one with the id (1000 nummers, 1000 ids),
+          so it finds nothing the id does not, and it is not matched on.
+
+        Subject and committee are deliberately not used. The subject is
+        the same on both sides of a move in only 8 of 66 (the old one gets
+        "(verplaatst naar 8 oktober)" added), and 48 activiteiten share
+        subject and committee without being linked: the debate that
+        returns every half year, or a rondetafelgesprek and a
+        wetgevingsoverleg about the same bill.
+
+        The row with the id itself comes first: the unique key is on it,
+        and it is what two presses at the same moment collide on.
+        """
+        keys = [activiteit.id, *activiteit.vervangen_vanuit]
+        stmt = (
+            select(
+                DebatSessie.id,
+                DebatSessie.channel_id,
+                DebatSessie.channel_name,
+                DebatSessie.created_at,
+                DebatSessie.activiteit_id,
+                DebatSessie.onderwerp,
+                DebatSessie.aanvang,
+                DebatSessie.tijdlijn_status,
+                DebatSessie.stukken_post_id,
+            )
+            .where(DebatSessie.activiteit_id.in_(keys), DebatSessie.team_id == team_id)
+            .order_by(
+                (DebatSessie.activiteit_id == activiteit.id).desc(),
+                # Among predecessors: one with a channel before a claim
+                # that broke off, and the newest first.
+                DebatSessie.channel_id.is_(None),
+                DebatSessie.created_at.desc(),
+            )
+            .limit(1)
         )
         row = (await self.session.execute(stmt)).first()
         return _Existing(*row) if row is not None else None
+
+    async def _successor(
+        self, moved: Activiteit, client: httpx.AsyncClient
+    ) -> Activiteit | None:
+        """The meeting a moved one became, if the API is certain about it.
+
+        Only when the old activiteit names exactly one successor (66 of 72
+        moved ones; the other 6 were merged into another debate, turned
+        into a written round, or have no new date yet) and that successor
+        is a meeting of the same kind (124 of 133 links; the rest mostly
+        became an "Inbreng schriftelijk overleg", which nobody can listen
+        to). In every other case the caller keeps the moved activiteit and
+        answers as before.
+
+        One step is enough: the successor named is always the meeting as
+        it stands now (66 of 66), also after several moves. Whether that
+        meeting can be started is for the caller: a new date that was
+        cancelled is answered with "geannuleerd", as it would be under its
+        own convocatie.
+        """
+        if len(moved.vervangen_door) != 1:
+            return None
+        successor = await fetch_activiteit(moved.vervangen_door[0], client)
+        if successor is None or successor.soort != moved.soort:
+            return None
+        return successor
+
+    async def _follow_change(self, existing: _Existing, activiteit: Activiteit) -> None:
+        """Bring the channel up to date when the meeting itself changed.
+
+        Never raises. The person who pressed start gets the link to the
+        channel whether or not this worked. That includes the unique key
+        refusing the row its new activiteit, because a row for it appeared
+        in the meantime: then there are two channels already, and nothing
+        here can merge them.
+        """
+        try:
+            await self._apply_change(existing, activiteit)
+        except Exception:
+            logger.exception(
+                "Wijziging van activiteit %s niet verwerkt in kanaal %s",
+                activiteit.id,
+                existing.channel_id,
+            )
+            await self._safe_rollback()
+
+    async def _apply_change(self, existing: _Existing, activiteit: Activiteit) -> None:
+        moved = existing.activiteit_id != activiteit.id
+        # An empty subject or a time that could not be read is the API
+        # being incomplete, not the meeting changing.
+        new_time = (
+            activiteit.aanvang is not None and activiteit.aanvang != existing.aanvang
+        )
+        new_subject = bool(activiteit.onderwerp) and (
+            activiteit.onderwerp != existing.onderwerp
+        )
+        if not (moved or new_time or new_subject):
+            return
+        # Once the timeline has found the debate on Debat Direct the row is
+        # its own: `aanvang` is then the real start (up to 38 minutes
+        # before the appointment) and the header carries room and stream.
+        # A row that follows a move starts over, so it may also come from
+        # a timeline that gave up on the old date.
+        allowed = DebatSessie.tijdlijn_status.is_(None)
+        if moved:
+            allowed = or_(allowed, DebatSessie.tijdlijn_status.in_(_MAY_FOLLOW_A_MOVE))
+
+        # What is missing keeps the value the row had, in the row and in
+        # the texts of the channel alike.
+        activiteit = replace(
+            activiteit,
+            onderwerp=activiteit.onderwerp or existing.onderwerp,
+            aanvang=activiteit.aanvang or existing.aanvang,
+        )
+        values: dict = {
+            "activiteit_id": activiteit.id,
+            "activiteit_nummer": activiteit.nummer,
+            "onderwerp": activiteit.onderwerp,
+            "aanvang": activiteit.aanvang,
+        }
+        if moved:
+            # The timeline looks for the new date from scratch. `null()`
+            # and not None: on a JSON column None is stored as the JSON
+            # value null, which is not the SQL NULL the timeline tests for.
+            values.update(
+                tijdlijn_status=None,
+                tijdlijn_gecontroleerd_at=None,
+                debat_direct_ids=null(),
+                ondertitels=null(),
+            )
+        # Said once per change: the row is updated only if it still says
+        # what was read a moment ago, so of two presses at the same moment
+        # one finds nothing left to change and stays silent.
+        stmt = (
+            update(DebatSessie)
+            .where(
+                DebatSessie.id == existing.id,
+                DebatSessie.activiteit_id == existing.activiteit_id,
+                DebatSessie.onderwerp == existing.onderwerp,
+                DebatSessie.aanvang.is_not_distinct_from(existing.aanvang),
+                allowed,
+            )
+            .values(**values)
+        )
+        changed = (await self.session.execute(stmt)).rowcount == 1
+        await self.session.commit()
+        if not changed or not existing.channel_id:
+            return
+
+        await self._update_channel_texts(existing.channel_id, activiteit)
+        if existing.stukken_post_id:
+            bericht = stukken_message(activiteit, await self._summaries(activiteit))
+            if not await self.mattermost.update_post(existing.stukken_post_id, bericht):
+                logger.warning(
+                    "Stukkenbericht %s niet bijgewerkt", existing.stukken_post_id
+                )
+        await self.mattermost.send_channel_message(
+            existing.channel_id,
+            change_message(
+                activiteit,
+                old_aanvang=existing.aanvang if new_time else None,
+                new_time=new_time,
+                new_subject=new_subject,
+            ),
+        )
+
+    async def _update_channel_texts(
+        self, channel_id: str, activiteit: Activiteit
+    ) -> None:
+        """Header, purpose and display name as they would be made today.
+
+        Only what differs is sent: Mattermost posts a system message for
+        every header or purpose it is given. The url name stays, so links
+        to the channel keep working.
+        """
+        wanted = {
+            "header": channel_header(activiteit),
+            "purpose": channel_purpose(activiteit),
+            "display_name": channel_display_name(activiteit),
+        }
+        current = await self.mattermost.get_channel(channel_id) or {}
+        patch = {k: v for k, v in wanted.items() if current.get(k) != v}
+        if patch and not await self.mattermost.update_channel(channel_id, **patch):
+            logger.warning("Kanaal %s niet bijgewerkt na een wijziging", channel_id)
 
     async def _claim(
         self,
@@ -767,7 +1008,7 @@ class DebatKanaalService:
         ``(None, None)`` means the insert was refused and no row stands in
         the way: something other than a lost race.
         """
-        existing = await self._find(activiteit.id, team_id)
+        existing = await self._find(activiteit, team_id)
         if existing is not None:
             taken = existing.channel_id is not None
             fresh = existing.created_at > datetime.now(UTC) - STALE_CLAIM
@@ -797,7 +1038,7 @@ class DebatKanaalService:
             await self.session.commit()
         except IntegrityError:
             await self.session.rollback()
-            return None, await self._find(activiteit.id, team_id)
+            return None, await self._find(activiteit, team_id)
         return sessie_id, None
 
     async def _release(self, sessie_id: uuid.UUID, activiteit_id: str) -> None:
