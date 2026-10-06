@@ -40,7 +40,9 @@ from bouwmeester.services.debat_tijdlijn_service import (
     GIVE_UP_AFTER,
     LOOKAHEAD,
     DebatTijdlijnService,
+    Floor,
     TickResult,
+    heading_as,
 )
 from bouwmeester.services.debat_transcript import MESSAGE_LIMIT, render, split_text
 from bouwmeester.services.debat_transcript_service import (
@@ -1420,7 +1422,7 @@ async def _say(db_session, row, more: str) -> None:
 
 
 async def _transcribe(db_session, mm, sessie) -> None:
-    await DebatTranscript(db_session, mm)._write(
+    await DebatTranscript(db_session, mm).write(
         sessie.id, sessie.channel_id, PART, TickResult()
     )
 
@@ -1709,3 +1711,78 @@ class TestTheLoop:
         cadence = _worker_expected_cadence_sec()["debat_vragen"]
         # Longer than a round that catches up, and than the heartbeat.
         assert cadence >= 120
+
+
+@pytest.mark.asyncio
+class TestTwoEventsOneTurn:
+    """Someone entered as interrupter and seconds later as speaker has one
+    turn, and it is read as a speaker's turn: an interruption only counts
+    when it is put to the bewindspersoon who is interrupted."""
+
+    async def test_the_turn_is_handed_in_once_as_a_speakers_turn(
+        self, db_session, monkeypatch, handed
+    ):
+        debat = _debat(
+            ("speaker", 0.5, "m"),
+            ("interrupter", 1, "a"),
+            ("speaker", 1.25, "a"),
+            ("speaker", 3, "b"),
+        )
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Outside(monkeypatch)
+        Subtitles(monkeypatch, feed, [_cue(65, OPENING), _cue(80, Q_WANNEER)])
+        mm, llm = Chat(), FakeLLM(antwoord(vraag(Q_WANNEER)))
+        await _sessie(db_session)
+
+        await _follow(db_session, mm, feed, llm, 6)
+
+        rows = (
+            (
+                await db_session.execute(
+                    select(DebatSpreekbeurt)
+                    .where(DebatSpreekbeurt.object_id == "a")
+                    .order_by(DebatSpreekbeurt.event_start)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        first, second = rows
+        assert (first.event_type, second.event_type) == ("interrupter", "speaker")
+        assert second.post_id is None
+        (beurt,) = [b for b, _ in handed if b.spreker == "Kamerlid A (X)"]
+        assert beurt.spreekbeurt_id == first.id
+        assert beurt.post_id == first.post_id
+        assert beurt.soort == "speaker"
+        # Nobody was interrupted, although the minister had the floor.
+        assert beurt.onderbroken is None
+        # The words under both events, as one text.
+        assert beurt.tekst == f"{OPENING} {Q_WANNEER}"
+        assert [root for root, _ in mm.threads] == [first.post_id]
+        message = mm.messages[first.post_id]
+        assert message.startswith("**Kamerlid A (X)** · [")
+        assert message.endswith(STATUS_EEN)
+
+    async def test_the_questions_counted_under_the_message_stay_when_it_changes(
+        self, db_session
+    ):
+        """The first line is changed on the row; the message is put
+        together by the one place that always does, status line and all."""
+        mm = Chat()
+        s = await _running(db_session)
+        kop = heading_as(KOP, "interrupter")
+        a = await _row(db_session, s, "interrupter", 60, "a", kop=kop)
+        mm.messages[a.post_id] = kop
+        mm.order.append(a.post_id)
+        await _say(db_session, a, OPENING)
+        await _transcribe(db_session, mm, s)
+        await _marked(db_session, s, a)
+        await _status(db_session, mm, s)
+        assert mm.messages[a.post_id] == f"{kop}\n{OPENING}\n\n---\n{STATUS_EEN}"
+
+        service = DebatTijdlijnService(db_session, mm)
+        floor = Floor("interrupter", "a", a.event_start, kop)
+        await service._change_turn(s.id, PART, floor, "speaker")
+        await service._write_changed(s, TickResult())
+
+        assert mm.messages[a.post_id] == f"{KOP}\n{OPENING}\n\n---\n{STATUS_EEN}"

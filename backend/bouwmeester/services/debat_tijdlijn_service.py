@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import case, select, update
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
@@ -41,7 +41,11 @@ from bouwmeester.services.debat_kanaal_service import (
     format_moment,
 )
 from bouwmeester.services.debat_stemmen_service import Budget, DebatStemmen
-from bouwmeester.services.debat_transcript_service import DebatTranscript
+from bouwmeester.services.debat_transcript_service import (
+    ORDER,
+    WRITE_AGAIN,
+    DebatTranscript,
+)
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_utils import (
     escape_mattermost_prose as _escape,
@@ -115,32 +119,79 @@ def _linked_time(debat: dd.DdDebat, event: dd.DdEvent) -> str:
     return f"[{tijd}]({url})" if url else tijd
 
 
+# One person, two events in two roles, close together: one turn. Debat
+# Direct enters someone who gets the floor as interrupter first and as
+# speaker seconds later, and the channel then showed that person twice,
+# first as "interruptie", with the text cut over the two messages.
+#
+# Measured on the 170 debates of 22 September to 6 October 2026 (10,187
+# events of someone speaking, some 8,200 turns): 108 times in 39 debates the
+# person who had the floor got an event in the other role with nobody else
+# speaking in between. 99 times interrupter and then speaker, 9 times the
+# other way. All 108 came within 40 seconds of the start of the turn (48
+# of the 99 within 2 seconds, 81 within 10); the next ones came after 61,
+# 78, 132, 160 and 265 seconds, and those are someone who interrupts and
+# is given the floor afterwards. The bound sits in that gap. It counts
+# from the start of the turn, not from its last event, so what is decided
+# again is never more than this much of a turn.
+SAME_TURN_WITHIN = timedelta(seconds=50)
+
+_INTERRUPTION = ("↳ ", " · interruptie")
+
+
+def turn_kind(kind: str, began: datetime, event: dd.DdEvent) -> str | None:
+    """What kind a turn is once this event of the same person is part of it.
+
+    `kind` is what the turn is so far and `began` when it began. ``None``
+    for an event that is a turn of its own: the same person in another
+    role is a new turn, as a speaker who is given the floor a while after
+    interrupting.
+
+    Someone who simply carries on after the chairman said a word stays in
+    the turn, however long it has lasted. In the other role, the event that
+    came last says what the turn is: it is the correction of the one before
+    it. That is nearly always the speaker. The other way was seen 5 times
+    with seconds between (three within 5 seconds, and after 29 and 35), and
+    where what followed showed which was right, it was the interruption. In
+    the same second the order of the two is not known (7 times), and then it
+    is the speaker's.
+    """
+    if event.type == kind:
+        return kind
+    if event.start - began > SAME_TURN_WITHIN or event.start < began:
+        return None
+    if event.start == began:
+        return dd.EVENT_SPEAKER
+    return event.type
+
+
+def heading_as(kop: str, kind: str) -> str:
+    """The first line of a turn, for the kind the turn turned out to be.
+
+    Made from the line that is there and not from the event again: the
+    time in it, and the moment it links to, stay those of the start of the
+    turn.
+    """
+    before, after = _INTERRUPTION
+    bare = kop.removeprefix(before).removesuffix(after)
+    return f"{before}{bare}{after}" if kind == dd.EVENT_INTERRUPTER else bare
+
+
 def format_event(
-    event: dd.DdEvent,
-    debat: dd.DdDebat,
-    sprekers: dict[str, dd.Spreker],
-    *,
-    previous_turn: tuple[str, str] | None = None,
+    event: dd.DdEvent, debat: dd.DdDebat, sprekers: dict[str, dd.Spreker]
 ) -> str | None:
     """The message for one event, or ``None`` for an event that gets none.
 
     One message per turn at speaking. The chairman giving the floor is not
     a turn: in a debate of three hours that is seventy-five messages that
-    say nothing. Someone who simply carries on after the chairman said a
-    word does not get a second message either: `previous_turn` is the kind
-    and the person of the last turn that did get one. The same person in
-    another role does, so a speaker who answers an interruption shows up
-    again after it.
+    say nothing. Whether an event of someone speaking is a turn of its own
+    is not decided here; see `turn_kind`.
     """
     if event.type in _SPEAKING:
-        if previous_turn == (event.type, event.object_id):
-            return None
         spreker = sprekers.get(event.object_id)
         naam = _escape(spreker.label if spreker else "Onbekende spreker")
         regel = f"**{naam}** · {_linked_time(debat, event)}"
-        if event.type == dd.EVENT_INTERRUPTER:
-            return f"↳ {regel} · interruptie"
-        return regel
+        return heading_as(regel, event.type)
     if event.type == dd.EVENT_CHAIRMAN_CHANGE:
         spreker = sprekers.get(event.object_id)
         if spreker is None:
@@ -157,6 +208,47 @@ def format_event(
     if event.type == dd.EVENT_DEBATE_END:
         return f"⏹️ **Het debat is afgelopen** · {_hhmm(event.start)}"
     return None
+
+
+@dataclass
+class Floor:
+    """The turn that has the floor in a part: the last one with a message."""
+
+    # What the turn is. Not always what its first event said.
+    kind: str
+    who: str
+    # When the event came that the message was posted for.
+    began: datetime
+    # The first line of the message as it is now.
+    kop: str | None
+
+
+def floors_from(rows) -> dict[str, Floor]:  # type: ignore[no-untyped-def]
+    """Who has the floor in every part, going by the rows of a debate.
+
+    `rows` are (part, kind, start, person, message, kind of the turn, first
+    line), in the order of the timeline. This is what a tick starts from,
+    so that after a restart it goes on exactly as it would have.
+    """
+    floors: dict[str, Floor] = {}
+    for part, kind, start, who, post_id, beurt_soort, kop in rows:
+        speaking = kind in _SPEAKING
+        turn = (beurt_soort or kind) if speaking else kind
+        floor = floors.get(part)
+        if not post_id:
+            if speaking and (floor is None or (floor.kind, floor.who) != (turn, who)):
+                # Someone else spoke without a message: that only
+                # happens in a stretch the timeline missed. Who spoke
+                # before it says nothing about who speaks after it.
+                floors.pop(part, None)
+            continue
+        if speaking:
+            floors[part] = Floor(turn, who, start, kop)
+        else:
+            # A break or a new chairman was posted in between: whoever
+            # speaks next is a new turn, also if it is the same person.
+            floors.pop(part, None)
+    return floors
 
 
 @dataclass
@@ -290,13 +382,18 @@ class DebatTijdlijnService:
 
         fouten = result.fouten
         await self._post_new_events(sessie, client, now, result)
+        # Taken here, before the headings: a heading that cannot be
+        # rewritten is counted as an error too, and it must not keep the
+        # text of the whole debate from being read.
+        all_posted = result.fouten == fouten
+        await self._write_changed(sessie, result)
         if (
             get_settings().DEBAT_TRANSCRIPT_ENABLED
             and sessie.tijdlijn_status == TIJDLIJN_LOOPT
             # While a message of the timeline waits to be posted, its turn
             # is not known yet, and what is said in it would be filed
             # under the speaker before. The subtitles keep for an hour.
-            and result.fouten == fouten
+            and all_posted
         ):
             await DebatTranscript(
                 self.session, self.mattermost, await self._stemmen()
@@ -473,14 +570,14 @@ class DebatTijdlijnService:
                     DebatSpreekbeurt.event_start,
                     DebatSpreekbeurt.object_id,
                     DebatSpreekbeurt.post_id,
+                    DebatSpreekbeurt.beurt_soort,
+                    DebatSpreekbeurt.kop,
                 )
                 .where(DebatSpreekbeurt.sessie_id == sessie.id)
                 # Within one second the same order as the feed is read in:
                 # a resumption comes before whoever speaks after it.
-                .order_by(
-                    DebatSpreekbeurt.event_start,
-                    case((DebatSpreekbeurt.event_type.in_(_SPEAKING), 1), else_=0),
-                )
+                # The order the transcription reads them in as well.
+                .order_by(*ORDER)
             )
         ).all()
         seen = {(r[0], r[1], r[2], r[3]) for r in rows}
@@ -488,21 +585,7 @@ class DebatTijdlijnService:
         started_parts = {r[0] for r in rows}
         # The last turn that became a message, per part: a speaker who
         # carries on does not get a second one.
-        last_turn: dict[str, tuple[str, str]] = {}
-        for r in rows:
-            if not r[4]:
-                if r[1] in _SPEAKING and last_turn.get(r[0]) != (r[1], r[3]):
-                    # Someone else spoke without a message: that only
-                    # happens in a stretch the timeline missed. Who spoke
-                    # before it says nothing about who speaks after it.
-                    last_turn.pop(r[0], None)
-                continue
-            if r[1] in _SPEAKING:
-                last_turn[r[0]] = (r[1], r[3])
-            else:
-                # A break or a new chairman was posted in between: whoever
-                # speaks next is a new turn, also if it is the same person.
-                last_turn.pop(r[0], None)
+        floors = floors_from(rows)
 
         last_end: datetime | None = None
         for debate_id in list(sessie.debat_direct_ids or []):
@@ -597,7 +680,7 @@ class DebatTijdlijnService:
                 result.berichten += 1
                 # What came before the gap says nothing about who speaks
                 # after it.
-                last_turn.pop(debate_id, None)
+                floors.pop(debate_id, None)
             for event in old:
                 await self._remember(sessie.id, debate_id, event, None)
                 if event.type == dd.EVENT_DEBATE_END:
@@ -609,12 +692,29 @@ class DebatTijdlijnService:
                 await self.session.commit()
 
             for event in new:
-                tekst = format_event(
-                    event,
-                    debat,
-                    sprekers,
-                    previous_turn=last_turn.get(debate_id),
-                )
+                floor = floors.get(debate_id)
+                if (
+                    floor is not None
+                    and event.type in _SPEAKING
+                    and event.object_id == floor.who
+                    and (kind := turn_kind(floor.kind, floor.began, event))
+                ):
+                    # Part of the turn that has the floor: no message of
+                    # its own.
+                    if kind != floor.kind:
+                        await self._change_turn(sessie.id, debate_id, floor, kind)
+                    await self._remember(
+                        sessie.id,
+                        debate_id,
+                        event,
+                        None,
+                        beurt_soort=kind if kind != event.type else None,
+                    )
+                    # Together: the row of the event and what it made of
+                    # the turn.
+                    await self.session.commit()
+                    continue
+                tekst = format_event(event, debat, sprekers)
                 post_id = None
                 if tekst:
                     post_id = await self.mattermost.send_channel_message(
@@ -634,9 +734,11 @@ class DebatTijdlijnService:
                         break
                     result.berichten += 1
                     if event.type in _SPEAKING:
-                        last_turn[debate_id] = (event.type, event.object_id)
+                        floors[debate_id] = Floor(
+                            event.type, event.object_id, event.start, tekst
+                        )
                     else:
-                        last_turn.pop(debate_id, None)
+                        floors.pop(debate_id, None)
                 kop = tekst if post_id and event.type in _WITH_TEXT else None
                 await self._remember(sessie.id, debate_id, event, post_id, kop)
                 # Per event: a message that is in the channel has to be in
@@ -726,6 +828,7 @@ class DebatTijdlijnService:
         event: dd.DdEvent,
         post_id: str | None,
         kop: str | None = None,
+        beurt_soort: str | None = None,
     ) -> None:
         stmt = (
             insert(DebatSpreekbeurt)
@@ -737,7 +840,74 @@ class DebatTijdlijnService:
                 object_id=event.object_id,
                 post_id=post_id,
                 kop=kop,
+                beurt_soort=beurt_soort,
             )
             .on_conflict_do_nothing(constraint="uq_debat_spreekbeurt_event")
         )
         await self.session.execute(stmt)
+
+    async def _change_turn(
+        self, sessie_id: uuid.UUID, debate_id: str, floor: Floor, kind: str
+    ) -> None:
+        """Make the turn that has the floor another kind of turn.
+
+        The message is in the channel already when the second event comes:
+        the feed shows an event about 7 seconds after it happened and it is
+        posted at once, and half of the second events come more than 2
+        seconds after the first. Holding every interruption back until its
+        second event can no longer come would cost up to 50 seconds each,
+        for the 1 turn in 80 this happens to. So the message is posted as
+        what the feed says and made into what it turned out to be.
+
+        Only the rows change here. The message is written from them by the
+        transcription, which is what writes it every other time as well;
+        see `_write_changed`.
+        """
+        turn = (
+            DebatSpreekbeurt.sessie_id == sessie_id,
+            DebatSpreekbeurt.debat_direct_id == debate_id,
+            DebatSpreekbeurt.object_id == floor.who,
+            DebatSpreekbeurt.event_type.in_(_SPEAKING),
+            DebatSpreekbeurt.event_start >= floor.began,
+        )
+        # On every row of the turn, so that each says by itself which turn
+        # it is part of.
+        await self.session.execute(
+            update(DebatSpreekbeurt).where(*turn).values(beurt_soort=kind)
+        )
+        floor.kind = kind
+        if floor.kop is None:
+            return
+        floor.kop = heading_as(floor.kop, kind)
+        await self.session.execute(
+            update(DebatSpreekbeurt)
+            # One row of a turn carries the message.
+            .where(*turn, DebatSpreekbeurt.post_id.is_not(None))
+            .values(kop=floor.kop, tekst_geplaatst_hash=WRITE_AGAIN)
+        )
+
+    async def _write_changed(self, sessie: DebatSessie, result: TickResult) -> None:
+        """Write the messages whose first line changed.
+
+        Asked of the rows and not remembered from this tick: a message that
+        could not be written, or a worker that stopped between the row and
+        the message, is then simply done on the next tick. Also without
+        the transcription switched on, which is otherwise what does this.
+        """
+        sessie_id, channel_id = sessie.id, sessie.channel_id
+        if channel_id is None or sessie.tijdlijn_status not in _ACTIVE:
+            return
+        parts = (
+            await self.session.execute(
+                select(DebatSpreekbeurt.debat_direct_id)
+                .where(
+                    DebatSpreekbeurt.sessie_id == sessie_id,
+                    DebatSpreekbeurt.tekst_geplaatst_hash == WRITE_AGAIN,
+                )
+                .distinct()
+            )
+        ).scalars()
+        for debate_id in list(parts):
+            await DebatTranscript(self.session, self.mattermost).write(
+                sessie_id, channel_id, debate_id, result
+            )

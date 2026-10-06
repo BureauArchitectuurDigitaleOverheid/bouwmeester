@@ -347,6 +347,65 @@ def start_of(debat: DdDebat) -> datetime | None:
     return debat.started_at or debat.starts_at
 
 
+# What tells a later part of one debate from another item of the agenda
+# with the same name. Measured on the 21 days with an agenda between 31
+# August and 6 October 2026 (357 debates, 280 activiteiten matched): 17
+# activiteiten got more than one debate, 7 of them rightly. Those 7 were all
+# a plenary debate cut around a break, and the next part started 0.6 to
+# 63.4 minutes after the part before it ended.
+#
+# The other 10 are what these two rules keep out. Eight were items that are
+# on the agenda several times a day under one name: "Stemmingen" three
+# times (65, 106 and 692 minutes after the one before) and "Regeling van
+# werkzaamheden" five times (3.5 to 53 minutes: no bound on the time tells
+# those from a break, so they go by name). "Mededelingen" is the same kind
+# of item, 13 times in these days, 49 to 423 minutes apart. The remaining
+# two: the election of a chairman and that of a deputy 193 minutes later,
+# and two meetings alike in name that ran at the same time in two rooms.
+#
+# Two hours is twice the longest break measured, and well under the
+# shortest wrong pair that the names do not catch.
+MAX_BREAK = timedelta(hours=2)
+_RECURRING_ITEMS = frozenset(
+    {"stemmingen", "regeling van werkzaamheden", "mededelingen"}
+)
+
+
+def _recurs(debat: DdDebat) -> bool:
+    """An item that is on the agenda several times a day under one name."""
+    return (
+        _norm(debat.debate_type or "") in _RECURRING_ITEMS
+        or _norm(debat.name) in _RECURRING_ITEMS
+    )
+
+
+def continues(previous: DdDebat, debat: DdDebat) -> bool:
+    """Whether `debat` is the next part of the debate `previous` is a part of.
+
+    Says nothing about the subject: the caller compares that. A part that
+    has not ended has no next part yet. Debat Direct gives a debate its end
+    at the moment of the event that ends it (170 of 170 debates), and a
+    next part is looked for every five minutes, so it is found a round
+    later at worst.
+    """
+    if _recurs(previous) or _recurs(debat):
+        return False
+    if (
+        previous.location_id
+        and debat.location_id
+        and previous.location_id != debat.location_id
+    ):
+        # A debate goes on in the room it was in. Meetings of different
+        # committees can carry almost the same name (procedurevergaderingen
+        # scored 0.80 and more on each other on 2 July 2026) and follow
+        # each other within the hour, in another room.
+        return False
+    start = start_of(debat)
+    if start is None or previous.ended_at is None:
+        return False
+    return timedelta(0) <= start - previous.ended_at <= MAX_BREAK
+
+
 def later_parts(
     onderwerp: str, known_ids: list[str], debates: list[DdDebat]
 ) -> list[DdDebat]:
@@ -355,7 +414,7 @@ def later_parts(
     Debat Direct cuts a plenary debate in two around a break, and the
     second part only appears when it starts. It is recognised by carrying
     the same subject and the same kind as a known part, and by starting
-    after it.
+    within a break's length of where the last part ended; see `continues`.
 
     Deliberately not through `match_debates` again. That compares with the
     planned start of the activiteit, and once a debate has started Debat
@@ -364,21 +423,43 @@ def later_parts(
     part would never be found.
     """
     known = [debat for debat in debates if debat.id in known_ids]
-    starts = [start for debat in known if (start := start_of(debat)) is not None]
-    if not starts:
+    started = [debat for debat in known if start_of(debat) is not None]
+    if not started:
         return []
-    first = min(starts)
     kinds = {debat.debate_type for debat in known}
-    found = [
+    candidates = [
         debat
         for debat in debates
         if debat.id not in known_ids
         and debat.debate_type in kinds
         and similarity(onderwerp, debat.name) >= MIN_SIMILARITY
-        and (start := start_of(debat)) is not None
-        and start > first
+        and start_of(debat) is not None
     ]
-    return sorted(found, key=lambda d: start_of(d).timestamp())  # type: ignore[union-attr]
+    # A chain: a third part continues the second, not the first.
+    last = max(started, key=_start_key)
+    found: list[DdDebat] = []
+    for debat in sorted(candidates, key=_start_key):
+        if continues(last, debat):
+            found.append(debat)
+            last = debat
+    return found
+
+
+def _start_key(debat: DdDebat) -> float:
+    start = start_of(debat)
+    return start.timestamp() if start else 0.0
+
+
+def _literal_likeness(a: str, b: str) -> float:
+    """How alike two subjects are as they are written, brackets and all.
+
+    `similarity` leaves out what is between brackets, and then "Regeling
+    van werkzaamheden (stemmingen)" is "Regeling van werkzaamheden". Both
+    are on the agenda within the hour, against one activiteit.
+    """
+    return difflib.SequenceMatcher(
+        None, " ".join(a.lower().split()), " ".join(b.lower().split())
+    ).ratio()
 
 
 def match_debates(activiteit: Activiteit, debates: list[DdDebat]) -> list[DdDebat]:
@@ -388,9 +469,9 @@ def match_debates(activiteit: Activiteit, debates: list[DdDebat]) -> list[DdDeba
     More than one is possible and correct: Debat Direct cuts a plenary
     debate in two around a break, against one activiteit.
 
-    The start time only counts for the first part. A second part starts
-    hours after the activiteit does, and is recognised by carrying the same
-    subject as a part that did match on time.
+    The start time only counts for one part. A second part starts hours
+    after the activiteit does, and is recognised by carrying the same
+    subject and following a part that did match on time; see `continues`.
     """
     alike = [
         debat
@@ -398,28 +479,40 @@ def match_debates(activiteit: Activiteit, debates: list[DdDebat]) -> list[DdDeba
         if similarity(activiteit.onderwerp, debat.name) >= MIN_SIMILARITY
         and _type_fits(activiteit.soort, debat.debate_type)
     ]
-    if not alike:
-        return []
-
-    if activiteit.aanvang is not None:
+    aanvang = activiteit.aanvang
+    on_time = alike
+    if aanvang is not None:
         on_time = [
             debat
             for debat in alike
             if (start := start_of(debat)) is not None
-            and abs(start - activiteit.aanvang) <= _MAX_START_DIFFERENCE
+            and abs(start - aanvang) <= _MAX_START_DIFFERENCE
         ]
-        if not on_time:
-            return []
-        # Later parts: same subject, starting after the part that matched.
-        first = min(start_of(d) for d in on_time)  # type: ignore[type-var]
-        alike = [
-            debat
-            for debat in alike
-            if (start := start_of(debat)) is not None and start >= first
-        ]
+    if not on_time:
+        return []
 
-    def order(debat: DdDebat) -> tuple[bool, float]:
+    def fit(debat: DdDebat) -> tuple[float, float, float]:
         start = start_of(debat)
-        return (start is None, start.timestamp() if start else 0.0)
+        off = abs(start - aanvang).total_seconds() if start and aanvang else 0.0
+        return (
+            similarity(activiteit.onderwerp, debat.name),
+            _literal_likeness(activiteit.onderwerp, debat.name),
+            -off,
+        )
 
-    return sorted(alike, key=order)
+    # Several can be on time without being parts of one debate: two items
+    # of one name around the votes (5 of the 21 days), or two meetings
+    # alike in name at the same hour (once). Then it is the one that fits
+    # best, by subject before time: the item meant was once 35 minutes off
+    # where the other was 19.
+    parts = [max(on_time, key=fit)]
+    ordered = sorted(alike, key=_start_key)
+    # The parts before it and after it. Both ways, because a short first
+    # part and its second can both be on time.
+    for debat in reversed(ordered):
+        if debat not in parts and continues(debat, parts[0]):
+            parts.insert(0, debat)
+    for debat in ordered:
+        if debat not in parts and continues(parts[-1], debat):
+            parts.append(debat)
+    return parts

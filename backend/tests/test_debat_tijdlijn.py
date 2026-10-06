@@ -29,9 +29,14 @@ from bouwmeester.services import debat_tijdlijn_service as mod
 from bouwmeester.services.debat_kanaal_service import channel_header
 from bouwmeester.services.debat_tijdlijn_service import (
     DebatTijdlijnService,
+    Floor,
     TickResult,
+    floors_from,
     format_event,
+    heading_as,
+    turn_kind,
 )
+from bouwmeester.services.mattermost_service import PostNotFoundError
 from bouwmeester.services.tk_activiteit import Activiteit, TkApiError
 from tests.test_debat_direct import CEST, FIXTURE
 
@@ -78,30 +83,6 @@ class TestFormatEvent:
     def test_the_chairman_giving_the_floor_is_not_a_turn(self):
         assert format_event(_event("chairman", "10:42:00"), FULL, self.S) is None
 
-    def test_a_speaker_who_carries_on_gets_no_second_message(self):
-        event = _event("speaker", "10:43:00")
-        assert (
-            format_event(event, FULL, self.S, previous_turn=("speaker", "p1")) is None
-        )
-
-    def test_the_same_person_interrupting_twice_in_a_row_is_one_message(self):
-        event = _event("interrupter", "10:43:00", "p2")
-        assert (
-            format_event(event, FULL, self.S, previous_turn=("interrupter", "p2"))
-            is None
-        )
-
-    def test_a_speaker_answering_an_interruption_shows_up_again(self):
-        """Same person as two turns ago, but someone spoke in between."""
-        event = _event("speaker", "10:46:00")
-        tekst = format_event(event, FULL, self.S, previous_turn=("interrupter", "p2"))
-        assert tekst.startswith("**Kamerlid A (CDA)**")
-
-    def test_the_same_person_in_another_role_is_a_new_turn(self):
-        event = _event("interrupter", "10:46:00")
-        tekst = format_event(event, FULL, self.S, previous_turn=("speaker", "p1"))
-        assert tekst.startswith("↳ **Kamerlid A (CDA)**")
-
     def test_unknown_speaker_is_still_a_turn(self):
         tekst = format_event(_event("speaker", "10:42:10", "wie"), FULL, self.S)
         assert tekst.startswith("**Onbekende spreker**")
@@ -143,6 +124,143 @@ class TestFormatEvent:
         assert format_event(_event("voting_round", "12:00:00"), FULL, self.S) is None
 
 
+class TestTurnKind:
+    """Whether an event of the person who has the floor is part of the turn."""
+
+    BEGAN = _event("speaker", "10:42:00").start
+
+    def _kind(self, kind: str, event_kind: str, at: str) -> str | None:
+        return turn_kind(kind, self.BEGAN, _event(event_kind, at))
+
+    def test_a_speaker_who_carries_on_stays_in_the_turn(self):
+        assert self._kind("speaker", "speaker", "10:43:00") == "speaker"
+
+    def test_however_long_the_turn_has_lasted(self):
+        assert self._kind("speaker", "speaker", "11:30:00") == "speaker"
+        assert self._kind("interrupter", "interrupter", "10:50:00") == "interrupter"
+
+    def test_entered_as_interrupter_and_seconds_later_as_speaker_is_a_speaker(self):
+        assert self._kind("interrupter", "speaker", "10:42:03") == "speaker"
+
+    def test_the_event_that_came_last_says_which_it_is(self):
+        """The other way round it was an interruption after all."""
+        assert self._kind("speaker", "interrupter", "10:42:05") == "interrupter"
+
+    def test_in_the_same_second_it_is_the_speaker(self):
+        """The order of two events in one second is not known."""
+        assert self._kind("interrupter", "speaker", "10:42:00") == "speaker"
+        assert self._kind("speaker", "interrupter", "10:42:00") == "speaker"
+
+    def test_the_bound_is_on_the_time_since_the_turn_began(self):
+        """All 108 measured came within 40 seconds; the next after 61."""
+        assert mod.SAME_TURN_WITHIN == timedelta(seconds=50)
+        assert self._kind("interrupter", "speaker", "10:42:50") == "speaker"
+        assert self._kind("interrupter", "speaker", "10:42:51") is None
+        assert self._kind("speaker", "interrupter", "10:42:51") is None
+
+    def test_an_event_from_before_the_turn_is_not_part_of_it(self):
+        assert self._kind("interrupter", "speaker", "10:41:59") is None
+
+
+class TestHeadingAs:
+    S = {"p1": dd.Spreker("Kamerlid A", "CDA")}
+
+    def test_an_interruption_becomes_a_speakers_line_and_back(self):
+        speaker = format_event(_event("speaker", "10:42:10"), FULL, self.S)
+        interruption = format_event(_event("interrupter", "10:42:10"), FULL, self.S)
+        link = "?event=interrupter2026-10-01T10%3A42%3A10%2B0200)"
+        assert heading_as(interruption, "speaker") == speaker.replace(
+            "?event=speaker2026-10-01T10%3A42%3A10%2B0200)", link
+        )
+        # The link stays the one to the first event: that is where the
+        # turn begins, and the site only knows moments by their own kind.
+        assert link in heading_as(interruption, "speaker")
+        assert heading_as(heading_as(interruption, "speaker"), "interrupter") == (
+            interruption
+        )
+
+    def test_a_line_that_is_the_kind_already_stays_as_it_is(self):
+        speaker = format_event(_event("speaker", "10:42:10"), FULL, self.S)
+        interruption = format_event(_event("interrupter", "10:42:10"), FULL, self.S)
+        assert heading_as(speaker, "speaker") == speaker
+        assert heading_as(interruption, "interrupter") == interruption
+
+
+class TestFloors:
+    """Who has the floor, read back from the rows after a restart."""
+
+    T = _event("speaker", "10:42:00").start
+
+    def _row(self, kind, seconds, who="a", post="p", soort=None, part="d1"):
+        post_id = f"{post}{seconds}" if post else None
+        return (
+            part,
+            kind,
+            self.T + timedelta(seconds=seconds),
+            who,
+            post_id,
+            soort,
+            f"kop {kind}" if post_id else None,
+        )
+
+    def test_the_last_turn_with_a_message(self):
+        floors = floors_from(
+            [self._row("speaker", 0, "a"), self._row("interrupter", 30, "b")]
+        )
+        assert floors["d1"] == Floor(
+            "interrupter",
+            "b",
+            self.T + timedelta(seconds=30),
+            "kop interrupter",
+        )
+
+    def test_a_turn_is_the_kind_it_was_made_not_the_kind_of_its_first_event(self):
+        floors = floors_from(
+            [
+                self._row("interrupter", 0, soort="speaker"),
+                self._row("speaker", 3, post=None),
+            ]
+        )
+        floor = floors["d1"]
+        assert (floor.kind, floor.began) == ("speaker", self.T)
+
+    def test_a_row_that_went_into_the_turn_does_not_end_it(self):
+        """Entered as speaker in between, in a turn that became an
+        interruption after all."""
+        floors = floors_from(
+            [
+                self._row("interrupter", 0, soort="interrupter"),
+                self._row("speaker", 2, post=None, soort="interrupter"),
+                self._row("interrupter", 27, post=None, soort="interrupter"),
+            ]
+        )
+        assert floors["d1"].kind == "interrupter"
+
+    def test_someone_without_a_message_takes_the_floor_from_whoever_had_it(self):
+        """A stretch the timeline missed."""
+        rows = [self._row("speaker", 0, "a"), self._row("speaker", 30, "b", post=None)]
+        assert floors_from(rows) == {}
+        # Also the same person in the other role, when that was not made
+        # part of the turn.
+        rows = [self._row("interrupter", 0), self._row("speaker", 90, post=None)]
+        assert floors_from(rows) == {}
+
+    def test_a_message_that_is_not_a_turn_ends_the_turn(self):
+        rows = [self._row("speaker", 0), self._row("suspended", 30, "")]
+        assert floors_from(rows) == {}
+
+    def test_the_chairman_giving_the_floor_changes_nothing(self):
+        rows = [self._row("speaker", 0), self._row("chairman", 30, "v", post=None)]
+        assert floors_from(rows)["d1"].who == "a"
+
+    def test_every_part_has_a_floor_of_its_own(self):
+        rows = [self._row("speaker", 0, "a"), self._row("speaker", 5, "b", part="d2")]
+        assert {part: f.who for part, f in floors_from(rows).items()} == {
+            "d1": "a",
+            "d2": "b",
+        }
+
+
 class TestHeader:
     def test_room_and_stream_replace_the_generic_link(self):
         activiteit = Activiteit(
@@ -176,6 +294,8 @@ class FakeMattermost:
         self.fail_posts = 0
         self.enabled = True
         self.gone: set[str] = set()
+        # Where in `posts` each message is.
+        self.now: dict[str, int] = {}
 
     async def is_enabled(self) -> bool:
         return self.enabled
@@ -185,7 +305,22 @@ class FakeMattermost:
             self.fail_posts -= 1
             return None
         self.posts.append((channel_id, text))
-        return f"post{uuid.uuid4().hex}"[:26]
+        post_id = f"post{uuid.uuid4().hex}"[:26]
+        self.now[post_id] = len(self.posts) - 1
+        return post_id
+
+    async def update_post(self, post_id, message, props=None) -> bool:
+        """A message is written again: it says the new text from then on."""
+        if post_id not in self.now:
+            return False
+        channel_id, _ = self.posts[self.now[post_id]]
+        self.posts[self.now[post_id]] = (channel_id, message)
+        return True
+
+    async def get_post(self, post_id) -> dict | None:
+        if post_id not in self.now:
+            raise PostNotFoundError(post_id)
+        return {"id": post_id}
 
     async def update_channel(self, channel_id, **fields) -> bool:
         self.headers.append((channel_id, fields))
@@ -490,10 +625,11 @@ class TestTimeline:
         assert any(t.startswith("▶️ **Hervat** · [11:34](") for t in mm.texts)
         assert "_Voorzitter is nu Kamerlid B_ · 12:42" in mm.texts
         # One message per turn: 153 speaker and interrupter events, of
-        # which 20 are someone carrying on. The 75 chairman events are not
-        # in the channel.
-        assert len(mm.turns) == 133
-        assert len(mm.texts) == 138
+        # which 20 are someone carrying on and 5 are the second event of
+        # someone entered as interrupter and seconds later as speaker. The
+        # 75 chairman events are not in the channel.
+        assert len(mm.turns) == 128
+        assert len(mm.texts) == 133
         # Every event is remembered, posted or not.
         assert await _rows(db_session, sessie) == 233
         assert {channel for channel, _ in mm.posts} == {sessie.channel_id}
@@ -1245,6 +1381,42 @@ class TestEnding:
         # Not closed after the first part ended, although that was hours ago.
         assert sessie.tijdlijn_status == TIJDLIJN_LOOPT
         assert sum(1 for t in mm.texts if "Het debat is begonnen" in t) == 2
+
+    async def test_the_same_subject_hours_after_the_end_is_not_a_second_part(
+        self, db_session, monkeypatch
+    ):
+        """An item of the agenda that comes back later that day under the
+        same name is somebody else's: it starts longer after the end than
+        any break lasts."""
+        shift = FULL.ended_at - FULL.started_at + dd.MAX_BREAK + timedelta(minutes=5)
+        later = dd.DdDebat(
+            **{
+                **FULL.__dict__,
+                "id": "later",
+                "starts_at": FULL.starts_at + shift,
+                "started_at": FULL.started_at + shift,
+                "ended_at": FULL.ended_at + shift,
+                "events": tuple(
+                    dd.DdEvent(e.start + shift, e.type, e.object_id, e.raw_start)
+                    for e in FULL.events[:12]
+                ),
+            }
+        )
+        feed = Feed(monkeypatch, parts=[FULL, later])
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=10),
+            later.started_at + timedelta(minutes=8),
+            step=60,
+        )
+
+        assert sessie.debat_direct_ids == [FULL.id]
+        assert sum(1 for t in mm.texts if "Het debat is begonnen" in t) == 1
 
     async def test_a_second_part_is_found_when_the_debate_started_late(
         self, db_session, monkeypatch

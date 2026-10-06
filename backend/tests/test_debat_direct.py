@@ -362,8 +362,187 @@ class TestMatch:
             name="Algemene Financiële Beschouwingen (voortzetting)",
             debateType="Plenair debat",
             startsAt="2026-10-01T10:15:00+0200",
+            endedAt="2026-10-01T13:41:00+0200",
         )
         assert [d.id for d in dd.match_debates(a, [tweede, eerste])] == ["d1", "d2"]
+
+    def _stemmingen(self, id_, start, end, name="Stemmingen"):
+        return _debat(
+            id=id_,
+            name=name,
+            debateType="Stemmingen",
+            startsAt=f"2026-10-01T{start}:00+0200",
+            startedAt=f"2026-10-01T{start}:00+0200",
+            endedAt=f"2026-10-01T{end}:00+0200",
+        )
+
+    def test_votes_later_that_day_are_not_a_second_part(self):
+        """As on 29 September 2026: votes at 15:27 and again at 17:25, each
+        with an activiteit of its own. 65 minutes lie between them, which
+        is a break's length, so only the name tells them apart."""
+        middag = self._stemmingen("middag", "15:27", "16:20")
+        avond = self._stemmingen("avond", "17:25", "17:28")
+        a = _activiteit(
+            onderwerp="Stemmingen",
+            soort="Stemmingen",
+            aanvang=datetime(2026, 10, 1, 15, 15, tzinfo=CEST),
+        )
+        assert [d.id for d in dd.match_debates(a, [avond, middag])] == ["middag"]
+        later = _activiteit(
+            onderwerp="AANSLUITEND: STEMMINGEN (over moties bij het tweeminutendebat)",
+            soort="Stemmingen",
+            aanvang=datetime(2026, 10, 1, 17, 25, tzinfo=CEST),
+        )
+        assert [d.id for d in dd.match_debates(later, [avond, middag])] == ["avond"]
+
+    def test_of_two_items_on_time_the_one_named_like_it_is_meant(self):
+        """As on 8 September 2026: a minute of "Regeling van werkzaamheden
+        (stemmingen)" before the votes and the real one after them, against
+        one activiteit. The first was 19 minutes off and the real one 35,
+        so the time does not say which."""
+        kort = _debat(
+            id="kort",
+            name="Regeling van werkzaamheden (stemmingen)",
+            debateType="Regeling van werkzaamheden",
+            startsAt="2026-10-01T15:26:00+0200",
+            endedAt="2026-10-01T15:27:00+0200",
+        )
+        echt = _debat(
+            id="echt",
+            name="Regeling van werkzaamheden",
+            debateType="Regeling van werkzaamheden",
+            startsAt="2026-10-01T16:19:00+0200",
+            endedAt="2026-10-01T17:01:00+0200",
+        )
+        a = _activiteit(
+            onderwerp="Regeling van werkzaamheden",
+            soort="Regeling van werkzaamheden",
+            aanvang=datetime(2026, 10, 1, 15, 45, tzinfo=CEST),
+        )
+        assert [d.id for d in dd.match_debates(a, [kort, echt])] == ["echt"]
+        # And with words in front of it, as the activiteit of 24 September.
+        a = _activiteit(
+            onderwerp="Aanvang middagvergadering: Regeling van werkzaamheden",
+            soort="Regeling van werkzaamheden",
+            aanvang=datetime(2026, 10, 1, 15, 45, tzinfo=CEST),
+        )
+        assert [d.id for d in dd.match_debates(a, [kort, echt])] == ["echt"]
+
+    def test_two_meetings_alike_in_name_at_one_hour_are_not_two_parts(self):
+        """As on 28 September 2026: two meetings in two rooms, the names
+        just alike enough. The one that is named like the activiteit."""
+        naam = "Implementatiewet herziene richtlijn zeevaart"
+        ander = "Implementatiewet herziene EU-richtlijn luchtvaart"
+        assert dd.similarity(naam, ander) >= dd.MIN_SIMILARITY
+        deze = _debat(
+            id="deze",
+            name=naam,
+            debateType="Wetgevingsoverleg",
+            startsAt="2026-10-01T10:01:00+0200",
+            endedAt="2026-10-01T14:49:00+0200",
+        )
+        andere = _debat(
+            id="andere",
+            name=ander,
+            debateType="Wetgevingsoverleg",
+            startsAt="2026-10-01T10:00:00+0200",
+            endedAt="2026-10-01T14:18:00+0200",
+        )
+        a = _activiteit(onderwerp=naam, soort="Wetgevingsoverleg")
+        assert [d.id for d in dd.match_debates(a, [andere, deze])] == ["deze"]
+
+    def test_the_subject_counts_before_how_it_is_written(self):
+        """Debat Direct shortens a subject. The short one is the same
+        subject; another one that happens to be written out as long as the
+        activiteit only looks more like it letter by letter."""
+        onderwerp = "Tweeminutendebat Zeevaartraad (informeel) d.d. 28-29 september"
+        kort = _debat(id="kort", name="Zeevaartraad", debateType="Plenair debat")
+        lang = _debat(
+            id="lang",
+            name="Tweeminutendebat Luchtvaartraad (informeel) d.d. 28-29 september",
+            debateType="Plenair debat",
+            startsAt="2026-10-01T10:01:00+0200",
+        )
+        assert dd.similarity(onderwerp, lang.name) >= dd.MIN_SIMILARITY
+        assert dd._literal_likeness(onderwerp, lang.name) > dd._literal_likeness(
+            onderwerp, kort.name
+        )
+        a = _activiteit(onderwerp=onderwerp, soort="Plenair debat (tweeminutendebat)")
+        assert [d.id for d in dd.match_debates(a, [lang, kort])] == ["kort"]
+
+    def test_the_same_subject_hours_after_the_end_is_another_item(self):
+        """As on 24 September 2026: an election, and 193 minutes after it
+        one that is named nearly the same."""
+        eerste = _debat(
+            id="eerste",
+            name="Verkiezing van een voorzitter",
+            debateType="Constituerende vergadering",
+            startsAt="2026-10-01T10:16:00+0200",
+            endedAt="2026-10-01T10:19:00+0200",
+        )
+        tweede = _debat(
+            id="tweede",
+            name="Verkiezing van een ondervoorzitter",
+            debateType="Constituerende vergadering",
+            startsAt="2026-10-01T13:32:00+0200",
+            endedAt="2026-10-01T13:35:00+0200",
+        )
+        a = _activiteit(
+            onderwerp="Verkiezing van een voorzitter",
+            soort="Constituerende vergadering",
+            aanvang=datetime(2026, 10, 1, 10, 15, tzinfo=CEST),
+        )
+        assert [d.id for d in dd.match_debates(a, [eerste, tweede])] == ["eerste"]
+
+    def test_a_break_of_an_hour_is_still_one_debate(self):
+        """As on 30 September 2026: 63 minutes between the parts, the
+        longest break measured."""
+        eerste = _debat(
+            id="d1",
+            name="Algemene Financiële Beschouwingen",
+            debateType="Plenair debat",
+            startsAt="2026-10-01T10:35:00+0200",
+            endedAt="2026-10-01T13:15:00+0200",
+        )
+        tweede = _debat(
+            id="d2",
+            name="Algemene Financiële Beschouwingen",
+            debateType="Plenair debat",
+            startsAt="2026-10-01T14:19:00+0200",
+        )
+        a = _activiteit(
+            onderwerp="Algemene Financiële Beschouwingen (inclusief begroting)",
+            soort="Plenair debat (wetgeving)",
+            aanvang=datetime(2026, 10, 1, 10, 35, tzinfo=CEST),
+        )
+        assert [d.id for d in dd.match_debates(a, [tweede, eerste])] == ["d1", "d2"]
+
+    def test_a_short_first_part_belongs_with_the_part_that_is_nearer(self):
+        """Both parts on time, the second nearer to the planned start: the
+        part before it is found as well as a part after it."""
+        delen = [
+            _debat(
+                id=id_,
+                debateType="Plenair debat",
+                startsAt=f"2026-10-01T{start}:00+0200",
+                endedAt=f"2026-10-01T{end}:00+0200",
+            )
+            for id_, start, end in (
+                ("d1", "09:40", "09:50"),
+                ("d2", "09:58", "12:00"),
+                ("d3", "12:30", "14:00"),
+            )
+        ]
+        a = _activiteit(onderwerp="Digitale overheid", soort="Plenair debat")
+        assert [d.id for d in dd.match_debates(a, delen[::-1])] == ["d1", "d2", "d3"]
+
+    def test_a_part_that_has_not_ended_has_no_next_part(self):
+        eerste = _debat(id="d1", debateType="Plenair debat")
+        tweede = _debat(
+            id="d2", debateType="Plenair debat", startsAt="2026-10-01T10:30:00+0200"
+        )
+        a = _activiteit(onderwerp="Digitale overheid", soort="Plenair debat")
+        assert [d.id for d in dd.match_debates(a, [eerste, tweede])] == ["d1"]
 
     def test_an_earlier_debate_with_the_same_subject_is_not_a_part(self):
         """Only parts after the one that matched on time belong to it."""
@@ -405,6 +584,7 @@ class TestLaterParts:
             "debateType": "Plenair debat",
             "startsAt": "2026-10-01T12:15:00+0200",
             "startedAt": "2026-10-01T12:15:00+0200",
+            "endedAt": "2026-10-01T15:00:00+0200",
         }
         values.update(overrides)
         return _debat(**values)
@@ -425,10 +605,32 @@ class TestLaterParts:
         )
         assert [d.id for d in found] == ["d2"]
 
+    def test_a_debate_goes_on_in_the_room_it_was_in(self):
+        """Meetings of different committees can carry almost the same name
+        and follow each other within the hour, in another room."""
+        first = self._first(locationId="zaal-1")
+
+        elsewhere = dd.later_parts(
+            first.name, ["d1"], [self._second(locationId="zaal-2"), first]
+        )
+        same_room = dd.later_parts(
+            first.name, ["d1"], [self._second(locationId="zaal-1"), first]
+        )
+        unknown = dd.later_parts(
+            first.name, ["d1"], [self._second(locationId=None), first]
+        )
+
+        assert elsewhere == []
+        assert [d.id for d in same_room] == ["d2"]
+        # A part without a room is not held against it.
+        assert [d.id for d in unknown] == ["d2"]
+
     def test_works_however_late_the_first_part_started(self):
         """It compares with the known part, not with the planned time of
         the activiteit, which the debate may have left far behind."""
-        first = self._first(startedAt="2026-10-01T15:30:00+0200")
+        first = self._first(
+            startedAt="2026-10-01T15:30:00+0200", endedAt="2026-10-01T19:00:00+0200"
+        )
         second = self._second(startsAt="2026-10-01T20:00:00+0200")
         found = dd.later_parts(
             "Algemene Financiële Beschouwingen", ["d1"], [first, second]
@@ -467,6 +669,70 @@ class TestLaterParts:
             dd.later_parts("Algemene Financiële Beschouwingen", ["d1"], [self._first()])
             == []
         )
+
+    def test_two_hours_after_the_end_is_the_longest_break(self):
+        """Twice the longest break measured (63 minutes)."""
+        binnen = self._second(startsAt="2026-10-01T17:00:00+0200")
+        buiten = self._second(startsAt="2026-10-01T17:01:00+0200")
+        name = "Algemene Financiële Beschouwingen"
+        assert dd.later_parts(name, ["d1"], [self._first(), binnen]) == [binnen]
+        assert dd.later_parts(name, ["d1"], [self._first(), buiten]) == []
+
+    def test_what_starts_before_the_known_part_ended_is_not_its_next_part(self):
+        second = self._second(startsAt="2026-10-01T14:59:00+0200")
+        assert (
+            dd.later_parts(
+                "Algemene Financiële Beschouwingen", ["d1"], [self._first(), second]
+            )
+            == []
+        )
+
+    def test_while_the_known_part_runs_nothing_follows_it(self):
+        """The end is what a break is measured from."""
+        first = self._first(endedAt=None)
+        assert (
+            dd.later_parts(
+                "Algemene Financiële Beschouwingen", ["d1"], [first, self._second()]
+            )
+            == []
+        )
+
+    def test_a_third_part_follows_the_second_not_the_first(self):
+        """Five hours after the first part ended, an hour after the second."""
+        second = self._second(endedAt="2026-10-01T19:00:00+0200")
+        third = self._second(id="d3", startsAt="2026-10-01T20:00:00+0200")
+        name = "Algemene Financiële Beschouwingen"
+        found = dd.later_parts(name, ["d1"], [third, self._first(), second])
+        assert [d.id for d in found] == ["d2", "d3"]
+        assert dd.later_parts(name, ["d1", "d2"], [third, self._first(), second]) == [
+            third
+        ]
+
+    @pytest.mark.parametrize(
+        "name",
+        ["Stemmingen", "Mededelingen", "Regeling van werkzaamheden (stemmingen)"],
+    )
+    def test_an_item_that_recurs_by_name_is_never_continued(self, name):
+        """Votes, announcements and the order of business are on the agenda
+        several times a day, within a break's length of each other."""
+        first = self._first(name=name, debateType=name.split(" (")[0])
+        second = self._second(
+            name=name.split(" (")[0],
+            debateType=name.split(" (")[0],
+            startsAt="2026-10-01T15:04:00+0200",
+        )
+        assert dd.later_parts(name, ["d1"], [first, second]) == []
+
+    def test_an_item_that_recurs_is_known_by_its_kind_under_a_longer_name(self):
+        name = "Stemmingen over moties"
+        first = self._first(name=name, debateType="Stemmingen")
+        second = self._second(name=name, debateType="Stemmingen")
+        assert dd.later_parts(name, ["d1"], [first, second]) == []
+
+    def test_an_item_that_recurs_is_known_by_its_name_without_a_kind(self):
+        first = self._first(name="Stemmingen", debateType="Plenair debat")
+        second = self._second(name="Stemmingen", debateType="Plenair debat")
+        assert dd.later_parts("Stemmingen", ["d1"], [first, second]) == []
 
     def test_without_the_known_part_on_the_agenda_nothing_is_guessed(self):
         assert (
