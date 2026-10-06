@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy import update as sa_update
 
 from bouwmeester.models.debat_sessie import (
     TIJDLIJN_AFGELAST,
@@ -28,6 +29,7 @@ from bouwmeester.services import debat_tijdlijn_service as mod
 from bouwmeester.services.debat_kanaal_service import channel_header
 from bouwmeester.services.debat_tijdlijn_service import (
     DebatTijdlijnService,
+    TickResult,
     format_event,
 )
 from bouwmeester.services.tk_activiteit import Activiteit, TkApiError
@@ -1337,3 +1339,83 @@ async def test_the_tick_reads_real_shapes_through_httpx(db_session, monkeypatch)
     # The whole recorded debate is "in the past" relative to this clock
     # except its first two minutes, which are recent enough to be posted.
     assert any(t.startswith("**Kamerlid D (SP)**") for t in mm.texts)
+
+
+@pytest.mark.asyncio
+class TestStoppedInTheMeantime:
+    """Someone presses "stoppen met volgen" while a round is under way. The
+    round read the sessie before that, and must not write its status back."""
+
+    async def _stopped_behind_its_back(self, db_session, status):
+        sessie = await _sessie(db_session, tijdlijn_status=status)
+        # As another session would: the object in this one does not know.
+        await db_session.execute(
+            sa_update(DebatSessie)
+            .where(DebatSessie.id == sessie.id)
+            .values(tijdlijn_status=TIJDLIJN_AFGELOPEN)
+            .execution_options(synchronize_session=False)
+        )
+        assert sessie.tijdlijn_status == status
+        return sessie
+
+    @pytest.mark.parametrize(
+        "read_as,step",
+        [(None, TIJDLIJN_GEKOPPELD), (TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT)],
+    )
+    async def test_a_step_is_not_taken_over_a_stop(self, db_session, read_as, step):
+        sessie = await self._stopped_behind_its_back(db_session, read_as)
+        service = DebatTijdlijnService(db_session, FakeMattermost())
+
+        assert await service._move_status(sessie, read_as, step) is False
+
+        assert sessie.tijdlijn_status == TIJDLIJN_AFGELOPEN
+        await db_session.flush()
+        kept = await db_session.scalar(
+            select(DebatSessie.tijdlijn_status).where(DebatSessie.id == sessie.id)
+        )
+        assert kept == TIJDLIJN_AFGELOPEN
+
+    @pytest.mark.parametrize(
+        "read_as,step",
+        [(None, TIJDLIJN_GEKOPPELD), (TIJDLIJN_GEKOPPELD, TIJDLIJN_LOOPT)],
+    )
+    async def test_a_step_is_taken_when_nothing_changed(
+        self, db_session, read_as, step
+    ):
+        sessie = await _sessie(db_session, tijdlijn_status=read_as)
+        service = DebatTijdlijnService(db_session, FakeMattermost())
+
+        assert await service._move_status(sessie, read_as, step) is True
+
+        assert sessie.tijdlijn_status == step
+        kept = await db_session.scalar(
+            select(DebatSessie.tijdlijn_status).where(DebatSessie.id == sessie.id)
+        )
+        assert kept == step
+
+    async def test_a_debate_stopped_while_it_is_being_found_is_not_followed(
+        self, db_session, monkeypatch
+    ):
+        feed = Feed(monkeypatch)
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+        # The stop lands after the round read the sessie.
+        await db_session.execute(
+            sa_update(DebatSessie)
+            .where(DebatSessie.id == sessie.id)
+            .values(tijdlijn_status=TIJDLIJN_AFGELOPEN)
+            .execution_options(synchronize_session=False)
+        )
+        service = DebatTijdlijnService(db_session, mm)
+        result = TickResult()
+
+        async with httpx.AsyncClient() as client:
+            feed.now = START
+            await service._advance(sessie.id, client, START.astimezone(UTC), result)
+        await db_session.flush()
+
+        kept = await db_session.scalar(
+            select(DebatSessie.tijdlijn_status).where(DebatSessie.id == sessie.id)
+        )
+        assert kept == TIJDLIJN_AFGELOPEN
+        assert result.gekoppeld == 0

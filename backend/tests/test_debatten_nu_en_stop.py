@@ -40,7 +40,7 @@ from bouwmeester.services.debat_stand import (
 from bouwmeester.services.debat_tijdlijn_service import DebatTijdlijnService
 from bouwmeester.services.debat_vraag_worker import DebatVraagWorker
 from bouwmeester.services.mattermost_service import MattermostService
-from bouwmeester.services.tk_activiteit import list_upcoming
+from bouwmeester.services.tk_activiteit import TkApiError, list_upcoming
 from tests.test_debat_kanaal import TEAM, FakeMattermost, _activiteit
 from tests.test_debatten_api import (
     NOW,
@@ -967,6 +967,35 @@ class TestHervat:
         assert sessie.tijdlijn_gecontroleerd_at is None
         assert posts == [(sessie.channel_id, "▶️ Het meeluisteren is hervat.")]
 
+    async def test_one_that_was_running_runs_again_at_once(
+        self, client, db_session, monkeypatch
+    ):
+        """The text and the questions only look at a debate that runs. The
+        timeline says so again at the next event, which in a long speech is
+        a quarter of an hour away."""
+        sessie = _sessie(
+            _today(), tijdlijn_status=TIJDLIJN_AFGELOPEN, debat_direct_ids=["deel-1"]
+        )
+        db_session.add(sessie)
+        await db_session.flush()
+        db_session.add(
+            DebatSpreekbeurt(
+                sessie_id=sessie.id,
+                debat_direct_id="deel-1",
+                event_type="speaker",
+                event_start=datetime.now(UTC),
+                object_id="a",
+                post_id="post0000000000000000000001",
+            )
+        )
+        await db_session.flush()
+        _stub_mattermost(monkeypatch)
+        _record_posts(monkeypatch)
+
+        resp = await client.post(f"/api/debatten/{sessie.id}/hervat")
+
+        assert resp.json()["tijdlijn_status"] == "loopt"
+
     async def test_one_that_was_never_found_is_looked_for_again(
         self, client, db_session, monkeypatch
     ):
@@ -1123,3 +1152,84 @@ class TestHervat:
             "⏹️ Het meeluisteren is gestopt.",
             "▶️ Het meeluisteren is hervat.",
         ]
+
+
+@pytest.mark.asyncio
+class TestTheAgendaIsKept:
+    """The page refreshes every minute. The agenda of the coming weeks does
+    not change by the minute, and the Kamer is not asked for it that often."""
+
+    def _count(self, monkeypatch, result):
+        from bouwmeester.api.routes import debatten as routes
+
+        calls: list[int] = []
+
+        async def fake(client, *, days, include_ended=False, **kwargs):
+            calls.append(days)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        monkeypatch.setattr(routes, "list_upcoming", fake)
+        return routes, calls
+
+    async def test_two_refreshes_are_one_request_to_the_kamer(self, monkeypatch):
+        routes, calls = self._count(monkeypatch, [])
+
+        async with httpx.AsyncClient() as client:
+            first = await routes.UPCOMING.get(client, 21)
+            second = await routes.UPCOMING.get(client, 21)
+
+        assert first is second
+        assert calls == [21]
+
+    async def test_another_number_of_days_is_another_agenda(self, monkeypatch):
+        routes, calls = self._count(monkeypatch, [])
+
+        async with httpx.AsyncClient() as client:
+            await routes.UPCOMING.get(client, 21)
+            await routes.UPCOMING.get(client, 7)
+
+        assert calls == [21, 7]
+
+    async def test_after_five_minutes_it_is_read_again(self, monkeypatch):
+        routes, calls = self._count(monkeypatch, [])
+        clock = [1000.0]
+        monkeypatch.setattr(routes.time, "monotonic", lambda: clock[0])
+
+        async with httpx.AsyncClient() as client:
+            await routes.UPCOMING.get(client, 21)
+            clock[0] += routes.UPCOMING_SECONDS - 1
+            await routes.UPCOMING.get(client, 21)
+            assert calls == [21]
+            clock[0] += 2
+            await routes.UPCOMING.get(client, 21)
+
+        assert calls == [21, 21]
+
+    async def test_a_failure_is_not_kept(self, monkeypatch):
+        routes, calls = self._count(monkeypatch, TkApiError("down"))
+
+        async with httpx.AsyncClient() as client:
+            for _ in range(2):
+                with pytest.raises(TkApiError):
+                    await routes.UPCOMING.get(client, 21)
+
+        assert calls == [21, 21]
+
+    async def test_requests_at_the_same_time_are_one_request(self, monkeypatch):
+        from bouwmeester.api.routes import debatten as routes
+
+        calls: list[int] = []
+
+        async def slow(client, *, days, include_ended=False, **kwargs):
+            calls.append(days)
+            await asyncio.sleep(0.05)
+            return []
+
+        monkeypatch.setattr(routes, "list_upcoming", slow)
+
+        async with httpx.AsyncClient() as client:
+            await asyncio.gather(*(routes.UPCOMING.get(client, 21) for _ in range(5)))
+
+        assert calls == [21]

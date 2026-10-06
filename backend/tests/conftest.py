@@ -44,6 +44,19 @@ def _reset_mattermost_hint_cache():
 
 
 @pytest.fixture(autouse=True)
+def _no_agenda_left_over():
+    """The agenda of the Kamer is kept in the process for five minutes.
+
+    A test must not find the agenda another test put there.
+    """
+    from bouwmeester.api.routes import debatten
+
+    debatten.UPCOMING.clear()
+    yield
+    debatten.UPCOMING.clear()
+
+
+@pytest.fixture(autouse=True)
 def blob_root(tmp_path_factory):
     """Every test gets its own empty bijlagen store, in a temporary directory.
 

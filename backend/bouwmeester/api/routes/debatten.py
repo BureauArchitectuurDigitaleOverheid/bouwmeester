@@ -5,8 +5,10 @@ debate that never came by as an alert has no post to press a button under;
 here any upcoming meeting can be started.
 """
 
+import asyncio
 import logging
 import sys
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -59,6 +61,51 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/debatten", tags=["debatten"])
 
 _TK_TIMEOUT = 20.0
+# How long the agenda of the Kamer is kept. The page refreshes every minute
+# for what is running now, which comes from Debat Direct; the agenda of the
+# coming weeks does not change by the minute, and without this every open
+# tab asks the Kamer for up to four pages a minute.
+UPCOMING_SECONDS = 300.0
+
+
+class UpcomingCache:
+    """The meetings of the coming weeks, read at most once per five minutes.
+
+    Per number of days asked for. A failure is not kept: the next request
+    tries again, and the caller answers that the agenda cannot be had.
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._kept: dict[int, tuple[float, list[Activiteit]]] = {}
+
+    def clear(self) -> None:
+        self._kept.clear()
+
+    def _fresh(self, dagen: int) -> list[Activiteit] | None:
+        kept = self._kept.get(dagen)
+        if kept is not None and time.monotonic() - kept[0] < UPCOMING_SECONDS:
+            return kept[1]
+        return None
+
+    async def get(self, client: httpx.AsyncClient, dagen: int) -> list[Activiteit]:
+        found = self._fresh(dagen)
+        if found is not None:
+            return found
+        async with self._lock:
+            # Whoever waited for the lock finds what the first one read.
+            found = self._fresh(dagen)
+            if found is not None:
+                return found
+            # With what is over by its planned end: a debate that runs late
+            # is still on, and is dropped by the caller only if it really
+            # is over.
+            activiteiten = await list_upcoming(client, days=dagen, include_ended=True)
+            self._kept[dagen] = (time.monotonic(), activiteiten)
+            return activiteiten
+
+
+UPCOMING = UpcomingCache()
 
 # How many recorded channels are checked against Mattermost per request. A
 # three-week window holds a handful; this only bounds a pathological case.
@@ -249,7 +296,7 @@ async def list_aankomende_debatten(
         async with httpx.AsyncClient(timeout=_TK_TIMEOUT) as client:
             # With what is over by its planned end: a debate that runs late
             # is still on, and is dropped below only if it really is over.
-            activiteiten = await list_upcoming(client, days=dagen, include_ended=True)
+            activiteiten = await UPCOMING.get(client, dagen)
     except TkApiError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -587,6 +634,24 @@ async def hervat_debat(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Dit debat is afgelopen; er valt niets meer te volgen.",
                 )
+        # Running again at once if it was running: the text and the
+        # questions only look at a debate that runs, and the timeline
+        # itself only says so at the next event, which in a long speech
+        # can be a quarter of an hour away.
+        was_running = (
+            parts
+            and (
+                await db.execute(
+                    select(DebatSpreekbeurt.id)
+                    .where(DebatSpreekbeurt.sessie_id == sessie_id)
+                    .limit(1)
+                )
+            ).first()
+        )
+        if was_running:
+            status_after_resume: str | None = TIJDLIJN_LOOPT
+        else:
+            status_after_resume = TIJDLIJN_GEKOPPELD if parts else None
         resumed = (
             await db.execute(
                 update(DebatSessie)
@@ -599,7 +664,7 @@ async def hervat_debat(
                     # with the planned start, and a debate that began late
                     # would not be found a second time. Without parts it was
                     # never found, and is looked for as from the start.
-                    tijdlijn_status=TIJDLIJN_GEKOPPELD if parts else None,
+                    tijdlijn_status=status_after_resume,
                     # Due at once, not after what is left of five minutes.
                     tijdlijn_gecontroleerd_at=None,
                 )
