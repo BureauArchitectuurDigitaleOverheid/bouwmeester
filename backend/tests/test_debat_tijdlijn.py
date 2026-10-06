@@ -1244,6 +1244,42 @@ class TestEnding:
         assert sessie.tijdlijn_status == TIJDLIJN_LOOPT
         assert sum(1 for t in mm.texts if "Het debat is begonnen" in t) == 2
 
+    async def test_the_same_subject_hours_after_the_end_is_not_a_second_part(
+        self, db_session, monkeypatch
+    ):
+        """An item of the agenda that comes back later that day under the
+        same name is somebody else's: it starts longer after the end than
+        any break lasts."""
+        shift = FULL.ended_at - FULL.started_at + dd.MAX_BREAK + timedelta(minutes=5)
+        later = dd.DdDebat(
+            **{
+                **FULL.__dict__,
+                "id": "later",
+                "starts_at": FULL.starts_at + shift,
+                "started_at": FULL.started_at + shift,
+                "ended_at": FULL.ended_at + shift,
+                "events": tuple(
+                    dd.DdEvent(e.start + shift, e.type, e.object_id, e.raw_start)
+                    for e in FULL.events[:12]
+                ),
+            }
+        )
+        feed = Feed(monkeypatch, parts=[FULL, later])
+        mm = FakeMattermost()
+        sessie = await _sessie(db_session)
+
+        await _run(
+            db_session,
+            mm,
+            feed,
+            START - timedelta(minutes=10),
+            later.started_at + timedelta(minutes=8),
+            step=60,
+        )
+
+        assert sessie.debat_direct_ids == [FULL.id]
+        assert sum(1 for t in mm.texts if "Het debat is begonnen" in t) == 1
+
     async def test_a_second_part_is_found_when_the_debate_started_late(
         self, db_session, monkeypatch
     ):
