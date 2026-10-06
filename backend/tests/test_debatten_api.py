@@ -16,7 +16,9 @@ import pytest
 
 from bouwmeester.api.routes import debatten as routes
 from bouwmeester.models.debat_sessie import DebatSessie
+from bouwmeester.services import debat_direct as dd
 from bouwmeester.services import debat_kanaal_service as service_mod
+from bouwmeester.services import debat_stand
 from bouwmeester.services.debat_kanaal_service import (
     RETRY_HINT_WEB,
     DebatKanaalService,
@@ -36,6 +38,34 @@ from tests.test_debat_kanaal import (
 )
 
 NOW = datetime(2026, 10, 4, 12, 0, tzinfo=UTC)
+
+
+def _stub_agenda(monkeypatch, result):
+    """Make Debat Direct answer with `result` (debates, or an error).
+
+    Returns the days that were asked for, one per call that got through the
+    cache.
+    """
+    asked: list = []
+
+    async def fake(client, day, base_url=None):
+        asked.append(day)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    debat_stand.AGENDA.clear()
+    monkeypatch.setattr(dd, "fetch_agenda", fake)
+    return asked
+
+
+@pytest.fixture(autouse=True)
+def _no_debat_direct(monkeypatch):
+    """No test here reaches the real Debat Direct, and none finds what
+    another left in the cache."""
+    _stub_agenda(monkeypatch, dd.DebatDirectError("niet in een test"))
+    yield
+    debat_stand.AGENDA.clear()
 
 
 def _row(**overrides) -> dict:
@@ -240,7 +270,7 @@ def _stub_mattermost(
 
 
 def _stub_upcoming(monkeypatch, result):
-    async def fake(client, *, days, now=None, base_url=None):
+    async def fake(client, *, days, now=None, base_url=None, include_ended=False):
         if isinstance(result, Exception):
             raise result
         return result
@@ -274,15 +304,15 @@ class TestAankomendEndpoint:
         self, client, db_session, monkeypatch
     ):
         activiteit = _activiteit()
-        db_session.add(
-            DebatSessie(
-                activiteit_id=activiteit.id,
-                onderwerp="x",
-                team_id=TEAM,
-                channel_id=f"chan{uuid.uuid4().hex}"[:26],
-                channel_name="debat-digitaliserende-overheid-6-okt",
-            )
+        sessie = DebatSessie(
+            id=uuid.uuid4(),
+            activiteit_id=activiteit.id,
+            onderwerp="x",
+            team_id=TEAM,
+            channel_id=f"chan{uuid.uuid4().hex}"[:26],
+            channel_name="debat-digitaliserende-overheid-6-okt",
         )
+        db_session.add(sessie)
         await db_session.flush()
         _stub_upcoming(monkeypatch, [activiteit])
         _stub_mattermost(monkeypatch)
@@ -297,6 +327,10 @@ class TestAankomendEndpoint:
                     "https://mm.example/nldd/channels/"
                     "debat-digitaliserende-overheid-6-okt"
                 ),
+                "sessie_id": str(sessie.id),
+                # Not yet found on Debat Direct, which is followed too.
+                "tijdlijn_status": None,
+                "wordt_gevolgd": True,
             }
         ]
 
@@ -545,6 +579,7 @@ class TestStartEndpoint:
         )
 
         assert resp.status_code == 200
+        (sessie,) = await _sessies(db_session, activiteit.id)
         assert resp.json() == {
             "outcome": "created",
             "melding": None,
@@ -555,10 +590,12 @@ class TestStartEndpoint:
                     "https://mm.example/nldd/channels/"
                     "debat-digitaliserende-overheid-6-okt"
                 ),
+                "sessie_id": str(sessie.id),
+                "tijdlijn_status": None,
+                "wordt_gevolgd": True,
             },
         }
         assert mm.created[0]["team_id"] == TEAM
-        assert len(await _sessies(db_session, activiteit.id)) == 1
 
     async def test_backticks_do_not_reach_the_toast(self, client, monkeypatch):
         from bouwmeester.services.mattermost_service import MattermostPermissionError

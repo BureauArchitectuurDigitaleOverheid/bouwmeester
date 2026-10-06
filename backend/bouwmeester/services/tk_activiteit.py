@@ -271,12 +271,18 @@ async def list_upcoming(
     days: int,
     now: datetime | None = None,
     base_url: str = TK_BASE_URL,
+    include_ended: bool = False,
 ) -> list[Activiteit]:
     """The meetings of the coming days that can be listened to.
 
     Without their agenda: this is for picking one. Closed meetings, and
     ones that were cancelled or moved, are left out, as are deadlines for
     written input, which the API lists as activiteiten too.
+
+    `include_ended` keeps what started within the lookback and is over by
+    its planned end. That end is a plan: a debate runs past it more often
+    than not, and only the caller who knows where it really stands can
+    tell.
 
     Raises `TkApiError` if the API cannot be read.
     """
@@ -327,7 +333,11 @@ async def list_upcoming(
             continue
         seen.add(activiteit.id)
         # Started within the lookback and already over: nothing to start.
-        if activiteit.einde is not None and activiteit.einde < now:
+        if (
+            not include_ended
+            and activiteit.einde is not None
+            and activiteit.einde < now
+        ):
             continue
         if activiteit.status in (STATUS_CANCELLED, STATUS_MOVED):
             continue

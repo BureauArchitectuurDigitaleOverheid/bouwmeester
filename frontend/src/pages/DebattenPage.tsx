@@ -1,6 +1,13 @@
 import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
-import { useAankomendeDebatten, useStartDebat } from '@/hooks/useDebatten';
+import {
+  useAankomendeDebatten,
+  useHervatDebat,
+  useStartDebat,
+  useStopDebat,
+} from '@/hooks/useDebatten';
 import { useToast } from '@/contexts/ToastContext';
+import { Badge } from '@/components/common/Badge';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { EmptyState } from '@/components/common/EmptyState';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Select } from '@/components/common/Select';
@@ -9,11 +16,13 @@ import { eventValue, useNlddEvent } from '@/components/nldd/events';
 import type { AankomendDebat, DebatKanaal } from '@/types/debat';
 import {
   filterDebatten,
-  formatRegel,
-  groepeerPerDag,
+  formatDebatRegel,
+  kanaalActie,
   bewaarGekozenTeam,
   kiesTeam,
   leesGekozenTeam,
+  standBadge,
+  verdeelDebatten,
   zichtbareKanalen,
   startMelding,
 } from './debatten';
@@ -49,37 +58,93 @@ interface DebatRowProps {
   canStart: boolean;
   pending: boolean;
   busy: boolean;
+  /** The sessie a stop or a resume is under way for, if any. */
+  pendingSessieId: string | null;
   onStart: (debat: AankomendDebat) => void;
+  onStop: (debat: AankomendDebat, kanaal: DebatKanaal) => void;
+  onHervat: (kanaal: DebatKanaal) => void;
 }
 
-function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowProps) {
+function DebatRow({
+  debat,
+  teamId,
+  canStart,
+  pending,
+  busy,
+  pendingSessieId,
+  onStart,
+  onStop,
+  onHervat,
+}: DebatRowProps) {
   const kanalen = zichtbareKanalen(debat, teamId);
+  const badge = standBadge(debat);
   return (
     <nldd-list-item>
-      <nldd-text-cell text={debat.onderwerp} supporting-text={formatRegel(debat)} />
+      <nldd-text-cell text={debat.onderwerp} supporting-text={formatDebatRegel(debat, kanalen)} />
       {/* One cell per thing on the right, not a row container inside a cell:
           a cell is as wide as its content and a container as wide as its
           cell, so the two measure each other and both end at zero. Cells sit
           flush against each other, so the room between them is a spacer
           cell. */}
-      {debat.agenda_url && (
+      {badge && (
         <nldd-cell horizontal-alignment="right">
-          <nldd-link
-            href={debat.agenda_url}
-            target="_blank"
-            text="Agenda"
-            accessible-label={`Agenda van ${debat.onderwerp}`}
-          />
+          <Badge color={badge.color}>{badge.label}</Badge>
         </nldd-cell>
       )}
-      {kanalen.map((kanaal) => (
-        <Fragment key={kanaal.team_id}>
-          <nldd-spacer-cell size="16" />
+      {debat.agenda_url && (
+        <>
+          {badge && <nldd-spacer-cell size="16" />}
           <nldd-cell horizontal-alignment="right">
-            <KanaalLink kanaal={kanaal} />
+            <nldd-link
+              href={debat.agenda_url}
+              target="_blank"
+              text="Agenda"
+              accessible-label={`Agenda van ${debat.onderwerp}`}
+            />
           </nldd-cell>
-        </Fragment>
-      ))}
+        </>
+      )}
+      {kanalen.map((kanaal) => {
+        const actie = kanaalActie(debat, kanaal);
+        return (
+          <Fragment key={kanaal.team_id}>
+            <nldd-spacer-cell size="16" />
+            <nldd-cell horizontal-alignment="right">
+              <KanaalLink kanaal={kanaal} />
+            </nldd-cell>
+            {actie && (
+              <>
+                <nldd-spacer-cell size="8" />
+                <nldd-cell horizontal-alignment="right">
+                  {actie === 'stoppen' ? (
+                    <NlddButton
+                      variant="secondary"
+                      size="sm"
+                      startIcon="media-stop"
+                      text="Stoppen met volgen"
+                      accessibleLabel={`Stoppen met volgen van ${debat.onderwerp}`}
+                      loading={pendingSessieId === kanaal.sessie_id}
+                      disabled={busy}
+                      onClick={() => onStop(debat, kanaal)}
+                    />
+                  ) : (
+                    <NlddButton
+                      variant="secondary"
+                      size="sm"
+                      startIcon="media-play"
+                      text="Weer volgen"
+                      accessibleLabel={`${debat.onderwerp} weer volgen`}
+                      loading={pendingSessieId === kanaal.sessie_id}
+                      disabled={busy}
+                      onClick={() => onHervat(kanaal)}
+                    />
+                  )}
+                </nldd-cell>
+              </>
+            )}
+          </Fragment>
+        );
+      })}
       {kanalen.length === 0 && canStart && (
         <>
           <nldd-spacer-cell size="16" />
@@ -104,8 +169,15 @@ function DebatRow({ debat, teamId, canStart, pending, busy, onStart }: DebatRowP
 export function DebattenPage() {
   const { data, isLoading } = useAankomendeDebatten();
   const start = useStartDebat();
+  const stop = useStopDebat();
+  const hervat = useHervatDebat();
   const { showSuccess, showError } = useToast();
   const [search, setSearch] = useState('');
+  // The debate someone pressed stop for, until they confirm or back out.
+  const [stopKandidaat, setStopKandidaat] = useState<{
+    debat: AankomendDebat;
+    kanaal: DebatKanaal;
+  } | null>(null);
   const [chosenTeam, setChosenTeam] = useState<string | null>(leesGekozenTeam);
 
   const teams = useMemo(() => data?.teams ?? [], [data]);
@@ -116,8 +188,8 @@ export function DebattenPage() {
   // start that is not allowed.
   const canStart = team?.can_create_channel ?? false;
 
-  const dagen = useMemo(
-    () => groepeerPerDag(filterDebatten(data?.debatten ?? [], search)),
+  const { nu, dagen } = useMemo(
+    () => verdeelDebatten(filterDebatten(data?.debatten ?? [], search)),
     [data, search],
   );
 
@@ -135,6 +207,35 @@ export function DebattenPage() {
       );
     },
     [start, teamId, team, showError, showSuccess],
+  );
+
+  const handleStop = useCallback((debat: AankomendDebat, kanaal: DebatKanaal) => {
+    setStopKandidaat({ debat, kanaal });
+  }, []);
+
+  const executeStop = () => {
+    const sessieId = stopKandidaat?.kanaal.sessie_id;
+    if (!sessieId) return;
+    stop.mutate(
+      { sessieId },
+      {
+        onSuccess: () => showSuccess('Het meeluisteren is gestopt. Het kanaal blijft bestaan.'),
+        // Also after an error: the toast says what went wrong, and a dialog
+        // that stays open would only offer the same button again.
+        onSettled: () => setStopKandidaat(null),
+      },
+    );
+  };
+
+  const handleHervat = useCallback(
+    (kanaal: DebatKanaal) => {
+      if (!kanaal.sessie_id) return;
+      hervat.mutate(
+        { sessieId: kanaal.sessie_id },
+        { onSuccess: () => showSuccess('Het debat wordt weer gevolgd.') },
+      );
+    },
+    [hervat, showSuccess],
   );
 
   // Only without data. A refetch that fails in the background (after a
@@ -161,6 +262,28 @@ export function DebattenPage() {
       : null);
   // Several teams and none chosen: say so, instead of a page without buttons.
   const kiesEerst = !data.mattermost_melding && teams.length > 1 && team === null;
+
+  // One thing at a time: a second press while the first is under way would
+  // race it.
+  const busy = start.isPending || stop.isPending || hervat.isPending;
+  const pendingSessieId =
+    (stop.isPending ? stop.variables?.sessieId : null) ??
+    (hervat.isPending ? hervat.variables?.sessieId : null) ??
+    null;
+  const renderRow = (debat: AankomendDebat) => (
+    <DebatRow
+      key={debat.activiteit_id}
+      debat={debat}
+      teamId={teamId}
+      canStart={canStart}
+      pending={start.isPending && start.variables?.activiteitId === debat.activiteit_id}
+      busy={busy}
+      pendingSessieId={pendingSessieId}
+      onStart={handleStart}
+      onStop={handleStop}
+      onHervat={handleHervat}
+    />
+  );
 
   return (
     <nldd-container gap="24">
@@ -206,7 +329,16 @@ export function DebattenPage() {
         </nldd-text>
       )}
 
-      {dagen.length === 0 ? (
+      {nu.length > 0 && (
+        <nldd-container gap="8">
+          <nldd-title size={6}><h2>Nu bezig</h2></nldd-title>
+          <nldd-list variant="box-tinted" dividers="always" accessible-label="Debatten die nu bezig zijn">
+            {nu.map(renderRow)}
+          </nldd-list>
+        </nldd-container>
+      )}
+
+      {nu.length > 0 && dagen.length === 0 ? null : dagen.length === 0 ? (
         <EmptyState
           title="Geen debatten gevonden"
           description={
@@ -220,21 +352,25 @@ export function DebattenPage() {
           <nldd-container key={dag.key} gap="8">
             <nldd-title size={6}><h2>{dag.label}</h2></nldd-title>
             <nldd-list variant="box-tinted" dividers="always" accessible-label={`Debatten op ${dag.label}`}>
-              {dag.debatten.map((debat) => (
-                <DebatRow
-                  key={debat.activiteit_id}
-                  debat={debat}
-                  teamId={teamId}
-                  canStart={canStart}
-                  pending={start.isPending && start.variables?.activiteitId === debat.activiteit_id}
-                  busy={start.isPending}
-                  onStart={handleStart}
-                />
-              ))}
+              {dag.debatten.map(renderRow)}
             </nldd-list>
           </nldd-container>
         ))
       )}
+
+      <ConfirmDialog
+        open={!!stopKandidaat}
+        onClose={() => setStopKandidaat(null)}
+        onConfirm={executeStop}
+        title="Stoppen met volgen"
+        confirmLabel="Stoppen met volgen"
+        cancelLabel="Blijven volgen"
+        loading={stop.isPending}
+      >
+        {stopKandidaat
+          ? `De bot stopt met meeluisteren bij ${stopKandidaat.debat.onderwerp} en zet geen tijdlijn en geen tekst meer in ~${stopKandidaat.kanaal.channel_name}. Het kanaal blijft bestaan, en zolang het debat loopt kun je het volgen hervatten.`
+          : ''}
+      </ConfirmDialog>
     </nldd-container>
   );
 }
