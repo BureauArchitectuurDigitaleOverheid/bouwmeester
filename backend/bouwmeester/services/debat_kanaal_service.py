@@ -872,6 +872,12 @@ class DebatKanaalService:
         successor = await fetch_activiteit(moved.vervangen_door[0], client)
         if successor is None or successor.soort != moved.soort:
             return None
+        if successor.aanvang is None:
+            # "Nieuwe datum volgt": the successor is there, the date is
+            # not (11 of 50 moved meetings since 1 September 2026).
+            # Following it would tie the channel to a meeting the timeline
+            # can never find, and say it was rescheduled when it was not.
+            return None
         return successor
 
     async def _follow_change(self, existing: _Existing, activiteit: Activiteit) -> None:

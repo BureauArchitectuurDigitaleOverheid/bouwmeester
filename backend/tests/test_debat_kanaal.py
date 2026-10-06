@@ -2146,6 +2146,36 @@ class TestMovedButNotCertain:
         oud, nieuw = _moved_pair(soort="Inbreng schriftelijk overleg")
         await self._press_old(db_session, monkeypatch, oud, nieuw)
 
+    async def test_successor_has_no_date_yet(self, db_session, monkeypatch):
+        """11 of 50 moved meetings: "nieuwe datum volgt". Nothing can be
+        followed on a day that is not known."""
+        oud, nieuw = _moved_pair(aanvang=None, einde=None)
+        await self._press_old(db_session, monkeypatch, oud, nieuw)
+
+    async def test_a_channel_does_not_move_to_a_meeting_without_a_date(
+        self, db_session, monkeypatch
+    ):
+        oud, nieuw = _moved_pair(aanvang=None, einde=None)
+        gepland = _activiteit(id=oud.id, nummer=oud.nummer)
+        _patch_fetch_many(monkeypatch, gepland)
+        mm = FakeMattermost()
+        first = await _start(db_session, mm, await _item(db_session, oud.id))
+        assert first.outcome is StartOutcome.CREATED
+        said = len(mm.messages)
+
+        _patch_fetch_many(monkeypatch, oud, nieuw)
+        await _start(db_session, mm, await _item(db_session, oud.id))
+
+        sessie = (
+            await db_session.execute(
+                select(DebatSessie).where(DebatSessie.channel_id == first.channel_id)
+            )
+        ).scalar_one()
+        assert sessie.activiteit_id == oud.id
+        assert not any(
+            "De vergadering is gewijzigd" in text for _, text, _ in mm.messages[said:]
+        )
+
     async def test_successor_was_moved_again_without_saying_where(
         self, db_session, monkeypatch
     ):
