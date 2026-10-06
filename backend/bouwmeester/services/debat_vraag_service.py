@@ -38,7 +38,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import exists, func, literal, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +58,15 @@ from bouwmeester.services.debat_statusregel import (
     ICOON_VRAAG,
     met_status,
     statusregel,
+)
+from bouwmeester.services.debat_transcript import _RUNS_ON
+from bouwmeester.services.debat_vraag_moment import (
+    SAFE_URL as _VEILIGE_URL,
+)
+from bouwmeester.services.debat_vraag_moment import (
+    Line,
+    moment_of_position,
+    question_url,
 )
 from bouwmeester.services.debat_vraag_reacties import REACTIE_HINT, stand_marker
 from bouwmeester.services.llm.base import (
@@ -147,6 +156,10 @@ class Beurt:
     # question to the bewindspersoon when that person is the bewindspersoon.
     onderbroken: str | None = None
     onderbroken_is_bewindspersoon: bool = False
+    # The subtitle lines `tekst` is made of, in order, each with the moment
+    # it was spoken. Empty when they are not known; a question then gets
+    # the time of the start of the turn.
+    lines: tuple[Line, ...] = ()
 
     @property
     def sleutel(self) -> str:
@@ -253,7 +266,13 @@ def _plat(tekst: str) -> tuple[str, list[int]]:
 
 
 def vind_citaat(tekst: str, citaat: str) -> str | None:
-    """The quote as it stands in the turn, or ``None`` if it is not there.
+    """The quote as it stands in the turn, or ``None`` if it is not there."""
+    found = locate_citaat(tekst, citaat)
+    return found[0] if found else None
+
+
+def locate_citaat(tekst: str, citaat: str) -> tuple[str, int] | None:
+    """The quote as it stands in the turn, and where in the turn it begins.
 
     What goes into a thread as "literally said" has to be in the
     transcript. A model that tidies up a sentence, or writes the question
@@ -263,6 +282,10 @@ def vind_citaat(tekst: str, citaat: str) -> str | None:
     A model that was told to copy mistakes still repairs one now and then
     ("porgt" becomes "borgt"). The passage it meant is then looked up, and
     what comes back is how the transcript has it, mistake included.
+
+    Where it begins is the place in `tekst` of its first character; for a
+    quote in pieces, of its first piece. That is what says when the
+    question was asked.
     """
     plat, herkomst = _plat(tekst)
     delen = [d for d in _WEGLATING.split(citaat) if d.strip()]
@@ -282,16 +305,25 @@ def vind_citaat(tekst: str, citaat: str) -> str | None:
             vanaf = at + len(zoek)
         else:
             if gevonden:
-                return _zegt_iets(
+                return _met_plek(
                     " (...) ".join(
                         tekst[herkomst[a] : herkomst[b] + 1].strip()
                         for a, b in gevonden
-                    )
+                    ),
+                    herkomst[gevonden[0][0]],
                 )
     bijna = _vind_bijna(plat, _plat(citaat)[0].strip())
     if bijna is None:
         return None
-    return _zegt_iets(tekst[herkomst[bijna[0]] : herkomst[bijna[1]] + 1].strip())
+    return _met_plek(
+        tekst[herkomst[bijna[0]] : herkomst[bijna[1]] + 1].strip(),
+        herkomst[bijna[0]],
+    )
+
+
+def _met_plek(citaat: str, plek: int) -> tuple[str, int] | None:
+    gezegd = _zegt_iets(citaat)
+    return (gezegd, plek) if gezegd is not None else None
 
 
 def _zegt_iets(citaat: str) -> str | None:
@@ -350,7 +382,14 @@ def _kort(tekst: str, maximum: int) -> str:
 
 # --- the thread --------------------------------------------------------
 
-_VEILIGE_URL = re.compile(r"^https://[^\s()<>\[\]]+$")
+# Said once per thread, under the first reply that got into it.
+NOOT_TRANSCRIPT = "Citaten komen letterlijk uit het automatische transcript."
+# Behind a time that is not that of the question.
+BEGIN_BEURT = "(begin van de spreekbeurt)"
+ICOON_STUK = "📄"
+# The first line of a reply without a summary: this much of the quote.
+MAX_KOP = 120
+_EERSTE_ZIN = re.compile(r"[.?!…](?=\s|$)")
 
 
 def _hhmm(moment: datetime) -> str:
@@ -359,61 +398,99 @@ def _hhmm(moment: datetime) -> str:
 
 def format_vraag_thread(
     *,
-    spreker: str,
-    fractie: str | None,
+    volgnummer: int,
     gericht_aan: str,
     citaat: str,
     samenvatting: str,
     stuk: str | None,
     moment: datetime,
     moment_url: str | None,
+    vraag_moment: datetime | None = None,
+    first_in_thread: bool = True,
     status: str = STATUS_OPEN,
     door: str | None = None,
 ) -> str:
     """The reply under the message of a turn that is the thread of a question.
 
-    Everything in it comes from outside: the names from Debat Direct, the
-    quote from the transcript, the summary from a model that read the
-    transcript. All of it is escaped.
+        ❓ **<the question, in the words of the model>**
+        Vraag 12 · aan de minister · [21:55](<link>)
+        📄 <agenda document>
+        > <the quote>
+
+    Who asks is not in it: the reply hangs under the message of the
+    speaker. The number is the one of the markering in this debate, so
+    people can say "vraag 12".
+
+    Everything in it comes from outside: the quote from the transcript,
+    the summary from a model that read the transcript. All of it is
+    escaped; the bold and the link are ours.
+
+    `moment` and `moment_url` are the start of the turn and the link to
+    it. With `vraag_moment` the time shown is that of the question, and
+    the link opens just before it. Without it, both are the turn's and the
+    line says so.
 
     `status` is where the question stands and `door` who picked it up, as
-    the reactions on the reply have it. Both go in front of the first line,
-    so the state of every question can be read down the left side of a
-    thread without opening anything. The reply is made from the row every
-    time, never from what is in the channel: editing it twice gives the
-    same text, and nothing in it can get lost.
+    the reactions on the reply have it. The icon in front of the question
+    becomes that of the status, and the words go into the line below, so
+    the state of every question can be read down the left side of a
+    thread. The reply is made from the row every time, never from what is
+    in the channel: writing it twice gives the same text, and nothing in
+    it can get lost.
     """
-    wie = _vrij(_kort(spreker, 120))
-    if fractie and fractie.lower() not in spreker.lower():
-        wie = f"{wie} ({_vrij(fractie)})"
-    tijd = _hhmm(moment)
+    # The dots of a subtitle line that runs on are taken out for reading,
+    # as in the message of the turn. Only here, after the quote was found:
+    # looking for it needs the text as it is.
+    gezegd = _RUNS_ON.sub(" ", citaat)
+    kop = _kop(samenvatting, gezegd)
+    icoon, _, stand = stand_marker(
+        status, _vrij(_kort(door or "", MAX_DOOR))
+    ).partition(" ")
     if status == STATUS_VERWORPEN:
         # One struck line instead of the whole reply struck through. In
         # Mattermost a strike does not carry over a line break or into a
-        # quote, so the reply would keep its height with tildes in it; and
-        # what was not a question should not take up six lines. The quote
-        # and the summary stay in the row, and taking the reaction away
-        # brings the whole reply back.
-        wat = _vrij(_kort(samenvatting or citaat, MAX_VERWORPEN))
-        return f"{stand_marker(status)} · ~~{wie} · {tijd} · {wat}~~"
-    if moment_url and _VEILIGE_URL.match(moment_url):
-        tijd = f"[{tijd}]({moment_url})"
-    regels = [f"{ICOON_VRAAG} **Vraag aan {aan_wie(gericht_aan)}** · {wie} · {tijd}"]
-    if samenvatting:
-        regels.append(_vrij(_kort(samenvatting, MAX_SAMENVATTING)))
+        # quote, and what was not a question should not take up four
+        # lines. The quote and the summary stay in the row, and taking the
+        # reaction away brings the whole reply back.
+        return f"{icoon} ~~Vraag {volgnummer} · {kop}~~ · {stand}"
+    tijd = _hhmm(vraag_moment or moment)
+    link = None
+    if vraag_moment is not None:
+        link = question_url(moment_url, vraag_moment, moment)
+    if link is None and moment_url and _VEILIGE_URL.match(moment_url):
+        # A link that cannot be moved to the question still opens the turn.
+        link = moment_url
+    if link:
+        tijd = f"[{tijd}]({link})"
+    if vraag_moment is None:
+        tijd = f"{tijd} {BEGIN_BEURT}"
+    meta = [f"Vraag {volgnummer}", f"aan {aan_wie(gericht_aan)}", tijd]
+    if stand:
+        meta.insert(1, stand)
+    regels = [f"{icoon or ICOON_VRAAG} **{kop}**", " · ".join(meta)]
     if stuk:
-        regels.append(f"Gaat over: {_vrij(_kort(stuk, 300))}")
-    regels.append("")
-    regels.append(f"> {_vrij(_kort(citaat, MAX_CITAAT))}")
-    regels.append("")
-    regels.append(
-        "_Het citaat komt letterlijk uit het automatische transcript; de tijd"
-        " is het begin van de spreekbeurt._"
-    )
-    marker = stand_marker(status, _vrij(_kort(door or "", MAX_DOOR)))
-    if marker:
-        regels[0] = f"{marker} · {regels[0]}"
+        regels.append(f"{ICOON_STUK} {_vrij(_kort(stuk, 300))}")
+    regels.append(f"> {_vrij(_kort(gezegd, MAX_CITAAT))}")
+    if first_in_thread:
+        # The empty line ends the quote; without it the note is part of it.
+        regels.append("")
+        regels.append(f"_{NOOT_TRANSCRIPT}_")
     return "\n".join(regels)
+
+
+def _kop(samenvatting: str, citaat: str) -> str:
+    """What the question is, for the first line, ready to be made bold.
+
+    The summary of the model. A model that left it out, or wrote only
+    what is taken out as unsafe, gets the first sentence of the quote: a
+    first line that is empty would be four asterisks.
+    """
+    kop = _vrij(_kort(samenvatting, MAX_SAMENVATTING)).strip()
+    if kop:
+        return kop
+    zin = _EERSTE_ZIN.search(citaat)
+    eerste = citaat[: zin.end()] if zin else citaat
+    return _vrij(_kort(eerste, MAX_KOP)).strip() or "Vraag"
 
 
 def _vrij(tekst: str) -> str:
@@ -452,6 +529,8 @@ class _Nieuw:
     gericht_aan: str
     samenvatting: str
     stuk: str | None
+    # Where in the text of the turn the quote begins.
+    plek: int = 0
 
 
 @dataclass(frozen=True)
@@ -509,14 +588,15 @@ def lees_antwoord(
             afgevallen += 1
             logger.info("Vraag aan %r is niet aan de bewindspersoon", aan[:60])
             continue
-        citaat = vind_citaat(tekst, vraag.citaat)
-        if citaat is None:
+        gevonden = locate_citaat(tekst, vraag.citaat)
+        if gevonden is None:
             afgevallen += 1
             logger.info(
                 "Citaat staat niet in de spreekbeurt, vraag valt af: %s",
                 vraag.citaat[:120],
             )
             continue
+        citaat, plek = gevonden
         sleutel = _plat(citaat)[0]
         if sleutel in gezien:
             afgevallen += 1
@@ -537,6 +617,7 @@ def lees_antwoord(
                 gericht_aan=_kort(vraag.gericht_aan, MAX_GERICHT_AAN),
                 samenvatting=_kort(vraag.samenvatting, MAX_SAMENVATTING),
                 stuk=stuk,
+                plek=plek,
             )
         )
     return nieuw, herhaald, afgevallen
@@ -714,7 +795,7 @@ class DebatVraagService:
                 threads += 1
         await self._werk_statusregels_bij(beurt.sessie_id)
         logger.info(
-            "Spreekbeurt van %s: %d vragen gemarkeerd, %d herhaald",
+            "Spreekbeurt van %s: %d vragen, %d herhaald",
             _hhmm(beurt.start),
             len(ids),
             len(herhaald),
@@ -886,6 +967,7 @@ class DebatVraagService:
                             stuk=vraag.stuk,
                             moment=beurt.start,
                             moment_url=beurt.moment_url,
+                            vraag_moment=_vraag_moment(beurt, vraag.plek),
                         )
                         .returning(DebatMarkering.id)
                     )
@@ -918,20 +1000,24 @@ class DebatVraagService:
         two workers cannot both post it: the second skips a locked row. A
         post that fails counts as an attempt and leaves the row without a
         thread. Whether it is tried again is for the backlog to decide.
+
+        The first reply that gets into a thread carries the note about the
+        transcript. Which reply that is, is read from the table at the
+        moment of posting, with the message of the turn held for as long.
         """
         row = (
             await self.session.execute(
                 select(
                     DebatMarkering.channel_id,
                     DebatMarkering.beurt_post_id,
-                    DebatMarkering.spreker,
-                    DebatMarkering.fractie,
+                    DebatMarkering.volgnummer,
                     DebatMarkering.gericht_aan,
                     DebatMarkering.citaat,
                     DebatMarkering.samenvatting,
                     DebatMarkering.stuk,
                     DebatMarkering.moment,
                     DebatMarkering.moment_url,
+                    DebatMarkering.vraag_moment,
                 )
                 .where(
                     DebatMarkering.id == markering_id,
@@ -944,16 +1030,42 @@ class DebatVraagService:
         if row is None:
             await self.session.commit()
             return False
+        # One reply at a time under one message, so that "the first reply
+        # of this thread" is one reply. Not waited for, like the row: a
+        # worker that is posting under this message right now holds it, and
+        # this markering is tried again with the backlog.
+        alone = await self.session.scalar(
+            select(
+                func.pg_try_advisory_xact_lock(
+                    func.hashtextextended(literal(f"debat-thread:{row[1]}"), 0)
+                )
+            )
+        )
+        if not alone:
+            await self.session.commit()
+            return False
+        # The first is the first that got into the channel, not the first
+        # question: a post that failed left no reply, and the note that
+        # goes under the first reply has to be in the thread exactly once.
+        first = not await self.session.scalar(
+            select(
+                exists().where(
+                    DebatMarkering.beurt_post_id == row[1],
+                    DebatMarkering.thread_post_id.is_not(None),
+                )
+            )
+        )
 
         tekst = format_vraag_thread(
-            spreker=row[2],
-            fractie=row[3],
-            gericht_aan=row[4],
-            citaat=row[5],
-            samenvatting=row[6],
-            stuk=row[7],
-            moment=row[8],
-            moment_url=row[9],
+            volgnummer=row[2],
+            gericht_aan=row[3],
+            citaat=row[4],
+            samenvatting=row[5],
+            stuk=row[6],
+            moment=row[7],
+            moment_url=row[8],
+            vraag_moment=row[9],
+            first_in_thread=first,
         )
         try:
             post_id = await self.mattermost.send_channel_message(
@@ -969,7 +1081,7 @@ class DebatVraagService:
             await self.session.execute(
                 update(DebatMarkering)
                 .where(DebatMarkering.id == markering_id)
-                .values(thread_post_id=post_id)
+                .values(thread_post_id=post_id, met_noot=first)
             )
         else:
             logger.warning("Thread voor markering %s niet geplaatst", markering_id)
@@ -1052,6 +1164,17 @@ class DebatVraagService:
 
     async def _schrijf_statusregel(self, post_id: str) -> bool:
         return await schrijf_statusregel(self.session, self.mattermost, post_id)
+
+
+def _vraag_moment(beurt: Beurt, plek: int) -> datetime | None:
+    """When the question that begins at `plek` of the turn was asked.
+
+    ``None`` when the lines do not say. Never before the turn began: the
+    voices can give a turn a line from just before its event, and a
+    question is shown under the message of its turn.
+    """
+    found = moment_of_position(beurt.lines, beurt.tekst, plek)
+    return max(found, beurt.start) if found is not None else None
 
 
 def _noemt_bewindspersoon(tekst: str) -> bool:

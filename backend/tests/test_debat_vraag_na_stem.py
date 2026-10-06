@@ -922,4 +922,9 @@ class TestWhichTurnsWait:
             await _tick(db_session, mm, FakeLLM(), 700)
         finally:
             event.remove(connection, "before_cursor_execute", seen)
-        return sum("FROM debat_ondertitel" in statement for statement in statements)
+        # Which lines are still open, not the lines of a turn that is read:
+        # those are asked for per turn, to say when a question was asked.
+        return sum(
+            "FROM debat_ondertitel" in statement and "stem_klaar" in statement
+            for statement in statements
+        )

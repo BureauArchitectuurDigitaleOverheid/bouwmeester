@@ -34,8 +34,21 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
-  backend-test:
+  # The backend tests run in shards next to each other. Which test goes to
+  # which shard is decided by `--shard` (backend/tests/conftest.py), from a
+  # checksum of the test's id, so there is no list of files or durations to
+  # keep up to date. The job `backend-test` below is the one check that says
+  # whether all of them passed.
+  backend-test-shard:
+    name: backend-test-shard (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    strategy:
+      # A failure in one shard should not hide what the others would say.
+      fail-fast: false
+      matrix:
+        # Keep this list and the "/3" in this job in step: a shard that is
+        # not listed here is a third of the tests that never runs.
+        shard: [1, 2, 3]
     defaults:
       run:
         working-directory: backend
@@ -69,8 +82,62 @@ jobs:
       - name: Run migrations
         run: uv run alembic upgrade head
 
+      # No report and no threshold here: a shard covers only what its own
+      # third of the tests touches. `backend-test` holds the combined
+      # coverage against `fail_under` from pyproject.toml.
       - name: Run tests with coverage
-        run: uv run pytest --cov --cov-report=xml --cov-report=term-missing
+        run: >-
+          uv run pytest --shard ${{ matrix.shard }}/3
+          --cov --cov-report= --cov-fail-under=0
+        env:
+          COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
+
+      - name: Upload coverage data
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage-shard-${{ matrix.shard }}
+          path: backend/.coverage.shard-${{ matrix.shard }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  # Branch protection may require a check with exactly this name. The job has
+  # to run when a shard failed or was cancelled too: a job that is skipped
+  # counts as passed for a required check.
+  backend-test:
+    needs: backend-test-shard
+    if: always()
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: All shards passed
+        if: needs.backend-test-shard.result != 'success'
+        working-directory: ${{ github.workspace }}
+        run: |
+          echo "backend-test-shard: ${{ needs.backend-test-shard.result }}"
+          exit 1
+
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v8
+        with:
+          pattern: backend-coverage-shard-*
+          path: backend
+          merge-multiple: true
+
+      - name: Combine coverage
+        run: |
+          uv run coverage combine
+          uv run coverage xml
+          uv run coverage report
 
       - name: Upload coverage
         if: always()

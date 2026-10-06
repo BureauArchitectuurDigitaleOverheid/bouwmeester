@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
@@ -170,6 +171,19 @@ class DebatMarkering(Base):
     # Start of the turn, and the link to that moment in the broadcast.
     moment: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     moment_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # When in the turn the question was asked: the moment of the subtitle
+    # line its quote begins in. NULL when that is not known, as for every
+    # row from before this column; the thread then shows the start of the
+    # turn. Kept, so a thread that is posted again says the same.
+    vraag_moment: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Whether its reply carries the note that goes under the first reply of
+    # a thread. Kept, because the reply is written again when its status
+    # changes, and must then say what it said.
+    met_noot: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

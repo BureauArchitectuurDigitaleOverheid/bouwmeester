@@ -55,22 +55,18 @@ ICOON_VRAAG = "❓"
 
 # (singular, plural) per soort. A soort that is not in here is not shown.
 _SOORT_LABEL: dict[str, tuple[str, str]] = {
-    SOORT_VRAAG: ("Vraag", "vragen"),
+    SOORT_VRAAG: ("vraag", "vragen"),
 }
 _SOORT_ICOON: dict[str, str] = {
     SOORT_VRAAG: ICOON_VRAAG,
 }
-# (singular, plural, as a count) per status, in the order they are shown.
-_STATUS_LABEL: dict[str, tuple[str, str, str]] = {
-    STATUS_OPEN: ("staat open", "staan open", "open"),
-    STATUS_TOEGEWEZEN: ("wordt opgepakt", "worden opgepakt", "opgepakt"),
-    STATUS_ANTWOORD_KLAAR: ("antwoord klaar", "antwoord klaar", "antwoord klaar"),
-    STATUS_BEANTWOORD: ("beantwoord", "beantwoord", "beantwoord"),
-    STATUS_VERVALT: (
-        "hoeft geen antwoord",
-        "hoeven geen antwoord",
-        "hoeft geen antwoord",
-    ),
+# One word per status, in the order they are shown.
+_STATUS_LABEL: dict[str, str] = {
+    STATUS_OPEN: "open",
+    STATUS_TOEGEWEZEN: "opgepakt",
+    STATUS_ANTWOORD_KLAAR: "antwoord klaar",
+    STATUS_BEANTWOORD: "beantwoord",
+    STATUS_VERVALT: "hoeft geen antwoord",
 }
 
 
@@ -115,9 +111,13 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
 
     Each item is (soort, status). One line per soort:
 
-        ❓ Vraag gemarkeerd · staat open
-        ❓ 3 vragen gemarkeerd · staan open
-        ❓ 3 vragen gemarkeerd · 2 open · 1 beantwoord
+        ❓ 1 vraag · open
+        ❓ 3 vragen · open
+        ❓ 3 vragen · 2 open · 1 beantwoord
+
+    Short, because it stands under every message with a question in it. A
+    block in the channel that still has the longer words of before is
+    written anew the next time its message is.
 
     A rejected markering does not count. Nothing to show is an empty string.
     """
@@ -131,18 +131,17 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
         if not statussen:
             continue
         aantal = len(statussen)
-        kop = f"{enkel} gemarkeerd" if aantal == 1 else f"{aantal} {meer} gemarkeerd"
+        kop = f"{aantal} {enkel if aantal == 1 else meer}"
         per_status = [
             (status, statussen.count(status))
             for status in _STATUS_LABEL
             if status in statussen
         ]
         if len(per_status) == 1:
-            status, _ = per_status[0]
-            stand = _STATUS_LABEL[status][0 if aantal == 1 else 1]
+            stand = _STATUS_LABEL[per_status[0][0]]
         else:
             stand = " · ".join(
-                f"{n} {_STATUS_LABEL[status][2]}" for status, n in per_status
+                f"{n} {_STATUS_LABEL[status]}" for status, n in per_status
             )
         regel = f"{_SOORT_ICOON[soort]} {kop}"
         regels.append(f"{regel} · {stand}" if stand else regel)

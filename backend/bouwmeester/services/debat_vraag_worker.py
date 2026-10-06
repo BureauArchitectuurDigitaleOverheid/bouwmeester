@@ -62,6 +62,7 @@ from bouwmeester.services.debat_transcript_service import (
     _moment,
     load_turns,
 )
+from bouwmeester.services.debat_vraag_moment import Line
 from bouwmeester.services.debat_vraag_service import (
     UITKOMST_GEMARKEERD,
     Beurt,
@@ -129,6 +130,8 @@ class _Waiting:
     floor: Turn | None
     # The first turn of its part: which day's list of speakers applies.
     first: datetime
+    # How much later than the events the sound of its part is.
+    offset: timedelta = timedelta(0)
 
 
 def moment_url_from_kop(kop: str) -> str | None:
@@ -439,7 +442,8 @@ class DebatVraagWorker:
                         entry, next_message.get(turn.row_id), ends.get(debate_id), now
                     )
                 ):
-                    waiting.append(_Waiting(turn, floor, turns[0].start))
+                    offset = timedelta(milliseconds=entry.get("offset_ms") or 0)
+                    waiting.append(_Waiting(turn, floor, turns[0].start, offset))
                 if turn.key[0] == dd.EVENT_SPEAKER:
                     floor = turn
         # In the order they were spoken: a question asked again has to
@@ -539,6 +543,7 @@ class DebatVraagWorker:
                 start=turn.start,
                 moment_url=moment_url_from_kop(turn.kop),
                 tekst=tekst,
+                lines=await self._lines(turn, item.offset),
                 is_bewindspersoon=is_bewindspersoon(spreker),
                 onderbroken=onderbroken.label if onderbroken else None,
                 onderbroken_is_bewindspersoon=bool(
@@ -578,6 +583,34 @@ class DebatVraagWorker:
             result.beoordeeld += 1
             if outcome.uitkomst == UITKOMST_GEMARKEERD:
                 result.vragen += len(outcome.markering_ids)
+
+    async def _lines(self, turn: Turn, offset: timedelta) -> tuple[Line, ...]:
+        """The subtitle lines the text of a turn is made of, in its order.
+
+        Row after row as `load_turns` joined them, and within a row by
+        moment, as `derive_text` does. A line is on the clock of the sound.
+        The events are `offset` earlier, and the site adds that itself when
+        it seeks to a moment: the timeline links to the event time of a
+        turn and the site plays where the speaker begins, which the
+        subtitles have `offset` later. So it comes off here.
+        """
+        if not turn.rows:
+            return ()
+        found = (
+            await self.session.execute(
+                select(
+                    DebatOndertitel.spreekbeurt_id,
+                    DebatOndertitel.start,
+                    DebatOndertitel.tekst,
+                )
+                .where(DebatOndertitel.spreekbeurt_id.in_(turn.rows))
+                .order_by(DebatOndertitel.start)
+            )
+        ).all()
+        per_row: dict[uuid.UUID, list[Line]] = {}
+        for row_id, start, tekst in found:
+            per_row.setdefault(row_id, []).append(Line(start - offset, tekst))
+        return tuple(line for row_id in turn.rows for line in per_row.get(row_id, []))
 
     async def _count_attempt(self, row_id: uuid.UUID) -> int:
         attempts = (

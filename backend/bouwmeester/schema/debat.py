@@ -76,3 +76,37 @@ class DebatVolgenResponse(BaseModel):
     sessie_id: UUID
     tijdlijn_status: str | None = None
     wordt_gevolgd: bool
+
+
+class GevolgdDebat(BaseModel):
+    """A debate a team followed that is over, as the sessie remembers it.
+
+    Only what was stored when the channel was set up: the kind of meeting
+    and the committee are not kept on a sessie, so they are not here.
+    """
+
+    sessie_id: UUID
+    activiteit_id: str
+    nummer: str | None = None
+    onderwerp: str
+    aanvang: datetime | None = None
+    agenda_url: str | None = None
+    # Whether the channel still exists in Mattermost is not checked.
+    kanaal: DebatKanaal
+    # How the timeline ended: afgelopen (ran to its end, or was stopped by
+    # hand: the two are stored the same), afgelast (cancelled or moved), or
+    # null when the timeline never closed it.
+    afloop: str | None = None
+    # Events of the timeline that became a message in the channel.
+    berichten: int = 0
+    # Questions marked in the debate, and how many of those are still open.
+    vragen: int = 0
+    vragen_open: int = 0
+
+
+class GevolgdeDebattenResponse(BaseModel):
+    debatten: list[GevolgdDebat]
+    # Of everything, not of this page.
+    totaal: int
+    limit: int
+    offset: int

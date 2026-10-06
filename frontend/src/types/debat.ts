@@ -62,3 +62,35 @@ export interface DebatVolgenResult {
   tijdlijn_status: TijdlijnStatus | null;
   wordt_gevolgd: boolean;
 }
+
+/** How the timeline of a followed debate ended. */
+export type DebatAfloop = 'afgelopen' | 'afgelast';
+
+/** A debate a team followed that is over, as the sessie remembers it. */
+export interface GevolgdDebat {
+  sessie_id: string;
+  activiteit_id: string;
+  nummer: string | null;
+  onderwerp: string;
+  aanvang: string | null;
+  agenda_url: string | null;
+  /** Whether the channel still exists in Mattermost is not checked. */
+  kanaal: DebatKanaal;
+  /**
+   * `afgelopen` also covers a debate someone stopped following: the two are
+   * stored the same. `null` when the timeline never closed it.
+   */
+  afloop: DebatAfloop | null;
+  /** Events of the timeline that became a message in the channel. */
+  berichten: number;
+  vragen: number;
+  vragen_open: number;
+}
+
+export interface GevolgdeDebatten {
+  debatten: GevolgdDebat[];
+  /** Of everything, not of this page. */
+  totaal: number;
+  limit: number;
+  offset: number;
+}

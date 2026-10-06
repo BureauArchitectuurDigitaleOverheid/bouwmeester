@@ -103,6 +103,7 @@ export const queryKeys = {
   debatten: {
     all: ['debatten'] as const,
     aankomend: () => ['debatten', 'aankomend'] as const,
+    gevolgd: () => ['debatten', 'gevolgd'] as const,
   },
 
   // --- FCC ---

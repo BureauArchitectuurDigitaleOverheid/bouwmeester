@@ -1,5 +1,12 @@
 import type { EntityColor } from '@/types';
-import type { AankomendDebat, DebatKanaal, DebatStartResult, DebatTeam } from '@/types/debat';
+import type {
+  AankomendDebat,
+  DebatKanaal,
+  DebatStartResult,
+  DebatTeam,
+  GevolgdDebat,
+  GevolgdeDebatten,
+} from '@/types/debat';
 
 const AMSTERDAM = 'Europe/Amsterdam';
 
@@ -127,13 +134,54 @@ export function kanaalActie(debat: AankomendDebat, kanaal: DebatKanaal): KanaalA
   return null;
 }
 
-/** What the bot does with a debate, going by the channels on the row. */
-export function volgTekst(debat: AankomendDebat, kanalen: DebatKanaal[]): string | null {
+/** Whether the bot is listening to this debate right now. */
+export function wordtNuGevolgd(debat: AankomendDebat, kanalen: DebatKanaal[]): boolean {
   // Before it starts a channel is simply there; that it will be followed is
   // what the stop button says.
-  if (isNuBezig(debat) && kanalen.some((kanaal) => kanaal.wordt_gevolgd)) return 'wordt gevolgd';
+  return isNuBezig(debat) && kanalen.some((kanaal) => kanaal.wordt_gevolgd);
+}
+
+/** The badge next to the one for where the debate stands: the bot is listening. */
+export function volgBadge(
+  debat: AankomendDebat,
+  kanalen: DebatKanaal[],
+): { label: string; color: EntityColor } | null {
+  return wordtNuGevolgd(debat, kanalen) ? { label: 'Wordt gevolgd', color: 'lintblauw' } : null;
+}
+
+/**
+ * What the line under the subject says about the following: only that it was
+ * stopped. That a debate is followed is a badge, see `volgBadge`.
+ */
+export function volgTekst(debat: AankomendDebat, kanalen: DebatKanaal[]): string | null {
+  if (wordtNuGevolgd(debat, kanalen)) return null;
   if (kanalen.some((kanaal) => kanaalActie(debat, kanaal) === 'hervatten')) return 'volgen gestopt';
   return null;
+}
+
+/**
+ * Whether the row offers to set up a channel.
+ *
+ * Not for a debate Debat Direct says has ended: the audio and the subtitles
+ * of the stream are gone within the hour, so the channel would stay empty.
+ */
+export function kanStarten(
+  debat: AankomendDebat,
+  kanalen: DebatKanaal[],
+  canStart: boolean,
+): boolean {
+  return canStart && kanalen.length === 0 && debat.stand !== 'afgelopen';
+}
+
+/** What the link to a channel shows: the subject on the row says which debate. */
+export const KANAAL_LINK_TEKST = 'Open kanaal';
+
+/**
+ * The accessible name of the link to a channel. Starts with what is visible,
+ * and carries the channel name the short label leaves out.
+ */
+export function kanaalLinkLabel(onderwerp: string, kanaal: DebatKanaal): string {
+  return `${KANAAL_LINK_TEKST} ~${kanaal.channel_name} van ${onderwerp}`;
 }
 
 /**
@@ -223,4 +271,92 @@ export function startMelding(
     default:
       return { tekst: result.melding ?? 'Het kanaal opzetten is niet gelukt.', fout: true };
   }
+}
+
+const dateTime = new Intl.DateTimeFormat('nl-NL', {
+  timeZone: AMSTERDAM,
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/** `di 6 okt 2026, 16:30`, in Dutch time; with the year, because this list goes back. */
+export function formatGevolgdMoment(debat: GevolgdDebat): string {
+  return debat.aanvang ? dateTime.format(new Date(debat.aanvang)) : 'Datum onbekend';
+}
+
+/** `12 vragen gemarkeerd, 3 open`; nothing when no question was marked. */
+export function formatVragen(vragen: number, open: number): string | null {
+  if (vragen <= 0) return null;
+  const gemarkeerd = `${vragen} ${vragen === 1 ? 'vraag' : 'vragen'} gemarkeerd`;
+  return `${gemarkeerd}, ${open > 0 ? open : 'geen'} open`;
+}
+
+/** `48 berichten`; nothing for a channel the timeline never wrote in. */
+export function formatBerichten(berichten: number): string | null {
+  if (berichten <= 0) return null;
+  return `${berichten} ${berichten === 1 ? 'bericht' : 'berichten'}`;
+}
+
+/** The line under the subject of a followed debate: when, and what came of it. */
+export function formatGevolgdRegel(debat: GevolgdDebat): string {
+  return [
+    formatGevolgdMoment(debat),
+    formatBerichten(debat.berichten),
+    formatVragen(debat.vragen, debat.vragen_open),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * The badge for how a followed debate ended. Only for one that was cancelled
+ * or moved: a debate that ran to its end and one someone stopped following
+ * are stored the same, so neither gets a word here.
+ */
+export function afloopBadge(debat: GevolgdDebat): { label: string; color: EntityColor } | null {
+  return debat.afloop === 'afgelast' ? { label: 'Afgelast of verplaatst', color: 'oranje' } : null;
+}
+
+/**
+ * The pages read so far as one list, in the order they came.
+ *
+ * Paging is by offset, and the list shifts when a debate ends between two
+ * pages: the same debate can then come twice, and is kept once.
+ */
+export function gevolgdeDebatten(pages: GevolgdeDebatten[]): GevolgdDebat[] {
+  const seen = new Set<string>();
+  const debatten: GevolgdDebat[] = [];
+  for (const page of pages) {
+    for (const debat of page.debatten) {
+      if (seen.has(debat.sessie_id)) continue;
+      seen.add(debat.sessie_id);
+      debatten.push(debat);
+    }
+  }
+  return debatten;
+}
+
+/** Where the next page starts, or `undefined` when everything has been read. */
+export function volgendeOffset(pages: GevolgdeDebatten[]): number | undefined {
+  const last = pages[pages.length - 1];
+  if (!last || last.debatten.length === 0) return undefined;
+  const read = last.offset + last.debatten.length;
+  return read < last.totaal ? read : undefined;
+}
+
+/** Matches every word of the query somewhere in subject, nummer or channel name. */
+export function filterGevolgd(debatten: GevolgdDebat[], query: string): GevolgdDebat[] {
+  const woorden = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (woorden.length === 0) return debatten;
+  return debatten.filter((debat) => {
+    const tekst = [debat.onderwerp, debat.nummer, debat.kanaal.channel_name]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return woorden.every((woord) => tekst.includes(woord));
+  });
 }

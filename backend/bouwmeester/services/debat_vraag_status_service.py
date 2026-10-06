@@ -216,14 +216,15 @@ class DebatVraagStatusService:
         gebruiker = await self._gebruiker(stand.mattermost_user_id)
         # What the reply is made from, read before the commit expires it.
         tekst = format_vraag_thread(
-            spreker=markering.spreker,
-            fractie=markering.fractie,
+            volgnummer=markering.volgnummer,
             gericht_aan=markering.gericht_aan,
             citaat=markering.citaat,
             samenvatting=markering.samenvatting,
             stuk=markering.stuk,
             moment=markering.moment,
             moment_url=markering.moment_url,
+            vraag_moment=markering.vraag_moment,
+            first_in_thread=markering.met_noot,
             status=stand.status,
             door=await self._naam(stand, gebruiker),
         )

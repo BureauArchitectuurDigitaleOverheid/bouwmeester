@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useMemo, useRef, useState } from 'react';
 import {
   useAankomendeDebatten,
+  useGevolgdeDebatten,
   useHervatDebat,
   useStartDebat,
   useStopDebat,
@@ -13,16 +14,24 @@ import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { Select } from '@/components/common/Select';
 import { NlddButton } from '@/components/nldd/NlddButton';
 import { eventValue, useNlddEvent } from '@/components/nldd/events';
-import type { AankomendDebat, DebatKanaal } from '@/types/debat';
+import type { AankomendDebat, DebatKanaal, GevolgdDebat } from '@/types/debat';
 import {
+  KANAAL_LINK_TEKST,
+  afloopBadge,
   filterDebatten,
+  filterGevolgd,
   formatDebatRegel,
+  formatGevolgdRegel,
+  gevolgdeDebatten,
   kanaalActie,
+  kanaalLinkLabel,
+  kanStarten,
   bewaarGekozenTeam,
   kiesTeam,
   leesGekozenTeam,
   standBadge,
   verdeelDebatten,
+  volgBadge,
   zichtbareKanalen,
   startMelding,
 } from './debatten';
@@ -36,17 +45,25 @@ function DebatSearchField({ value, onChange }: { value: string; onChange: (v: st
       ref={ref}
       value={value}
       placeholder="Zoek op onderwerp of commissie..."
-      accessible-label="Zoek in komende debatten"
+      accessible-label="Zoek in debatten"
     />
   );
 }
 
-function KanaalLink({ kanaal }: { kanaal: DebatKanaal }) {
+function KanaalLink({ kanaal, onderwerp }: { kanaal: DebatKanaal; onderwerp: string }) {
   const naam = `~${kanaal.channel_name}`;
+  // A short fixed label: the subject on the row says which debate it is. The
+  // channel name is in the accessible name and shows on hover.
   // Without the team's url name there is nothing to link to; the name alone
   // still tells which channel to look for.
   return kanaal.channel_url ? (
-    <nldd-link href={kanaal.channel_url} target="_blank" text={naam} />
+    <nldd-link
+      href={kanaal.channel_url}
+      target="_blank"
+      text={KANAAL_LINK_TEKST}
+      accessible-label={kanaalLinkLabel(onderwerp, kanaal)}
+      title={naam}
+    />
   ) : (
     <nldd-text size="sm" color="secondary">{naam}</nldd-text>
   );
@@ -78,6 +95,7 @@ function DebatRow({
 }: DebatRowProps) {
   const kanalen = zichtbareKanalen(debat, teamId);
   const badge = standBadge(debat);
+  const volgt = volgBadge(debat, kanalen);
   return (
     <nldd-list-item>
       <nldd-text-cell text={debat.onderwerp} supporting-text={formatDebatRegel(debat, kanalen)} />
@@ -91,10 +109,21 @@ function DebatRow({
           <Badge color={badge.color}>{badge.label}</Badge>
         </nldd-cell>
       )}
+      {/* Where the row is narrow the second badge and the link to the agenda
+          go: a row does not wrap, and the stop button already says the debate
+          is followed. */}
+      {volgt && (
+        <>
+          {badge && <nldd-spacer-cell size="8" hide-below="md" />}
+          <nldd-cell horizontal-alignment="right" hide-below="md">
+            <Badge color={volgt.color}>{volgt.label}</Badge>
+          </nldd-cell>
+        </>
+      )}
       {debat.agenda_url && (
         <>
-          {badge && <nldd-spacer-cell size="16" />}
-          <nldd-cell horizontal-alignment="right">
+          {(badge || volgt) && <nldd-spacer-cell size="16" hide-below="md" />}
+          <nldd-cell horizontal-alignment="right" hide-below="md">
             <nldd-link
               href={debat.agenda_url}
               target="_blank"
@@ -110,7 +139,7 @@ function DebatRow({
           <Fragment key={kanaal.team_id}>
             <nldd-spacer-cell size="16" />
             <nldd-cell horizontal-alignment="right">
-              <KanaalLink kanaal={kanaal} />
+              <KanaalLink kanaal={kanaal} onderwerp={debat.onderwerp} />
             </nldd-cell>
             {actie && (
               <>
@@ -118,10 +147,11 @@ function DebatRow({
                 <nldd-cell horizontal-alignment="right">
                   {actie === 'stoppen' ? (
                     <NlddButton
-                      variant="secondary"
+                      variant="neutral-transparent"
                       size="sm"
-                      startIcon="media-stop"
+                      startIcon="media-pause"
                       text="Stoppen met volgen"
+                      compactBelowSm
                       accessibleLabel={`Stoppen met volgen van ${debat.onderwerp}`}
                       loading={pendingSessieId === kanaal.sessie_id}
                       disabled={busy}
@@ -129,10 +159,11 @@ function DebatRow({
                     />
                   ) : (
                     <NlddButton
-                      variant="secondary"
+                      variant="neutral-transparent"
                       size="sm"
                       startIcon="media-play"
                       text="Weer volgen"
+                      compactBelowSm
                       accessibleLabel={`${debat.onderwerp} weer volgen`}
                       loading={pendingSessieId === kanaal.sessie_id}
                       disabled={busy}
@@ -145,7 +176,7 @@ function DebatRow({
           </Fragment>
         );
       })}
-      {kanalen.length === 0 && canStart && (
+      {kanStarten(debat, kanalen, canStart) && (
         <>
           <nldd-spacer-cell size="16" />
           <nldd-cell horizontal-alignment="right">
@@ -154,6 +185,7 @@ function DebatRow({
               size="sm"
               startIcon="microphone"
               text="Kanaal opzetten"
+              compactBelowSm
               accessibleLabel={`Kanaal opzetten voor ${debat.onderwerp}`}
               loading={pending}
               disabled={busy}
@@ -163,6 +195,86 @@ function DebatRow({
         </>
       )}
     </nldd-list-item>
+  );
+}
+
+function GevolgdRow({ debat }: { debat: GevolgdDebat }) {
+  const badge = afloopBadge(debat);
+  return (
+    <nldd-list-item>
+      <nldd-text-cell text={debat.onderwerp} supporting-text={formatGevolgdRegel(debat)} />
+      {badge && (
+        <nldd-cell horizontal-alignment="right" hide-below="md">
+          <Badge color={badge.color}>{badge.label}</Badge>
+        </nldd-cell>
+      )}
+      {debat.agenda_url && (
+        <>
+          {badge && <nldd-spacer-cell size="16" hide-below="md" />}
+          <nldd-cell horizontal-alignment="right" hide-below="md">
+            <nldd-link
+              href={debat.agenda_url}
+              target="_blank"
+              text="Agenda"
+              accessible-label={`Agenda van ${debat.onderwerp}`}
+            />
+          </nldd-cell>
+        </>
+      )}
+      <nldd-spacer-cell size="16" />
+      <nldd-cell horizontal-alignment="right">
+        <KanaalLink kanaal={debat.kanaal} onderwerp={debat.onderwerp} />
+      </nldd-cell>
+    </nldd-list-item>
+  );
+}
+
+/**
+ * The debates the teams of this person followed that are over, newest first.
+ *
+ * Nothing at all while there are none: most people open this page before
+ * their team ever followed a debate, and an empty box says nothing to them.
+ * The search works on what has been read so far.
+ */
+function GevolgdSection({ search }: { search: string }) {
+  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
+    useGevolgdeDebatten();
+  const alle = useMemo(() => gevolgdeDebatten(data?.pages ?? []), [data]);
+  const debatten = useMemo(() => filterGevolgd(alle, search), [alle, search]);
+
+  if (isLoading) return <LoadingSpinner padding="32" />;
+  if (alle.length === 0) return null;
+  // Nothing matches and nothing more to read: the search says so above.
+  if (debatten.length === 0 && !hasNextPage) return null;
+
+  return (
+    <nldd-container gap="8">
+      <nldd-title size={6}><h2>Eerder gevolgd</h2></nldd-title>
+      {debatten.length > 0 ? (
+        <nldd-list variant="box-tinted" dividers="always" accessible-label="Debatten die eerder gevolgd zijn">
+          {debatten.map((debat) => (
+            <GevolgdRow key={debat.sessie_id} debat={debat} />
+          ))}
+        </nldd-list>
+      ) : (
+        <nldd-text size="sm" color="secondary">
+          Geen eerder gevolgd debat tot nu toe past bij deze zoekterm.
+        </nldd-text>
+      )}
+      {hasNextPage && (
+        <nldd-container layout="row" horizontal-alignment="center">
+          <NlddButton
+            variant="secondary"
+            size="sm"
+            text="Meer tonen"
+            accessibleLabel="Meer eerder gevolgde debatten tonen"
+            loading={isFetchingNextPage}
+            disabled={isFetchingNextPage}
+            onClick={() => void fetchNextPage()}
+          />
+        </nldd-container>
+      )}
+    </nldd-container>
   );
 }
 
@@ -243,10 +355,14 @@ export function DebattenPage() {
   if (!data) {
     if (isLoading) return <LoadingSpinner padding="64" />;
     return (
-      <EmptyState
-        title="De agenda is nu niet op te halen"
-        description="Probeer het over een paar minuten opnieuw."
-      />
+      <nldd-container gap="24">
+        <EmptyState
+          title="De agenda is nu niet op te halen"
+          description="Probeer het over een paar minuten opnieuw."
+        />
+        {/* What was followed comes from our own database, so it is still there. */}
+        <GevolgdSection search="" />
+      </nldd-container>
     );
   }
 
@@ -357,6 +473,8 @@ export function DebattenPage() {
           </nldd-container>
         ))
       )}
+
+      <GevolgdSection search={search} />
 
       <ConfirmDialog
         open={!!stopKandidaat}

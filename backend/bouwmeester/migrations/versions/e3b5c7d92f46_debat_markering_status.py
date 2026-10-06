@@ -10,7 +10,7 @@ The index on `thread_post_id` is for the websocket: every reaction in every
 channel asks whether its post is the reply of a markering.
 
 Revision ID: e3b5c7d92f46
-Revises: d1a2b4c86e35
+Revises: e3b5c7d9f1a2
 Create Date: 2026-10-06
 
 """
@@ -20,12 +20,21 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "e3b5c7d92f46"
-down_revision: str | None = "d1a2b4c86e35"
+down_revision: str | None = "e3b5c7d9f1a2"
 branch_labels: str | None = None
 depends_on: str | None = None
 
 
 def upgrade() -> None:
+    # Whether the reply of this markering carries the note that goes under
+    # the first reply of a thread, so that a reply that is written again
+    # (for its status) keeps it or keeps being without it.
+    op.add_column(
+        "debat_markering",
+        sa.Column(
+            "met_noot", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+    )
     op.add_column(
         "debat_markering",
         sa.Column("status_at", sa.DateTime(timezone=True), nullable=True),
@@ -70,6 +79,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_column("debat_markering", "met_noot")
     op.drop_index("ix_debat_markering_reacties_gewijzigd_at", "debat_markering")
     op.drop_index("ix_debat_markering_status_door_person_id", "debat_markering")
     op.drop_index("ix_debat_markering_thread_post_id", "debat_markering")
