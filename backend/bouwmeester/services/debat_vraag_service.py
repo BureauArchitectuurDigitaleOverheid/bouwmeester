@@ -443,9 +443,7 @@ def format_vraag_thread(
     # looking for it needs the text as it is.
     gezegd = _RUNS_ON.sub(" ", citaat)
     kop = _kop(samenvatting, gezegd)
-    icoon, _, stand = stand_marker(
-        status, _vrij(_kort(door or "", MAX_DOOR))
-    ).partition(" ")
+    icoon, stand = stand_marker(status, _vrij(_kort(door or "", MAX_DOOR)))
     if status == STATUS_VERWORPEN:
         # One struck line instead of the whole reply struck through. In
         # Mattermost a strike does not carry over a line break or into a

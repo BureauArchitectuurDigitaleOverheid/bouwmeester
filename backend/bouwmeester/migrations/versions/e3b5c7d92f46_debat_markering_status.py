@@ -35,6 +35,23 @@ def upgrade() -> None:
             "met_noot", sa.Boolean(), nullable=False, server_default=sa.text("false")
         ),
     )
+    # The replies that are in a channel already were posted before this was
+    # kept. Without this, the first time one of them is written again for a
+    # status its thread would lose the note. Which reply got in first is
+    # not known any more; the lowest number under a message is the best
+    # guess, and at worst the note moves one reply.
+    op.execute(
+        """
+        UPDATE debat_markering
+        SET met_noot = true
+        WHERE id IN (
+            SELECT DISTINCT ON (beurt_post_id) id
+            FROM debat_markering
+            WHERE thread_post_id IS NOT NULL AND beurt_post_id IS NOT NULL
+            ORDER BY beurt_post_id, volgnummer
+        )
+        """
+    )
     op.add_column(
         "debat_markering",
         sa.Column("status_at", sa.DateTime(timezone=True), nullable=True),

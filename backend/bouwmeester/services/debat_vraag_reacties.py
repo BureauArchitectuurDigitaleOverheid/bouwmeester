@@ -40,13 +40,15 @@ STATUS_PER_REACTIE: dict[str, str] = {
     REACTIE_GEEN_VRAAG: STATUS_VERWORPEN,
 }
 
-# What the reply of a question shows in front of its first line. An open
-# question shows nothing: that is what a reply looks like when it is new.
-_MARKER: dict[str, str] = {
-    STATUS_BEANTWOORD: "✅ beantwoord",
-    STATUS_TOEGEWEZEN: "👀 opgepakt",
-    STATUS_VERVALT: "🚫 hoeft geen antwoord",
-    STATUS_VERWORPEN: "❌ geen vraag",
+# What the reply of a question shows for each status, as (icon, words).
+# The icon takes the place of the question mark in front of the question,
+# the words go into the line below it. An open question has neither: that
+# is what a reply looks like when it is new.
+_MARKER: dict[str, tuple[str, str]] = {
+    STATUS_BEANTWOORD: ("✅", "beantwoord"),
+    STATUS_TOEGEWEZEN: ("👀", "opgepakt"),
+    STATUS_VERVALT: ("🚫", "hoeft geen antwoord"),
+    STATUS_VERWORPEN: ("❌", "geen vraag"),
 }
 
 # In the pinned message of a debate channel, so that the reactions can be
@@ -102,14 +104,19 @@ def stand_uit_reacties(reacties: Sequence[dict], bot_user_id: str) -> Stand:
     return Stand(status=status, mattermost_user_id=user_id, sinds=sinds)
 
 
-def stand_marker(status: str, door: str = "") -> str:
-    """The few words that say where a question stands, or an empty string.
+def stand_marker(status: str, door: str = "") -> tuple[str, str]:
+    """The icon and the few words that say where a question stands.
+
+    Two empty strings for an open question and for a status that is not
+    known here. Apart and not as one string: whoever lays out the reply
+    puts them in different places, and should not have to cut a string up
+    to find where the icon ends.
 
     `door` is the name of who picked the question up, already made harmless
     for a message. It is shown for a question that is picked up only: who
     ticked off an answer matters less than who is working on one.
     """
-    marker = _MARKER.get(status, "")
-    if marker and door and status == STATUS_TOEGEWEZEN:
-        marker = f"{marker} door {door}"
-    return marker
+    icoon, woorden = _MARKER.get(status, ("", ""))
+    if door and status == STATUS_TOEGEWEZEN:
+        woorden = f"{woorden} door {door}"
+    return icoon, woorden

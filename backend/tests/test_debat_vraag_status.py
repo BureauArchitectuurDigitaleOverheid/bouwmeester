@@ -82,8 +82,7 @@ def _reactie(user: str, emoji: str, at: int, **extra) -> dict:
 
 def _thread(**extra) -> str:
     values = {
-        "spreker": "Kamerlid A (X)",
-        "fractie": "X",
+        "volgnummer": 12,
         "gericht_aan": "de minister",
         "citaat": "Wanneer komt de brief naar de Kamer?",
         "samenvatting": "Wanneer de brief komt.",
@@ -93,6 +92,21 @@ def _thread(**extra) -> str:
     }
     values.update(extra)
     return format_vraag_thread(**values)
+
+
+def _stand(tekst: str) -> str:
+    """What a reply says about where its question stands: icon and words.
+
+    Read from where the layout puts them, so the tests of the service say
+    "✅ beantwoord" and not how a reply is laid out.
+    """
+    eerste, _, rest = tekst.partition("\n")
+    icoon = eerste.split(" ")[0]
+    if not rest:
+        # A rejected one: a single line that ends in the words.
+        return f"{icoon} {eerste.rsplit('~~ · ', 1)[1]}"
+    delen = rest.split("\n")[0].split(" · ")
+    return f"{icoon} {delen[1]}" if len(delen) == 4 else icoon
 
 
 # --- the rule ----------------------------------------------------------
@@ -209,65 +223,118 @@ class TestStandUitReacties:
 # --- what the channel shows --------------------------------------------
 
 
+OPEN = (
+    "❓ **Wanneer de brief komt.**\n"
+    "Vraag 12 · aan de minister · 10:02 (begin van de spreekbeurt)\n"
+    "> Wanneer komt de brief naar de Kamer?\n"
+    "\n"
+    "_Citaten komen letterlijk uit het automatische transcript._"
+)
+
+
 class TestDeThread:
     def test_an_open_question_looks_as_it_did(self):
-        assert _thread(status=STATUS_OPEN) == _thread()
-        assert _thread().startswith("❓ **Vraag aan de minister**")
+        assert _thread() == OPEN
+        assert _thread(status=STATUS_OPEN) == OPEN
 
     @pytest.mark.parametrize(
-        ("status", "marker"),
+        ("status", "icoon", "woorden"),
         [
-            (STATUS_BEANTWOORD, "✅ beantwoord"),
-            (STATUS_TOEGEWEZEN, "👀 opgepakt"),
-            (STATUS_VERVALT, "🚫 hoeft geen antwoord"),
+            (STATUS_BEANTWOORD, "✅", "beantwoord"),
+            (STATUS_TOEGEWEZEN, "👀", "opgepakt"),
+            (STATUS_VERVALT, "🚫", "hoeft geen antwoord"),
         ],
     )
-    def test_the_state_stands_in_front_of_the_first_line(self, status, marker):
-        tekst = _thread(status=status)
-        assert tekst == f"{marker} · {_thread()}"
-        # One marker, on the first line only.
-        assert tekst.count(marker) == 1
+    def test_the_icon_becomes_that_of_the_state_and_the_words_follow_the_number(
+        self, status, icoon, woorden
+    ):
+        verwacht = OPEN.replace("❓", icoon).replace(
+            "Vraag 12 · ", f"Vraag 12 · {woorden} · "
+        )
+        assert _thread(status=status) == verwacht
+        # Once each, and no question mark left next to the icon.
+        assert verwacht.count(icoon) == verwacht.count(woorden) == 1
+        assert "❓" not in verwacht
 
     def test_who_picked_it_up_is_named(self):
-        eerste = _thread(status=STATUS_TOEGEWEZEN, door="persoon.a").split("\n")[0]
-        assert eerste.startswith("👀 opgepakt door persoon.a · ❓")
+        tweede = _thread(status=STATUS_TOEGEWEZEN, door="persoon.a").split("\n")[1]
+        assert tweede.startswith("Vraag 12 · opgepakt door persoon.a · aan de minister")
 
     def test_who_ticked_off_an_answer_is_not(self):
-        assert _thread(status=STATUS_BEANTWOORD, door="persoon.a") == _thread(
-            status=STATUS_BEANTWOORD
-        )
+        for status in (STATUS_BEANTWOORD, STATUS_VERVALT, STATUS_VERWORPEN):
+            assert _thread(status=status, door="persoon.a") == _thread(status=status)
 
     def test_a_name_cannot_mention_anyone_or_break_out(self):
-        eerste = _thread(status=STATUS_TOEGEWEZEN, door="\\@all **vet** ~~x~~").split(
+        tweede = _thread(status=STATUS_TOEGEWEZEN, door="\\@all **vet** ~~x~~").split(
             "\n"
-        )[0]
-        assert "@" not in eerste.split(" · ❓")[0]
-        assert "door all \\*\\*vet\\*\\* \\~\\~x\\~\\~ · ❓" in eerste
+        )[1]
+        assert "@" not in tweede
+        assert " · opgepakt door all \\*\\*vet\\*\\* \\~\\~x\\~\\~ · aan " in tweede
+
+    def test_a_name_with_a_line_break_stays_on_its_line(self):
+        tekst = _thread(status=STATUS_TOEGEWEZEN, door="persoon.a\n# kop")
+        assert len(tekst.split("\n")) == len(OPEN.split("\n"))
 
     def test_a_very_long_name_is_cut(self):
-        eerste = _thread(status=STATUS_TOEGEWEZEN, door="a" * 500).split("\n")[0]
-        assert len(eerste.split(" · ❓")[0]) < 90
+        tweede = _thread(status=STATUS_TOEGEWEZEN, door="a" * 500).split("\n")[1]
+        assert len(tweede.split(" · ")[1]) < 90
 
     def test_a_rejected_one_is_a_single_struck_line(self):
-        tekst = _thread(status=STATUS_VERWORPEN)
-        assert tekst == (
-            "❌ geen vraag · ~~Kamerlid A (X) · 10:02 · Wanneer de brief komt.~~"
+        assert _thread(status=STATUS_VERWORPEN) == (
+            "❌ ~~Vraag 12 · Wanneer de brief komt.~~ · geen vraag"
         )
 
     def test_a_rejected_one_without_a_summary_shows_the_quote(self):
         tekst = _thread(status=STATUS_VERWORPEN, samenvatting="")
-        assert "Wanneer komt de brief naar de Kamer?~~" in tekst
+        assert tekst == (
+            "❌ ~~Vraag 12 · Wanneer komt de brief naar de Kamer?~~ · geen vraag"
+        )
 
-    def test_a_tilde_in_a_rejected_one_cannot_end_the_strike(self):
-        tekst = _thread(status=STATUS_VERWORPEN, samenvatting="half ~~ af\nen verder")
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"samenvatting": "half ~~ af\nen verder"},
+            {"samenvatting": "", "citaat": "Is dit half ~~ af\nen gaat het verder?"},
+        ],
+    )
+    def test_a_tilde_in_a_rejected_one_cannot_end_the_strike(self, extra):
+        tekst = _thread(status=STATUS_VERWORPEN, **extra)
         assert "\n" not in tekst
-        # The two tildes of the summary are escaped; only ours are bare.
+        # The two tildes of the question are escaped; only ours are bare,
+        # and ours open after the icon and close before the words.
         assert tekst.replace("\\~", "").count("~~") == 2
-        assert tekst.endswith("~~")
+        assert tekst.startswith("❌ ~~Vraag 12 · ")
+        assert tekst.endswith("~~ · geen vraag")
 
-    def test_a_long_rejected_one_stays_short(self):
+    def test_a_long_rejected_one_stays_one_line(self):
         tekst = _thread(status=STATUS_VERWORPEN, samenvatting="woord " * 100)
-        assert len(tekst) < 220
+        assert "\n" not in tekst
+        assert len(tekst) < 300
+
+    def test_a_rejected_one_has_no_note_whatever_the_reply_had(self):
+        assert _thread(status=STATUS_VERWORPEN, first_in_thread=True) == _thread(
+            status=STATUS_VERWORPEN, first_in_thread=False
+        )
+
+    @pytest.mark.parametrize(
+        "status", [STATUS_OPEN, STATUS_BEANTWOORD, STATUS_TOEGEWEZEN, STATUS_VERVALT]
+    )
+    def test_the_note_is_there_only_under_the_first_reply_in_every_state(self, status):
+        noot = "_Citaten komen letterlijk uit het automatische transcript._"
+        met = _thread(status=status, first_in_thread=True)
+        zonder = _thread(status=status, first_in_thread=False)
+        assert met == f"{zonder}\n\n{noot}"
+        assert noot not in zonder
+
+    def test_the_time_of_the_question_and_its_link_stay_with_a_status(self):
+        extra = {
+            "vraag_moment": MOMENT + timedelta(minutes=3),
+            "moment_url": "https://debatdirect.example/debat?event=speaker",
+        }
+        open_ = _thread(**extra).split("\n")[1]
+        beantwoord = _thread(status=STATUS_BEANTWOORD, **extra).split("\n")[1]
+        assert "[10:05](" in open_
+        assert beantwoord == open_.replace("Vraag 12 · ", "Vraag 12 · beantwoord · ")
 
     def test_the_same_state_twice_is_the_same_text(self):
         for status in (STATUS_BEANTWOORD, STATUS_VERWORPEN, STATUS_TOEGEWEZEN):
@@ -276,34 +343,63 @@ class TestDeThread:
             )
 
     def test_an_unknown_status_shows_no_marker(self):
-        assert _thread(status="nog_niet_bedacht") == _thread()
-        assert stand_marker("nog_niet_bedacht", "persoon.a") == ""
-        assert stand_marker(STATUS_OPEN) == ""
+        assert _thread(status="nog_niet_bedacht") == OPEN
+
+    def test_the_marker_is_an_icon_and_words_apart(self):
+        assert stand_marker(STATUS_OPEN) == ("", "")
+        assert stand_marker("nog_niet_bedacht", "persoon.a") == ("", "")
+        assert stand_marker(STATUS_BEANTWOORD) == ("✅", "beantwoord")
+        assert stand_marker(STATUS_VERVALT) == ("🚫", "hoeft geen antwoord")
+        assert stand_marker(STATUS_VERWORPEN, "persoon.a") == ("❌", "geen vraag")
+        assert stand_marker(STATUS_TOEGEWEZEN) == ("👀", "opgepakt")
+        assert stand_marker(STATUS_TOEGEWEZEN, "persoon.a") == (
+            "👀",
+            "opgepakt door persoon.a",
+        )
 
 
 class TestDeStatusregel:
     def test_needs_no_answer_is_still_a_question_and_not_open(self):
         assert statusregel([(SOORT_VRAAG, STATUS_VERVALT)]) == (
-            "❓ Vraag gemarkeerd · hoeft geen antwoord"
+            "❓ 1 vraag · hoeft geen antwoord"
         )
         assert statusregel(
             [(SOORT_VRAAG, STATUS_VERVALT), (SOORT_VRAAG, STATUS_VERVALT)]
-        ) == ("❓ 2 vragen gemarkeerd · hoeven geen antwoord")
+        ) == ("❓ 2 vragen · hoeft geen antwoord")
 
-    def test_every_state_is_counted(self):
-        regel = statusregel(
-            [
-                (SOORT_VRAAG, STATUS_OPEN),
-                (SOORT_VRAAG, STATUS_VERVALT),
-                (SOORT_VRAAG, STATUS_TOEGEWEZEN),
-                (SOORT_VRAAG, STATUS_BEANTWOORD),
-                (SOORT_VRAAG, STATUS_VERWORPEN),
-            ]
+    @pytest.mark.parametrize(
+        ("status", "woord"),
+        [
+            (STATUS_OPEN, "open"),
+            (STATUS_TOEGEWEZEN, "opgepakt"),
+            (STATUS_BEANTWOORD, "beantwoord"),
+            (STATUS_VERVALT, "hoeft geen antwoord"),
+        ],
+    )
+    def test_one_state_is_one_word_without_a_count(self, status, woord):
+        assert statusregel([(SOORT_VRAAG, status)]) == f"❓ 1 vraag · {woord}"
+        assert statusregel([(SOORT_VRAAG, status)] * 3) == f"❓ 3 vragen · {woord}"
+
+    def test_every_state_is_counted_in_a_fixed_order(self):
+        statussen = [
+            STATUS_VERWORPEN,
+            STATUS_VERVALT,
+            STATUS_BEANTWOORD,
+            STATUS_TOEGEWEZEN,
+            STATUS_OPEN,
+            STATUS_VERVALT,
+        ]
+        verwacht = (
+            "❓ 5 vragen · 1 open · 1 opgepakt · 1 beantwoord · 2 hoeft geen antwoord"
         )
-        assert regel == (
-            "❓ 4 vragen gemarkeerd · 1 open · 1 opgepakt · 1 beantwoord"
-            " · 1 hoeft geen antwoord"
-        )
+        assert statusregel([(SOORT_VRAAG, s) for s in statussen]) == verwacht
+        # Whatever order the questions were asked in.
+        assert statusregel([(SOORT_VRAAG, s) for s in reversed(statussen)]) == verwacht
+
+    def test_a_rejected_one_next_to_one_state_leaves_that_state_alone(self):
+        assert statusregel(
+            [(SOORT_VRAAG, STATUS_VERWORPEN), (SOORT_VRAAG, STATUS_VERVALT)]
+        ) == ("❓ 1 vraag · hoeft geen antwoord")
 
     def test_a_turn_of_rejected_questions_only_shows_nothing(self):
         assert (
@@ -524,6 +620,9 @@ async def _markering(
         "samenvatting": f"Wanneer brief {volgnummer} komt.",
         "moment": MOMENT,
         "statusregel_at": datetime.now(UTC),
+        # As for the first reply under a turn; a test that is about the
+        # note says so itself.
+        "met_noot": True,
     }
     values.update(extra)
     markering = DebatMarkering(**values)
@@ -540,14 +639,15 @@ async def _markering(
 
 def _tekst(markering: DebatMarkering, **extra) -> str:
     return format_vraag_thread(
-        spreker=markering.spreker,
-        fractie=markering.fractie,
+        volgnummer=markering.volgnummer,
         gericht_aan=markering.gericht_aan,
         citaat=markering.citaat,
         samenvatting=markering.samenvatting,
         stuk=markering.stuk,
         moment=markering.moment,
         moment_url=markering.moment_url,
+        vraag_moment=markering.vraag_moment,
+        first_in_thread=markering.met_noot,
         **extra,
     )
 
@@ -597,36 +697,39 @@ async def _ronde(session: AsyncSession, mm: FakeMattermost, **extra):
 
 class TestEenReactieWordtEenStatus:
     @pytest.mark.parametrize(
-        ("emoji", "status", "eerste_regel", "blok"),
+        ("emoji", "status", "begin", "blok"),
         [
             (
                 REACTIE_BEANTWOORD,
                 STATUS_BEANTWOORD,
-                "✅ beantwoord · ❓ **Vraag aan de minister**",
-                "❓ Vraag gemarkeerd · beantwoord",
+                "✅ **Wanneer brief 1 komt.**\n"
+                "Vraag 1 · beantwoord · aan de minister · 10:02",
+                "❓ 1 vraag · beantwoord",
             ),
             (
                 REACTIE_OPGEPAKT,
                 STATUS_TOEGEWEZEN,
-                "👀 opgepakt door persoon.a · ❓ **Vraag aan de minister**",
-                "❓ Vraag gemarkeerd · wordt opgepakt",
+                "👀 **Wanneer brief 1 komt.**\n"
+                "Vraag 1 · opgepakt door persoon.a · aan de minister · 10:02",
+                "❓ 1 vraag · opgepakt",
             ),
             (
                 REACTIE_VERVALT,
                 STATUS_VERVALT,
-                "🚫 hoeft geen antwoord · ❓ **Vraag aan de minister**",
-                "❓ Vraag gemarkeerd · hoeft geen antwoord",
+                "🚫 **Wanneer brief 1 komt.**\n"
+                "Vraag 1 · hoeft geen antwoord · aan de minister · 10:02",
+                "❓ 1 vraag · hoeft geen antwoord",
             ),
             (
                 REACTIE_GEEN_VRAAG,
                 STATUS_VERWORPEN,
-                "❌ geen vraag · ~~Kamerlid A (X) · 10:02 · Wanneer brief 1 komt.~~",
+                "❌ ~~Vraag 1 · Wanneer brief 1 komt.~~ · geen vraag",
                 "",
             ),
         ],
     )
     async def test_it_is_stored_and_shown_in_both_places(
-        self, db_session, emoji, status, eerste_regel, blok
+        self, db_session, emoji, status, begin, blok
     ):
         mm = FakeMattermost()
         mm.usernames[PERSOON_A] = "persoon.a"
@@ -646,7 +749,7 @@ class TestEenReactieWordtEenStatus:
         assert row.status_door_person_id is None
         assert row.reacties_gewijzigd_at is None
         assert row.statusregel_at >= voor
-        assert mm.messages[row.thread_post_id].startswith(eerste_regel)
+        assert mm.messages[row.thread_post_id].startswith(begin)
         body, status_blok = splits(mm.messages[row.beurt_post_id])
         assert body == TURN
         assert status_blok == blok
@@ -663,7 +766,12 @@ class TestEenReactieWordtEenStatus:
         )
         await _ronde(db_session, mm)
 
-        assert mm.messages[markering.thread_post_id] == f"✅ beantwoord · {was}"
+        # The quote, the time and the note are what they were; only the
+        # icon and the words of the status are new.
+        assert mm.messages[markering.thread_post_id] == was.replace("❓", "✅").replace(
+            "Vraag 1 · ", "Vraag 1 · beantwoord · "
+        )
+        assert "> Wanneer komt brief 1 naar de Kamer?" in was
         # The props go back with the edit, or the edit clears them.
         assert {"van": "de bot"} in mm.update_props
 
@@ -689,9 +797,7 @@ class TestEenReactieWordtEenStatus:
 
         row = await _lees(db_session, markering.id)
         assert row.status_door_person_id == person.id
-        assert mm.messages[row.thread_post_id].startswith(
-            "👀 opgepakt door persoon.a · "
-        )
+        assert _stand(mm.messages[row.thread_post_id]) == "👀 opgepakt door persoon.a"
         assert mm.username_reads == []
 
     async def test_a_name_that_cannot_be_found_is_left_out(self, db_session):
@@ -705,7 +811,7 @@ class TestEenReactieWordtEenStatus:
         await _ronde(db_session, mm)
 
         # The fake gives the id back, as the real lookup does when it fails.
-        assert mm.messages[markering.thread_post_id].startswith("👀 opgepakt · ❓")
+        assert _stand(mm.messages[markering.thread_post_id]) == "👀 opgepakt"
         assert PERSOON_A not in mm.messages[markering.thread_post_id]
 
     async def test_the_name_is_only_asked_for_when_it_is_shown(self, db_session):
@@ -736,7 +842,7 @@ class TestEenReactieWordtEenStatus:
             STATUS_BEANTWOORD,
             PERSOON_B,
         )
-        assert mm.messages[reply].startswith("✅ beantwoord · ❓")
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
 
     async def test_the_same_status_by_someone_else_changes_who(self, db_session):
         mm = FakeMattermost()
@@ -753,7 +859,7 @@ class TestEenReactieWordtEenStatus:
         assert ronde.gewijzigd == 1
         row = await _lees(db_session, markering.id)
         assert row.status_door_mattermost_user_id == PERSOON_B
-        assert mm.messages[reply].startswith("👀 opgepakt door persoon.b · ")
+        assert _stand(mm.messages[reply]) == "👀 opgepakt door persoon.b"
 
     async def test_the_hint_of_the_bot_is_not_an_answer(self, db_session):
         mm = FakeMattermost()
@@ -787,6 +893,80 @@ class TestEenReactieWordtEenStatus:
         assert mm.updates == []
 
 
+NOOT = "_Citaten komen letterlijk uit het automatische transcript._"
+
+
+class TestWatEenAntwoordAlZei:
+    """The reply is written anew from the row. What it said when it was
+    posted (the note under the first reply of a thread, the moment of the
+    question) is on the row for that, and has to come back the same."""
+
+    @pytest.mark.parametrize("met_noot", [True, False])
+    @pytest.mark.parametrize(
+        "emoji", [REACTIE_BEANTWOORD, REACTIE_OPGEPAKT, REACTIE_VERVALT]
+    )
+    async def test_a_status_keeps_the_note_or_keeps_lacking_it(
+        self, db_session, met_noot, emoji
+    ):
+        mm = FakeMattermost()
+        sessie_id = await _sessie(db_session)
+        markering = await _markering(db_session, mm, sessie_id, met_noot=met_noot)
+        reply = markering.thread_post_id
+        assert (NOOT in mm.messages[reply]) is met_noot
+
+        await _reageer(db_session, mm, reply, PERSOON_A, emoji)
+        await _ronde(db_session, mm)
+
+        assert _stand(mm.messages[reply]) != "❓"
+        assert (NOOT in mm.messages[reply]) is met_noot
+        assert mm.messages[reply].endswith(NOOT) is met_noot
+
+    @pytest.mark.parametrize("met_noot", [True, False])
+    async def test_a_rejected_reply_that_is_restored_is_what_it_was(
+        self, db_session, met_noot
+    ):
+        mm = FakeMattermost()
+        sessie_id = await _sessie(db_session)
+        markering = await _markering(db_session, mm, sessie_id, met_noot=met_noot)
+        reply = markering.thread_post_id
+        was = mm.messages[reply]
+
+        await _reageer(db_session, mm, reply, PERSOON_A, REACTIE_GEEN_VRAAG)
+        await _ronde(db_session, mm)
+        assert NOOT not in mm.messages[reply]
+        await _haal_weg(db_session, mm, reply, PERSOON_A, REACTIE_GEEN_VRAAG)
+        await _ronde(db_session, mm)
+
+        assert mm.messages[reply] == was
+        assert (NOOT in was) is met_noot
+        # What the row says about the note is not touched by any of this.
+        assert (await _lees(db_session, markering.id)).met_noot is met_noot
+
+    async def test_the_moment_of_the_question_and_its_number_stay(self, db_session):
+        mm = FakeMattermost()
+        sessie_id = await _sessie(db_session)
+        markering = await _markering(
+            db_session,
+            mm,
+            sessie_id,
+            7,
+            vraag_moment=MOMENT + timedelta(minutes=3),
+            moment_url="https://debatdirect.example/debat?event=speaker",
+            stuk="Voortgangsbrief voorbeelden",
+        )
+        reply = markering.thread_post_id
+        was = mm.messages[reply]
+        assert "Vraag 7 · aan de minister · [10:05](" in was
+
+        await _reageer(db_session, mm, reply, PERSOON_A, REACTIE_BEANTWOORD)
+        await _ronde(db_session, mm)
+
+        assert mm.messages[reply] == was.replace("❓", "✅").replace(
+            "Vraag 7 · ", "Vraag 7 · beantwoord · "
+        )
+        assert "📄 Voortgangsbrief voorbeelden" in mm.messages[reply]
+
+
 class TestEenReactieWeghalen:
     async def test_taking_the_only_reaction_away_reopens_the_question(self, db_session):
         mm = FakeMattermost()
@@ -809,9 +989,7 @@ class TestEenReactieWeghalen:
         assert row.status_at >= voor
         # The whole reply is back, quote and all: nothing was lost.
         assert mm.messages[reply] == was
-        assert splits(mm.messages[row.beurt_post_id])[1] == (
-            "❓ Vraag gemarkeerd · staat open"
-        )
+        assert splits(mm.messages[row.beurt_post_id])[1] == ("❓ 1 vraag · open")
 
     async def test_someone_elses_same_reaction_keeps_the_status(self, db_session):
         mm = FakeMattermost()
@@ -830,7 +1008,7 @@ class TestEenReactieWeghalen:
             STATUS_BEANTWOORD,
             PERSOON_A,
         )
-        assert mm.messages[reply].startswith("✅ beantwoord · ❓")
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
 
     async def test_an_older_reaction_that_is_still_there_takes_over(self, db_session):
         mm = FakeMattermost()
@@ -850,7 +1028,7 @@ class TestEenReactieWeghalen:
             STATUS_TOEGEWEZEN,
             PERSOON_A,
         )
-        assert mm.messages[reply].startswith("👀 opgepakt door persoon.a · ❓")
+        assert _stand(mm.messages[reply]) == "👀 opgepakt door persoon.a"
 
     async def test_taking_away_an_old_reaction_changes_nothing(self, db_session):
         mm = FakeMattermost()
@@ -878,7 +1056,7 @@ class TestHetStatusblok:
         beurt = een.beurt_post_id
         twee = await _markering(db_session, mm, sessie_id, 2, beurt_post_id=beurt)
         drie = await _markering(db_session, mm, sessie_id, 3, beurt_post_id=beurt)
-        assert splits(mm.messages[beurt])[1] == "❓ 3 vragen gemarkeerd · staan open"
+        assert splits(mm.messages[beurt])[1] == "❓ 3 vragen · open"
 
         await _reageer(
             db_session, mm, twee.thread_post_id, PERSOON_A, REACTIE_BEANTWOORD
@@ -890,7 +1068,7 @@ class TestHetStatusblok:
 
         assert splits(mm.messages[beurt]) == (
             TURN,
-            "❓ 2 vragen gemarkeerd · 1 open · 1 beantwoord",
+            "❓ 2 vragen · 1 open · 1 beantwoord",
         )
 
     async def test_is_gone_when_every_question_of_the_turn_was_rejected(
@@ -923,7 +1101,7 @@ class TestHetStatusblok:
         await _haal_weg(db_session, mm, reply, PERSOON_A, REACTIE_GEEN_VRAAG)
         await _ronde(db_session, mm)
 
-        assert splits(mm.messages[beurt])[1] == "❓ Vraag gemarkeerd · staat open"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · open"
 
     async def test_keeps_a_transcript_that_grew_meanwhile(self, db_session):
         mm = FakeMattermost()
@@ -941,7 +1119,7 @@ class TestHetStatusblok:
 
         body, blok = splits(mm.messages[beurt])
         assert body.endswith("En nog een zin.")
-        assert blok == "❓ Vraag gemarkeerd · beantwoord"
+        assert blok == "❓ 1 vraag · beantwoord"
 
 
 class TestBegrensd:
@@ -1064,7 +1242,7 @@ class TestMattermostFaalt:
         await _ronde(db_session, mm)
 
         assert (await _lees(db_session, markering.id)).status == STATUS_BEANTWOORD
-        assert mm.messages[reply].startswith("✅ beantwoord")
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
 
     @pytest.mark.parametrize("hoe", ["fail_updates", "raise_updates", "fail_reads"])
     async def test_a_write_that_fails_is_made_up_for(self, db_session, hoe):
@@ -1089,8 +1267,8 @@ class TestMattermostFaalt:
         ronde = await _ronde(db_session, mm)
 
         assert (ronde.bijgewerkt, ronde.gewijzigd, ronde.mislukt) == (1, 0, 0)
-        assert mm.messages[reply].startswith("✅ beantwoord")
-        assert splits(mm.messages[beurt])[1] == "❓ Vraag gemarkeerd · beantwoord"
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · beantwoord"
         row = await _lees(db_session, markering.id)
         assert row.reacties_gewijzigd_at is None
         assert row.statusregel_at is not None
@@ -1190,7 +1368,7 @@ class TestMattermostFaalt:
         row = await _lees(db_session, markering.id)
         assert row.reacties_gewijzigd_at is None
         # The turn still says what became of its question.
-        assert splits(mm.messages[beurt])[1] == "❓ Vraag gemarkeerd · beantwoord"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · beantwoord"
 
     async def test_a_turn_that_was_deleted_does_not_keep_the_reply_waiting(
         self, db_session
@@ -1210,7 +1388,7 @@ class TestMattermostFaalt:
         ronde = await _ronde(db_session, mm)
 
         assert (ronde.bijgewerkt, ronde.mislukt) == (1, 0)
-        assert mm.messages[reply].startswith("✅ beantwoord")
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
 
     async def test_after_an_hour_it_is_given_up(self, db_session):
         mm = FakeMattermost()
@@ -1277,7 +1455,7 @@ class TestEenMarkeringDieOmvalt:
         ronde = await _ronde(session, mm)
 
         assert (ronde.bijgewerkt, ronde.mislukt) == (1, 1)
-        assert mm.messages[heel].startswith("✅ beantwoord")
+        assert _stand(mm.messages[heel]) == "✅ beantwoord"
         assert (await _lees(session, heel_id)).status == STATUS_BEANTWOORD
 
 
@@ -1308,7 +1486,7 @@ class TestEenReactieTijdensDeRonde:
         row = await _lees(db_session, markering.id)
         assert row.status == STATUS_BEANTWOORD
         assert row.reacties_gewijzigd_at is None
-        assert mm.messages[reply].startswith("✅ beantwoord")
+        assert _stand(mm.messages[reply]) == "✅ beantwoord"
 
 
 @pytest.fixture
@@ -1384,7 +1562,7 @@ class TestRealSessions:
         # What the round stored was committed before it went to Mattermost.
         row = await _lees(new_session(), markering.id)
         assert row.status == STATUS_TOEGEWEZEN
-        assert mm.messages[reply].startswith("👀 opgepakt")
+        assert _stand(mm.messages[reply]) == "👀 opgepakt"
 
 
 # --- what a rejected markering is kept for ------------------------------
@@ -1730,7 +1908,7 @@ class TestDeRondeVanDeVragen:
 
         assert result.fouten == 0
         assert (await _lees(db_session, markering.id)).status == STATUS_BEANTWOORD
-        assert mm.messages[markering.thread_post_id].startswith("✅ beantwoord")
+        assert _stand(mm.messages[markering.thread_post_id]) == "✅ beantwoord"
 
     async def test_reactions_that_break_do_not_stop_the_round(
         self, db_session, monkeypatch
