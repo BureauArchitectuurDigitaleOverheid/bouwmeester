@@ -98,6 +98,8 @@ class Turn:
     start: datetime
     beoordeeld_at: datetime | None = None
     texts: list[str] = field(default_factory=list)
+    # The rows those texts are of, in the same order.
+    rows: list[uuid.UUID] = field(default_factory=list)
     # A suspension or the end: the text is the chairman's, and only the
     # last of it is shown.
     closing: bool = False
@@ -626,4 +628,5 @@ async def load_turns(
             # speaker carrying on after the chairman said a word. What
             # the chairman said in between is kept but not shown.
             current.texts.append(tekst)
+            current.rows.append(row_id)
     return turns

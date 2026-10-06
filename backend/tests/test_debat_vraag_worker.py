@@ -12,9 +12,11 @@ it, and neither may lose what the other wrote.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 import pytest
 from sqlalchemy import select, update
@@ -28,12 +30,14 @@ from bouwmeester.models.debat_sessie import (
     TIJDLIJN_AFGELOPEN,
     TIJDLIJN_GEKOPPELD,
     TIJDLIJN_LOOPT,
+    DebatOndertitel,
     DebatSessie,
     DebatSpreekbeurt,
 )
 from bouwmeester.services import debat_direct as dd
 from bouwmeester.services import debat_vraag_worker as mod
 from bouwmeester.services import tk_activiteit
+from bouwmeester.services.debat_kanaal_service import AMSTERDAM
 from bouwmeester.services.debat_statusregel import voeg_samen
 from bouwmeester.services.debat_tijdlijn_service import (
     END_GRACE,
@@ -50,6 +54,7 @@ from bouwmeester.services.debat_transcript_service import (
     DebatTranscript,
     load_turns,
 )
+from bouwmeester.services.debat_vraag_moment import LEAD_IN, Line
 from bouwmeester.services.debat_vraag_service import DebatVraagService
 from bouwmeester.services.debat_vraag_worker import (
     MARGIN,
@@ -80,7 +85,7 @@ SPREKERS = {
     "m": dd.Spreker("Bewindspersoon A", None, "Minister van Voorbeelden"),
 }
 MINISTER = "Bewindspersoon A (Minister van Voorbeelden)"
-STATUS_EEN = "❓ Vraag gemarkeerd · staat open"
+STATUS_EEN = "❓ 1 vraag · open"
 
 Q_WANNEER = "Kan de minister zeggen wanneer het wetsvoorstel naar de Kamer komt?"
 Q_BUDGET = "Is de minister bereid het budget voor dit jaar te verhogen?"
@@ -477,6 +482,145 @@ class TestAWholeDebate:
         assert handed[0][0].tekst.endswith(Q_WANNEER)
 
 
+def _timed(debat: dd.DdDebat) -> dd.DdDebat:
+    """The same debate, each event with its moment as the feed writes it."""
+    return dataclasses.replace(
+        debat,
+        events=tuple(
+            dataclasses.replace(event, raw_start=_feed_time(event.start))
+            for event in debat.events
+        ),
+    )
+
+
+def _feed_time(moment: datetime) -> str:
+    return moment.astimezone(AMSTERDAM).strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+@pytest.mark.asyncio
+class TestTheMomentOfAQuestion:
+    async def test_the_thread_links_to_the_question_not_to_the_start_of_the_turn(
+        self, db_session, monkeypatch, handed
+    ):
+        debat = _timed(_debat(("speaker", 1, "a"), ("speaker", 4, "b")))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Outside(monkeypatch)
+        # The opening at the start of the turn, the question minutes later.
+        Subtitles(monkeypatch, feed, [_cue(65, OPENING), _cue(200, Q_WANNEER)])
+        mm, llm = Chat(), FakeLLM(antwoord(vraag(Q_WANNEER)))
+        await _sessie(db_session)
+
+        await _follow(db_session, mm, feed, llm, 7)
+
+        # The subtitles are on the clock of the sound, which the feed says
+        # is two seconds later than the events. The link is on the clock
+        # of the events, so the two seconds come off.
+        asked = START + timedelta(seconds=200) - OFFSET
+        beurt = handed[0][0]
+        assert beurt.lines == (
+            Line(START + timedelta(seconds=65) - OFFSET, OPENING),
+            Line(asked, Q_WANNEER),
+        )
+        markering = (await db_session.execute(select(DebatMarkering))).scalar_one()
+        assert markering.moment == START + timedelta(minutes=1)
+        assert markering.vraag_moment == asked
+        # Where the turn began, in the link of its message...
+        begin = quote(f"speaker{_feed_time(markering.moment)}", safe="")
+        assert beurt.moment_url == f"{dd.debate_url(debat)}?event={begin}"
+        # ...and just before the question, in the link of the thread.
+        hhmm = asked.astimezone(AMSTERDAM).strftime("%H:%M")
+        at = quote(f"speaker{_feed_time(asked - LEAD_IN)}", safe="")
+        assert mm.threads[0][1].split("\n")[1] == (
+            f"Vraag 1 · aan de minister · [{hhmm}]({dd.debate_url(debat)}?event={at})"
+        )
+
+    async def test_the_lines_of_every_row_of_a_turn_in_the_order_of_its_text(
+        self, db_session, monkeypatch, handed
+    ):
+        """The same speaker carrying on after a word of the chairman: two
+        rows, one message, one text. What the chairman said is not in it."""
+        Outside(monkeypatch)
+        mm, llm = Chat(), FakeLLM(antwoord(vraag(Q_WANNEER)))
+        s = await _running(db_session)
+        a = await _row(db_session, s, "speaker", 60, "a", tekst=OPENING)
+        v = await _row(
+            db_session, s, "chairman", 80, "v", tekst="Gaat u verder.", post=False
+        )
+        more = await _row(
+            db_session, s, "speaker", 85, "a", tekst=Q_WANNEER, post=False
+        )
+        await _row(db_session, s, "debate_end", 180)
+        _in_channel(mm, a)
+        # Not kept in the order they were said.
+        await _ondertitel(
+            db_session, s, more, 91, "het wetsvoorstel naar de Kamer komt?"
+        )
+        await _ondertitel(db_session, s, a, 64, "voor het woord.")
+        await _ondertitel(db_session, s, v, 82, "Gaat u verder.")
+        await _ondertitel(db_session, s, more, 88, "Kan de minister zeggen wanneer")
+        await _ondertitel(db_session, s, a, 62, "Voorzitter, dank u wel")
+
+        await _tick(db_session, mm, llm)
+
+        beurt = handed[0][0]
+        assert beurt.tekst == f"{OPENING} {Q_WANNEER}"
+        # Two seconds off each: `offset_ms` of this part.
+        assert beurt.lines == (
+            Line(START + timedelta(seconds=60), "Voorzitter, dank u wel"),
+            Line(START + timedelta(seconds=62), "voor het woord."),
+            Line(START + timedelta(seconds=86), "Kan de minister zeggen wanneer"),
+            Line(START + timedelta(seconds=89), "het wetsvoorstel naar de Kamer komt?"),
+        )
+        markering = (await db_session.execute(select(DebatMarkering))).scalar_one()
+        assert markering.vraag_moment == START + timedelta(seconds=86)
+
+    async def test_a_turn_whose_text_has_no_lines_keeps_the_start_of_the_turn(
+        self, db_session, monkeypatch, handed
+    ):
+        """A row from before lines were kept has text and nothing under it."""
+        Outside(monkeypatch)
+        mm, llm = Chat(), FakeLLM(antwoord(vraag(Q_WANNEER)))
+        s = await _running(db_session)
+        a = await _row(
+            db_session, s, "speaker", 60, "a", tekst=f"{OPENING} {Q_WANNEER}"
+        )
+        await _row(db_session, s, "debate_end", 180)
+        _in_channel(mm, a)
+
+        await _tick(db_session, mm, llm)
+
+        assert handed[0][0].lines == ()
+        markering = (await db_session.execute(select(DebatMarkering))).scalar_one()
+        assert markering.vraag_moment is None
+        assert (
+            mm.threads[0][1]
+            .split("\n")[1]
+            .endswith(
+                "(https://debat.example/d?event=speaker1) (begin van de spreekbeurt)"
+            )
+        )
+
+    async def test_the_lines_of_another_turn_are_not_this_ones(
+        self, db_session, monkeypatch, handed
+    ):
+        Outside(monkeypatch)
+        mm, llm = Chat(), FakeLLM()
+        s = await _running(db_session)
+        a = await _row(db_session, s, "speaker", 60, "a", tekst=OPENING)
+        b = await _row(db_session, s, "speaker", 120, "b", tekst=Q_WANNEER)
+        await _row(db_session, s, "debate_end", 180)
+        _in_channel(mm, a, b)
+        await _ondertitel(db_session, s, a, 62, OPENING)
+        await _ondertitel(db_session, s, b, 122, Q_WANNEER)
+
+        await _tick(db_session, mm, llm)
+
+        assert [beurt.lines for beurt, _ in handed] == [
+            (Line(START + timedelta(seconds=60), OPENING),),
+            (Line(START + timedelta(seconds=120), Q_WANNEER),),
+        ]
+
+
 async def _judged_values(db_session) -> list[bool]:
     return list((await _judged(db_session)).values())
 
@@ -527,6 +671,20 @@ async def _row(
     db_session.add(row)
     await db_session.flush()
     return row
+
+
+async def _ondertitel(db_session, sessie, row, seconds: float, tekst: str) -> None:
+    db_session.add(
+        DebatOndertitel(
+            sessie_id=sessie.id,
+            debat_direct_id=row.debat_direct_id,
+            start=START + timedelta(seconds=seconds),
+            einde=START + timedelta(seconds=seconds + 2),
+            tekst=tekst,
+            spreekbeurt_id=row.id,
+        )
+    )
+    await db_session.flush()
 
 
 async def _nothing() -> None:
@@ -1487,8 +1645,7 @@ class TestOneMessageTwoWriters:
         await _status(db_session, mm, s)
 
         assert mm.messages[a.post_id] == (
-            f"{KOP}\n{OPENING} {Q_WANNEER} {Q_BUDGET}\n\n---\n"
-            "❓ 2 vragen gemarkeerd · staan open"
+            f"{KOP}\n{OPENING} {Q_WANNEER} {Q_BUDGET}\n\n---\n❓ 2 vragen · open"
         )
 
     async def test_the_transcription_restores_a_line_that_is_in_the_table(
