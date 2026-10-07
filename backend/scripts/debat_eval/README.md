@@ -717,57 +717,54 @@ nearer the first when the voices are known. The 71 seconds are the
 subtitles, the sentence after, the round and the call; nothing is left to
 gain there but the subtitles themselves.
 
-Then with the model, `claude-haiku-4-5-20251001` through `claude_cli`,
-three replays that read along, 173 calls each. The mean, and the lowest and
-highest run; next to it the last rows of the tables above, which read
-every turn at its end.
+Then with the model, `claude-haiku-4-5-20251001` through `claude_cli`:
+three replays that read along, 173 calls each, and on the same day three
+that read every turn at its end, 163 calls each. The mean, and the lowest
+and highest run. Each cell is marked, wrong, precision and recall.
 
-| Three replays, reading along | Marked | Wrong | Precision | Recall | The last table above |
-|---|---|---|---|---|---|
-| Toezeggingen, both debates | 17 to 19 | 1 to 3 | 89% (84 to 94) | 75% | 91% (89 to 94) and 75% |
-| Toezeggingen, notaoverleg | 9 | 1 to 2 | 85% (78 to 89) | 62% | 88% (88 to 89) and 62%, one set earlier |
-| Toezeggingen, wetgevingsoverleg | 8 to 10 | 0 to 2 | 93% (80 to 100) | 100% | 89% (88 to 90) and 100%, one set earlier |
-| Questions, all four | 150 to 156 | 18 to 26 | 85% (83 to 88) | 94% (91 to 95) | 86% (85 to 87) and 92% (92 to 93) |
-| Questions, three debates the rules were made on | 114 to 118 | 12 to 21 | 86% (82 to 89) | 93% (90 to 96) | 88% (85 to 89) and 93% (92 to 93) |
-| Questions, the debate kept apart | 36 to 38 | 5 to 8 | 82% (78 to 86) | 93% (90 to 97) | 82% (81 to 83) and 90% |
-| Moties | 13 | 0 | 100% | 11 of 11 | the same |
+| | Reading along | The same day, every turn at its end | The last table above |
+|---|---|---|---|
+| Toezeggingen, both debates | 17 to 19, 1 to 3, 89% (84 to 94), 75% | 17 to 18, 1 to 2, 91% (89 to 94), 75% | 17 to 19, 1 to 2, 91% (89 to 94), 75% |
+| Toezeggingen, notaoverleg | 9, 1 to 2, 85% (78 to 89), 62% | 8 to 9, 1, 88% (88 to 89), 62% | |
+| Toezeggingen, wetgevingsoverleg | 8 to 10, 0 to 2, 93% (80 to 100), 100% | 8 to 10, 0 to 1, 93% (89 to 100), 100% | |
+| Questions, all four | 150 to 156, 18 to 26, 85% (83 to 88), 94% (91 to 95) | 146 to 152, 20 to 24, 85% (84 to 87), 92% (91 to 94) | 149 to 152, 19 to 23, 86% (85 to 87), 92% (92 to 93) |
+| Questions, three debates the rules were made on | 114 to 118, 12 to 21, 86% (82 to 89), 94% (90 to 96) | 108 to 115, 12 to 17, 87% (85 to 89), 92% (90 to 94) | 112 to 119, 12 to 17, 88% (85 to 89), 93% (92 to 93) |
+| Questions, the debate kept apart | 36 to 38, 5 to 8, 83% (78 to 86), 93% (90 to 97) | 36 to 40, 7 to 8, 79% (78 to 80), 92% (90 to 93) | 33 to 37, 6 to 7, 82% (81 to 83), 90% |
+| Moties | 13, 0, 100%, 11 of 11 | the same | the same |
 
-- Of the 12 sure toezeggingen 9 are found in every run, 5 in the one
-  debate and 4 in the other, as before, and 5 to 7 of the 14 unsure or
-  repeated ones where it was 7.
-- Wrong toezeggingen: 2, 1 and 3 where the last set had 1 to 2 and the
-  sets before it 2 to 3. The third run has two wrong ones in the
-  wetgevingsoverleg, where the sets before had one. That may be the price of
-  more and smaller windows: 37 calls where there were 27, and a sentence
-  in the two sentences two windows share is asked about twice. Three runs
-  do not tell that from chance, and no replay that reads every turn at its
-  end was run with the model on the same day to compare with.
-- The questions show how much three runs can differ by themselves:
-  nothing on the path of a question changed, a replay hands in the same
-  turns with the same words, and the oracle marks the same 148 either
-  way. Still one run has 26 wrong where no earlier run had more than 24,
-  ten of them in the debate with initiatiefnemers.
-- The link to a question, read by hand as before: 4, 6 and 5 links kept,
-  where the last set kept 4, 2 and 3. Of the 15, 12 are the question that
-  was answered, 1 is probably that, and 2 are wrong, both in the second
-  run: one points at a question to the initiatiefnemers that should not
-  have been marked (the kind the last set had once), one at a question of
-  another member where the bewindspersoon names who asked two sentences
-  earlier, in the same window. The model named that number and the words
-  bore it out; the rule is the one that was there. Who it was promised to
-  follows the link: wrong for those two, right or empty for the rest. With
-  the oracle the links and the names are the same with and without
-  reading along.
+- Of the 12 sure toezeggingen 9 are found in every one of the six runs, 5
+  in the one debate and 4 in the other, as before; of the 14 unsure or
+  repeated ones 5 to 7 reading along and 6 to 7 at the end.
+- Wrong toezeggingen: 2, 1 and 3 reading along, 2, 2 and 1 at the end.
+  One more over three runs. The run with 3 has two in the
+  wetgevingsoverleg, where no other run has more than one. That may be the
+  price of more and smaller windows: 37 calls where there were 27, and a
+  sentence in the two sentences two windows share is asked about twice.
+  Or chance: three runs against three do not tell.
+- The questions show how much three runs differ by themselves. Nothing on
+  the path of a question changed, a replay hands in the same turns with the
+  same words, and the oracle marks the same 148 either way. Still the runs
+  that read along have 18 to 26 wrong and those of the same day that do
+  not 20 to 24.
+- The link to a question: 4, 6 and 5 links kept reading along, and 5, 3
+  and 3 at the end. Those of the runs that read along were read by hand, as
+  before: of the 15, 12 are the question that was answered, 1 is probably
+  that, and 2 are wrong, both in the second run. One points at a question
+  to the initiatiefnemers that should not have been marked (the kind the
+  last set had once), one at a question of another member where the
+  bewindspersoon names who asked two sentences earlier, in the same window.
+  The model named that number and the words bore it out; the rule is the
+  one that was there. The links of the runs at the end were counted and
+  not read. Who it was promised to follows the link: wrong for those two,
+  right or empty for the rest. With the oracle the links and the names are
+  the same with and without reading along.
 - How long a toezegging waits, on the gold toezeggingen each run found in
-  an answer (9, 10 and 11 of them): a median of 57, 61 and 57 seconds
-  after it was said, a ninth decile of 103 and at most 133, in every run.
-  The same ones would have waited a median of 220, 183 and 145 seconds, a
-  ninth decile of 570 and at most 589 for their turn to be over and
-  final, before the round and the call that then follow.
-- Calls: 173 a replay where a run that reads every turn at its end makes
-  163: the 37 for answers against 27. That is 6.4 per hour of speech
-  against 4.6.
-
+  an answer (9 to 11 of them). Reading along: a median of 57, 61 and 57
+  seconds after it was said, a ninth decile of 103 and at most 133, in
+  every run. At the end: a median of 140, 237 and 237 seconds, a ninth
+  decile of 539 to 583 and at most 583 to 598.
+- Calls: 173 against 163, the 37 for answers against 27. That is 6.4 per
+  hour of speech against 4.6.
 
 What the replay is not. The turns are those of the gold file, one per
 event; the worker reads one message, which is the same speaker carrying
