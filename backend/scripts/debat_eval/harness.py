@@ -17,6 +17,7 @@ import asyncio
 import re
 import uuid
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 
 from sqlalchemy import delete, select
@@ -276,6 +277,13 @@ async def run_debate(
             outcome = await asyncio.wait_for(
                 service.beoordeel_beurt(beurt, context), TURN_TIMEOUT
             )
+            # A long answer is read a part per call, as the worker does it
+            # over several rounds.
+            while outcome.meer and not outcome.opnieuw_proberen:
+                beurt = replace(beurt, delen_gelezen=outcome.delen_gelezen)
+                outcome = await asyncio.wait_for(
+                    service.beoordeel_beurt(beurt, context), TURN_TIMEOUT
+                )
             answers = recorder.answers[before:]
             marked = [
                 {

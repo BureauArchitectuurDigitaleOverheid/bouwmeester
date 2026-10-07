@@ -10,9 +10,10 @@ Every sentence in here is made up, as is the debate in
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -1512,66 +1513,210 @@ class TestEenLangAntwoord:
         tekst = zin * (service_mod.MAX_ANTWOORD_DEEL * delen // len(zin))
         assert len(answer_parts(tekst)) == service_mod.MAX_ANTWOORD_DELEN
 
-    async def test_every_part_is_a_call_and_the_quotes_are_found_in_the_turn(
-        self, db_session
-    ):
+    T_OPNIEUW = "Ik stuur die brief over de bezetting dus vóór de begroting."
+
+    async def _call(self, db_session, sessie_id, mm, post_id, tekst, llm, gelezen=0):
+        return await DebatVraagService(db_session, mm, llm).beoordeel_beurt(
+            _beurt(
+                sessie_id, {**ANTWOORD, "tekst": tekst}, post_id, delen_gelezen=gelezen
+            ),
+            CONTEXT,
+        )
+
+    async def test_one_call_reads_one_part_and_stores_it(self, db_session):
         tekst = self._lang()
-        sessie_id, _, llm, _, result = await _judge(
-            db_session,
-            {**ANTWOORD, "tekst": tekst},
-            toegezegd(toezegging(T_BRIEF)),
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM(
+            toegezegd(toezegging(T_BRIEF, samenvatting="Stuurt de brief.")),
             toegezegd(toezegging(T_UITZOEKEN)),
         )
-        assert len(llm.prompts) == 2
+
+        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+
+        assert (first.uitkomst, first.meer, first.delen_gelezen) == (
+            UITKOMST_GEMARKEERD,
+            True,
+            1,
+        )
+        assert len(llm.prompts) == 1
         # The start of a long answer is read: the prompt keeps only the end
         # of a text that is too long for it.
         assert T_BRIEF in llm.prompts[0]
-        assert T_BRIEF not in llm.prompts[1]
+        assert T_UITZOEKEN not in llm.prompts[0]
+        # Stored and in the channel before the next part is asked about.
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
+        assert len(mm.replies) == 1
+
+        second = await self._call(
+            db_session, sessie_id, mm, post_id, tekst, llm, first.delen_gelezen
+        )
+
+        assert (second.meer, second.delen_gelezen, second.toezeggingen) == (False, 2, 1)
+        assert len(llm.prompts) == 2
+        assert T_BRIEF not in llm.prompts[1].split("<spreekbeurt>")[1]
+        # What the first part promised is on the list the second part gets.
+        assert "al deed\n1. Stuurt de brief." in llm.prompts[1]
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [
             T_BRIEF,
             T_UITZOEKEN,
         ]
-        assert result.toezeggingen == 2
+        assert splits(mm.messages[post_id])[1] == "🤝 2 toezeggingen · open"
 
-    async def test_one_said_again_in_a_later_part_is_not_a_second_toezegging(
+    async def test_an_answer_that_was_read_to_the_end_is_not_asked_about_again(
         self, db_session
     ):
         tekst = self._lang()
-        sessie_id, _, llm, _, result = await _judge(
-            db_session,
-            {**ANTWOORD, "tekst": tekst},
-            toegezegd(toezegging(T_BRIEF, samenvatting="Stuurt de brief.")),
-            # The model recognises it from the list it was given.
-            toegezegd(toezegging(T_UITZOEKEN, hoort_bij=1)),
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        llm = FakeLLM(toegezegd(toezegging(T_BRIEF)))
+        done = await self._call(db_session, sessie_id, mm, mm.turn(), tekst, llm, 2)
+        assert (done.uitkomst, done.meer, done.delen_gelezen) == (
+            UITKOMST_AL_BEOORDEELD,
+            False,
+            2,
         )
-        assert "al deed\n(nog geen)" in llm.prompts[0]
-        assert "al deed\n1. Stuurt de brief." in llm.prompts[1]
-        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
-        assert (result.toezeggingen, result.herhaald) == (1, ())
-        assert await _vermeldingen(db_session, sessie_id) == []
+        assert llm.prompts == []
 
-    async def test_what_the_code_dropped_in_an_earlier_part_is_not_offered(
-        self, db_session
-    ):
-        tekst = f"{N_STRAKS}. {self._lang()}"
-        _, _, llm, _, _ = await _judge(
-            db_session,
-            {**ANTWOORD, "tekst": tekst},
-            toegezegd(toezegging(N_STRAKS), toezegging("Dit zei niemand, echt niet.")),
-            toegezegd(),
-        )
-        assert "al deed\n(nog geen)" in llm.prompts[1]
-
-    async def test_one_part_that_fails_leaves_the_whole_turn_unread(self, db_session):
+    async def test_a_part_that_fails_keeps_the_parts_before_it(self, db_session):
         tekst = self._lang()
-        sessie_id, _, _, _, result = await _judge(
-            db_session,
-            {**ANTWOORD, "tekst": tekst},
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM(
             toegezegd(toezegging(T_BRIEF)),
             RuntimeError("weg"),
+            toegezegd(toezegging(T_UITZOEKEN)),
         )
-        assert result.uitkomst == UITKOMST_LLM_ONBEREIKBAAR
-        assert await _rows(db_session, sessie_id) == []
+        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+
+        failed = await self._call(
+            db_session, sessie_id, mm, post_id, tekst, llm, first.delen_gelezen
+        )
+
+        assert failed.uitkomst == UITKOMST_LLM_ONBEREIKBAAR
+        assert failed.opnieuw_proberen
+        # Still at the part that failed, not back at the first.
+        assert (failed.delen_gelezen, failed.meer) == (1, True)
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
+
+        again = await self._call(
+            db_session, sessie_id, mm, post_id, tekst, llm, failed.delen_gelezen
+        )
+        assert (again.delen_gelezen, again.meer) == (2, False)
+        assert len(llm.prompts) == 3
+        # The first part was asked about once.
+        assert sum(T_BRIEF in p.split("<spreekbeurt>")[1] for p in llm.prompts) == 1
+        assert len(await _rows(db_session, sessie_id)) == 2
+
+    async def test_an_unreadable_part_counts_as_read_and_the_rest_goes_on(
+        self, db_session
+    ):
+        tekst = self._lang()
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM("geen json", "ook niet", toegezegd(toezegging(T_UITZOEKEN)))
+
+        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        assert (first.uitkomst, first.delen_gelezen, first.meer) == (
+            UITKOMST_LLM_ONBRUIKBAAR,
+            1,
+            True,
+        )
+        assert not first.opnieuw_proberen
+
+        second = await self._call(db_session, sessie_id, mm, post_id, tekst, llm, 1)
+        assert (second.toezeggingen, second.meer) == (1, False)
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_UITZOEKEN]
+
+    async def test_a_part_without_a_toezegging_still_counts_as_read(self, db_session):
+        tekst = self._lang()
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        first = await self._call(
+            db_session, sessie_id, mm, mm.turn(), tekst, FakeLLM(toegezegd())
+        )
+        assert (first.uitkomst, first.delen_gelezen, first.meer) == (
+            UITKOMST_GEEN_TOEZEGGING,
+            1,
+            True,
+        )
+
+    @pytest.mark.parametrize(
+        "opnieuw",
+        [
+            T_BRIEF,
+            # The model cut the same sentence shorter the second time.
+            "de Kamer krijgt die brief vóór de begrotingsbehandeling.",
+        ],
+    )
+    async def test_a_part_that_is_handed_in_twice_is_stored_once(
+        self, db_session, opnieuw
+    ):
+        """After a restart between storing a part and noting that it was read."""
+        tekst = self._lang()
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM(
+            toegezegd(toezegging(T_BRIEF)),
+            toegezegd(toezegging(opnieuw)),
+        )
+        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        again = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+
+        assert len(llm.prompts) == 2
+        assert (again.delen_gelezen, again.meer) == (1, True)
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
+        assert len(mm.replies) == 1
+
+    async def test_one_said_again_in_a_later_part_is_a_herhaling_on_the_first(
+        self, db_session
+    ):
+        tekst = f"{self._lang()} {self.T_OPNIEUW}"
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM(
+            toegezegd(
+                toezegging(T_BRIEF, samenvatting="Stuurt een brief over de bezetting.")
+            ),
+            toegezegd(toezegging(self.T_OPNIEUW, hoort_bij=1)),
+            toegezegd(toezegging(self.T_OPNIEUW, hoort_bij=1)),
+        )
+        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        second = await self._call(db_session, sessie_id, mm, post_id, tekst, llm, 1)
+
+        assert (second.toezeggingen, second.herhaald) == (0, (1,))
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
+        assert await _vermeldingen(db_session, sessie_id) == [
+            (VERMELDING_HERHALING, 1, self.T_OPNIEUW, MINISTER)
+        ]
+        # And that part handed in once more writes no second vermelding.
+        await self._call(db_session, sessie_id, mm, post_id, tekst, llm, 1)
+        assert len(await _vermeldingen(db_session, sessie_id)) == 1
+
+    async def test_the_link_of_a_part_is_written_once(self, db_session):
+        tekst = self._lang()
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        vraag_citaat = "Kan de minister de bezetting per provincie in beeld brengen?"
+        await _judge(
+            db_session,
+            {
+                **VRAAGT,
+                "tekst": f"Voorzitter, dank u wel voor het woord. {vraag_citaat}",
+            },
+            antwoord(vraag(vraag_citaat, samenvatting="Bezetting per provincie?")),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        post_id = mm.turn()
+        beloofd = toegezegd(
+            toezegging(
+                T_BRIEF, samenvatting="Stuurt de bezetting per provincie.", bij_vraag=1
+            )
+        )
+        llm = FakeLLM(beloofd, beloofd)
+        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        assert await _vermeldingen(db_session, sessie_id) == [
+            (VERMELDING_ANTWOORD, 1, T_BRIEF, MINISTER)
+        ]
 
 
 # --- reactions ---------------------------------------------------------
@@ -1872,6 +2017,296 @@ class TestDeWerker:
         assert await _rows(db_session, s.id) == []
 
 
+class PerKind(FakeLLM):
+    """A model with answers of its own for an answer of the bewindspersoon.
+
+    `toezeggingen` are handed out in order to the prompts for toezeggingen:
+    a reply, an error to raise, or `SLOW` for a call that does not come
+    back in time. Every other prompt gets "no question" at once.
+    """
+
+    SLOW = "slow"
+
+    def __init__(self, *toezeggingen) -> None:
+        super().__init__()
+        self.toezeggingen = list(toezeggingen)
+        self.asked: list[str] = []
+
+    async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
+        self.prompts.append(prompt)
+        if not _is_toezeggingen_prompt(prompt):
+            return antwoord()
+        self.asked.append(prompt)
+        answer = self.toezeggingen.pop(0) if self.toezeggingen else toegezegd()
+        if answer == self.SLOW:
+            await asyncio.sleep(30)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+@pytest.mark.asyncio
+class TestEenTraagOfLangAntwoord:
+    """One answer of the bewindspersoon must not cost the members their turn."""
+
+    KORT = "Ja, dat zeg ik toe. U krijgt dat overzicht voor de zomer."
+
+    def _lang(self) -> str:
+        vulling = "Het budget is dit jaar gelijk gebleven aan dat van vorig jaar. "
+        blok = vulling * (service_mod.MAX_ANTWOORD_DEEL // len(vulling) - 3)
+        return f"{T_BRIEF} {blok}{blok}{T_UITZOEKEN}"
+
+    async def _debat(self, db_session, mm, antwoord_tekst: str, *, leden: int = 2):
+        """An answer of the minister, and after it turns of members."""
+        w = worker_helpers
+        s = await w._running(db_session)
+        m = await w._row(db_session, s, "speaker", 60, "m", tekst=antwoord_tekst)
+        rows = [m]
+        for i in range(leden):
+            rows.append(
+                await w._row(
+                    db_session,
+                    s,
+                    "speaker",
+                    120 + 10 * i,
+                    "ab"[i % 2],
+                    tekst=f"{w.OPENING} {w.Q_WANNEER}",
+                )
+            )
+        await w._row(db_session, s, "debate_end", 300)
+        w._in_channel(mm, *rows)
+        return s, m, rows[1:]
+
+    async def _parts(self, db_session, row) -> int:
+        return await db_session.scalar(
+            select(DebatSpreekbeurt.antwoord_delen_gelezen).where(
+                DebatSpreekbeurt.id == row.id
+            )
+        )
+
+    async def _attempts(self, db_session, row) -> int:
+        return await db_session.scalar(
+            select(DebatSpreekbeurt.beoordeel_pogingen).where(
+                DebatSpreekbeurt.id == row.id
+            )
+        )
+
+    async def test_the_turns_of_members_are_read_before_an_answer(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        s, m, leden = await self._debat(db_session, mm, self.KORT)
+
+        await w._tick(db_session, mm, PerKind())
+
+        # Spoken first, read last.
+        assert [beurt.spreekbeurt_id for beurt, _ in handed] == [
+            leden[0].id,
+            leden[1].id,
+            m.id,
+        ]
+
+    @pytest.mark.parametrize("wat", ["weg", "traag"])
+    async def test_an_answer_that_fails_or_hangs_does_not_hold_up_the_members(
+        self, db_session, monkeypatch, handed, wat
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+        monkeypatch.setattr(worker_mod, "JUDGE_TIMEOUT", 0.2)
+        mm = w.Chat()
+        llm = PerKind(RuntimeError("weg") if wat == "weg" else PerKind.SLOW)
+        s, m, leden = await self._debat(db_session, mm, self.KORT)
+
+        result = await w._tick(db_session, mm, llm)
+
+        # Both members were read in the same round, and the debate is not
+        # left alone for it.
+        assert (result.beoordeeld, result.fouten) == (2, 1)
+        for lid in leden:
+            assert await w._at(db_session, lid) is not None
+        now = (w.START + timedelta(seconds=700)).astimezone(UTC)
+        assert not worker_mod._pause.waiting(s.id, now)
+        assert await w._at(db_session, m) is None
+        assert await self._attempts(db_session, m) == 1
+
+        # A member who speaks next is read in the very next round, while
+        # the answer itself waits its turn.
+        later = await w._row(
+            db_session, s, "speaker", 200, "c", tekst=f"{w.OPENING} {w.Q_BUDGET}"
+        )
+        w._in_channel(mm, later)
+        again = await w._tick(db_session, mm, llm, 705)
+        assert again.beoordeeld == 1
+        assert await w._at(db_session, later) is not None
+        assert len(llm.asked) == 1
+
+        # After its own pause the answer is tried again, and read.
+        llm.toezeggingen.append(toegezegd(toezegging(self.KORT)))
+        after = 700 + worker_mod.PAUSE_FIRST.total_seconds() + 1
+        done = await w._tick(db_session, mm, llm, after)
+        assert (done.beoordeeld, done.toezeggingen) == (1, 1)
+        assert await w._at(db_session, m) is not None
+
+    async def test_a_member_whose_turn_fails_still_pauses_the_debate(
+        self, db_session, monkeypatch, handed
+    ):
+        """That is a model that is away, and every turn would find the same."""
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+        mm = w.Chat()
+        s, m, leden = await self._debat(db_session, mm, self.KORT)
+
+        result = await w._tick(db_session, mm, FakeLLM(RuntimeError("weg")))
+
+        assert (result.beoordeeld, result.fouten) == (0, 1)
+        now = (w.START + timedelta(seconds=700)).astimezone(UTC)
+        assert worker_mod._pause.waiting(s.id, now)
+        # The answer was not even tried.
+        assert [beurt.spreekbeurt_id for beurt, _ in handed] == [leden[0].id]
+
+    async def test_a_long_answer_is_read_a_part_per_round_and_kept_in_between(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = PerKind(
+            toegezegd(toezegging(T_BRIEF)), toegezegd(toezegging(T_UITZOEKEN))
+        )
+        s, m, _ = await self._debat(db_session, mm, self._lang(), leden=0)
+
+        first = await w._tick(db_session, mm, llm)
+
+        assert len(llm.asked) == 1
+        assert (first.beoordeeld, first.toezeggingen, first.fouten) == (0, 1, 0)
+        assert await self._parts(db_session, m) == 1
+        assert await w._at(db_session, m) is None
+        assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
+
+        second = await w._tick(db_session, mm, llm, 715)
+
+        assert len(llm.asked) == 2
+        assert (second.beoordeeld, second.toezeggingen) == (1, 1)
+        assert await self._parts(db_session, m) == 2
+        assert await w._at(db_session, m) is not None
+        assert [r.citaat for r in await _rows(db_session, s.id)] == [
+            T_BRIEF,
+            T_UITZOEKEN,
+        ]
+        # And it is done: a third round asks nothing.
+        await w._tick(db_session, mm, llm, 730)
+        assert len(llm.asked) == 2
+
+    async def test_a_part_that_fails_is_tried_again_and_not_the_parts_before_it(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+        mm = w.Chat()
+        llm = PerKind(
+            toegezegd(toezegging(T_BRIEF)),
+            RuntimeError("weg"),
+            toegezegd(toezegging(T_UITZOEKEN)),
+        )
+        s, m, _ = await self._debat(db_session, mm, self._lang(), leden=0)
+
+        await w._tick(db_session, mm, llm)
+        failed = await w._tick(db_session, mm, llm, 715)
+
+        assert failed.fouten == 1
+        assert await self._parts(db_session, m) == 1
+        assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
+
+        after = 715 + worker_mod.PAUSE_FIRST.total_seconds() + 1
+        await w._tick(db_session, mm, llm, after)
+
+        assert len(llm.asked) == 3
+        assert sum(T_BRIEF in p.split("<spreekbeurt>")[1] for p in llm.asked) == 1
+        assert await self._parts(db_session, m) == 2
+        assert await w._at(db_session, m) is not None
+        assert len(await _rows(db_session, s.id)) == 2
+
+    async def test_an_answer_that_is_given_up_on_keeps_what_was_stored(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+        mm = w.Chat()
+        llm = PerKind(toegezegd(toezegging(T_BRIEF)), RuntimeError("weg"))
+        s, m, _ = await self._debat(db_session, mm, self._lang(), leden=0)
+        await w._tick(db_session, mm, llm)
+        m.beoordeel_pogingen = worker_mod.MAX_ATTEMPTS - 1
+        await db_session.flush()
+
+        await w._tick(db_session, mm, llm, 715)
+
+        assert await w._at(db_session, m) is not None
+        assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
+
+    async def test_no_more_parts_of_answers_in_a_round_than_the_limit(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = PerKind()
+        s = await w._running(db_session)
+        answers = [
+            await w._row(db_session, s, "speaker", 60 + 10 * i, "m", tekst=self.KORT)
+            for i in range(worker_mod.MAX_ANSWER_PARTS_PER_ROUND + 2)
+        ]
+        lid = await w._row(
+            db_session, s, "speaker", 200, "a", tekst=f"{w.OPENING} {w.Q_WANNEER}"
+        )
+        await w._row(db_session, s, "debate_end", 300)
+        w._in_channel(mm, *answers, lid)
+
+        await w._tick(db_session, mm, llm)
+
+        assert len(llm.asked) == worker_mod.MAX_ANSWER_PARTS_PER_ROUND
+        assert await w._at(db_session, lid) is not None
+        # The rest follows in the rounds after, oldest first.
+        await w._tick(db_session, mm, llm, 715)
+        assert len(llm.asked) == len(answers)
+
+    async def test_answers_set_aside_do_not_use_up_the_round_of_the_members(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(worker_mod, "MAX_TURNS", 2)
+        mm = w.Chat()
+        s = await w._running(db_session)
+        answers = [
+            await w._row(db_session, s, "speaker", 60 + 10 * i, "m", tekst=self.KORT)
+            for i in range(3)
+        ]
+        leden = [
+            await w._row(
+                db_session,
+                s,
+                "speaker",
+                150 + 10 * i,
+                "abc"[i],
+                tekst=f"{w.OPENING} {w.Q_WANNEER}",
+            )
+            for i in range(3)
+        ]
+        await w._row(db_session, s, "debate_end", 300)
+        w._in_channel(mm, *answers, *leden)
+
+        await w._tick(db_session, mm, PerKind())
+
+        read = [await w._at(db_session, lid) is not None for lid in leden]
+        assert read == [True, True, False]
+
+
 @pytest.fixture
 def handed(monkeypatch):
     """Every turn that was handed to the marking, with its context."""
@@ -1890,5 +2325,7 @@ def handed(monkeypatch):
 def _no_pause_left_over():
     """The pause after a failure lives in the process; a test starts clean."""
     worker_mod._pause.reset()
+    worker_mod._answer_pause.reset()
     yield
     worker_mod._pause.reset()
+    worker_mod._answer_pause.reset()

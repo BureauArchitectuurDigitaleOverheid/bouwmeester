@@ -201,6 +201,13 @@ class DebatSpreekbeurt(Base):
     beoordeel_pogingen: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
+    # For a long answer of the bewindspersoon, which is read in parts: how
+    # many parts were read and stored. A part is a model call, and one
+    # round reads one, so a turn of four parts takes four rounds; this is
+    # where the next round goes on. 0 for every other turn.
+    antwoord_delen_gelezen: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

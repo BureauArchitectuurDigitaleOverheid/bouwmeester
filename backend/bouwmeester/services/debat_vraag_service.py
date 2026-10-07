@@ -147,7 +147,9 @@ MAX_EERDERE_TOEZEGGINGEN = 30
 # same 3 or 4 of the 6 toezeggingen it could find, in three runs each.
 MAX_ANTWOORD_DEEL = 12000
 # And no more parts than this: a turn of an hour is a transcript that lost
-# its changes of speaker, not an answer.
+# its changes of speaker, not an answer. It is also the most model calls
+# one answer can cost, twice that with the second try an unreadable reply
+# gets: one call of `beoordeel_beurt` reads one part.
 MAX_ANTWOORD_DELEN = 4
 # A toezegging counts as made to the member who interrupted right before
 # the turn when it starts this early in the turn: about the first
@@ -223,6 +225,10 @@ class Beurt:
     # interruption of a member.
     voorafgaand: str | None = None
     voorafgaand_tekst: str = ""
+    # For a long answer of the bewindspersoon: how many of its parts were
+    # read and stored by earlier calls (see `answer_parts`). The caller
+    # keeps it between calls; `Beoordeling.delen_gelezen` is what to keep.
+    delen_gelezen: int = 0
     # The subtitle lines `tekst` is made of, in order, each with the moment
     # it was spoken. Empty when they are not known; a question then gets
     # the time of the start of the turn.
@@ -300,6 +306,11 @@ class Beoordeling:
     moties: int = 0
     # How many toezeggingen of the bewindspersoon this call stored.
     toezeggingen: int = 0
+    # For an answer of the bewindspersoon: how many of its parts are read
+    # and stored now, and whether there are more. With `meer` the turn is
+    # not done: the same turn is handed in again, with this count.
+    delen_gelezen: int = 0
+    meer: bool = False
 
     @property
     def opnieuw_proberen(self) -> bool:
@@ -975,7 +986,7 @@ def lees_toezeggingen(
     toezeggingen: Sequence[DebatToezegging],
     tekst: str,
     vragen: dict[int, str],
-    eerdere: set[int],
+    eerdere: dict[int, str],
     onderwerp: str = "",
 ) -> tuple[list[_Nieuw], list[_Herhaling], int]:
     """Sort what the model found in an answer into new, repeated and dropped.
@@ -1322,78 +1333,91 @@ class DebatVraagService:
             return Beoordeling(
                 UITKOMST_OVERGESLAGEN, reden=REDEN_BEWINDSPERSOON, threads=threads
             )
+        # One part per call. A long answer is up to four parts, each a
+        # model call of its own on 12,000 characters, and a caller that
+        # waits for all of them waits longer than a turn may take. What a
+        # part holds is stored before the call returns, so a part that was
+        # read is never asked about again, whatever becomes of the next.
+        gelezen = max(0, beurt.delen_gelezen)
         eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
-        if eerder is not None:
+        if gelezen >= len(delen) or (
+            len(delen) == 1 and gelezen == 0 and eerder is not None
+        ):
             return Beoordeling(
-                UITKOMST_AL_BEOORDEELD, markering_ids=eerder, threads=threads
+                UITKOMST_AL_BEOORDEELD,
+                markering_ids=eerder or (),
+                threads=threads,
+                delen_gelezen=len(delen),
             )
+        deel = delen[gelezen]
 
-        vragen = await self._vragen_aan(beurt.sessie_id, beurt.spreker)
+        vragen = await self._vragen_aan(beurt.sessie_id, beurt.spreker, beurt.start)
+        # With what earlier parts of this same answer promised: those are
+        # rows by now, so one said again further on is a herhaling on it.
         eerdere = await self._toezeggingen_van(beurt.sessie_id, beurt.spreker)
-        gevonden: list[DebatToezegging] = []
-        # What an earlier part of this same answer promised, under numbers
-        # no markering has. The model gets them with the toezeggingen of
-        # before, so that one said again further on in a long answer is
-        # recognised; it is then left out, not filed: there is no row yet
-        # to file it under, and the first time it was said is the one kept.
-        in_dit_antwoord: dict[int, str] = {}
-        vrij = max([n for n, *_ in vragen] + [n for n, *_ in eerdere] + [0])
-        for deel in delen:
-            result = await self.llm.markeer_debat_toezeggingen(
-                onderwerp=context.onderwerp,
-                soort_vergadering=context.soort,
-                bewindspersonen=[
-                    f"{b.functie}: {b.naam}" if b.functie else b.naam
-                    for b in context.bewindspersonen
-                ],
-                spreker=beurt.spreker,
-                tekst=deel,
-                vragen=[(nummer, wie, wat) for nummer, wie, wat, _, _ in vragen],
-                eerdere=[
-                    *((nummer, wat) for nummer, wat, _ in eerdere),
-                    *in_dit_antwoord.items(),
-                ],
-                voorafgaand=beurt.voorafgaand,
-                voorafgaand_tekst=beurt.voorafgaand_tekst,
-                passages=commitment_passages(deel),
+        result = await self.llm.markeer_debat_toezeggingen(
+            onderwerp=context.onderwerp,
+            soort_vergadering=context.soort,
+            bewindspersonen=[
+                f"{b.functie}: {b.naam}" if b.functie else b.naam
+                for b in context.bewindspersonen
+            ],
+            spreker=beurt.spreker,
+            tekst=deel,
+            vragen=[(nummer, wie, wat) for nummer, wie, wat, _, _ in vragen],
+            eerdere=[(nummer, wat) for nummer, wat, _, _ in eerdere],
+            voorafgaand=beurt.voorafgaand,
+            voorafgaand_tekst=beurt.voorafgaand_tekst,
+            passages=commitment_passages(deel),
+        )
+        meer = gelezen + 1 < len(delen)
+        if result.fout == DEBAT_VRAGEN_ONBEREIKBAAR:
+            # Not read: the same part is asked about again later. What
+            # earlier parts held stays stored.
+            logger.warning(
+                "Antwoord van %s in sessie %s, deel %d: model onbereikbaar",
+                _hhmm(beurt.start),
+                beurt.sessie_id,
+                gelezen + 1,
             )
-            if result.fout:
-                # One part that was not read is a turn that was not read:
-                # storing the rest would make the turn count as judged,
-                # and what is in that part would never be asked for again.
-                logger.warning(
-                    "Antwoord van %s in sessie %s niet beoordeeld: model %s",
-                    _hhmm(beurt.start),
-                    beurt.sessie_id,
-                    result.fout,
-                )
-                return Beoordeling(
-                    UITKOMST_LLM_ONBEREIKBAAR
-                    if result.fout == DEBAT_VRAGEN_ONBEREIKBAAR
-                    else UITKOMST_LLM_ONBRUIKBAAR,
-                    threads=threads,
-                )
-            for toezegging in result.toezeggingen:
-                if toezegging.hoort_bij in in_dit_antwoord:
-                    continue
-                gevonden.append(toezegging)
-                citaat = vind_citaat(beurt.tekst, toezegging.citaat)
-                if citaat is not None and has_commitment_form(citaat):
-                    vrij += 1
-                    in_dit_antwoord[vrij] = _kort(
-                        toezegging.samenvatting or citaat, MAX_SAMENVATTING
-                    )
+            return Beoordeling(
+                UITKOMST_LLM_ONBEREIKBAAR,
+                threads=threads,
+                delen_gelezen=gelezen,
+                meer=True,
+            )
+        if result.fout:
+            # The model answered twice with something unreadable. Asking a
+            # third time gives the same; this part counts as read, and the
+            # parts after it are still read.
+            logger.warning(
+                "Antwoord van %s in sessie %s, deel %d: model %s",
+                _hhmm(beurt.start),
+                beurt.sessie_id,
+                gelezen + 1,
+                result.fout,
+            )
+            return Beoordeling(
+                UITKOMST_LLM_ONBRUIKBAAR,
+                threads=threads,
+                delen_gelezen=gelezen + 1,
+                meer=meer,
+            )
 
         nieuw, herhaald, afgevallen = lees_toezeggingen(
-            gevonden,
+            result.toezeggingen,
             beurt.tekst,
             {nummer: waarover for nummer, _, _, _, waarover in vragen},
-            {nummer for nummer, _, _ in eerdere},
+            {nummer: waarover for nummer, _, _, waarover in eerdere},
             context.onderwerp,
         )
         if not nieuw and not herhaald:
             return Beoordeling(
-                UITKOMST_GEEN_TOEZEGGING, threads=threads, afgevallen=afgevallen
+                UITKOMST_GEEN_TOEZEGGING,
+                threads=threads,
+                afgevallen=afgevallen,
+                delen_gelezen=gelezen + 1,
+                meer=meer,
             )
         vragensteller = {nummer: wie for nummer, wie, _, _, _ in vragen}
         nieuw = [
@@ -1408,20 +1432,24 @@ class DebatVraagService:
             for n in nieuw
             if n.bij_volgnummer is not None
         ]
-        return await self._markeer(
+        stored = await self._markeer(
             beurt,
             nieuw,
             [*herhaald, *antwoorden],
             {
                 **{nummer: id_ for nummer, _, _, id_, _ in vragen},
-                **{nummer: id_ for nummer, _, id_ in eerdere},
+                **{nummer: id_ for nummer, _, id_, _ in eerdere},
             },
             threads,
             afgevallen,
+            # A single part is the whole turn, and is stored once. Of a
+            # longer answer every part adds to what is there.
+            aanvullen=len(delen) > 1,
         )
+        return replace(stored, delen_gelezen=gelezen + 1, meer=meer)
 
     async def _vragen_aan(
-        self, sessie_id: uuid.UUID, spreker: str
+        self, sessie_id: uuid.UUID, spreker: str, voor: datetime
     ) -> list[tuple[int, str, str, uuid.UUID, str]]:
         """The open questions put to this bewindspersoon, as (number, who
         asked, summary, id, summary and quote together).
@@ -1431,6 +1459,11 @@ class DebatVraagService:
         staatssecretaris" is not one the minister answers, so a question
         that names the other of the two is left out. One to "het kabinet",
         or to nobody in particular, stays.
+
+        Only what was asked before this turn began (`voor`). The turns of
+        members are read first in a round, so a question from after the
+        answer can be stored before the answer is read; a toezegging does
+        not answer what was not asked yet.
 
         The most recent `MAX_VRAGEN_BIJ_ANTWOORD`, in the order they were
         asked.
@@ -1449,6 +1482,7 @@ class DebatVraagService:
                     DebatMarkering.sessie_id == sessie_id,
                     DebatMarkering.soort == SOORT_VRAAG,
                     DebatMarkering.status.in_((STATUS_OPEN, STATUS_TOEGEWEZEN)),
+                    DebatMarkering.moment <= voor,
                 )
                 .order_by(DebatMarkering.volgnummer.desc())
             )
@@ -1469,8 +1503,9 @@ class DebatVraagService:
 
     async def _toezeggingen_van(
         self, sessie_id: uuid.UUID, spreker: str
-    ) -> list[tuple[int, str, uuid.UUID]]:
-        """What this bewindspersoon promised before, as (number, summary, id).
+    ) -> list[tuple[int, str, uuid.UUID, str]]:
+        """What this bewindspersoon promised before, as (number, summary, id,
+        summary and quote together).
 
         Whatever became of it, as long as it was not rejected: a toezegging
         that someone ticked off as kept and is then said again is still
@@ -1495,7 +1530,7 @@ class DebatVraagService:
             )
         ).all()
         return [
-            (r[0], _kort(r[1] or r[2], MAX_SAMENVATTING), r[3])
+            (r[0], _kort(r[1] or r[2], MAX_SAMENVATTING), r[3], f"{r[1]} {r[2]}")
             for r in sorted(rows, key=lambda r: r[0])
         ]
 
@@ -1507,9 +1542,13 @@ class DebatVraagService:
         open_ids: dict[int, uuid.UUID],
         threads: int,
         afgevallen: int,
+        *,
+        aanvullen: bool = False,
     ) -> Beoordeling:
         """Store what was found in a turn and put it in the channel."""
-        opgeslagen = await self._leg_vast(beurt, nieuw, herhaald, open_ids)
+        opgeslagen = await self._leg_vast(
+            beurt, nieuw, herhaald, open_ids, aanvullen=aanvullen
+        )
         if opgeslagen is None:
             # Someone else stored this turn while the model was reading.
             eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
@@ -1652,6 +1691,8 @@ class DebatVraagService:
         nieuw: list[_Nieuw],
         herhaald: list[_Herhaling],
         open_ids: dict[int, uuid.UUID],
+        *,
+        aanvullen: bool = False,
     ) -> tuple[tuple[uuid.UUID, ...], dict[str, int]] | None:
         """Store what was found in this turn, in one commit.
 
@@ -1668,6 +1709,13 @@ class DebatVraagService:
         `herhaald` are the markeringen of before this turn comes back to,
         each by its number in `open_ids`: a question asked again, a
         toezegging said again, or the question a toezegging answers.
+
+        With `aanvullen` the turn is a long answer that is stored part by
+        part: what is there stays, and only what is not there yet is added.
+        A part that is handed in twice, after a restart between storing it
+        and noting that it was read, then leaves nothing a second time: a
+        toezegging whose quote overlaps one of this turn is the same one,
+        and a vermelding is written once per markering and kind.
         """
         locked = (
             await self.session.execute(
@@ -1682,9 +1730,13 @@ class DebatVraagService:
         gelezen = await self._eerder_beoordeeld(
             beurt.sessie_id, beurt.sleutel, door_model=True
         )
-        if gelezen is not None:
+        if gelezen is not None and not aanvullen:
             await self.session.commit()
             return None
+        if aanvullen:
+            nieuw, herhaald = await self._nog_niet_opgeslagen(
+                beurt, nieuw, herhaald, open_ids
+            )
         er_al = {
             citaat: id_
             for id_, citaat in (
@@ -1761,6 +1813,58 @@ class DebatVraagService:
         for n in nieuw:
             aantal[n.soort] = aantal.get(n.soort, 0) + 1
         return (*er_al.values(), *ids), aantal
+
+    async def _nog_niet_opgeslagen(
+        self,
+        beurt: Beurt,
+        nieuw: list[_Nieuw],
+        herhaald: list[_Herhaling],
+        open_ids: dict[int, uuid.UUID],
+    ) -> tuple[list[_Nieuw], list[_Herhaling]]:
+        """What of a part of a long answer is not stored for its turn yet."""
+        spans: list[tuple[int, int]] = []
+        for (citaat,) in (
+            await self.session.execute(
+                select(DebatMarkering.citaat).where(
+                    DebatMarkering.sessie_id == beurt.sessie_id,
+                    DebatMarkering.beurt_sleutel == beurt.sleutel,
+                )
+            )
+        ).all():
+            found = locate_citaat(beurt.tekst, citaat)
+            if found is not None:
+                spans.append((found[1], found[1] + len(found[0])))
+        vermeld = {
+            (row[0], row[1])
+            for row in (
+                await self.session.execute(
+                    select(
+                        DebatMarkeringVermelding.markering_id,
+                        DebatMarkeringVermelding.soort,
+                    ).where(
+                        DebatMarkeringVermelding.sessie_id == beurt.sessie_id,
+                        DebatMarkeringVermelding.beurt_sleutel == beurt.sleutel,
+                    )
+                )
+            ).all()
+        }
+
+        def overlaps(n: _Nieuw) -> bool:
+            eind = n.plek + len(n.citaat)
+            return any(
+                2 * (min(eind, b) - max(n.plek, a)) >= min(len(n.citaat), b - a)
+                for a, b in spans
+            )
+
+        over = [n for n in nieuw if not overlaps(n)]
+        # The link of a toezegging that is there already was written with it.
+        citaten = {n.citaat for n in over}
+        return over, [
+            h
+            for h in herhaald
+            if (open_ids[h.volgnummer], h.soort) not in vermeld
+            and (h.soort != VERMELDING_ANTWOORD or h.citaat in citaten)
+        ]
 
     async def _post_thread(self, markering_id: uuid.UUID) -> bool:
         """Post the thread of one markering, if it has none yet.

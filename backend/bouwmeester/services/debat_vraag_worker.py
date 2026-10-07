@@ -96,9 +96,11 @@ MARGIN = REACH
 # more (see `_assign` of the voices), so a late decision cannot leave a
 # thread under the wrong speaker: the line stays where the time put it.
 NEVER_MOVES_AFTER = timedelta(minutes=3)
-# Turns per debate per round. Normally one or two are waiting; this is for
-# after the model was away, so that catching up does not hold up the other
-# debates or keep the heartbeat silent for minutes.
+# Turns of members per debate per round. Normally one or two are waiting;
+# this is for after the model was away, so that catching up does not hold
+# up the other debates or keep the heartbeat silent for minutes. The answers
+# of the bewindspersoon have a bound of their own
+# (`MAX_ANSWER_PARTS_PER_ROUND`).
 MAX_TURNS = 10
 
 # How long a debate on an initiatief is kept without the names of its
@@ -257,7 +259,7 @@ def _names_may_follow(context: DebatContext, now: datetime) -> bool:
 
 
 class _Pause:
-    """How long a debate is left alone after reading a turn failed.
+    """How long a debate, or one turn, is left alone after reading failed.
 
     In the memory of the process: after a restart the first try is free,
     which is what a restart is for. The wait doubles with every failure in
@@ -287,7 +289,19 @@ class _Pause:
 
 
 _pause = _Pause()
-# How long one turn may take, model and all. Measured: 3 to 14 seconds.
+# The same for one answer of the bewindspersoon that could not be read: that
+# turn is left alone for a while, and the debate is not. An answer is long,
+# one part of it is the heaviest call there is, and when it is slow or fails
+# the questions of the members after it must still be marked. Keyed by the
+# row of the turn.
+_answer_pause = _Pause()
+# How many parts of answers one round reads per debate, each one model call
+# (two when the reply is unreadable the first time). The turns of members
+# of a round are read first; this bounds what the answers add to it.
+MAX_ANSWER_PARTS_PER_ROUND = 2
+# How long one call for a turn may take, model and all. Measured: 3 to 14
+# seconds for a turn of a member. Of a long answer one call reads one part
+# (`Beurt.delen_gelezen`), so this is per part and not for the whole answer.
 JUDGE_TIMEOUT = 60.0
 # How long one round may spend on working reactions in, in seconds, before
 # it goes on to the turns. Enough for a few replies on a slow Mattermost.
@@ -493,7 +507,7 @@ class DebatVraagWorker:
         # question it repeats from a later turn is then filed under that
         # later one.
         waiting.sort(key=lambda w: w.turn.start)
-        return waiting[:MAX_TURNS]
+        return waiting
 
     async def _open_lines(
         self, sessie_id: uuid.UUID, parts: list[str], now: datetime
@@ -544,105 +558,203 @@ class DebatVraagWorker:
             )
         ).one()
 
+        # The turns of members first, the answers of the bewindspersoon
+        # after them: who has to prepare an answer waits for the questions,
+        # and an answer is the call that can be slow. An answer that fails
+        # does not stop the round and does not pause the debate.
+        answers: list[_Waiting] = []
+        members = 0
         for item in waiting:
-            turn = item.turn
-            tekst = turn.text
-            if not tekst:
-                # Nothing was said, or nothing was heard. Not a reason to
-                # ask the model, and not a reason to look again either.
-                await self._mark(turn.row_id, now)
-                continue
-
-            sprekers = await self._sprekers_for(client, item.first)
-            if sprekers is None:
-                # Without the list nobody can tell a member from a
-                # minister, and the answers of a minister are not
-                # questions. A later round has the list again.
-                result.fouten += 1
-                return
-            kind, who = turn.key
-            spreker = sprekers.get(who)
-            if spreker is None:
-                # Not on the list of Debat Direct: a guest, or a minister
-                # the list does not have yet. Whether this is someone who
-                # asks or someone who answers cannot be told, so the model
-                # is not asked to guess.
-                await self._mark(turn.row_id, now)
-                continue
-            onderbroken = None
-            if kind == dd.EVENT_INTERRUPTER and item.floor is not None:
-                onderbroken = sprekers.get(item.floor.key[1])
-            context = await self._context(sessie_id, activiteit_id, onderwerp, client)
-            # For an answer of the bewindspersoon: the member who
-            # interrupted right before it, and what they said. Someone
-            # without a party is no member, and someone the list does not
-            # have is nobody to name.
-            asked: dd.Spreker | None = None
-            if (
-                is_bewindspersoon(spreker)
-                and item.before is not None
-                and item.before.key[0] == dd.EVENT_INTERRUPTER
+            if members >= MAX_TURNS:
+                break
+            set_aside = len(answers)
+            if await self._read_turn(
+                sessie_id,
+                item,
+                vragen,
+                client,
+                now,
+                result,
+                (channel_id, activiteit_id, onderwerp),
+                answers,
             ):
-                asked = sprekers.get(item.before.key[1])
-                if asked is not None and not asked.fractie:
-                    asked = None
-            beurt = Beurt(
-                sessie_id=sessie_id,
-                spreekbeurt_id=turn.row_id,
-                post_id=turn.post_id,
-                channel_id=channel_id,
-                soort=kind,
-                spreker=spreker.label,
-                fractie=spreker.fractie,
-                start=turn.start,
-                moment_url=moment_url_from_kop(turn.kop),
-                tekst=tekst,
-                lines=await self._lines(turn, item.offset),
-                is_bewindspersoon=is_bewindspersoon(spreker),
-                onderbroken=onderbroken.label if onderbroken else None,
-                onderbroken_is_bewindspersoon=bool(
-                    onderbroken and is_bewindspersoon(onderbroken)
-                ),
-                voorafgaand=asked.label if asked else None,
-                voorafgaand_tekst=item.before.text if asked and item.before else "",
-            )
-            try:
-                outcome = await asyncio.wait_for(
-                    vragen.beoordeel_beurt(beurt, context), JUDGE_TIMEOUT
-                )
-                failed = outcome.opnieuw_proberen
-            except Exception:
-                # Also a model that hangs: the clients wait ten minutes by
-                # themselves. And anything that breaks after the model
-                # answered, which would otherwise ask it again every round.
-                logger.exception("Spreekbeurt %s niet beoordeeld", turn.row_id)
-                await self.session.rollback()
-                failed = True
-            if failed:
-                # The turns after this one would find the same, each after
-                # its own wait. The debate is left alone for a while, longer
-                # each time; a turn that keeps failing is given up on, so
-                # that it does not hold up every turn after it.
-                result.fouten += 1
-                attempts = await self._count_attempt(turn.row_id)
-                if attempts >= MAX_ATTEMPTS:
-                    logger.warning(
-                        "Spreekbeurt %s na %d pogingen overgeslagen",
-                        turn.row_id,
-                        attempts,
-                    )
-                    await self._mark(turn.row_id, now)
-                _pause.failed(sessie_id, now)
                 return
-            _pause.succeeded(sessie_id)
+            # An answer that was set aside does not use up the round: the
+            # turns of members behind a row of answers are still reached.
+            members += len(answers) == set_aside
+        parts = 0
+        for item in answers:
+            if parts >= MAX_ANSWER_PARTS_PER_ROUND:
+                break
+            if _answer_pause.waiting(item.turn.row_id, now):
+                continue
+            parts += 1
+            if await self._read_turn(
+                sessie_id,
+                item,
+                vragen,
+                client,
+                now,
+                result,
+                (channel_id, activiteit_id, onderwerp),
+                None,
+            ):
+                return
+
+    async def _read_turn(
+        self,
+        sessie_id: uuid.UUID,
+        item: _Waiting,
+        vragen: DebatVraagService,
+        client: httpx.AsyncClient,
+        now: datetime,
+        result: VraagTickResult,
+        sessie: tuple[str, str, str],
+        answers: list[_Waiting] | None,
+    ) -> bool:
+        """Read one turn. ``True`` when the round of this debate has to stop.
+
+        With `answers` a turn of the bewindspersoon is not read but put on
+        that list, for after the turns of the members.
+        """
+        channel_id, activiteit_id, onderwerp = sessie
+        turn = item.turn
+        tekst = turn.text
+        if not tekst:
+            # Nothing was said, or nothing was heard. Not a reason to
+            # ask the model, and not a reason to look again either.
             await self._mark(turn.row_id, now)
-            result.beoordeeld += 1
-            if outcome.uitkomst == UITKOMST_GEMARKEERD:
-                result.vragen += (
-                    len(outcome.markering_ids) - outcome.moties - outcome.toezeggingen
+            return False
+
+        sprekers = await self._sprekers_for(client, item.first)
+        if sprekers is None:
+            # Without the list nobody can tell a member from a
+            # minister, and the answers of a minister are not
+            # questions. A later round has the list again.
+            result.fouten += 1
+            return True
+        kind, who = turn.key
+        spreker = sprekers.get(who)
+        if spreker is None:
+            # Not on the list of Debat Direct: a guest, or a minister
+            # the list does not have yet. Whether this is someone who
+            # asks or someone who answers cannot be told, so the model
+            # is not asked to guess.
+            await self._mark(turn.row_id, now)
+            return False
+        answer = is_bewindspersoon(spreker)
+        if answer and answers is not None:
+            answers.append(item)
+            return False
+        onderbroken = None
+        if kind == dd.EVENT_INTERRUPTER and item.floor is not None:
+            onderbroken = sprekers.get(item.floor.key[1])
+        context = await self._context(sessie_id, activiteit_id, onderwerp, client)
+        # For an answer of the bewindspersoon: the member who
+        # interrupted right before it, and what they said. Someone
+        # without a party is no member, and someone the list does not
+        # have is nobody to name.
+        asked: dd.Spreker | None = None
+        if (
+            answer
+            and item.before is not None
+            and item.before.key[0] == dd.EVENT_INTERRUPTER
+        ):
+            asked = sprekers.get(item.before.key[1])
+            if asked is not None and not asked.fractie:
+                asked = None
+        beurt = Beurt(
+            sessie_id=sessie_id,
+            spreekbeurt_id=turn.row_id,
+            post_id=turn.post_id,
+            channel_id=channel_id,
+            soort=kind,
+            spreker=spreker.label,
+            fractie=spreker.fractie,
+            start=turn.start,
+            moment_url=moment_url_from_kop(turn.kop),
+            tekst=tekst,
+            lines=await self._lines(turn, item.offset),
+            is_bewindspersoon=answer,
+            onderbroken=onderbroken.label if onderbroken else None,
+            onderbroken_is_bewindspersoon=bool(
+                onderbroken and is_bewindspersoon(onderbroken)
+            ),
+            voorafgaand=asked.label if asked else None,
+            voorafgaand_tekst=item.before.text if asked and item.before else "",
+            delen_gelezen=await self._parts_read(turn.row_id) if answer else 0,
+        )
+        outcome = None
+        try:
+            outcome = await asyncio.wait_for(
+                vragen.beoordeel_beurt(beurt, context), JUDGE_TIMEOUT
+            )
+            failed = outcome.opnieuw_proberen
+        except Exception:
+            # Also a model that hangs: the clients wait ten minutes by
+            # themselves. And anything that breaks after the model
+            # answered, which would otherwise ask it again every round.
+            logger.exception("Spreekbeurt %s niet beoordeeld", turn.row_id)
+            await self.session.rollback()
+            failed = True
+        if failed:
+            result.fouten += 1
+            attempts = await self._count_attempt(turn.row_id)
+            if attempts >= MAX_ATTEMPTS:
+                # What earlier parts of an answer held is stored and stays.
+                logger.warning(
+                    "Spreekbeurt %s na %d pogingen overgeslagen",
+                    turn.row_id,
+                    attempts,
                 )
-                result.moties += outcome.moties
-                result.toezeggingen += outcome.toezeggingen
+                await self._mark(turn.row_id, now)
+            if answer:
+                # Only this turn waits. The debate goes on: its members'
+                # turns were read before this one, and are next round too.
+                _answer_pause.failed(turn.row_id, now)
+                return False
+            # The turns after this one would find the same, each after
+            # its own wait. The debate is left alone for a while, longer
+            # each time; a turn that keeps failing is given up on, so
+            # that it does not hold up every turn after it.
+            _pause.failed(sessie_id, now)
+            return True
+        assert outcome is not None
+        if answer:
+            _answer_pause.succeeded(turn.row_id)
+            await self._keep_parts_read(turn.row_id, outcome.delen_gelezen)
+        else:
+            _pause.succeeded(sessie_id)
+        if outcome.uitkomst == UITKOMST_GEMARKEERD:
+            result.vragen += (
+                len(outcome.markering_ids) - outcome.moties - outcome.toezeggingen
+            )
+            result.moties += outcome.moties
+            result.toezeggingen += outcome.toezeggingen
+        if outcome.meer:
+            # A long answer of which a part was read. The rest is for the
+            # next rounds, a part at a time.
+            return False
+        await self._mark(turn.row_id, now)
+        result.beoordeeld += 1
+        return False
+
+    async def _parts_read(self, row_id: uuid.UUID) -> int:
+        return (
+            await self.session.scalar(
+                select(DebatSpreekbeurt.antwoord_delen_gelezen).where(
+                    DebatSpreekbeurt.id == row_id
+                )
+            )
+        ) or 0
+
+    async def _keep_parts_read(self, row_id: uuid.UUID, parts: int) -> None:
+        await self.session.execute(
+            update(DebatSpreekbeurt)
+            .where(DebatSpreekbeurt.id == row_id)
+            .values(antwoord_delen_gelezen=parts)
+        )
+        await self.session.commit()
 
     async def _lines(self, turn: Turn, offset: timedelta) -> tuple[Line, ...]:
         """The subtitle lines the text of a turn is made of, in its order.
