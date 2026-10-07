@@ -288,10 +288,12 @@ async def _markeringen(session: AsyncSession, sessie_id: uuid.UUID) -> list:
 
 class TestStatusregel:
     def test_one_open_question_is_the_line_from_the_plan(self):
-        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)]) == ("❓ 1 vraag · open")
+        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)]) == ("❓ 1 vraag · 🔴 **open**")
 
     def test_several_open_questions_are_one_line(self):
-        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)] * 3) == ("❓ 3 vragen · open")
+        assert statusregel([(SOORT_VRAAG, STATUS_OPEN)] * 3) == (
+            "❓ 3 vragen · 🔴 **open**"
+        )
 
     def test_mixed_states_are_counted_per_state(self):
         regel = statusregel(
@@ -302,7 +304,9 @@ class TestStatusregel:
                 (SOORT_VRAAG, STATUS_ANTWOORD_KLAAR),
             ]
         )
-        assert regel == ("❓ 4 vragen · 2 open · 1 antwoord klaar · 1 beantwoord")
+        assert regel == (
+            "❓ 4 vragen · 🔴 **2 open** · 1 antwoord klaar · 1 beantwoord"
+        )
 
     def test_one_state_that_is_not_open_is_said_in_one_word_too(self):
         assert statusregel([(SOORT_VRAAG, STATUS_BEANTWOORD)]) == (
@@ -315,7 +319,7 @@ class TestStatusregel:
     def test_a_rejected_question_does_not_count(self):
         assert statusregel(
             [(SOORT_VRAAG, STATUS_VERWORPEN), (SOORT_VRAAG, STATUS_OPEN)]
-        ) == ("❓ 1 vraag · open")
+        ) == ("❓ 1 vraag · 🔴 **open**")
         assert statusregel([(SOORT_VRAAG, STATUS_VERWORPEN)]) == ""
 
     def test_nothing_marked_is_no_line(self):
@@ -336,15 +340,17 @@ class TestStatusregel:
 
     def test_the_status_writer_keeps_a_body_that_grew(self):
         """The transcript grew between two writes of the status line."""
-        eerst = met_status("kop\neen zin.", "❓ 1 vraag · open")
+        eerst = met_status("kop\neen zin.", "❓ 1 vraag · 🔴 **open**")
         gegroeid = met_body(eerst, "kop\neen zin. En nog een zin.")
-        daarna = met_status(gegroeid, "❓ 2 vragen · open")
-        assert daarna == ("kop\neen zin. En nog een zin.\n\n---\n❓ 2 vragen · open")
+        daarna = met_status(gegroeid, "❓ 2 vragen · 🔴 **open**")
+        assert daarna == (
+            "kop\neen zin. En nog een zin.\n\n---\n❓ 2 vragen · 🔴 **open**"
+        )
 
     def test_the_body_writer_keeps_the_status(self):
-        bericht = voeg_samen("kop", "❓ 1 vraag · open")
+        bericht = voeg_samen("kop", "❓ 1 vraag · 🔴 **open**")
         assert met_body(bericht, "kop\nmeer tekst") == (
-            "kop\nmeer tekst\n\n---\n❓ 1 vraag · open"
+            "kop\nmeer tekst\n\n---\n❓ 1 vraag · 🔴 **open**"
         )
 
     def test_an_empty_status_removes_the_block(self):
@@ -1289,7 +1295,7 @@ class TestMarkeren:
         assert "transcript" not in mm.replies[1][2]
 
         # The message of the turn keeps its text and gets the status line.
-        assert mm.messages[post_id] == (f"{body}\n\n---\n❓ 2 vragen · open")
+        assert mm.messages[post_id] == (f"{body}\n\n---\n❓ 2 vragen · 🔴 **open**")
         assert len(mm.updates) == 1
 
     async def test_the_document_a_question_names_is_in_the_thread(self, db_session):
@@ -1516,7 +1522,7 @@ class TestEenVraagIsEenToestand:
         # The numbering goes on where the debate was.
         assert [(r[0], r[1]) for r in rows][-1] == (3, Q_TERMIJNEN)
         assert mm.messages[opnieuw.post_id] == (
-            "**Kamerlid A (BBB)** · 11:40\n\n---\n❓ 1 vraag · open"
+            "**Kamerlid A (BBB)** · 11:40\n\n---\n❓ 1 vraag · 🔴 **open**"
         )
 
     async def test_a_number_the_model_made_up_gives_a_new_question(self, db_session):
@@ -1748,7 +1754,7 @@ class TestMattermostFaalt:
         assert Q_CAMPAGNE in mm.replies[1][2]
         rows = await _markeringen(db_session, sessie_id)
         assert all(r[2] and r[4] for r in rows)
-        assert mm.messages[post_id] == ("kop\n\n---\n❓ 2 vragen · open")
+        assert mm.messages[post_id] == ("kop\n\n---\n❓ 2 vragen · 🔴 **open**")
 
     async def test_a_thread_that_raises_is_a_thread_that_fails(self, db_session):
         sessie_id, mm, _, svc, post_id = await self._twee_vragen(db_session)
@@ -1768,12 +1774,12 @@ class TestMattermostFaalt:
         mm.fail_sends = 1
 
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
-        assert mm.messages[post_id] == "kop\n\n---\n❓ 1 vraag · open"
+        assert mm.messages[post_id] == "kop\n\n---\n❓ 1 vraag · 🔴 **open**"
 
         # The retry posts the other one and corrects the line.
         svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, mm.turn()), CONTEXT)
-        assert mm.messages[post_id] == ("kop\n\n---\n❓ 2 vragen · open")
+        assert mm.messages[post_id] == ("kop\n\n---\n❓ 2 vragen · 🔴 **open**")
         assert len(mm.replies) == 2
 
     async def test_after_three_failures_a_thread_is_left_alone(self, db_session):
@@ -1848,7 +1854,7 @@ class TestDeStatusregel:
 
         svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
-        assert mm.messages[post_id].endswith("❓ 1 vraag · open")
+        assert mm.messages[post_id].endswith("❓ 1 vraag · 🔴 **open**")
         assert (await _markeringen(db_session, sessie_id))[0][4] is not None
         # The thread itself is not posted again.
         assert len(mm.replies) == 1
@@ -1874,7 +1880,7 @@ class TestDeStatusregel:
 
         svc.nieuwe_ronde()
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
-        assert mm.messages[post_id].endswith("❓ 1 vraag · open")
+        assert mm.messages[post_id].endswith("❓ 1 vraag · 🔴 **open**")
 
     async def test_a_message_that_is_gone_is_not_tried_forever(self, db_session):
         sessie_id, mm, svc, post_id = await self._een_vraag(db_session)
@@ -1894,7 +1900,7 @@ class TestDeStatusregel:
 
     async def test_a_line_that_is_already_right_is_not_written(self, db_session):
         sessie_id, mm, svc, post_id = await self._een_vraag(
-            db_session, "kop\n\n---\n❓ 1 vraag · open"
+            db_session, "kop\n\n---\n❓ 1 vraag · 🔴 **open**"
         )
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
         assert mm.updates == []
@@ -1912,7 +1918,7 @@ class TestDeStatusregel:
         await svc.beoordeel_beurt(_beurt(sessie_id, VOORZITTER, None), CONTEXT)
 
         assert mm.messages[post_id] == (
-            "kop\neen zin. En meer.\n\n---\n❓ 1 vraag · open"
+            "kop\neen zin. En meer.\n\n---\n❓ 1 vraag · 🔴 **open**"
         )
 
     async def test_the_props_of_the_message_are_kept(self, db_session):
@@ -1924,7 +1930,9 @@ class TestDeStatusregel:
     async def test_the_block_for_whoever_rewrites_the_message(self, db_session):
         sessie_id, mm, svc, post_id = await self._een_vraag(db_session)
         await svc.beoordeel_beurt(_beurt(sessie_id, KAMERLID_A, post_id), CONTEXT)
-        assert await statusblok_voor_post(db_session, post_id) == ("❓ 1 vraag · open")
+        assert await statusblok_voor_post(db_session, post_id) == (
+            "❓ 1 vraag · 🔴 **open**"
+        )
         assert await statusblok_voor_post(db_session, "ander") == ""
 
 
