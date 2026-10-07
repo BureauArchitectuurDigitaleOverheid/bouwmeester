@@ -693,10 +693,16 @@ class DebatVraagWorker:
         except tk_activiteit.TkApiError:
             logger.warning("Activiteit %s niet te lezen", activiteit_id, exc_info=True)
             activiteit = None
+        if activiteit is None and known is not None:
+            # Asked again for the names and got nothing. What was known
+            # stays, and the next try is a while from now, not with the
+            # next turn: an API that is down is not asked every turn.
+            self.contexts[sessie_id] = replace(known, gelezen_at=now)
+            return self.contexts[sessie_id]
         if activiteit is None:
             # The subject alone is enough to read a turn by. Not kept, so
             # the next turn asks again for who is at the table.
-            return known or DebatContext(onderwerp=onderwerp)
+            return DebatContext(onderwerp=onderwerp)
         self.contexts[sessie_id] = replace(
             DebatContext.from_activiteit(activiteit), gelezen_at=now
         )

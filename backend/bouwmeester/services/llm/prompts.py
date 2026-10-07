@@ -995,6 +995,19 @@ def build_summarize_mattermost_thread_prompt(
 MAX_BEURT_IN_PROMPT = 16000
 
 
+# De namen van de initiatiefnemers komen uit de TK-API en gaan de prompt
+# in. Meer dan een handvol zijn het er nooit, en een naam is één regel:
+# een naam met een regeleinde erin zou een eigen alinea in de prompt zijn.
+MAX_INITIATIEFNEMERS = 10
+MAX_NAAM_IN_PROMPT = 80
+
+
+def _op_een_regel(naam: str) -> str:
+    """Een naam zonder stuurtekens of regeleinden, en niet langer dan een naam."""
+    schoon = "".join(c if c.isprintable() else " " for c in naam)
+    return " ".join(schoon.split())[:MAX_NAAM_IN_PROMPT].strip()
+
+
 def build_debat_vragen_prompt(
     *,
     onderwerp: str,
@@ -1087,12 +1100,17 @@ def build_debat_vragen_prompt(
             " die het voorstel hebben geschreven en er zelf vragen over"
             " beantwoorden."
         )
-        if initiatiefnemer_namen:
+        namen = [
+            schoon
+            for schoon in (_op_een_regel(naam) for naam in initiatiefnemer_namen or [])
+            if schoon
+        ][:MAX_INITIATIEFNEMERS]
+        if namen:
             # Met de namen erbij is ook "mevrouw Voorbeeld, hoe ziet u dat"
             # te herkennen als een vraag aan een initiatiefnemer.
             aan_tafel += (
                 " Dat zijn:\n"
-                + "\n".join(f"- {naam}" for naam in initiatiefnemer_namen)
+                + "\n".join(f"- {naam}" for naam in namen)
                 + "\nEen vraag aan een van hen, ook bij naam, is geen vraag aan"
                 " de bewindspersoon."
             )
