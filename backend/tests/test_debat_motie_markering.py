@@ -386,9 +386,9 @@ class TestWoordenVanEenMotie:
     def test_a_rejected_motie_does_not_count(self):
         assert statusregel([(SOORT_MOTIE, STATUS_VERWORPEN)]) == ""
 
-    def test_the_pinned_message_says_what_the_reactions_mean_for_a_motie(self):
-        for woorden in ("oordeel gegeven", "hoeft geen oordeel", "geen motie"):
-            assert woorden in LEGENDA
+    def test_the_pinned_message_does_not_spell_the_reactions_out_per_kind(self):
+        # The words of a motie stand in its reply once a reaction is put.
+        assert "motie" not in LEGENDA
 
 
 class TestMotieMarkeren:

@@ -80,13 +80,14 @@ _MARKERS: dict[str, dict[str, tuple[str, str]]] = {
 }
 
 # In the pinned message of a debate channel, so that the reactions can be
-# found without the bot putting four of them under every reply.
+# found without the bot putting four of them under every reply. Four
+# meanings, one line, the same for every kind: what a reaction is called
+# for a vraag, a motie or a toezegging ("beantwoord", "oordeel gegeven",
+# "nagekomen") stands in the reply once it is put. Spelled out per kind
+# this was a block of text nobody could read.
 LEGENDA = (
-    "Reageer op een markering met ✅, 👀, 🚫 of ❌. 👀 is altijd: ik pak dit op. "
-    "Bij een vraag: ✅ beantwoord · 🚫 hoeft geen antwoord · ❌ geen vraag. "
-    "Bij een motie: ✅ oordeel gegeven · 🚫 hoeft geen oordeel · ❌ geen motie. "
-    "Bij een toezegging: ✅ nagekomen · 🚫 hoeft niet · ❌ geen toezegging. "
-    "De laatste reactie telt; haal je je reactie weg, dan telt ze niet meer."
+    "**Reageer op een markering:** ✅ afgehandeld · 👀 ik pak dit op · "
+    "🚫 hoeft niet · ❌ klopt niet"
 )
 
 
