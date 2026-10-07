@@ -319,6 +319,11 @@ class TestEenItemUitDeLijst:
             "De Kamer ontvangt in het voorjaar de evaluatie van de proef.",
             "het kabinet stuurt de kamer na de zomer een brief over de kelders",
             "Toegezegd is dat de Kamer een overzicht krijgt.",
+            # Nobody named as who does it, as a griffier writes it down.
+            "Er komt vóór de zomer een brief over de wachttijden.",
+            "In het voorjaar volgt er een evaluatie van de proef.",
+            "De Kamer wordt vóór het reces geïnformeerd over de kosten.",
+            "Vóór de zomer ontvangt de Kamer een overzicht.",
         ],
     )
     def test_what_a_bewindspersoon_committed_to_read_out(self, citaat):
@@ -336,6 +341,11 @@ class TestEenItemUitDeLijst:
             "En dat is een toezegging aan mevrouw Van der Voorbeeld.",
             "Er zijn vier moties ingediend; daarover wordt dinsdag gestemd.",
             "Ik sluit de vergadering.",
+            # The shape of an item, and nothing that is delivered.
+            "Hij gaat nu naar een ander debat.",
+            "Zij gaan nu stemmen.",
+            "De minister zal de moties van een oordeel voorzien.",
+            "Er wordt nu gestemd.",
         ],
     )
     def test_what_the_chairman_says_around_the_list(self, citaat):
@@ -358,14 +368,35 @@ class TestWelkeToezeggingHetIs:
         assert self._match(I_BRIEF, 4) == 4
         assert self._match(I_GELD, 5) == 5
 
-    def test_without_a_number_the_one_that_shares_most(self):
-        assert self._match(I_BRIEF) == 4
-        assert self._match(I_GELD) == 5
+    def test_when_the_model_says_new_it_is_new(self):
+        """Whatever the words share: the code does not overrule the model."""
+        assert self._match(I_BRIEF) is None
+        assert self._match(I_GELD) is None
 
-    def test_a_number_the_words_do_not_bear_out_is_not_believed(self):
-        """The model filed the item under another toezegging."""
-        assert self._match(I_BRIEF, 9) == 4
+    def test_a_number_the_words_do_not_bear_out_is_new_too(self):
+        """The model filed the item under another toezegging. The code
+        does not go looking for the one it might have meant."""
+        assert self._match(I_BRIEF, 9) is None
         assert self._match(I_KELDERS, 9) is None
+
+    def test_two_toezeggingen_about_one_regulation_are_not_one(self):
+        """They share its name and the word "regeling", and nothing of
+        what is promised. Matched by words alone, the one that was marked
+        would say the chairman confirmed it, and the item would be lost."""
+        item = (
+            "Stuurt de evaluatie van de regeling. De minister zegt toe de Kamer"
+            " vóór de zomer de evaluatie van de regeling kinderopvangtoeslag te"
+            " sturen."
+        )
+        eerdere = {
+            7: "Informeert de Kamer over de hersteloperatie kinderopvangtoeslag."
+            " Ik stuur de Kamer een brief over de hersteloperatie"
+            " kinderopvangtoeslag en de regeling voor gedupeerden.",
+            9: self.EERDERE[9],
+        }
+        assert match_listed(item, None, eerdere) is None
+        # A wrong number is not turned into the one the words point at.
+        assert match_listed(item, 9, eerdere) is None
 
     def test_an_item_that_was_promised_nowhere_else_is_none(self):
         assert self._match(I_KELDERS) is None
@@ -400,8 +431,7 @@ class TestWelkeToezeggingHetIs:
 
     def test_a_toezegging_is_confirmed_by_one_item(self):
         assert self._match(I_BRIEF, 4, taken={4}) is None
-        assert self._match(I_BRIEF, taken={4}) is None
-        assert self._match(I_GELD, taken={4}) == 5
+        assert self._match(I_GELD, 5, taken={4}) == 5
 
     def test_the_subject_of_the_debate_is_shared_by_everything(self):
         een = "De minister zegt toe de fietsenstallingen bij de stations te tellen."
@@ -446,6 +476,21 @@ class TestAanWieVolgensDeVoorzitter:
     def test_a_name_two_members_share_is_nobody(self):
         leden = ["Jan Voorbeeld (X)", "Piet Voorbeeld (Y)"]
         assert promised_to(" Een toezegging aan de heer Voorbeeld.", leden) == ""
+
+    def test_two_members_are_nobody(self):
+        """There is room for one name, and half is not who it was promised to."""
+        assert promised_to(" Een toezegging aan de leden A en B.", self.LEDEN) == ""
+        assert (
+            promised_to(" Een toezegging aan mevrouw A en de heer B.", self.LEDEN) == ""
+        )
+        assert promised_to(" Een toezegging aan mevrouw A en dat was het.", self.LEDEN)
+
+    def test_the_name_behind_an_item_nobody_is_named_in(self):
+        na = (
+            " Er komt vóór de zomer een brief over de wachttijden."
+            " Dat is een toezegging aan Kamerlid C."
+        )
+        assert promised_to(na, self.LEDEN) == ""
 
     def test_nothing_said_about_who(self):
         assert promised_to(" Dan gaan we naar de volgende.", self.LEDEN) == ""
@@ -519,7 +564,7 @@ class TestLeesSlotlijst:
 
     def test_the_whole_list_in_the_order_it_was_read(self):
         nieuw, bevestigd, afgevallen = self._lees(
-            _t(I_KELDERS), _t(I_GELD), _t(I_BRIEF, hoort_bij=4)
+            _t(I_KELDERS), _t(I_GELD, hoort_bij=5), _t(I_BRIEF, hoort_bij=4)
         )
         assert afgevallen == 0
         assert [h.volgnummer for h in bevestigd] == [4, 5]
@@ -531,17 +576,82 @@ class TestLeesSlotlijst:
         tekst = (
             f"Ik lees de toezeggingen voor. {I_BRIEF} Een toezegging aan Kamerlid A."
         )
-        _, bevestigd, _ = self._lees(_t(I_BRIEF), tekst=tekst)
+        _, bevestigd, _ = self._lees(_t(I_BRIEF, hoort_bij=4), tekst=tekst)
         assert [(h.volgnummer, h.aan) for h in bevestigd] == [(4, "Kamerlid A (X)")]
+
+    def test_an_item_the_model_calls_new_confirms_nothing(self):
+        """Its words are those of a toezegging of the debate. It is stored
+        as new, and the moment and the member the chairman read with it do
+        not land on the other one."""
+        tekst = (
+            f"Ik lees de toezeggingen voor. {I_BRIEF} Een toezegging aan Kamerlid A."
+        )
+        nieuw, bevestigd, _ = self._lees(
+            _t(I_BRIEF, termijn="vóór de begrotingsbehandeling"), tekst=tekst
+        )
+        assert bevestigd == []
+        (een,) = nieuw
+        assert (een.citaat, een.termijn, een.gericht_aan) == (
+            I_BRIEF,
+            "vóór de begrotingsbehandeling",
+            "Kamerlid A (X)",
+        )
+        # The same for a number that is another toezegging.
+        nieuw, bevestigd, _ = self._lees(_t(I_BRIEF, hoort_bij=9), tekst=tekst)
+        assert (len(nieuw), bevestigd) == (1, [])
+
+    WACHTTIJDEN = "Er komt vóór de zomer een brief over de wachttijden."
+
+    def _met_wachttijden(self, tussen: str = "") -> str:
+        return (
+            f"Ik lees de toezeggingen voor. {I_BRIEF} {tussen}{self.WACHTTIJDEN}"
+            " Dat is een toezegging aan Kamerlid C. Dank."
+        )
+
+    def test_an_item_nobody_is_named_as_doing_is_an_item(self):
+        nieuw, bevestigd, afgevallen = self._lees(
+            _t(I_BRIEF, hoort_bij=4),
+            _t(self.WACHTTIJDEN),
+            tekst=self._met_wachttijden(),
+        )
+        assert afgevallen == 0
+        assert [(n.citaat, n.gericht_aan) for n in nieuw] == [
+            (self.WACHTTIJDEN, "Kamerlid C (Z)")
+        ]
+        # The member is of the item it follows, not of the one before that.
+        assert [h.aan for h in bevestigd] == [None]
+
+    def test_the_member_behind_a_dropped_quote_is_not_the_item_s_before_it(self):
+        """The model quotes something that is no item, and the chairman
+        names a member behind it. The item before it is within reach."""
+        geen_item = "Dank daarvoor aan de griffier."
+        tekst = (
+            f"Ik lees de toezeggingen voor. {I_BRIEF} {geen_item}"
+            " Dat is een toezegging aan Kamerlid C."
+        )
+        nieuw, bevestigd, afgevallen = self._lees(
+            _t(I_BRIEF, hoort_bij=4), _t(geen_item), tekst=tekst
+        )
+        assert (nieuw, afgevallen) == ([], 1)
+        assert [h.aan for h in bevestigd] == [None]
+        # Without that quote the name follows the item directly.
+        _, bevestigd, _ = self._lees(_t(I_BRIEF, hoort_bij=4), tekst=tekst)
+        assert [h.aan for h in bevestigd] == ["Kamerlid C (Z)"]
+
+    def test_the_member_behind_an_item_the_model_passed_over(self):
+        _, bevestigd, _ = self._lees(
+            _t(I_BRIEF, hoort_bij=4), tekst=self._met_wachttijden()
+        )
+        assert [h.aan for h in bevestigd] == [None]
 
     def test_the_name_behind_the_next_item_is_not_this_one_s(self):
         """Two items, and only the second is said to be to someone."""
-        nieuw, bevestigd, _ = self._lees(_t(I_GELD), _t(I_KELDERS))
+        nieuw, bevestigd, _ = self._lees(_t(I_GELD, hoort_bij=5), _t(I_KELDERS))
         assert [h.aan for h in bevestigd] == [None]
         assert [n.gericht_aan for n in nieuw] == ["Kamerlid C (Z)"]
         # Also when the model did not give the item the name belongs to,
         # and that name is within reach.
-        _, bevestigd, _ = self._lees(_t(I_GELD))
+        _, bevestigd, _ = self._lees(_t(I_GELD, hoort_bij=5))
         between = LIJST_TEKST.index("Dat is een toezegging aan") - (
             LIJST_TEKST.index(I_GELD) + len(I_GELD)
         )
@@ -592,8 +702,8 @@ class TestLeesSlotlijst:
     def test_a_deadline_that_was_not_said_is_left_out(self):
         nieuw, bevestigd, _ = self._lees(
             _t(I_KELDERS, termijn="vóór de zomer"),
-            _t(I_BRIEF, termijn="eind 2030"),
-            _t(I_GELD, termijn="in het voorjaar"),
+            _t(I_BRIEF, termijn="eind 2030", hoort_bij=4),
+            _t(I_GELD, termijn="in het voorjaar", hoort_bij=5),
         )
         assert [n.termijn for n in nieuw] == [None]
         assert [h.termijn for h in bevestigd] == [None, "in het voorjaar"]
@@ -873,7 +983,9 @@ class TestDeLijstLezen:
             sessie_id,
             mm,
             toegezegd(
-                toezegging(I_GELD, samenvatting=S_GELD, termijn="in het voorjaar")
+                toezegging(
+                    I_GELD, samenvatting=S_GELD, termijn="in het voorjaar", hoort_bij=2
+                )
             ),
             tekst=tekst,
         )
@@ -901,11 +1013,55 @@ class TestDeLijstLezen:
             db_session,
             sessie_id,
             mm,
-            toegezegd(toezegging(I_BRIEF, samenvatting=S_BRIEF)),
+            toegezegd(toezegging(I_BRIEF, samenvatting=S_BRIEF, hoort_bij=1)),
             tekst=tekst,
         )
         brief = (await _rows(db_session, sessie_id))[0]
         assert brief.gericht_aan == "Kamerlid C (Z)"
+
+    async def test_an_item_the_model_calls_new_leaves_the_toezegging_alone(
+        self, db_session
+    ):
+        """Its words are those of a toezegging that was marked. Nothing is
+        written on that one: no confirmation, no moment, no member."""
+        sessie_id, mm, _, _, _ = await _first_answer(db_session)
+        await _judge(
+            db_session,
+            TURNS[35],
+            antwoord(vraag(TURNS[35]["tekst"].split(". ", 1)[1])),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        tekst = (
+            f"Ik lees de toezeggingen voor. {I_BRIEF}"
+            " Dat is een toezegging aan Kamerlid C."
+        )
+        result, post_id, _ = await _read_list(
+            db_session,
+            sessie_id,
+            mm,
+            toegezegd(
+                toezegging(
+                    I_BRIEF,
+                    samenvatting=S_BRIEF,
+                    termijn="vóór de begrotingsbehandeling",
+                )
+            ),
+            tekst=tekst,
+        )
+        assert (result.bevestigd, result.toezeggingen) == ((), 1)
+        rows = await _rows(db_session, sessie_id)
+        brief, nieuw = rows[0], rows[-1]
+        assert (brief.termijn, brief.gericht_aan) == (None, "")
+        assert brief.reacties_gewijzigd_at is None
+        assert not await is_bevestigd(db_session, brief.id)
+        assert await _vermeldingen(db_session, sessie_id) == []
+        assert (nieuw.citaat, nieuw.termijn, nieuw.gericht_aan) == (
+            I_BRIEF,
+            "vóór de begrotingsbehandeling",
+            "Kamerlid C (Z)",
+        )
+        assert nieuw.beurt_post_id == post_id
 
     async def test_only_members_can_be_who_it_was_promised_to(self, db_session):
         """The bewindspersoon has rows of their own, and is nobody a
@@ -1028,8 +1184,7 @@ class TestDeLijstLezen:
             mm,
             toegezegd(
                 toezegging(I_BRIEF, samenvatting=S_BRIEF, hoort_bij=1),
-                # No number from the model: the code finds it by the words.
-                toezegging(I_GELD, samenvatting=S_GELD),
+                toezegging(I_GELD, samenvatting=S_GELD, hoort_bij=2),
                 toezegging(I_KELDERS, samenvatting="Informeert over de verlichting."),
                 # Not an item, whatever the model says.
                 toezegging(

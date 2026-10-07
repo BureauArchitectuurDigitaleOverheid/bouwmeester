@@ -1176,17 +1176,21 @@ def lees_slotlijst(
     word of thanks, the announcement of a tweeminutendebat.
 
     An item is a toezegging of `eerdere`, the ones that were marked during
-    the debate by number with what each promised, when the code finds it
-    so by their words (`match_listed`); the model's `hoort_bij` helps and
-    does not decide. That one is confirmed, and gets the moment and the
-    member the chairman names if it had none. Every other item is new: a
-    toezegging that was missed during the debate, with the chairman's
-    wording as its quote.
+    the debate by number with what each promised, when the model names it
+    in `hoort_bij` and the code finds it so by their words
+    (`match_listed`): both, never one of the two. That one is confirmed,
+    and gets the moment and the member the chairman names if it had none.
+    Every other item is new: a toezegging that was missed during the
+    debate, with the chairman's wording as its quote. An item that was
+    marked and is not matched is there twice; that is the cheaper mistake.
 
-    Who an item was promised to is the member the chairman names behind
-    it, when that is one of `leden` (`promised_to`).
+    Who an item was promised to is the member the chairman names right
+    behind it, when that is one of `leden` (`promised_to`). Right behind
+    it: up to the next thing the model quoted, also when that quote is
+    dropped here.
     """
     afgevallen = 0
+    grenzen: list[int] = []
     items: list[tuple[int, str, DebatToezegging]] = []
     for toezegging in toezeggingen:
         gevonden = locate_citaat(tekst, toezegging.citaat)
@@ -1198,6 +1202,10 @@ def lees_slotlijst(
             )
             continue
         citaat, plek = gevonden
+        # Where anything the model quoted begins, kept or not: the member
+        # named behind a quote that is dropped is not the member of the
+        # item before it.
+        grenzen.append(plek)
         if not is_listed_commitment(citaat):
             afgevallen += 1
             logger.info("Citaat uit de slotlijst is geen toezegging: %s", citaat[:120])
@@ -1215,7 +1223,8 @@ def lees_slotlijst(
             afgevallen += 1
             continue
         einde_vorige = plek + len(citaat)
-        aan = promised_to(tekst[einde_vorige:], leden)
+        volgende = min((g for g in grenzen if g >= einde_vorige), default=len(tekst))
+        aan = promised_to(tekst[einde_vorige:volgende], leden)
         termijn = _kort(toezegging.termijn or "", MAX_TERMIJN)
         termijn = termijn if termijn and deadline_is_said(termijn, citaat) else ""
         samenvatting = _kort(toezegging.samenvatting, MAX_SAMENVATTING)

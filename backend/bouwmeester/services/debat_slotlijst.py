@@ -29,7 +29,8 @@ Which sentence is an item, what it promises and which toezegging of the
 debate it is, is for the model (`build_debat_slotlijst_prompt`). The code
 then checks every answer: the quote stands in the list, it has the form of
 an item (`is_listed_commitment`), and an item is one that was marked
-before only when the two share their words (`match_listed`).
+before only when the model says which and the two share their words
+(`match_listed`).
 
 Pure functions, no I/O.
 """
@@ -42,6 +43,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from bouwmeester.services.debat_toezegging import (
+    _MOMENT,
+    _PRODUCT,
     MIN_SHARED,
     has_commitment_form,
     shared_subject_words,
@@ -188,20 +191,42 @@ _WHO = (
     r"|de regering|de bewindspersoon|hij|zij)"
 )
 _COMMITS = (
-    r"(?:zegt|zeggen|zegde|zal|zullen|gaat|gaan|komt|komen|stuurt|sturen"
-    r"|informeert|informeren|neemt|nemen|laat|laten|doet|bezorgt|bekijkt"
-    r"|onderzoekt|bespreekt)"
+    r"(?:zal|zullen|gaat|gaan|komt|komen|stuurt|sturen|informeert|informeren"
+    r"|neemt|nemen|laat|laten|doet|bezorgt|bekijkt|onderzoekt|bespreekt)"
 )
-_LISTED = (
+# The shapes an item has. Who commits and a verb of doing it, in either
+# order; or nobody named as who does it, the way a griffier writes it down:
+# "er komt voor de zomer een brief", "de Kamer ontvangt de evaluatie", "de
+# Kamer wordt voor het reces geinformeerd".
+_SHAPES = (
     re.compile(rf"\b{_WHO} (?:\w+ ){{0,3}}{_COMMITS}\b"),
     re.compile(rf"\b{_COMMITS} {_WHO}\b"),
     re.compile(r"\b(?:de kamer|de commissie) (?:\w+ ){0,3}(?:ontvangt|krijgt|wordt)\b"),
-    re.compile(r"\btoe te (?:zeggen|sturen)\b|\btoegezegd\b"),
+    re.compile(r"\b(?:ontvangt|krijgt|wordt) (?:de kamer|de commissie)\b"),
+    re.compile(r"\ber (?:komt|volgt|wordt|worden|gaat)\b"),
+    re.compile(r"\b(?:komt|volgt|wordt|worden|gaat) er\b"),
 )
-
+# The promise named as one: "de minister zegt toe", "toegezegd is dat".
+_EXPLICIT = re.compile(
+    r"\bzeg\w* (?:\w+ ){0,5}toe\b|\btoegezegd\b|\btoe te zeggen\b|\bzegde\w* toe\b"
+)
+# What makes a sentence of that shape a toezegging when the promise is not
+# named: coming back to it, informing the Kamer, taking it along. With a
+# product or a moment (`_PRODUCT`, `_MOMENT`) that is what an item holds.
+# "Hij gaat nu naar een ander debat" and "de minister zal de moties van een
+# oordeel voorzien" have the shape and none of this.
+_DELIVERS = re.compile(
+    r"\bterug\w*|\binform\w*|\bgeinformeerd\b|\bmeenemen\b|\bmeeneemt\b"
+    r"|\bmee te nemen\b|\bde kamer\b|\bde commissie\b|\buitzoeken\b"
+    r"|\buit te zoeken\b|\bna te gaan\b|\bnagaan\b"
+)
 
 # "Dat is een toezegging aan mevrouw A": about the item before it.
 _TO_WHOM = re.compile(r"\b(?:een |de )?toezegging aan(?: \w+){1,5}")
+
+
+def _has_item_shape(flat: str) -> bool:
+    return bool(_EXPLICIT.search(flat)) or any(p.search(flat) for p in _SHAPES)
 
 
 def is_listed_commitment(quote: str) -> bool:
@@ -209,14 +234,23 @@ def is_listed_commitment(quote: str) -> bool:
 
     "De minister zegt toe de Kamer voor de zomer een brief te sturen", "de
     staatssecretaris zal dat meenemen in de voortgangsrapportage", "de
-    Kamer ontvangt in het voorjaar de evaluatie". Not "dat waren de
-    toezeggingen", "ik dank de minister" or "er is een tweeminutendebat
-    aangevraagd": the chairman says those in the same breath, and they
-    promise nothing.
+    Kamer ontvangt in het voorjaar de evaluatie", "er komt voor de zomer
+    een brief over de wachttijden". Not "dat waren de toezeggingen", "ik
+    dank de minister" or "er is een tweeminutendebat aangevraagd": the
+    chairman says those in the same breath, and they promise nothing.
+
+    Either the promise is named ("zegt toe", "toegezegd"), or the sentence
+    has the shape of an item and something in it that is delivered: a
+    product, a moment, coming back to it or informing the Kamer. The shape
+    alone is not enough: "zij gaan nu stemmen" has it.
     """
     # Who it was promised to says "een toezegging", and promises nothing.
     flat = _TO_WHOM.sub(" ", _flat(quote))
-    return any(pattern.search(flat) for pattern in _LISTED) or has_commitment_form(flat)
+    if _EXPLICIT.search(flat):
+        return True
+    if not (any(p.search(flat) for p in _SHAPES) or has_commitment_form(flat)):
+        return False
+    return bool(_PRODUCT.search(flat) or _MOMENT.search(flat) or _DELIVERS.search(flat))
 
 
 def match_listed(
@@ -234,24 +268,22 @@ def match_listed(
     `taken` are the ones another item of the list was matched to already:
     the list names every toezegging once.
 
-    The model's number is believed when the two share `MIN_SHARED` words
-    that say what they are about. Without a number from the model, or
-    with one the words do not bear out, the code looks itself: the one
-    toezegging that shares at least `MIN_SHARED` words with the item, and
-    more than any other.
+    It takes both: the model names the toezegging, and the two share
+    `MIN_SHARED` words that say what they are about. When the model says
+    the item is new, it is new. When the model names a number the words do
+    not bear out, it is new too, and the code does not go looking for
+    another one.
 
-    Erring either way costs something. An item that is matched wrongly
-    confirms a toezegging the chairman did not read, and is itself lost;
-    an item that is not matched is stored a second time.
-
-    Measured on the one list of the gold set, against what twelve runs
-    had marked, by the quotes alone: the item that was promised nowhere
-    else shares at most one word with any toezegging of the debate, in
-    every run. Of the two items that repeat one, one shares two words with
-    it in every run and the other in 2 of 12: that one is matched when
-    the model's number or the summaries bear it out, which was so in 4 of
-    the 6 runs that read the list. Asking for three words would match
-    neither without the model.
+    The two mistakes do not cost the same. An item that is not matched is
+    stored a second time: two replies for one toezegging. An item that is
+    matched wrongly puts "bevestigd door de voorzitter", its moment and
+    its member on a toezegging the chairman did not read, and is itself
+    lost. Words alone make that second mistake: two toezeggingen about one
+    regulation share its name and the word "regeling", six letters each.
+    An earlier version let the code match by words when the model named
+    nothing; on the one list of the gold set that confirmed one repeat
+    more in 2 of 6 runs, and a made-up pair about one regulation was
+    enough to make it confirm the wrong one.
     """
     if (
         named is not None
@@ -260,26 +292,16 @@ def match_listed(
         and len(shared_subject_words(item, eerdere[named], onderwerp)) >= MIN_SHARED
     ):
         return named
-    counts = sorted(
-        (
-            (len(shared_subject_words(item, text, onderwerp)), number)
-            for number, text in eerdere.items()
-            if number not in taken
-        ),
-        reverse=True,
-    )
-    if not counts or counts[0][0] < MIN_SHARED:
-        return None
-    if len(counts) > 1 and counts[1][0] == counts[0][0]:
-        return None
-    return counts[0][1]
+    return None
 
 
 # "Dat is een toezegging aan mevrouw A", said behind an item.
 _PROMISED_TO = re.compile(
-    r"\btoezegging aan (?:de heer|meneer|mevrouw|het lid|kamerlid|de leden)"
+    r"\btoezegging aan (de heer|meneer|mevrouw|het lid|kamerlid|de leden)"
     r" ((?:\w+ ){0,3}\w+)"
 )
+# A second member behind the first: "aan mevrouw A en de heer B".
+_AND_ANOTHER = re.compile(r"\ben (?:de heer|meneer|mevrouw|het lid|kamerlid)\b")
 # What stands in front of a surname and is no name.
 _PARTICLES = frozenset("van der den de ter ten te het el al la le di da du op".split())
 # How far behind an item its "toezegging aan" can stand, in characters: a
@@ -292,23 +314,31 @@ PROMISED_TO_WITHIN = 240
 def promised_to(after: str, leden: Sequence[str]) -> str:
     """The member the chairman names behind an item, as one of `leden`.
 
-    `after` is the list from the end of the item up to the next item,
-    `leden` the labels of the members who spoke in this debate ("Kamerlid
-    A (X)"). The chairman says a surname, and the transcript often gets it
-    wrong: only a name that is the surname of exactly one of the members
-    is taken. Anything else is nobody, which is shown as "not known".
+    `after` is the list from the end of the item up to the next thing the
+    model quoted, `leden` the labels of the members who spoke in this
+    debate ("Kamerlid A (X)"). The chairman says a surname, and the
+    transcript often gets it wrong: only a name that is the surname of
+    exactly one of the members is taken. Anything else is nobody, which is
+    shown as "not known".
 
-    Not when another item stands between the two: the model can pass over
-    an item, and the name behind that one is not this one's.
+    The name belongs to the item it directly follows. When anything with
+    the shape of an item stands between the two, the name is that one's:
+    the model can pass over an item, and the code can drop one.
+
+    Two members are nobody: "aan de leden A en B", "aan mevrouw A en de
+    heer B". The row has room for one name, and half is not who it was
+    promised to.
     """
     flat = _flat(after[:PROMISED_TO_WITHIN])
     found = _PROMISED_TO.search(flat)
     if found is None:
         return ""
-    if any(pattern.search(flat[: found.start()]) for pattern in _LISTED):
+    if _has_item_shape(_TO_WHOM.sub(" ", flat[: found.start()])):
+        return ""
+    if found.group(1) == "de leden" or _AND_ANOTHER.search(found.group(2)):
         return ""
     # The first word that is a name: "van der A" is A.
-    said = next((w for w in found.group(1).split() if w not in _PARTICLES), "")
+    said = next((w for w in found.group(2).split() if w not in _PARTICLES), "")
     if not said:
         return ""
     matches = set()
