@@ -630,7 +630,8 @@ class TestBijWelkeVraagRegel:
     VRAGEN = {
         3: "Verlichting in de kelders? Is de verlichting in de kelders op orde?",
         4: "Toezicht in de nacht? Komt er toezicht in de nacht bij de kelders?",
-        5: "Verlichting bij de ingang? Wie betaalt de verlichting bij de ingang?",
+        5: "Verlichting bij de ingang? Wie betaalt de verlichting in de kelders"
+        " en bij de ingang?",
     }
     VRAGERS = {3: A, 4: A, 5: B}
     INTERRUPTIE = (
@@ -690,6 +691,17 @@ class TestBijWelkeVraagRegel:
         assert self._link(interruption=both, questions=vragen, named=4) == Link(
             4, self.A
         )
+        # A third question of the member is not one of the two.
+        derde = {**vragen, 6: self.VRAGEN[3]}
+        vragers = {**self.VRAGERS, 6: self.A}
+        assert self._link(
+            interruption=both, questions=derde, askers=vragers, named=6
+        ) == Link(None, self.A)
+
+    def test_a_question_marked_in_it_makes_it_an_interruption_that_asks(self):
+        """Whatever the form of what the member said around it."""
+        remark = Interruption(self.A, "De kelders zijn donker.", (3,))
+        assert self._link(interruption=remark) == Link(3, self.A)
 
     def test_a_question_that_is_not_open_is_no_link(self):
         closed = Interruption(self.A, self.INTERRUPTIE, (9,))
@@ -702,6 +714,20 @@ class TestBijWelkeVraagRegel:
         assert self._link(interruption=nothing, named=3) == Link(3, self.A)
         # Question 4 shares "kelders" with the interruption and no more.
         assert self._link(interruption=nothing, named=4) == Link(None, self.A)
+
+    def test_what_the_member_asked_says_what_a_bare_yes_is_about(self):
+        """ "Dat zeg ik toe" has no word of its own; the interruption has."""
+        nothing = Interruption(self.A, self.INTERRUPTIE)
+        bare = {"quote": "Ja, dat zeg ik toe.", "summary": "Zegt het toe."}
+        assert self._link(interruption=nothing, named=3, **bare) == Link(3, self.A)
+        # The words of the interruption do not make any question its answer.
+        assert self._link(interruption=nothing, named=4, **bare) == Link(None, self.A)
+        # And the summary does not count here: the model writes it with the
+        # question it names in front of it.
+        geleend = {**bare, "summary": "Zegt toezicht in de nacht toe."}
+        assert self._link(interruption=nothing, named=4, **geleend) == Link(
+            None, self.A
+        )
 
     def test_an_interruption_that_asks_nothing_is_not_what_the_answer_is_to(self):
         """The words of the bewindspersoon under the name of a member, or
@@ -787,6 +813,10 @@ class TestBijWelkeVraagRegel:
             "Kan hij ook iets zeggen over de fietsen buiten de stalling",
             "maar zou het niet beter zijn om eerst de kelders te tellen",
             "Ik miste een antwoord. Wat doet de minister met de kelders?",
+            # No form of a question as a whole; the verb in front of its
+            # subject says that something is asked.
+            "Dank voor de toezegging, alleen zou het niet beter zijn om de kelders"
+            " eerst te tellen, want dan heeft de Kamer er iets aan.",
         ],
     )
     def test_an_interruption_that_asks(self, tekst):
@@ -1946,6 +1976,24 @@ class TestNaEenInterruptie:
         assert [r.soort for r in await _rows(db_session, sessie_id)][-1] == "motie"
         service = DebatVraagService(db_session, mm, FakeLLM())
         assert await service._vragen_in(sessie_id, f"post:{post_id}") == ()
+
+    async def test_a_question_that_was_answered_in_a_turn_was_not_asked_in_it(
+        self, db_session
+    ):
+        """The vermelding a toezegging leaves on the question it answers
+        carries the key of the answer, and is no question of that turn."""
+        sessie_id, mm = await self._first_term(db_session)
+        sleutel = await self._interruption(
+            db_session,
+            sessie_id,
+            mm,
+            antwoord(vraag("Kan hij dat toezeggen?", hoort_bij=1)),
+        )
+        await self._answer(db_session, sessie_id, mm, sleutel)
+        answer_key = (await _rows(db_session, sessie_id))[-1].beurt_sleutel
+        service = DebatVraagService(db_session, mm, FakeLLM())
+        assert await service._vragen_in(sessie_id, sleutel) == (1,)
+        assert await service._vragen_in(sessie_id, answer_key) == ()
 
 
 class TestAanWie:

@@ -495,6 +495,7 @@ AT_START = 600
 # "dan kan het" has the same order and asks nothing, which errs to naming
 # the member who interrupted, as before this rule.
 _INVERTED = re.compile(
+    r"(?<!\bik )(?<!\bwe )(?<!\bwij )"
     r"\b(?:zou|kan|kunt|wil|wilt|mag|moet|gaat|komt|heeft|is)"
     r" (?:het|dat|dit|er|hij|zij|u|de minister|de staatssecretaris)\b"
 )
@@ -593,9 +594,11 @@ def link_to_question(
        the question is one that was marked in that interruption, asked in
        it or asked again, if it shares a word with the toezegging. With
        none marked there, the model's number counts only for a question
-       of the same member that shares `MIN_SHARED` words with the
-       interruption and the toezegging together. Promised to whoever
-       interrupted, link or no link.
+       of the same member that shares `MIN_SHARED` words with what was
+       said: the interruption and the quote. Not the summary: in one of
+       three new runs the model had written the words of the question it
+       named into it, and that was the one wrong link of those runs.
+       Promised to whoever interrupted, link or no link.
     2. Anywhere else, the model's number counts when the question shares
        `MIN_SHARED` words with what was said, the quote and the answer in
        front of it, and at least one with the summary. Promised to whoever
@@ -636,7 +639,7 @@ def link_to_question(
             and askers.get(named) == aan
             and len(
                 shared_subject_words(
-                    f"{interruption.tekst} {own}", questions[named], onderwerp
+                    f"{interruption.tekst} {quote}", questions[named], onderwerp
                 )
             )
             >= MIN_SHARED
