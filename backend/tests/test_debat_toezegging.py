@@ -1419,23 +1419,14 @@ class TestWoordenVanEenToezegging:
         iconen = list(regel._SOORT_ICOON.values())
         assert len(set(iconen)) == len(iconen)
 
-    def test_the_pinned_message_says_what_the_reactions_mean(self):
-        for woorden in ("nagekomen", "hoeft niet", "geen toezegging"):
-            assert woorden in LEGENDA
+    def test_the_pinned_message_is_one_short_line_for_every_kind(self):
+        """Spelled out per kind it was a block of text nobody could read."""
+        assert LEGENDA == (
+            "**Reageer op een markering:** ✅ afgehandeld · 👀 ik pak dit op · "
+            "🚫 hoeft niet · ❌ klopt niet"
+        )
         assert "\n" not in LEGENDA
-
-    def test_the_pinned_message_reads_per_kind(self):
-        """Three kinds: each its own sentence, the one meaning they share
-        said once."""
-        assert LEGENDA.startswith("Reageer op een markering met ✅, 👀, 🚫 of ❌.")
-        assert LEGENDA.count("ik pak dit op") == 1
-        for soort, woorden in (
-            ("vraag", "✅ beantwoord · 🚫 hoeft geen antwoord · ❌ geen vraag"),
-            ("motie", "✅ oordeel gegeven · 🚫 hoeft geen oordeel · ❌ geen motie"),
-            ("toezegging", "✅ nagekomen · 🚫 hoeft niet · ❌ geen toezegging"),
-        ):
-            assert f"Bij een {soort}: {woorden}. " in LEGENDA
-        assert "gemarkeerde vraag" not in LEGENDA
+        assert len(LEGENDA) < 100
 
 
 # --- the service -------------------------------------------------------
