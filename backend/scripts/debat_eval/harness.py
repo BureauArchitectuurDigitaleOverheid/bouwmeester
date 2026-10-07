@@ -7,6 +7,11 @@ database is real, Mattermost is a stand-in that remembers what it is sent,
 and the model is whatever `BaseLLMService` is handed in, wrapped so that
 its raw answers can be kept and its prompt can be rewritten on the way.
 
+When the turns are done, the list of toezeggingen the chairman read out at
+the end is looked for the way the worker does it when a debate is over
+(`find_closing_list`), and read once if it is there. What that stored is
+kept with the turn of the chairman each quote stands in.
+
 What comes back per turn: what the service made of it, what the model
 answered (also what the code dropped afterwards), and what was stored.
 """
@@ -25,14 +30,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_markering import (
     VERMELDING_ANTWOORD,
+    VERMELDING_BEVESTIGING,
     DebatMarkering,
     DebatMarkeringVermelding,
 )
 from bouwmeester.models.debat_sessie import DebatSessie
+from bouwmeester.services.debat_slotlijst import (
+    BEWINDSPERSOON,
+    CHAIRMAN,
+    MEMBER,
+    ClosingList,
+    Spoken,
+    find_closing_list,
+)
 from bouwmeester.services.debat_vraag_service import (
+    SOORT_CHAIRMAN,
     Beurt,
     DebatContext,
     DebatVraagService,
+    locate_citaat,
 )
 from bouwmeester.services.llm import base as llm_base
 from bouwmeester.services.llm.base import (
@@ -48,6 +64,7 @@ CHANNEL = "evalchannel000000000000000"
 TEAM = "evalteam000000000000000000"
 TURN_TIMEOUT = 300
 _TURN_TEXT = re.compile(r"<spreekbeurt>\n(.*)\n</spreekbeurt>", re.DOTALL)
+_LIST_TEXT = re.compile(r"<voorzitter>\n(.*)\n</voorzitter>", re.DOTALL)
 
 
 class RecordingLLM(BaseLLMService):
@@ -82,7 +99,10 @@ class OracleLLM(BaseLLMService):
     For trying the harness without a model, and for tests: what the code
     then misses or drops is the doing of the code alone. Asked for
     questions it gives the gold questions of the turn, asked for
-    toezeggingen the gold toezeggingen.
+    toezeggingen the gold toezeggingen. Asked for the chairman's list it
+    gives the gold toezeggingen of the chairman's turns that stand in the
+    words it is shown, and says of none which earlier one it is: matching
+    is then the code's alone.
     """
 
     capabilities = ProviderCapabilities(allowed_data={DataSensitivity.PUBLIC})
@@ -91,6 +111,7 @@ class OracleLLM(BaseLLMService):
         self, gold: dict, kinds: tuple[str, ...] = (KIND_VRAAG, KIND_TOEZEGGING)
     ) -> None:
         self.turns = [(t["tekst"], t["nr"]) for t in gold["beurten"]]
+        self.chairman = {t["nr"] for t in gold["beurten"] if t["soort"] == CHAIRMAN}
         self.items: dict[int, list[dict]] = {}
         for item in gold.get("items") or []:
             if item["soort"] in kinds:
@@ -99,6 +120,21 @@ class OracleLLM(BaseLLMService):
     async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
         import json
 
+        listed = _LIST_TEXT.search(prompt)
+        if listed is not None:
+            toezeggingen = [
+                {
+                    "citaat": item["citaat"],
+                    "samenvatting": "Toezegging uit de gouden set.",
+                    "termijn": None,
+                    "hoort_bij": None,
+                }
+                for number in sorted(self.chairman)
+                for item in self.items.get(number, [])
+                if item["soort"] == KIND_TOEZEGGING
+                and item["citaat"] in listed.group(1)
+            ]
+            return json.dumps({"toezeggingen": toezeggingen}, ensure_ascii=False)
         shown = _TURN_TEXT.search(prompt)
         text = (shown.group(1) if shown else "").removeprefix("(...) ")
         number = next((nr for full, nr in self.turns if full.endswith(text)), None)
@@ -208,6 +244,50 @@ def beurt_from(turn: dict, sessie_id: uuid.UUID, before: dict | None = None) -> 
     )
 
 
+def closing_list_of(turns: list[dict]) -> ClosingList | None:
+    """The chairman's list of toezeggingen in the turns of a gold file.
+
+    As the worker finds it when a debate is over. A gold file does not say
+    when the debate ended, so the start of its last turn stands in for
+    that. The parts of what comes back are indexes into `turns`.
+    """
+    spoken = [
+        Spoken(
+            CHAIRMAN
+            if turn["soort"] == CHAIRMAN
+            else BEWINDSPERSOON
+            if turn.get("is_bewindspersoon")
+            else MEMBER,
+            datetime.fromisoformat(turn["start"]),
+            turn["tekst"],
+        )
+        for turn in turns
+    ]
+    return find_closing_list(spoken)
+
+
+def list_beurt(turns: list[dict], closing: ClosingList, sessie_id: uuid.UUID) -> Beurt:
+    """The chairman's list as the turn the service reads.
+
+    It hangs under the last message of the chairman it is made of, as in
+    production it hangs under the message of the end of the debate.
+    """
+    last = turns[closing.delen[-1][0]]
+    return Beurt(
+        sessie_id=sessie_id,
+        spreekbeurt_id=None,
+        post_id=f"t{last['nr']:025d}",
+        channel_id=CHANNEL,
+        soort=SOORT_CHAIRMAN,
+        spreker=last["spreker"],
+        fractie=None,
+        start=closing.start,
+        moment_url=None,
+        tekst=closing.tekst,
+        slotlijst=True,
+    )
+
+
 def _raw_answer(llm: RecordingLLM, text: str) -> list[dict]:
     """What the model said, read the way production reads it."""
     try:
@@ -239,6 +319,124 @@ def _raw_answer(llm: RecordingLLM, text: str) -> list[dict]:
         }
         for v in vragen
     ]
+
+
+async def _read_closing_list(
+    session: AsyncSession,
+    service: DebatVraagService,
+    recorder: RecordingLLM,
+    context: DebatContext,
+    turns: list[dict],
+    block: dict,
+    sessie_id: uuid.UUID,
+) -> None:
+    """Have the chairman's list read, and keep what it stored with the turn
+    of the chairman each quote stands in.
+
+    A toezegging that came from the list is a marking of that turn. One
+    that the list confirmed is kept as a repeat in that turn, with the
+    number of the toezegging it confirmed: the gold set labels what the
+    chairman reads out as a repetition, so it scores as one.
+    `block["slotlijst"]` says what the list did as a whole.
+    """
+    closing = closing_list_of(turns)
+    if closing is None:
+        block["slotlijst"] = None
+        return
+    beurt = list_beurt(turns, closing, sessie_id)
+    before = len(recorder.answers)
+    outcome = await asyncio.wait_for(
+        service.beoordeel_beurt(beurt, context), TURN_TIMEOUT
+    )
+    answers = recorder.answers[before:]
+    results = {result["nr"]: result for result in block["beurten"]}
+
+    def turn_of(citaat: str) -> dict:
+        found = locate_citaat(closing.tekst, citaat)
+        index = closing.deel_van(found[1]) if found else closing.delen[0][0]
+        return results[turns[index]["nr"]]
+
+    new = (
+        await session.execute(
+            select(
+                DebatMarkering.soort,
+                DebatMarkering.citaat,
+                DebatMarkering.gericht_aan,
+                DebatMarkering.samenvatting,
+                DebatMarkering.volgnummer,
+                DebatMarkering.termijn,
+            )
+            .where(
+                DebatMarkering.sessie_id == sessie_id,
+                DebatMarkering.beurt_sleutel == beurt.sleutel,
+            )
+            .order_by(DebatMarkering.volgnummer)
+        )
+    ).all()
+    for row in new:
+        turn_of(row[1])["gemarkeerd"].append(
+            {
+                "soort": row[0],
+                "citaat": row[1],
+                "gericht_aan": row[2],
+                "samenvatting": row[3],
+                "herhaling": False,
+                "volgnummer": row[4],
+                "termijn": row[5],
+                "bij_volgnummer": None,
+                "slotlijst": True,
+            }
+        )
+    confirmed = (
+        await session.execute(
+            select(
+                DebatMarkering.soort,
+                DebatMarkeringVermelding.citaat,
+                DebatMarkering.volgnummer,
+                DebatMarkering.gericht_aan,
+                DebatMarkering.termijn,
+            )
+            .join(
+                DebatMarkering,
+                DebatMarkering.id == DebatMarkeringVermelding.markering_id,
+            )
+            .where(
+                DebatMarkeringVermelding.sessie_id == sessie_id,
+                DebatMarkeringVermelding.beurt_sleutel == beurt.sleutel,
+                DebatMarkeringVermelding.soort == VERMELDING_BEVESTIGING,
+            )
+            .order_by(DebatMarkering.volgnummer)
+        )
+    ).all()
+    for row in confirmed:
+        turn_of(row[1])["gemarkeerd"].append(
+            {
+                "soort": row[0],
+                "citaat": row[1],
+                "herhaling": True,
+                "bevestigt": row[2],
+                # What the toezegging says after the list was read: the
+                # member and the moment the chairman named fill in what it
+                # did not have.
+                "gericht_aan": row[3],
+                "termijn": row[4],
+            }
+        )
+    await session.commit()
+    first = results[turns[closing.delen[0][0]]["nr"]]
+    first["ruw"] += [raw for answer in answers for raw in _raw_answer(recorder, answer)]
+    first["aanroepen"] += len(answers)
+    block["aanroepen"] += len(answers)
+    for index, _ in closing.delen:
+        result = results[turns[index]["nr"]]
+        result["uitkomst"], result["reden"] = outcome.uitkomst, "slotlijst"
+    block["slotlijst"] = {
+        "beurten": [turns[index]["nr"] for index, _ in closing.delen],
+        "uitkomst": outcome.uitkomst,
+        "nieuw": [row[4] for row in new],
+        "bevestigd": [row[2] for row in confirmed],
+        "afgevallen": outcome.afgevallen,
+    }
 
 
 async def run_debate(
@@ -356,6 +554,15 @@ async def run_debate(
             block["aanroepen"] += len(answers)
             if on_turn is not None:
                 on_turn(turn, result)
+        await _read_closing_list(
+            session,
+            service,
+            recorder,
+            context,
+            gold["beurten"][:max_turns],
+            block,
+            sessie_id,
+        )
     except BaseException:
         await session.rollback()
         raise

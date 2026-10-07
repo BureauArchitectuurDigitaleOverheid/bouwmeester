@@ -7,6 +7,10 @@ whose text is complete, and has each one read once
 the bewindspersoon and for moties, a turn of the bewindspersoon for
 toezeggingen. Every rule in here holds for both.
 
+The chairman is not read, with one exception: when a part of the debate has
+ended, the list of toezeggingen the chairman read out at its end, if there
+is one (`debat_slotlijst`). Once, after every turn of that part was read.
+
 A round of its own, not part of the timeline: reading one turn takes the
 model three to fourteen seconds, and the timeline has to say who speaks
 within ten.
@@ -47,6 +51,14 @@ from bouwmeester.services import debat_stem as stem
 from bouwmeester.services import debat_stemmen_service as stemmen
 from bouwmeester.services import tk_activiteit
 from bouwmeester.services.debat_kanaal_service import AMSTERDAM
+from bouwmeester.services.debat_slotlijst import (
+    BEWINDSPERSOON,
+    CHAIRMAN,
+    MEMBER,
+    Spoken,
+    find_closing_list,
+    opens_closing_list,
+)
 from bouwmeester.services.debat_stemmen_service import (
     AFTER,
     BEFORE,
@@ -57,7 +69,10 @@ from bouwmeester.services.debat_tijdlijn_service import (
     GIVE_UP_AFTER,
     LOOKAHEAD,
 )
+from bouwmeester.services.debat_transcript import append_text
 from bouwmeester.services.debat_transcript_service import (
+    _CLOSING,
+    _SPEAKING,
     AFTER_END,
     ORDER,
     Turn,
@@ -66,7 +81,9 @@ from bouwmeester.services.debat_transcript_service import (
 )
 from bouwmeester.services.debat_vraag_moment import Line
 from bouwmeester.services.debat_vraag_service import (
+    SOORT_CHAIRMAN,
     UITKOMST_GEMARKEERD,
+    VOORZITTER,
     Beurt,
     DebatContext,
     DebatVraagService,
@@ -152,6 +169,25 @@ class _Waiting:
     # whoever interrupted there. The chairman giving the floor in between
     # is no turn: his words have no message of their own in the channel.
     before: Turn | None = None
+
+
+@dataclass(frozen=True)
+class _Ended:
+    """A part of a debate that has ended and whose closing words were not
+    looked at for the chairman's list yet."""
+
+    # The row of the end, and the message under which a toezegging that is
+    # only in the list hangs.
+    row_id: uuid.UUID
+    post_id: str | None
+    kop: str
+    end: datetime
+    # The first turn of the part: which day's list of speakers applies.
+    first: datetime
+    offset: timedelta
+    # Who spoke in the part, in order, as (kind, who, start, text, rows).
+    # Rows of the chairman that follow each other are one.
+    spoken: tuple[tuple[str, str, datetime, str, tuple[uuid.UUID, ...]], ...]
 
 
 def moment_url_from_kop(kop: str) -> str | None:
@@ -325,6 +361,11 @@ REACTIES_BUDGET = 20.0
 MAX_ATTEMPTS = 6
 PAUSE_FIRST = timedelta(seconds=30)
 PAUSE_MAX = timedelta(minutes=5)
+# How long the chairman's list waits for a turn of its part that is not
+# read yet: the list confirms the toezeggingen that were marked, so they
+# have to be there. A turn that is still not read by then never will be,
+# and the list is read without it.
+LIST_WAITS_FOR_TURNS = timedelta(minutes=15)
 
 
 class DebatVraagWorker:
@@ -375,14 +416,24 @@ class DebatVraagWorker:
                     continue
                 try:
                     waiting = await self._waiting(sessie_id, now)
-                    if not waiting:
+                    # The list of the chairman only when no turn waits: it
+                    # is matched to what the turns held.
+                    ended = [] if waiting else await self._ended(sessie_id, now)
+                    if not waiting and not ended:
                         continue
                     if vragen is None:
                         vragen = await self._service()
                     if vragen is None:
                         result.model = False
                         return result
-                    await self._read(sessie_id, waiting, vragen, client, now, result)
+                    if waiting:
+                        await self._read(
+                            sessie_id, waiting, vragen, client, now, result
+                        )
+                    for part in ended:
+                        await self._read_list(
+                            sessie_id, part, vragen, client, now, result
+                        )
                 except Exception:
                     # One debate that breaks must not stop the others.
                     await self.session.rollback()
@@ -787,6 +838,234 @@ class DebatVraagWorker:
         result.beoordeeld += 1
         return False
 
+    async def _ended(self, sessie_id: uuid.UUID, now: datetime) -> list[_Ended]:
+        """The parts of a debate that are over and whose closing words were
+        not looked at yet for the list of toezeggingen.
+
+        A part is ready when its end is there, its text is complete, no
+        line of it can still move to another speaker, and every turn of it
+        was read: the list is matched to the toezeggingen those turns
+        held. Whether the row of the end was read (`beoordeeld_at`) is how
+        "looked at" is kept, so that the list is read once.
+
+        Only parts in which the chairman says the words that open such a
+        list come back. Any other part is done here and now: it needs no
+        list of speakers and no model, and most debates have no list.
+        """
+        # Nearly every round of a debate that is running: nothing ended.
+        if not await self.session.scalar(
+            select(DebatSpreekbeurt.id)
+            .where(
+                DebatSpreekbeurt.sessie_id == sessie_id,
+                DebatSpreekbeurt.event_type == dd.EVENT_DEBATE_END,
+                DebatSpreekbeurt.beoordeeld_at.is_(None),
+            )
+            .limit(1)
+        ):
+            return []
+        sessie = (
+            await self.session.execute(
+                select(DebatSessie.debat_direct_ids, DebatSessie.ondertitels).where(
+                    DebatSessie.id == sessie_id
+                )
+            )
+        ).first()
+        if sessie is None:
+            return []
+        parts, ondertitels = list(sessie[0] or []), dict(sessie[1] or {})
+        rows = (
+            await self.session.execute(
+                select(
+                    DebatSpreekbeurt.id,
+                    DebatSpreekbeurt.debat_direct_id,
+                    DebatSpreekbeurt.event_type,
+                    DebatSpreekbeurt.beurt_soort,
+                    DebatSpreekbeurt.object_id,
+                    DebatSpreekbeurt.event_start,
+                    DebatSpreekbeurt.post_id,
+                    DebatSpreekbeurt.kop,
+                    DebatSpreekbeurt.tekst,
+                    DebatSpreekbeurt.beoordeeld_at,
+                )
+                .where(DebatSpreekbeurt.sessie_id == sessie_id)
+                .order_by(*ORDER)
+            )
+        ).all()
+        found: list[_Ended] = []
+        for debate_id in parts:
+            of_part = [row for row in rows if row[1] == debate_id]
+            ends = [row for row in of_part if row[2] == dd.EVENT_DEBATE_END]
+            if not ends or ends[-1][9] is not None:
+                continue
+            end = ends[-1]
+            entry = dict(ondertitels.get(debate_id) or {})
+            if not text_is_complete(entry, None, end[5], now):
+                continue
+            if (
+                entry.get("audio")
+                and voices_listen()
+                and now - end[5] < NEVER_MOVES_AFTER
+            ):
+                # A line around the last change of speaker can still be
+                # given to the chairman, or taken away.
+                continue
+            turns = await load_turns(self.session, sessie_id, debate_id)
+            unread = any(
+                not turn.closing and turn.beoordeeld_at is None and turn.text
+                for turn in turns
+            )
+            if unread and now - end[5] < LIST_WAITS_FOR_TURNS:
+                continue
+            spoken: list[tuple[str, str, datetime, str, tuple[uuid.UUID, ...]]] = []
+            for row_id, _, kind, turn_kind, who, start, _, _, tekst, _ in of_part:
+                if kind in _SPEAKING:
+                    spoken.append(
+                        (turn_kind or kind, who or "", start, tekst or "", (row_id,))
+                    )
+                elif kind in _CLOSING:
+                    # What is said after the end is no part of the debate.
+                    continue
+                elif spoken and spoken[-1][0] == SOORT_CHAIRMAN:
+                    _, _, begun, said, ids = spoken[-1]
+                    spoken[-1] = (
+                        SOORT_CHAIRMAN,
+                        "",
+                        begun,
+                        append_text(said, tekst or ""),
+                        (*ids, row_id),
+                    )
+                else:
+                    spoken.append((SOORT_CHAIRMAN, "", start, tekst or "", (row_id,)))
+            if not any(
+                kind == SOORT_CHAIRMAN and opens_closing_list(tekst)
+                for kind, _, _, tekst, _ in spoken
+            ):
+                await self._mark(end[0], now)
+                continue
+            first = next((row[5] for row in of_part), end[5])
+            found.append(
+                _Ended(
+                    row_id=end[0],
+                    post_id=end[6],
+                    kop=end[7] or "",
+                    end=end[5],
+                    first=first,
+                    offset=timedelta(milliseconds=entry.get("offset_ms") or 0),
+                    spoken=tuple(spoken),
+                )
+            )
+        return found
+
+    async def _read_list(
+        self,
+        sessie_id: uuid.UUID,
+        part: _Ended,
+        vragen: DebatVraagService,
+        client: httpx.AsyncClient,
+        now: datetime,
+        result: VraagTickResult,
+    ) -> None:
+        """Look for the chairman's list in the closing words of a part, and
+        have it read if it is there.
+
+        Which words are the list is decided by rule
+        (`find_closing_list`); nothing else the chairman said goes to the
+        model. A part without a list costs no call.
+        """
+        sprekers = await self._sprekers_for(client, part.first)
+        if sprekers is None:
+            # Without the list of speakers nobody can tell whether a
+            # bewindspersoon answered before the chairman's words.
+            result.fouten += 1
+            return
+        said: list[Spoken] = []
+        for kind, who, start, tekst, _ in part.spoken:
+            if kind == SOORT_CHAIRMAN:
+                wie = CHAIRMAN
+            else:
+                spreker = sprekers.get(who)
+                wie = (
+                    BEWINDSPERSOON
+                    if spreker is not None and is_bewindspersoon(spreker)
+                    else MEMBER
+                )
+            said.append(Spoken(wie, start, tekst))
+        closing = find_closing_list(said, part.end)
+        if closing is None:
+            await self._mark(part.row_id, now)
+            return
+        channel_id, activiteit_id, onderwerp = (
+            await self.session.execute(
+                select(
+                    DebatSessie.channel_id,
+                    DebatSessie.activiteit_id,
+                    DebatSessie.onderwerp,
+                ).where(DebatSessie.id == sessie_id)
+            )
+        ).one()
+        context = await self._context(sessie_id, activiteit_id, onderwerp, client)
+        rows = [row for index, _ in closing.delen for row in part.spoken[index][4]]
+        beurt = Beurt(
+            sessie_id=sessie_id,
+            spreekbeurt_id=part.row_id,
+            post_id=part.post_id,
+            channel_id=channel_id,
+            soort=SOORT_CHAIRMAN,
+            spreker=VOORZITTER,
+            fractie=None,
+            start=closing.start,
+            moment_url=moment_url_from_kop(part.kop),
+            tekst=closing.tekst,
+            lines=await self._lines_of(rows, part.offset),
+            slotlijst=True,
+        )
+        try:
+            outcome = await asyncio.wait_for(
+                vragen.beoordeel_beurt(beurt, context), JUDGE_TIMEOUT
+            )
+            failed = outcome.opnieuw_proberen
+        except Exception:
+            logger.exception("Slotlijst bij %s niet gelezen", part.row_id)
+            await self.session.rollback()
+            outcome = None
+            failed = True
+        if failed:
+            result.fouten += 1
+            # The debate is over: nothing waits behind this, so the next
+            # round simply tries again, a few times.
+            if await self._count_attempt(part.row_id) >= WINDOW_ATTEMPTS:
+                logger.warning("Slotlijst bij %s opgegeven", part.row_id)
+                await self._mark(part.row_id, now)
+            return
+        assert outcome is not None
+        if outcome.uitkomst == UITKOMST_GEMARKEERD:
+            result.toezeggingen += outcome.toezeggingen
+        await self._mark(part.row_id, now)
+        result.beoordeeld += 1
+
+    async def _lines_of(
+        self, rows: list[uuid.UUID], offset: timedelta
+    ) -> tuple[Line, ...]:
+        """The subtitle lines of some rows, row after row and within a row
+        by moment. See `_lines` for the clock they are on."""
+        if not rows:
+            return ()
+        found = (
+            await self.session.execute(
+                select(
+                    DebatOndertitel.spreekbeurt_id,
+                    DebatOndertitel.start,
+                    DebatOndertitel.tekst,
+                )
+                .where(DebatOndertitel.spreekbeurt_id.in_(rows))
+                .order_by(DebatOndertitel.start)
+            )
+        ).all()
+        per_row: dict[uuid.UUID, list[Line]] = {}
+        for row_id, start, tekst in found:
+            per_row.setdefault(row_id, []).append(Line(start - offset, tekst))
+        return tuple(line for row_id in rows for line in per_row.get(row_id, []))
+
     async def _position(self, row_id: uuid.UUID) -> int:
         """How many characters of an answer were read and stored."""
         return (
@@ -817,23 +1096,7 @@ class DebatVraagWorker:
         turn and the site plays where the speaker begins, which the
         subtitles have `offset` later. So it comes off here.
         """
-        if not turn.rows:
-            return ()
-        found = (
-            await self.session.execute(
-                select(
-                    DebatOndertitel.spreekbeurt_id,
-                    DebatOndertitel.start,
-                    DebatOndertitel.tekst,
-                )
-                .where(DebatOndertitel.spreekbeurt_id.in_(turn.rows))
-                .order_by(DebatOndertitel.start)
-            )
-        ).all()
-        per_row: dict[uuid.UUID, list[Line]] = {}
-        for row_id, start, tekst in found:
-            per_row.setdefault(row_id, []).append(Line(start - offset, tekst))
-        return tuple(line for row_id in turn.rows for line in per_row.get(row_id, []))
+        return await self._lines_of(list(turn.rows), offset)
 
     async def _count_attempt(self, row_id: uuid.UUID) -> int:
         attempts = (

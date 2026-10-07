@@ -43,6 +43,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_markering import (
+    SLEUTEL_SLOTLIJST,
     SOORT_MOTIE,
     SOORT_TOEZEGGING,
     SOORT_VRAAG,
@@ -50,6 +51,7 @@ from bouwmeester.models.debat_markering import (
     STATUS_TOEGEWEZEN,
     STATUS_VERWORPEN,
     VERMELDING_ANTWOORD,
+    VERMELDING_BEVESTIGING,
     VERMELDING_HERHALING,
     DebatMarkering,
     DebatMarkeringVermelding,
@@ -66,6 +68,12 @@ from bouwmeester.services.debat_motie import (
     find_moties,
     is_motion_text,
     motie_vorm,
+)
+from bouwmeester.services.debat_slotlijst import (
+    is_listed_commitment,
+    match_listed,
+    opens_closing_list,
+    promised_to,
 )
 from bouwmeester.services.debat_statusregel import (
     ICOON_MOTIE,
@@ -120,6 +128,9 @@ logger = logging.getLogger(__name__)
 SOORT_SPEAKER = dd.EVENT_SPEAKER
 SOORT_INTERRUPTER = dd.EVENT_INTERRUPTER
 SOORT_CHAIRMAN = "chairman"
+# Who a toezegging from the chairman's list stands under. The reply does
+# not show it; the row has to name someone.
+VOORZITTER = "de voorzitter"
 
 # A turn shorter than this is not sent to the model: "Dank u wel,
 # voorzitter." is not a question to anyone.
@@ -140,6 +151,10 @@ MAX_VRAGEN_BIJ_ANTWOORD = 60
 # How many of their own earlier toezeggingen, newest first: about 2 an hour
 # were made in the gold set.
 MAX_EERDERE_TOEZEGGINGEN = 30
+# How many toezeggingen of the debate the model gets next to the list the
+# chairman reads at the end, newest first: all of them, in any debate that
+# is not a day long.
+MAX_TOEZEGGINGEN_BIJ_LIJST = 60
 # An answer of the bewindspersoon goes to the model in windows of about
 # this many characters, each a call, cut where a sentence ends. The prompt
 # keeps only the end of a long text (`MAX_BEURT_IN_PROMPT`), which is right
@@ -252,15 +267,25 @@ class Beurt:
     # it was spoken. Empty when they are not known; a question then gets
     # the time of the start of the turn.
     lines: tuple[Line, ...] = ()
+    # The words of the chairman that are the list of toezeggingen read out
+    # at the end of the debate (`debat_slotlijst.find_closing_list`). The
+    # only words of a chairman that are ever read, and only for that.
+    slotlijst: bool = False
 
     @property
     def sleutel(self) -> str:
         """What makes this turn this turn, for "was it judged already"."""
         if self.spreekbeurt_id is not None:
-            return turn_sleutel(self.spreekbeurt_id)
-        if self.post_id:
-            return f"post:{self.post_id}"
-        return f"tijd:{self.start.astimezone(UTC).isoformat()}|{self.spreker}"[:255]
+            eigen = turn_sleutel(self.spreekbeurt_id)
+        elif self.post_id:
+            eigen = f"post:{self.post_id}"
+        else:
+            eigen = f"tijd:{self.start.astimezone(UTC).isoformat()}|{self.spreker}"
+        if self.slotlijst:
+            # Its own key: the list can hang under a message that is also
+            # a turn, and what is stored from it is told apart by this.
+            eigen = f"{SLEUTEL_SLOTLIJST}{eigen}"
+        return eigen[:255]
 
 
 @dataclass(frozen=True)
@@ -325,6 +350,8 @@ class Beoordeling:
     moties: int = 0
     # How many toezeggingen of the bewindspersoon this call stored.
     toezeggingen: int = 0
+    # Numbers of the toezeggingen the chairman's list confirmed.
+    bevestigd: tuple[int, ...] = ()
     # For an answer of the bewindspersoon: how many characters of it are
     # read and stored now, and whether there is more to read. With `meer`
     # the turn is not done: the same turn is handed in again, with this.
@@ -676,6 +703,11 @@ def _motie_kop(gezegd: str, vorm: str) -> str:
 
 
 KOP_TOEZEGGING = "Toezegging"
+# What the reply of a toezegging says about the list the chairman reads at
+# the end: that the chairman read it out too, or that it is known from
+# that list only.
+BEVESTIGD_DOOR_VOORZITTER = "bevestigd door de voorzitter"
+UIT_LIJST_VAN_VOORZITTER = "uit de lijst van de voorzitter"
 
 
 def format_toezegging_thread(
@@ -692,6 +724,8 @@ def format_toezegging_thread(
     first_in_thread: bool = True,
     status: str = STATUS_OPEN,
     door: str | None = None,
+    bevestigd: bool = False,
+    uit_lijst: bool = False,
 ) -> str:
     """The reply under the message of a turn that is the thread of a toezegging.
 
@@ -705,6 +739,11 @@ def format_toezegging_thread(
     is the member it was promised to, `termijn` by when, `bij_volgnummer`
     the question in this debate it answers; each is left out when it is
     not known.
+
+    `bevestigd` says the chairman read this toezegging out in the list at
+    the end of the debate. `uit_lijst` says it was not marked during the
+    debate and is known from that list alone: its quote is then the
+    chairman's wording, and its reply hangs under the chairman's message.
 
     The summary and the moment are the model's words, the member's name
     comes from Debat Direct and the quote from the transcript. All of it
@@ -720,6 +759,10 @@ def format_toezegging_thread(
     meta = [f"Toezegging {volgnummer}"]
     if stand:
         meta.append(stand)
+    if uit_lijst:
+        meta.append(UIT_LIJST_VAN_VOORZITTER)
+    elif bevestigd:
+        meta.append(BEVESTIGD_DOOR_VOORZITTER)
     wie = _vrij(_kort(aan or "", MAX_GERICHT_AAN)).strip()
     if wie:
         meta.append(f"aan {wie}")
@@ -756,6 +799,8 @@ def format_thread(
     door: str | None = None,
     termijn: str | None = None,
     bij_volgnummer: int | None = None,
+    bevestigd: bool = False,
+    uit_lijst: bool = False,
 ) -> str:
     """The reply of a markering, whatever kind it is.
 
@@ -777,6 +822,8 @@ def format_thread(
             first_in_thread=first_in_thread,
             status=status,
             door=door,
+            bevestigd=bevestigd,
+            uit_lijst=uit_lijst,
         )
     if soort == SOORT_MOTIE:
         return format_motie_thread(
@@ -869,10 +916,15 @@ class _Herhaling:
 
     volgnummer: int
     citaat: str
-    # `herhaling`, or `antwoord` for a toezegging on the question it answers.
+    # `herhaling`, `antwoord` for a toezegging on the question it answers,
+    # or `bevestiging` for a toezegging the chairman's list reads out.
     soort: str = VERMELDING_HERHALING
-    # Of a toezegging said again: by when, if it was named this time.
+    # Of a toezegging said again or read out: by when, if it was named
+    # this time.
     termijn: str | None = None
+    # Of a toezegging read out by the chairman: who it was promised to, if
+    # the chairman said so.
+    aan: str | None = None
 
 
 def _woorden(tekst: str) -> list[str]:
@@ -1108,6 +1160,105 @@ def lees_toezeggingen(
     return nieuw, herhaald, afgevallen
 
 
+def lees_slotlijst(
+    toezeggingen: Sequence[DebatToezegging],
+    tekst: str,
+    eerdere: Mapping[int, str],
+    onderwerp: str = "",
+    leden: Sequence[str] = (),
+) -> tuple[list[_Nieuw], list[_Herhaling], int]:
+    """Sort what the model found in the chairman's list into new, confirmed
+    and dropped.
+
+    Dropped: a quote that is not in the list, a second answer with the
+    same quote or one that begins inside another, and a quote without the
+    form of an item (`is_listed_commitment`): the opening of the list, a
+    word of thanks, the announcement of a tweeminutendebat.
+
+    An item is a toezegging of `eerdere`, the ones that were marked during
+    the debate by number with what each promised, when the code finds it
+    so by their words (`match_listed`); the model's `hoort_bij` helps and
+    does not decide. That one is confirmed, and gets the moment and the
+    member the chairman names if it had none. Every other item is new: a
+    toezegging that was missed during the debate, with the chairman's
+    wording as its quote.
+
+    Who an item was promised to is the member the chairman names behind
+    it, when that is one of `leden` (`promised_to`).
+    """
+    afgevallen = 0
+    gezien: set[str] = set()
+    items: list[tuple[int, str, DebatToezegging]] = []
+    for toezegging in toezeggingen:
+        gevonden = locate_citaat(tekst, toezegging.citaat)
+        if gevonden is None:
+            afgevallen += 1
+            logger.info(
+                "Citaat staat niet in de slotlijst, toezegging valt af: %s",
+                toezegging.citaat[:120],
+            )
+            continue
+        citaat, plek = gevonden
+        sleutel = _plat(citaat)[0]
+        if sleutel in gezien:
+            afgevallen += 1
+            continue
+        gezien.add(sleutel)
+        if not is_listed_commitment(citaat):
+            afgevallen += 1
+            logger.info("Citaat uit de slotlijst is geen toezegging: %s", citaat[:120])
+            continue
+        items.append((plek, citaat, toezegging))
+    items.sort(key=lambda item: item[0])
+
+    nieuw: list[_Nieuw] = []
+    bevestigd: list[_Herhaling] = []
+    vergeven: set[int] = set()
+    einde_vorige = 0
+    for index, (plek, citaat, toezegging) in enumerate(items):
+        if plek < einde_vorige:
+            # The same item twice, cut differently.
+            afgevallen += 1
+            continue
+        einde_vorige = plek + len(citaat)
+        volgende = items[index + 1][0] if index + 1 < len(items) else len(tekst)
+        aan = promised_to(tekst[einde_vorige : max(einde_vorige, volgende)], leden)
+        termijn = _kort(toezegging.termijn or "", MAX_TERMIJN)
+        termijn = termijn if termijn and deadline_is_said(termijn, citaat) else ""
+        samenvatting = _kort(toezegging.samenvatting, MAX_SAMENVATTING)
+        nummer = match_listed(
+            f"{samenvatting} {citaat}",
+            toezegging.hoort_bij,
+            eerdere,
+            onderwerp,
+            vergeven,
+        )
+        if nummer is not None:
+            vergeven.add(nummer)
+            bevestigd.append(
+                _Herhaling(
+                    nummer,
+                    citaat,
+                    VERMELDING_BEVESTIGING,
+                    termijn=termijn or None,
+                    aan=_kort(aan, MAX_GERICHT_AAN) or None,
+                )
+            )
+            continue
+        nieuw.append(
+            _Nieuw(
+                citaat=citaat,
+                gericht_aan=_kort(aan, MAX_GERICHT_AAN),
+                samenvatting=samenvatting,
+                stuk=None,
+                plek=plek,
+                soort=SOORT_TOEZEGGING,
+                termijn=termijn or None,
+            )
+        )
+    return nieuw, bevestigd, afgevallen
+
+
 # Where a sentence ends: not at the three dots of a line that runs on.
 _ZIN_EINDE = re.compile(r"(?<!\.\.)[.?!](?=\s)")
 
@@ -1208,6 +1359,29 @@ async def statusblok_voor_post(session: AsyncSession, post_id: str) -> str:
     return statusregel([(r[0], r[1]) for r in rows])
 
 
+def komt_uit_slotlijst(beurt_sleutel: str) -> bool:
+    """Whether a markering was taken from the list the chairman reads at
+    the end of the debate, by the key of its turn."""
+    return beurt_sleutel.startswith(SLEUTEL_SLOTLIJST)
+
+
+async def is_bevestigd(session: AsyncSession, markering_id: uuid.UUID) -> bool:
+    """Whether the chairman read this toezegging out in the list at the end.
+
+    For whoever writes the reply of a markering from its row.
+    """
+    return bool(
+        await session.scalar(
+            select(
+                exists().where(
+                    DebatMarkeringVermelding.markering_id == markering_id,
+                    DebatMarkeringVermelding.soort == VERMELDING_BEVESTIGING,
+                )
+            )
+        )
+    )
+
+
 async def schrijf_statusregel(
     session: AsyncSession, mattermost: MattermostService, post_id: str
 ) -> bool:
@@ -1289,6 +1463,8 @@ class DebatVraagService:
             self._ingehaald.add(beurt.sessie_id)
             threads = await self._haal_achterstand_in(beurt.sessie_id)
 
+        if beurt.slotlijst:
+            return await self._beoordeel_slotlijst(beurt, context, threads)
         reden = self._overslaan(beurt, context)
         if reden == REDEN_BEWINDSPERSOON:
             # An answer holds no questions and no moties. It is read for
@@ -1566,6 +1742,130 @@ class DebatVraagService:
             aanvullen=not heel,
         )
         return replace(stored, gelezen_tot=tot, meer=meer)
+
+    async def _beoordeel_slotlijst(
+        self, beurt: Beurt, context: DebatContext, threads: int
+    ) -> Beoordeling:
+        """Read the list of toezeggingen the chairman reads out at the end.
+
+        Read once: what it held is stored under the key of the list, and a
+        second call asks nothing. A turn of the chairman that does not
+        open such a list is not read, whoever hands it in
+        (`opens_closing_list`).
+
+        An item that is a toezegging of this debate leaves a vermelding on
+        it, and its reply is written again from the row, by the round of
+        the reactions, to say that the chairman confirmed it. An item that
+        was not marked is stored as a toezegging of its own, under the
+        message of the chairman.
+        """
+        if beurt.soort != SOORT_CHAIRMAN or not opens_closing_list(beurt.tekst):
+            return Beoordeling(
+                UITKOMST_OVERGESLAGEN, reden=REDEN_VOORZITTER, threads=threads
+            )
+        eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
+        if eerder is not None:
+            return Beoordeling(
+                UITKOMST_AL_BEOORDEELD, markering_ids=eerder, threads=threads
+            )
+        gemarkeerd = await self._toezeggingen_in(beurt.sessie_id)
+        result = await self.llm.markeer_debat_slotlijst(
+            onderwerp=context.onderwerp,
+            soort_vergadering=context.soort,
+            tekst=beurt.tekst,
+            eerdere=[(nummer, wie, wat) for nummer, wie, wat, _, _ in gemarkeerd],
+        )
+        if result.fout:
+            logger.warning(
+                "Slotlijst van %s in sessie %s niet gelezen: model %s",
+                _hhmm(beurt.start),
+                beurt.sessie_id,
+                result.fout,
+            )
+            return Beoordeling(
+                UITKOMST_LLM_ONBEREIKBAAR
+                if result.fout == DEBAT_VRAGEN_ONBEREIKBAAR
+                else UITKOMST_LLM_ONBRUIKBAAR,
+                threads=threads,
+            )
+        nieuw, bevestigd, afgevallen = lees_slotlijst(
+            result.toezeggingen,
+            beurt.tekst,
+            {nummer: waarover for nummer, _, _, _, waarover in gemarkeerd},
+            context.onderwerp,
+            await self._leden(beurt.sessie_id),
+        )
+        if not nieuw and not bevestigd:
+            return Beoordeling(
+                UITKOMST_GEEN_TOEZEGGING, threads=threads, afgevallen=afgevallen
+            )
+        stored = await self._markeer(
+            beurt,
+            nieuw,
+            bevestigd,
+            {nummer: id_ for nummer, _, _, id_, _ in gemarkeerd},
+            threads,
+            afgevallen,
+        )
+        return replace(stored, bevestigd=tuple(h.volgnummer for h in bevestigd))
+
+    async def _toezeggingen_in(
+        self, sessie_id: uuid.UUID
+    ) -> list[tuple[int, str, str, uuid.UUID, str]]:
+        """The toezeggingen that were marked in this debate, as (number, who
+        promised, summary, id, summary and quote together).
+
+        Of every bewindspersoon, and whatever became of them as long as
+        they were not rejected. Not the ones that came from a list
+        themselves: a list confirms what was said in the debate.
+        """
+        rows = (
+            await self.session.execute(
+                select(
+                    DebatMarkering.volgnummer,
+                    DebatMarkering.spreker,
+                    DebatMarkering.samenvatting,
+                    DebatMarkering.citaat,
+                    DebatMarkering.id,
+                )
+                .where(
+                    DebatMarkering.sessie_id == sessie_id,
+                    DebatMarkering.soort == SOORT_TOEZEGGING,
+                    DebatMarkering.status != STATUS_VERWORPEN,
+                    DebatMarkering.beurt_sleutel.not_like(f"{SLEUTEL_SLOTLIJST}%"),
+                )
+                .order_by(DebatMarkering.volgnummer.desc())
+                .limit(MAX_TOEZEGGINGEN_BIJ_LIJST)
+            )
+        ).all()
+        return [
+            (
+                r[0],
+                _kort(r[1], MAX_GERICHT_AAN),
+                _kort(r[2] or r[3], MAX_SAMENVATTING),
+                r[4],
+                f"{r[2]} {r[3]}",
+            )
+            for r in sorted(rows, key=lambda r: r[0])
+        ]
+
+    async def _leden(self, sessie_id: uuid.UUID) -> list[str]:
+        """The members of whom something was marked in this debate, by their
+        label: who the chairman can name as who a toezegging was made to."""
+        return list(
+            (
+                await self.session.execute(
+                    select(DebatMarkering.spreker)
+                    .where(
+                        DebatMarkering.sessie_id == sessie_id,
+                        DebatMarkering.fractie.is_not(None),
+                    )
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     async def _vragen_aan(
         self, sessie_id: uuid.UUID, spreker: str, voor: datetime
@@ -1876,7 +2176,9 @@ class DebatVraagService:
 
         `herhaald` are the markeringen of before this turn comes back to,
         each by its number in `open_ids`: a question asked again, a
-        toezegging said again, or the question a toezegging answers.
+        toezegging said again, the question a toezegging answers, or a
+        toezegging the chairman's list reads out. That last one is written
+        once per toezegging, whatever list it is read from.
 
         With `aanvullen` the turn is a long answer that is stored window
         by window: what is there stays, and only what is not there yet is
@@ -1961,6 +2263,10 @@ class DebatVraagService:
                 ).scalar_one()
             )
         for herhaling in herhaald:
+            if herhaling.soort == VERMELDING_BEVESTIGING and await is_bevestigd(
+                self.session, open_ids[herhaling.volgnummer]
+            ):
+                continue
             await self.session.execute(
                 insert(DebatMarkeringVermelding).values(
                     # The number came from this list, so it is in it.
@@ -1994,6 +2300,34 @@ class DebatVraagService:
                         reacties_gewijzigd_at=datetime.now(UTC),
                     )
                 )
+            if herhaling.soort == VERMELDING_BEVESTIGING:
+                # Read out by the chairman: the reply has to say so. Marked
+                # the way a reaction marks it, so that the round of the
+                # reactions writes the reply again from the row. The list
+                # is what the griffier registers, so the moment and the
+                # member it names fill in what the row did not have; what
+                # the row has is what was said, and stays.
+                eigen = (
+                    DebatMarkering.id == open_ids[herhaling.volgnummer],
+                    DebatMarkering.soort == SOORT_TOEZEGGING,
+                )
+                await self.session.execute(
+                    update(DebatMarkering)
+                    .where(*eigen)
+                    .values(reacties_gewijzigd_at=datetime.now(UTC))
+                )
+                if herhaling.termijn:
+                    await self.session.execute(
+                        update(DebatMarkering)
+                        .where(*eigen, DebatMarkering.termijn.is_(None))
+                        .values(termijn=herhaling.termijn)
+                    )
+                if herhaling.aan:
+                    await self.session.execute(
+                        update(DebatMarkering)
+                        .where(*eigen, DebatMarkering.gericht_aan == "")
+                        .values(gericht_aan=herhaling.aan)
+                    )
         await self.session.commit()
         aantal: dict[str, int] = {}
         for n in nieuw:
@@ -2095,6 +2429,7 @@ class DebatVraagService:
                     DebatMarkering.soort,
                     DebatMarkering.termijn,
                     DebatMarkering.bij_volgnummer,
+                    DebatMarkering.beurt_sleutel,
                 )
                 .where(
                     DebatMarkering.id == markering_id,
@@ -2146,6 +2481,10 @@ class DebatVraagService:
             first_in_thread=first,
             termijn=row[11],
             bij_volgnummer=row[12],
+            # A thread that is posted late can be of a toezegging the
+            # chairman read out in the meantime.
+            bevestigd=await is_bevestigd(self.session, markering_id),
+            uit_lijst=komt_uit_slotlijst(row[13]),
         )
         try:
             post_id = await self.mattermost.send_channel_message(

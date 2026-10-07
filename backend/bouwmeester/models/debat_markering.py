@@ -69,10 +69,21 @@ STATUS_VERWORPEN = "verworpen"
 # asked again, or the same toezegging said again. `antwoord` is written on
 # a question when a toezegging of the bewindspersoon answers it; it does
 # not change where the question stands, people do that with a reaction.
-# `aanvulling` is not written by anything yet.
+# `aanvulling` is not written by anything yet. `bevestiging` is written on a
+# toezegging when the chairman reads it out in the list at the end of the
+# debate: its reply then says so. At most one per toezegging.
 VERMELDING_HERHALING = "herhaling"
 VERMELDING_AANVULLING = "aanvulling"
 VERMELDING_ANTWOORD = "antwoord"
+VERMELDING_BEVESTIGING = "bevestiging"
+
+# What `beurt_sleutel` begins with for a toezegging that was not found in a
+# turn of the bewindspersoon but taken from the list the chairman reads at
+# the end. Its row carries the chairman as speaker, and the words of the
+# chairman as its quote; its reply says where it came from. The key, and
+# not a column of its own: it is what makes the list a turn that is read
+# once, and nothing else asks for it.
+SLEUTEL_SLOTLIJST = "slotlijst:"
 
 
 class DebatMarkering(Base):

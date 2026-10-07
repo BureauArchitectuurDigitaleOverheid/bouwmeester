@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 from bouwmeester.core.config import get_settings
+from bouwmeester.models.debat_markering import DebatMarkering
 from bouwmeester.models.debat_sessie import DebatOndertitel, DebatSpreekbeurt
 from bouwmeester.services import debat_subtitles as subs
 from bouwmeester.services.debat_subtitles import Cue
@@ -976,6 +977,51 @@ class TestTranscript:
 
         assert mm.channel[2].startswith("⏹️ **Het debat is afgelopen** · ")
         assert mm.channel[2].endswith("\nVoorzitter: Ik sluit de vergadering.")
+
+    async def test_the_end_keeps_the_count_of_what_hangs_under_it(
+        self, db_session, monkeypatch
+    ):
+        """A toezegging from the chairman's list hangs under the message of
+        the end. Written again from the chairman's words alone, the message
+        would lose its count."""
+        debat = _debat(("speaker", 1, "a"), ("chairman", 2, "v"), ("debate_end", 3, ""))
+        feed = Feed(monkeypatch, parts=[_stream(debat)])
+        Subtitles(monkeypatch, feed, [_cue(125, "Ik sluit de vergadering.")])
+        mm = Mattermost()
+        sessie = await _sessie(db_session)
+        await _play(db_session, mm, feed, 5)
+        end = (
+            await db_session.execute(
+                select(DebatSpreekbeurt).where(
+                    DebatSpreekbeurt.event_type == "debate_end"
+                )
+            )
+        ).scalar_one()
+        db_session.add(
+            DebatMarkering(
+                sessie_id=sessie.id,
+                beurt_sleutel=f"slotlijst:beurt:{end.id}",
+                volgnummer=1,
+                soort="toezegging",
+                channel_id="chan",
+                beurt_post_id=end.post_id,
+                thread_post_id="reply000000000000000000001",
+                spreker="de voorzitter",
+                gericht_aan="",
+                citaat="De minister zegt toe de Kamer een brief te sturen.",
+                samenvatting="Stuurt een brief.",
+                moment=end.event_start,
+            )
+        )
+        # As if a line came in late: the message is written again.
+        end.tekst_geplaatst = 0
+        await db_session.flush()
+
+        await _play(db_session, mm, feed, 6, start=5.2)
+
+        assert mm.messages[end.post_id].endswith(
+            "\nVoorzitter: Ik sluit de vergadering.\n\n---\n🤝 1 toezegging · open"
+        )
 
     async def test_what_a_member_said_last_is_not_the_chairmans(
         self, db_session, monkeypatch
