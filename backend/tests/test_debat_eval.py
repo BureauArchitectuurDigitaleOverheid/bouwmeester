@@ -46,6 +46,7 @@ from debat_eval.scoring import (  # noqa: E402
     REASON_NOT_AN_ANSWER,
     REASON_NOT_FOUND,
     REASON_NOT_RUN,
+    REASON_PLAIN_QUESTION,
     UNLABELLED,
     GoldItem,
     Marking,
@@ -194,6 +195,89 @@ class TestScore:
         assert result["vraag"].precision == 1.0
         # Nothing was marked as a request for a letter, so that one is missed.
         assert len(result["verzoek_om_brief"].misses) == 1
+
+    LETTER = "Ik zou graag een brief van de minister ontvangen met een overzicht."
+
+    def test_a_request_is_found_when_its_question_carries_the_property(self):
+        result = score(
+            [marking(self.LETTER, vraagt_om="een brief"), marking(Q_BUDGET)],
+            [item(self.LETTER, soort="verzoek_om_brief"), item(Q_BUDGET)],
+        )
+        request = result["verzoek_om_brief"]
+        assert (request.required, request.found, request.misses) == (1, 1, [])
+        assert (request.marked, request.right, request.false_positives) == (1, 1, [])
+        assert (request.precision, request.recall) == (1.0, 1.0)
+        # For the questions nothing changes: the marking on the request is
+        # left out, as it was before the property existed.
+        assert (result["vraag"].marked, result["vraag"].left_out) == (2, 1)
+        assert (result["vraag"].precision, result["vraag"].recall) == (1.0, 1.0)
+
+    def test_a_request_marked_as_a_plain_question_is_missed_as_a_request(self):
+        run = {
+            "debatten": [
+                {
+                    "naam": "d",
+                    "beurten": [
+                        {
+                            "nr": 1,
+                            "uitkomst": "gemarkeerd",
+                            "ruw": [{"citaat": self.LETTER}],
+                            "gemarkeerd": [],
+                        }
+                    ],
+                }
+            ]
+        }
+        result = score(
+            [marking(self.LETTER)],
+            [item(self.LETTER, soort="verzoek_om_brief")],
+            turns=miss_reasons(run),
+        )
+        (miss,) = result["verzoek_om_brief"].misses
+        assert miss.reason == REASON_PLAIN_QUESTION
+        assert result["verzoek_om_brief"].recall == 0.0
+        # Found as a question all the same: not a miss and not a mistake there.
+        assert result["vraag"].left_out == 1
+        assert result["vraag"].false_positives == []
+
+    def test_a_request_nobody_marked_says_why_as_any_miss_does(self):
+        result = score([], [item(self.LETTER, soort="verzoek_om_brief")])
+        (miss,) = result["verzoek_om_brief"].misses
+        assert miss.reason == REASON_NOT_RUN
+
+    def test_a_plain_question_with_the_property_is_wrong_as_a_request_only(self):
+        result = score([marking(Q_BUDGET, vraagt_om="een overzicht")], [item(Q_BUDGET)])
+        request = result["verzoek_om_brief"]
+        assert (request.marked, request.right) == (1, 0)
+        assert request.fp_categories == {"soort:vraag": 1}
+        assert request.precision == 0.0
+        assert (result["vraag"].right, result["vraag"].false_positives) == (1, [])
+
+    def test_an_unsure_request_that_is_flagged_is_right_and_not_required(self):
+        result = score(
+            [marking(self.LETTER, vraagt_om="een brief")],
+            [item(self.LETTER, soort="verzoek_om_brief", onzeker=True)],
+        )["verzoek_om_brief"]
+        assert (result.required, result.optional_found, result.right) == (0, 1, 1)
+
+    def test_only_a_question_can_be_a_request(self):
+        result = score(
+            [marking(self.LETTER, soort="toezegging", vraagt_om="een brief")],
+            [item(self.LETTER, soort="verzoek_om_brief")],
+        )["verzoek_om_brief"]
+        assert (result.marked, result.found) == (0, 0)
+
+    def test_a_question_asked_again_is_a_request_when_it_asks_for_paper(self):
+        again = score(
+            [marking(self.LETTER, herhaling=True)],
+            [item(self.LETTER, soort="verzoek_om_brief")],
+        )["verzoek_om_brief"]
+        assert (again.marked, again.found) == (0, 0)
+        on_paper = score(
+            [marking(self.LETTER, herhaling=True, vraagt_om="een brief")],
+            [item(self.LETTER, soort="verzoek_om_brief")],
+        )["verzoek_om_brief"]
+        assert (on_paper.marked, on_paper.found, on_paper.right) == (1, 1, 1)
 
     def test_why_a_question_was_missed(self):
         run = {
@@ -738,6 +822,31 @@ class TestTheProductionPathOnTheFixture:
         # A member who asks for a toezegging is asked about questions.
         assert outcomes[35]["bewindspersoon"] is False
         assert all(m["soort"] != "toezegging" for m in outcomes[35]["gemarkeerd"])
+
+        # A request for a letter is a question that says what it asks for,
+        # by rule: all three of the made-up debate, each with the product
+        # and the moment the fixture names, and no other question.
+        request = scores["verzoek_om_brief"]
+        assert (request.required, request.found, request.misses) == (3, 3, [])
+        assert (request.marked, request.false_positives) == (3, [])
+        asked = {
+            (nr, m["vraagt_om"], m["termijn"])
+            for nr, turn in outcomes.items()
+            for m in turn["gemarkeerd"]
+            if m.get("vraagt_om")
+        }
+        assert asked == {
+            (i["beurt"], i["vraagt_om"], i["termijn"])
+            for i in FIXTURE["items"]
+            if i["soort"] == "verzoek_om_brief"
+        }
+        assert all(
+            m["soort"] == "vraag"
+            for turn in outcomes.values()
+            for m in turn["gemarkeerd"]
+            if m.get("vraagt_om")
+        )
+        assert vraag.left_out == 3
 
         report = build_report(run, golds)
         assert "Run orakel" in report
