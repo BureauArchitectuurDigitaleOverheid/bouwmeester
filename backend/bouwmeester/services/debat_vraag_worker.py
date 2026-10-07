@@ -832,8 +832,6 @@ class DebatVraagWorker:
         ready: list[_Waiting] = []
         for item in going:
             turn = item.turn
-            if _answer_pause.waiting(turn.row_id, now):
-                continue
             if not may_hold_commitment(turn.text[turn.gelezen_tot :]):
                 continue
             before = item.before
@@ -1024,9 +1022,7 @@ class DebatVraagWorker:
             )
             await self.session.commit()
         head = (await self._turn_lines(final.turn))[: len(final.lines)]
-        return [line.id for line in head] == [line.id for line in final.lines] and all(
-            line.klaar for line in head
-        )
+        return [line.id for line in head] == [line.id for line in final.lines]
 
     async def _open_lines(
         self, sessie_id: uuid.UUID, parts: list[str], now: datetime

@@ -921,6 +921,33 @@ class TestWhatTheVoicesCanStillMove:
         assert llm.asked == []
         assert await w._at(db_session, b) is None
 
+    async def test_of_two_lines_in_play_the_first_one_counts(
+        self, db_session, monkeypatch
+    ):
+        """One at the start of the answer and one that was only just said,
+        under a word of the chairman inside the turn. What stands between
+        them is not final: the first can still land in front of it."""
+        mm = w.Chat()
+        llm = PerKind(toegezegd(toezegging(T_BRIEF)))
+        s, b, m = await self._debate(db_session, monkeypatch, mm)
+        # The interruption was read already; the answer waits for nothing
+        # but its own lines.
+        await db_session.execute(
+            update(DebatSpreekbeurt)
+            .where(DebatSpreekbeurt.id == b.id)
+            .values(beoordeeld_at=_now(100))
+        )
+        await _say(db_session, s, b, [(58, "Dat wil ik graag weten.")])
+        await _say(
+            db_session, s, m, [(80, INTRO), (84, T_BRIEF), (88, VERDER)], done=True
+        )
+        word = await w._row(db_session, s, "chairman", 100, "v", post=False)
+        await _say(db_session, s, word, [(140, NOG)])
+
+        await w._tick(db_session, mm, llm, 150)
+
+        assert llm.asked == []
+
     async def test_a_line_that_waited_too_long_is_read_and_stays_where_it_is(
         self, db_session, monkeypatch
     ):
@@ -956,7 +983,7 @@ class TestWhatTheVoicesCanStillMove:
         that was marked in the interruption before it."""
         mm = w.Chat()
         s = await w._running(db_session, ondertitels=_heard())
-        w.Outside(monkeypatch)
+        outside = w.Outside(monkeypatch)
         _listening(monkeypatch)
         a = await w._row(db_session, s, "speaker", 0, "a", tekst=w.OPENING)
         b = await w._row(
@@ -973,6 +1000,8 @@ class TestWhatTheVoicesCanStillMove:
 
         await w._tick(db_session, mm, PerKind(), 150)
         assert handed == []
+        # And nobody was asked who speaks: there is nothing to read yet.
+        assert outside.sprekers_calls == 0
 
         await db_session.execute(
             update(DebatOndertitel)
@@ -986,6 +1015,75 @@ class TestWhatTheVoicesCanStillMove:
         assert answer.loopt is True
         assert answer.voorafgaand == "Kamerlid B (Y)"
         assert Q_INTERRUPTIE in answer.voorafgaand_tekst
+
+
+@pytest.mark.asyncio
+class TestWhatARoundDidNotGetTo:
+    async def test_an_answer_is_not_read_in_a_round_that_did_not_reach_the_turn_before(
+        self, db_session, monkeypatch, handed
+    ):
+        """More turns of members wait than a round reads. The interruption
+        before the answer is one of them and is not reached: the answer
+        waits another round, whatever the round set out to do."""
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(mod, "MAX_TURNS", 1)
+        mm = w.Chat()
+        s = await w._running(db_session)
+        a = await w._row(
+            db_session, s, "speaker", 0, "a", tekst=f"{w.OPENING} {w.Q_WANNEER}"
+        )
+        b = await w._row(
+            db_session, s, "interrupter", 40, "b", tekst=f"{w.OPENING} {Q_INTERRUPTIE}"
+        )
+        m = await w._row(db_session, s, "speaker", 60, "m")
+        await _say(db_session, s, m, ANSWER)
+        w._in_channel(mm, a, b, m)
+
+        await w._tick(db_session, mm, PerKind(), 120)
+        assert [beurt.spreekbeurt_id for beurt in handed] == [a.id]
+
+        await w._tick(db_session, mm, PerKind(), 135)
+        assert [beurt.spreekbeurt_id for beurt in handed] == [a.id, b.id, m.id]
+
+    async def test_a_window_another_worker_stored_is_not_taken_for_the_whole_turn(
+        self, db_session, monkeypatch
+    ):
+        """During a deploy two workers read the same first window. The
+        second finds what the first stored. For a turn that is over and
+        short that means it was read; for one that goes on it means this
+        window was, and no more than that."""
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = PerKind(toegezegd(toezegging(T_BRIEF)))
+        s = await w._running(db_session)
+        m = await w._row(db_session, s, "speaker", 60, "m")
+        await _say(db_session, s, m, ANSWER)
+        w._in_channel(mm, m)
+        db_session.add(
+            DebatMarkering(
+                sessie_id=s.id,
+                spreekbeurt_id=m.id,
+                beurt_sleutel=service_mod.turn_sleutel(m.id),
+                volgnummer=1,
+                soort=SOORT_TOEZEGGING,
+                status="open",
+                channel_id=s.channel_id,
+                beurt_post_id=m.post_id,
+                thread_post_id="reply000000000000000000001",
+                spreker="Bewindspersoon A (Minister van Voorbeelden)",
+                gericht_aan="",
+                citaat=T_BRIEF,
+                samenvatting="",
+                moment=m.event_start,
+            )
+        )
+        await db_session.flush()
+
+        await w._tick(db_session, mm, llm, 120)
+
+        assert len(await _toezeggingen(db_session, s)) == 1
+        # Read as far as the window, not to the end of what is there.
+        assert await _position(db_session, m) == len(f"{INTRO} {T_BRIEF} {VERDER}")
 
 
 # --- under which message the reply hangs ----------------------------------
@@ -1073,8 +1171,10 @@ class TestTheMessageOfAToezegging:
         tekst = " ".join([w.OPENING, *_filler(30), w.Q_WANNEER])
         a = await w._row(db_session, s, "speaker", 60, "a", tekst=tekst)
         mm.messages[a.post_id] = w.KOP
-        await w._row(db_session, s, "debate_end", 300)
         await w._transcribe(db_session, mm, s)
+        turn = (await load_turns(db_session, s.id, PART))[0]
+        assert len(turn.vervolg) == 1 and w.Q_WANNEER in mm.messages[turn.vervolg[0]]
+        await w._row(db_session, s, "debate_end", 300)
 
         await w._tick(db_session, mm, w.FakeLLM(antwoord(vraag(w.Q_WANNEER))), 700)
 
