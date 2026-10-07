@@ -365,10 +365,12 @@ class TestWoordenVanEenMotie:
                 (SOORT_VRAAG, STATUS_OPEN),
                 (SOORT_VRAAG, STATUS_OPEN),
             ]
-        ) == ("❓ 2 vragen · open\n📜 1 motie · open")
+        ) == ("❓ 2 vragen · 🔴 **open**\n📜 1 motie · 🔴 **open**")
 
     def test_a_motie_alone(self):
-        assert statusregel([(SOORT_MOTIE, STATUS_OPEN)] * 2) == "📜 2 moties · open"
+        assert (
+            statusregel([(SOORT_MOTIE, STATUS_OPEN)] * 2) == "📜 2 moties · 🔴 **open**"
+        )
 
     def test_the_states_of_a_motie_in_its_own_words(self):
         assert (
@@ -377,7 +379,7 @@ class TestWoordenVanEenMotie:
         )
         assert statusregel(
             [(SOORT_MOTIE, STATUS_OPEN), (SOORT_MOTIE, STATUS_VERVALT)]
-        ) == ("📜 2 moties · 1 open · 1 hoeft geen oordeel")
+        ) == ("📜 2 moties · 🔴 **1 open** · 1 hoeft geen oordeel")
         # The words of a question stay those of a question.
         assert (
             statusregel([(SOORT_VRAAG, STATUS_BEANTWOORD)]) == "❓ 1 vraag · beantwoord"
@@ -456,7 +458,7 @@ class TestMotieMarkeren:
         assert all(root == post_id for _, root, _, _ in mm.replies)
 
         assert mm.messages[post_id] == (
-            f"{body}\n\n---\n❓ 1 vraag · open\n📜 2 moties · open"
+            f"{body}\n\n---\n❓ 1 vraag · 🔴 **open**\n📜 2 moties · 🔴 **open**"
         )
 
     async def test_a_turn_with_only_a_motie_is_marked_too(self, db_session):
@@ -470,7 +472,7 @@ class TestMotieMarkeren:
         assert row.soort == SOORT_MOTIE
         assert row.citaat.startswith("verzoekt de regering om samen met")
         assert row.citaat.endswith("gaat over tot de orde van de dag")
-        assert mm.messages[post_id] == f"{body}\n\n---\n📜 1 motie · open"
+        assert mm.messages[post_id] == f"{body}\n\n---\n📜 1 motie · 🔴 **open**"
 
     async def test_an_announcement_in_an_interruption_of_a_member(self, db_session):
         """A turn the model is not asked about is still read for a motie."""
@@ -577,7 +579,7 @@ class TestMotieMarkeren:
         rows = await _rows(db_session, sessie_id)
         assert [r.soort for r in rows] == [SOORT_MOTIE] * 2
         assert len(mm.replies) == 2
-        assert mm.messages[post_id] == f"{body}\n\n---\n📜 2 moties · open"
+        assert mm.messages[post_id] == f"{body}\n\n---\n📜 2 moties · 🔴 **open**"
 
         # The model stays away: nothing is stored twice.
         svc.llm.answers.append(RuntimeError("nog weg"))
@@ -598,7 +600,9 @@ class TestMotieMarkeren:
         rows = await _rows(db_session, sessie_id)
         assert [r.soort for r in rows] == [SOORT_MOTIE, SOORT_MOTIE, SOORT_VRAAG]
         assert len(mm.replies) == 3
-        assert mm.messages[post_id].endswith("❓ 1 vraag · open\n📜 2 moties · open")
+        assert mm.messages[post_id].endswith(
+            "❓ 1 vraag · 🔴 **open**\n📜 2 moties · 🔴 **open**"
+        )
 
         # Read by the model now: a fourth call asks nothing.
         calls = len(svc.llm.prompts)

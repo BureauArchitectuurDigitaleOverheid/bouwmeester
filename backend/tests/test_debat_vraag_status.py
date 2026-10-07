@@ -373,7 +373,7 @@ class TestDeStatusregel:
     @pytest.mark.parametrize(
         ("status", "woord"),
         [
-            (STATUS_OPEN, "open"),
+            (STATUS_OPEN, "🔴 **open**"),
             (STATUS_TOEGEWEZEN, "opgepakt"),
             (STATUS_BEANTWOORD, "beantwoord"),
             (STATUS_VERVALT, "hoeft geen antwoord"),
@@ -382,6 +382,19 @@ class TestDeStatusregel:
     def test_one_state_is_one_word_without_a_count(self, status, woord):
         assert statusregel([(SOORT_VRAAG, status)]) == f"❓ 1 vraag · {woord}"
         assert statusregel([(SOORT_VRAAG, status)] * 3) == f"❓ 3 vragen · {woord}"
+
+    def test_only_what_is_open_stands_out(self):
+        """Someone scrolling through the channel looks for what is open: a
+        line without the red dot needs nobody, and no other status has a
+        sign that could be as loud."""
+        klaar = statusregel(
+            [(SOORT_VRAAG, STATUS_TOEGEWEZEN), (SOORT_VRAAG, STATUS_BEANTWOORD)]
+        )
+        assert klaar == "❓ 2 vragen · 1 opgepakt · 1 beantwoord"
+        deels = statusregel(
+            [(SOORT_VRAAG, STATUS_OPEN), (SOORT_VRAAG, STATUS_BEANTWOORD)]
+        )
+        assert deels == "❓ 2 vragen · 🔴 **1 open** · 1 beantwoord"
 
     def test_every_state_is_counted_in_a_fixed_order(self):
         statussen = [
@@ -393,7 +406,8 @@ class TestDeStatusregel:
             STATUS_VERVALT,
         ]
         verwacht = (
-            "❓ 5 vragen · 1 open · 1 opgepakt · 1 beantwoord · 2 hoeft geen antwoord"
+            "❓ 5 vragen · 🔴 **1 open** · 1 opgepakt · 1 beantwoord"
+            " · 2 hoeft geen antwoord"
         )
         assert statusregel([(SOORT_VRAAG, s) for s in statussen]) == verwacht
         # Whatever order the questions were asked in.
@@ -861,7 +875,7 @@ class TestEenReactieWordtEenStatus:
         assert mm.messages[row.thread_post_id].startswith(
             "📜 **Verzoekt de regering een plan te maken**\nMotie 1 · ingediend · "
         )
-        assert splits(mm.messages[row.beurt_post_id])[1] == "📜 1 motie · open"
+        assert splits(mm.messages[row.beurt_post_id])[1] == "📜 1 motie · 🔴 **open**"
 
     async def test_the_reply_keeps_what_it_said(self, db_session):
         mm = FakeMattermost()
@@ -1098,7 +1112,7 @@ class TestEenReactieWeghalen:
         assert row.status_at >= voor
         # The whole reply is back, quote and all: nothing was lost.
         assert mm.messages[reply] == was
-        assert splits(mm.messages[row.beurt_post_id])[1] == ("❓ 1 vraag · open")
+        assert splits(mm.messages[row.beurt_post_id])[1] == ("❓ 1 vraag · 🔴 **open**")
 
     async def test_someone_elses_same_reaction_keeps_the_status(self, db_session):
         mm = FakeMattermost()
@@ -1165,7 +1179,7 @@ class TestHetStatusblok:
         beurt = een.beurt_post_id
         twee = await _markering(db_session, mm, sessie_id, 2, beurt_post_id=beurt)
         drie = await _markering(db_session, mm, sessie_id, 3, beurt_post_id=beurt)
-        assert splits(mm.messages[beurt])[1] == "❓ 3 vragen · open"
+        assert splits(mm.messages[beurt])[1] == "❓ 3 vragen · 🔴 **open**"
 
         await _reageer(
             db_session, mm, twee.thread_post_id, PERSOON_A, REACTIE_BEANTWOORD
@@ -1177,7 +1191,7 @@ class TestHetStatusblok:
 
         assert splits(mm.messages[beurt]) == (
             TURN,
-            "❓ 2 vragen · 1 open · 1 beantwoord",
+            "❓ 2 vragen · 🔴 **1 open** · 1 beantwoord",
         )
 
     async def test_is_gone_when_every_question_of_the_turn_was_rejected(
@@ -1210,7 +1224,7 @@ class TestHetStatusblok:
         await _haal_weg(db_session, mm, reply, PERSOON_A, REACTIE_GEEN_VRAAG)
         await _ronde(db_session, mm)
 
-        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · open"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · 🔴 **open**"
 
     async def test_keeps_a_transcript_that_grew_meanwhile(self, db_session):
         mm = FakeMattermost()
