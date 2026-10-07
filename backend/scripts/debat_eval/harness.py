@@ -148,6 +148,10 @@ class OracleLLM(BaseLLMService):
         text = (shown.group(1) if shown else "").removeprefix("(...) ")
         number = next((nr for full, nr in self.turns if full.endswith(text)), None)
         if '{"toezeggingen"' in prompt:
+            if number is None:
+                # A window of a long answer, or of one that goes on: a
+                # piece of the turn, not its end.
+                number = next((nr for full, nr in self.turns if text in full), None)
             toezeggingen = [
                 {
                     "citaat": item["citaat"],
@@ -157,7 +161,9 @@ class OracleLLM(BaseLLMService):
                     "hoort_bij": None,
                 }
                 for item in self.items.get(number, [])
-                if item["soort"] == KIND_TOEZEGGING
+                # Only what stands in the words that were shown: a model
+                # cannot quote what it was not given.
+                if item["soort"] == KIND_TOEZEGGING and item["citaat"] in text
             ]
             return json.dumps({"toezeggingen": toezeggingen}, ensure_ascii=False)
         vragen = [

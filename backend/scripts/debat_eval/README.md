@@ -22,10 +22,12 @@ it measured.
 
 | File | What it does |
 |---|---|
-| `build_turns.py` | Recording of a debate (subtitle lines and Debat Direct events) to a gold file without labels |
+| `build_turns.py` | Recording of a debate (subtitle lines and Debat Direct events) to a gold file without labels; with `--regels` every turn keeps its subtitle lines and their moments |
 | `apply_labels.py` | Short label lines to `items` and `negatieven` in a gold file |
 | `gold.py` | The gold format and its validation |
 | `harness.py` | Runs `DebatVraagService` over the turns of a gold file |
+| `replay.py` | Plays a gold file that has its subtitle lines on a clock, in rounds as the worker makes them, and notes when each marking was stored |
+| `timing.py` | How long after it was said a gold item was marked, and how many calls a run made |
 | `run.py` | Command line around the harness; writes a run file and prints the report |
 | `report.py` | Scores a saved run again, without a model or a database |
 | `scoring.py` | Matching, counting, the report and the comparison of two runs |
@@ -70,6 +72,23 @@ uv run python -m debat_eval.run $GOLD/gold-*.json --label na-wijziging \
 uv run python -m debat_eval.report $GOLD/run-baseline.json --check vraagvorm
 uv run python -m debat_eval.stats $GOLD/gold-*.json
 ```
+
+```bash
+# Play the debates on a clock: also how long a marking waits. Needs gold
+# files with the subtitle lines of every turn (see "Making a gold file").
+uv run python -m debat_eval.run $GOLD/gold-*.json --replay --out $GOLD/run-klok.json
+uv run python -m debat_eval.run $GOLD/gold-*.json --replay --no-running \
+    --out $GOLD/run-klok-einde.json      # every turn read when it is over
+uv run python -m debat_eval.timing $GOLD/run-klok.json
+```
+
+`--replay` takes two assumptions about what production adds to the moment
+something is said: `--subtitle-lag` (40 seconds: the playlist lists a file
+half a minute after its moment and the timeline looks every ten) and
+`--voices` (`direct`: a line near a change of speaker is decided about as
+soon as the voices may look; `nooit`: never, so the worker gives up on it
+after three minutes). A round is the interval of the worker and a call
+counts as 6 seconds. See "An answer is read while it goes on".
 
 `--prompt-variant` sends the production prompt through one of the rewrites in
 `variants.py` before it reaches the model. That is how a wording change is
@@ -117,6 +136,11 @@ debates: a median of 640 characters, a ninth decile of 5,214, a longest of
 of the 135 for the turns of members: 4.6 more per hour of speech over the
 whole set, against 3.6 when an answer was one call whatever its length. A
 call for a window took 4.2 to 7.1 seconds (14 calls on one debate).
+
+Read while it goes on, an answer costs more windows: 37 calls a replay where
+it was 27, which is 6.4 per hour of speech against 4.6. A replay
+(`--replay`) plays the debates on a clock and asks the model as often as a
+run without one, plus those ten.
 
 ## How a run is scored
 
@@ -290,7 +314,10 @@ skip, is read for toezeggingen and for nothing else.
 
 | | Who decides |
 |---|---|
-| Which turns are read, and in which order: those of members first, then at most two windows of answers per round | Code (`debat_vraag_worker`) |
+| Which turns are read, and in which order: those of members first, then at most two windows of answers per round, of answers that are over before answers that go on | Code (`debat_vraag_worker`) |
+| Which part of an answer that goes on is final: the lines of before the first line the voices can still move into or out of the turn. Whoever reads them marks them as decided first | Code (`first_in_play`, `final_lines`, `DebatVraagWorker._settle`) |
+| Whether a window of an answer that goes on is asked about now: more than a window is waiting, or a sentence that looks like a toezegging has the sentence after it, or the words of a commitment stand in 1,500 characters that were not read | Code (`running_window`) |
+| Under which message of a long answer the reply hangs: the one that holds the quote | Code (`post_holding`) |
 | How an answer is cut: windows of about 4,000 characters that end where a sentence ends and begin two sentences back, and how far a turn was read | Code (`answer_window`, `antwoord_gelezen_tot`) |
 | Whether a window goes to the model: the words of a commitment stand in what is new in it | Code (`next_window`, `may_hold_commitment`) |
 | Which sentences the model is pointed at | Code (`commitment_passages`) |
@@ -597,16 +624,205 @@ from, and who promised when the chairman names them:
     🤝 **Informeert de Kamer over de verlichting in de kelders.**
     Toezegging 31 · uit de lijst van de voorzitter · toegezegd door de minister · aan Kamerlid C (Z) · vóór het kerstreces · 11:00
 
-### How long a toezegging waits
+### An answer is read while it goes on
 
-A turn is read when it is over. In the gold set the 21 toezeggingen that
-stand in an answer were said a median of 74 seconds before the end of
-their turn, a ninth decile of 429 and at most 493: that long they wait
-before anything can be marked, with one call per answer and with windows
-alike. After the end of the turn come the margin of the worker and the
-call itself, 4 to 7 seconds for a window. With windows a long answer is
-read over more rounds, one or two windows a round, so its last toezegging
-comes up to a round or two later than with one call.
+A turn used to be read when it was over. In the gold set the 21
+toezeggingen that stand in an answer were said a median of 86 seconds
+before the next event of any kind, a ninth decile of 449 and at most 514;
+counted to the next message, which is what the worker waits for (a word of
+the chairman is no message), a median of 176, a ninth decile of 502 and at
+most 535. Then came the margin, the subtitles and the round. A minister
+who speaks for ten minutes showed nothing for ten minutes.
+
+Now the part of an answer that is final is read while the turn goes on.
+A turn of a member is read when it is over, as before.
+
+**What is final.** The text of a turn is its subtitle lines in order
+(`derive_text`), and three things could change the text of a turn that
+goes on: a line that comes in, a line the voices move in or out, and an
+event that splits the turn afterwards. So:
+
+- A line that comes in is later than every line that is there: the
+  subtitles are read file after file, and a line is in the file it starts
+  in. Nothing is put in front of a line that was read.
+- A line the voices can still move is said by the rule the worker already
+  had for a turn that is over (`rows_in_play`): younger than half a minute,
+  or near a change of speaker and not decided about, for three minutes at
+  most. The lines of a turn of before the first such line are final
+  (`first_in_play`, `final_lines`): a line that moves lands at its own
+  moment, behind them. At the start of an answer that means nothing is
+  read until the lines around the change of speaker are decided about, so
+  a sentence of the member who interrupted is not read as the minister's.
+- Before a window is read, its lines are marked as decided about
+  (`stem_klaar`), in a commit of their own, and the turn is looked at
+  again. The voices move a line only while it has no such mark, in one
+  statement that looks at it. So what was read does not leave the turn
+  afterwards, also not the lines the worker stopped waiting for after
+  three minutes, which the voices keep trying for ten. A turn that is over
+  had this from "a turn that was read is not touched"; a turn that goes
+  on is not read yet, so the lines carry it.
+- An event that comes in late for the same person changes the first line
+  of the message, not its text. One of somebody else that gets a message
+  of its own ends the turn there; what was read stays under the message
+  it was read in.
+
+**How far a turn was read** is still a number of characters of its text
+(`antwoord_gelezen_tot`), not a line or a moment. That is safe because the
+text in front of it is made of lines that are marked as decided and never
+move or disappear, and the text of what is final is how the text of the
+whole turn begins (`text_of`). Should a line be put in front of it after
+all, the next window starts a line early: read twice and stored once,
+never skipped. No migration, and a turn that was half read when this was
+deployed goes on where it was. For an answer that goes on the number is
+written in the same commit as what the window held, so that a restart
+cannot leave a toezegging stored for a turn that says nothing of it was
+read.
+
+**Where a window ends.** At the last sentence that is complete
+(`final_end`); the tail that is still being said is for a later round. A
+window begins two sentences back, as it did, so what was said across the
+edge of what was final is seen whole the next time, and a toezegging two
+windows both saw is stored once (`_nog_niet_opgeslagen`).
+
+**When the model is asked.** A round brings a sentence or two, and a call
+per round would be 240 an hour. So a window is asked about when more than
+a window of final text waits (as in a turn that is over), or when a
+sentence in it looks like a toezegging (`commitment_passages`) and the
+sentence after it is there, or when the words of a commitment stand in it
+and 1,500 characters were said since the last window (`MEELEES_VENSTER`).
+The sentence after it, because the moment is often named there, and a
+quote that is stored without it is not stored again with it. Without the
+third rule the ninth decile stays where it was, at 489 seconds, for 29
+calls; with 2,000 characters it is 171 for 36 calls, with 1,500 it is 141
+for 37, with 1,000 it is 115 for 41, with 600 it is 108 for 43 (counted
+without a model, on which window would hold each of the 21).
+
+After a window of a turn was asked about, the turn is left alone for 30
+seconds (`RUNNING_EVERY`), unless a full window waits: three commitments
+in three sentences are one call and not three. On this gold set that
+changes nothing: with a floor of 0, 20, 30 and 45 seconds the replay asks
+about the same 37 windows and the toezeggingen wait the same 71 seconds,
+so it is a bound for a debate that is not in the set.
+
+A round in which nothing new is final costs no call, no look at the list
+of speakers and no look for a model. Who answers in a debate is
+remembered for as long as the process lives.
+
+**Under which message the reply hangs.** Under the message of the turn
+that holds the quote: the first, or the one a long turn continues in
+(`post_holding`). A cut between two messages depends only on the text in
+front of it, so the message of a quote in final text does not change when
+more is said. The count ("1 toezegging") stands under that same message.
+A question and a motie hang under the first message, as they did.
+
+**One writer of a message.** The marking used to put the count under a
+message itself, from its own loop: read the message, replace the block,
+write it back. On a turn that goes on, the transcription can write the
+next lines in between, and the message written back was those lines short
+until the turn grew again, or for good. So the marking no longer writes
+the message of a turn at all, for a turn that goes on or one that is over,
+from the question worker, the chairman's list or the round of the
+reactions (`schrijf_statusregel` returns ``None`` for such a message). It
+stores what it found and leaves the row without `statusregel_at`.
+
+Every round of the timeline, after its own work, takes the rows that are
+out of date (`DebatTranscript.write_counts`). The timeline is the process
+that writes the text of a turn, so there reading a message and writing it
+back with another block is safe: nothing writes it in between. That is
+all it does: the text of the message stays as it stands in the channel
+and is never made anew from the rows, no other message is touched, none
+is posted and none is taken away. A debate of last week was written by
+the code of last week, and a reaction of today changes the count under
+one message of it. A change of status shows after one round of the
+marking and one of the timeline: 25 seconds at most with the intervals as
+they are (15 and 10), where it was 15.
+
+What a round may spend on it: 10 messages, two requests each, and 5
+seconds. A message that cannot be written is tried again after 30
+seconds, then 1, 2, 4, 8 and 15 minutes: nine tries in about an hour, then
+one line in the log and the count stays as it is until someone reacts
+again. The rows that are out of date have an index of their own, and the
+migration that adds it marks every row older than an hour as written, so
+that the first round after a deploy does not start on all that was ever
+left behind.
+
+**What it measured.** The four debates played on a clock (`--replay`),
+with the subtitles 40 seconds behind, a round every 15 seconds and 6
+seconds for a call. First with the oracle, which marks every gold
+toezegging the code lets through, in the first window that holds it: 15
+of them stand in an answer, sure and unsure together.
+
+| Seconds from said to marked, oracle | Median | Ninth decile | Longest | Calls for answers | Per hour of speech |
+|---|---|---|---|---|---|
+| Read when the turn is over, voices decide at once | 296 | 590 | 598 | 27 | 4.6 |
+| Read while it goes on, voices decide at once | 71 | 135 | 152 | 37 | 6.4 |
+| Read when the turn is over, voices never decide | 416 | 725 | 733 | 27 | 4.6 |
+| Read while it goes on, voices never decide | 135 | 230 | 238 | 36 | 6.2 |
+
+"Voices never decide" is the worst there is: every line near a change of
+speaker waits the full three minutes. Production is between the two rows,
+nearer the first when the voices are known. The 71 seconds are the
+subtitles, the sentence after, the round and the call; nothing is left to
+gain there but the subtitles themselves.
+
+Then with the model, `claude-haiku-4-5-20251001` through `claude_cli`:
+three replays that read along, 173 calls each, and on the same day three
+that read every turn at its end, 163 calls each. The mean, and the lowest
+and highest run. Each cell is marked, wrong, precision and recall.
+
+| | Reading along | The same day, every turn at its end | The last table above |
+|---|---|---|---|
+| Toezeggingen, both debates | 17 to 19, 1 to 3, 89% (84 to 94), 75% | 17 to 18, 1 to 2, 91% (89 to 94), 75% | 17 to 19, 1 to 2, 91% (89 to 94), 75% |
+| Toezeggingen, notaoverleg | 9, 1 to 2, 85% (78 to 89), 62% | 8 to 9, 1, 88% (88 to 89), 62% | |
+| Toezeggingen, wetgevingsoverleg | 8 to 10, 0 to 2, 93% (80 to 100), 100% | 8 to 10, 0 to 1, 93% (89 to 100), 100% | |
+| Questions, all four | 150 to 156, 18 to 26, 85% (83 to 88), 94% (91 to 95) | 146 to 152, 20 to 24, 85% (84 to 87), 92% (91 to 94) | 149 to 152, 19 to 23, 86% (85 to 87), 92% (92 to 93) |
+| Questions, three debates the rules were made on | 114 to 118, 12 to 21, 86% (82 to 89), 94% (90 to 96) | 108 to 115, 12 to 17, 87% (85 to 89), 92% (90 to 94) | 112 to 119, 12 to 17, 88% (85 to 89), 93% (92 to 93) |
+| Questions, the debate kept apart | 36 to 38, 5 to 8, 83% (78 to 86), 93% (90 to 97) | 36 to 40, 7 to 8, 79% (78 to 80), 92% (90 to 93) | 33 to 37, 6 to 7, 82% (81 to 83), 90% |
+| Moties | 13, 0, 100%, 11 of 11 | the same | the same |
+
+- Of the 12 sure toezeggingen 9 are found in every one of the six runs, 5
+  in the one debate and 4 in the other, as before; of the 14 unsure or
+  repeated ones 5 to 7 reading along and 6 to 7 at the end.
+- Wrong toezeggingen: 2, 1 and 3 reading along, 2, 2 and 1 at the end.
+  One more over three runs. The run with 3 has two in the
+  wetgevingsoverleg, where no other run has more than one. That may be the
+  price of more and smaller windows: 37 calls where there were 27, and a
+  sentence in the two sentences two windows share is asked about twice.
+  Or chance: three runs against three do not tell.
+- The questions show how much three runs differ by themselves. Nothing on
+  the path of a question changed, a replay hands in the same turns with the
+  same words, and the oracle marks the same 148 either way. Still the runs
+  that read along have 18 to 26 wrong and those of the same day that do
+  not 20 to 24.
+- The link to a question: 4, 6 and 5 links kept reading along, and 5, 3
+  and 3 at the end. Those of the runs that read along were read by hand, as
+  before: of the 15, 12 are the question that was answered, 1 is probably
+  that, and 2 are wrong, both in the second run. One points at a question
+  to the initiatiefnemers that should not have been marked (the kind the
+  last set had once), one at a question of another member where the
+  bewindspersoon names who asked two sentences earlier, in the same window.
+  The model named that number and the words bore it out; the rule is the
+  one that was there. The links of the runs at the end were counted and
+  not read. Who it was promised to follows the link: wrong for those two,
+  right or empty for the rest. With the oracle the links and the names are
+  the same with and without reading along.
+- How long a toezegging waits, on the gold toezeggingen each run found in
+  an answer (9 to 11 of them). Reading along: a median of 57, 61 and 57
+  seconds after it was said, a ninth decile of 103 and at most 133, in
+  every run. At the end: a median of 140, 237 and 237 seconds, a ninth
+  decile of 539 to 583 and at most 583 to 598.
+- Calls: 173 against 163, the 37 for answers against 27. That is 6.4 per
+  hour of speech against 4.6.
+
+What the replay is not. The turns are those of the gold file, one per
+event; the worker reads one message, which is the same speaker carrying
+on after a word of the chairman as well, so a turn ends a little earlier
+in a replay than in production, for both ways of reading. No voices are
+told apart and nothing is fetched: when a line is final is the rule of the
+worker with the two assumptions above. And the code that decides which
+lines are final in production (`DebatVraagWorker._final`) is not what the
+replay runs; it is tested on rows, and with two real sessions for the
+moment the voices and the marking touch the same line.
 
 ### Questions and moties, with the answers read as well
 
@@ -644,18 +860,37 @@ every one of the twelve runs.
 
 ### What is still open
 
-- A toezegging is marked when the turn it is in is over, minutes after it
-  was said in a long answer. The windows and the read position are what
-  reading during the turn needs, and it is not built: which text of a turn
-  that is still going on is final (the subtitles read past it, the voices
-  done with its lines) and what to do when a line moves out of a window
-  that was read are a change of their own.
-- The reply of a toezegging hangs under the first message of the turn, also
-  when the answer is long and cut into several messages
-  (`MESSAGE_LIMIT`): the messages that follow are posts of their own in the
-  channel, and the status line is under the first. The time in the reply
-  links to the moment the toezegging was said. Hanging it under the message
-  that holds the quote goes with reading during the turn.
+- Reading an answer while it goes on was never seen on a debate that
+  runs: every number about it is a replay. How far the subtitles are
+  behind, how soon the voices decide, and whether the timeline and the
+  marking get in each other's way in ways two sessions in a test do not
+  show, are for a live debate to say.
+- A toezegging worded as a wish, without a moment or anything to deliver,
+  is not one of the sentences that make a window worth a call. It waits
+  until 1,500 characters were said, or for the end of the turn.
+- A sentence that looks like a toezegging and is the last one before a
+  long silence, or before the minister is interrupted, waits for the end
+  of the turn: nothing comes after it.
+- At the start of an answer nothing is read until the lines around the
+  change of speaker are decided about: up to three minutes when the
+  voices do not know the speakers yet. And an answer to an interruption
+  waits for that interruption to be read, a minute and a half after the
+  answer began at most (`WAIT_FOR_INTERRUPTION`); read without it, a
+  toezegging at its start is tied to no question and promised to nobody.
+  A toezegging in the first sentences of an answer is the one that gains
+  least.
+- A line of an answer the voices hold at the moment it is to be read is
+  not waited for: the window is read a round later.
+- A line the worker marks as decided is one the voices no longer look at.
+  A sentence of the member who interrupted that the time put at the start
+  of the answer and that the voices would have moved after three minutes
+  stays in the answer, as it does when a turn that is over is read.
+- A quote that is cut over two messages hangs under the message it begins
+  in. And the reply hangs under the message that holds the quote at the
+  moment of reading: when a message of the timeline could not be made
+  then and is made later, the quote is in the later one.
+- A question of a member still hangs under the first message of a long
+  turn.
 - The list the chairman reads at the end is read from one debate: every
   number about it is that list of three items. How long before the end a
   list begins (`LIST_WITHIN`), and the words that open it, are a guess from
@@ -866,6 +1101,13 @@ uv run python -m debat_eval.build_turns --debate-id <id> --vtt-dir <dir> \
 # read every turn, write labels.txt (format: see apply_labels.py)
 uv run python -m debat_eval.apply_labels <turns.json> <labels.txt> <gold.json>
 ```
+
+For a replay in time every turn has to carry its subtitle lines.
+`--regels` keeps them when a gold file is made; for a file that is labelled
+already, `--regels-bij <gold.json>` builds the turns again from the same
+recording and writes the labelled file to `--out` with the lines added,
+for every turn whose text is still the same text. Lines are what was said
+and when: such a file stays outside the repository like any gold file.
 
 `build_turns` uses the application's own `parse_vtt`, `place_cues`,
 `parse_debate`, `fetch_sprekers` and `is_bewindspersoon`. It assigns lines to

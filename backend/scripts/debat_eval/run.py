@@ -26,7 +26,9 @@ from bouwmeester.services.llm.base import BaseLLMService
 
 from . import gold as gold_file
 from .harness import OracleLLM, run_debate
+from .replay import VOICES_AT_ONCE, VOICES_NEVER, Clock, replay_debate
 from .report import build_report, load_golds
+from .timing import timing_report
 from .variants import CHECKS, PROMPT_VARIANTS
 
 PROVIDERS = ("claude_cli", "configured", "oracle")
@@ -71,6 +73,18 @@ async def run(args: argparse.Namespace) -> dict:
         "prompt_variant": args.prompt_variant,
         "gestart": datetime.now(UTC).isoformat(timespec="seconds"),
     }
+    clock = None
+    if args.replay:
+        clock = Clock(
+            subtitle_lag=args.subtitle_lag,
+            voices=args.voices,
+            meelezen=not args.no_running,
+            **(
+                {}
+                if args.running_every is None
+                else {"running_every": args.running_every}
+            ),
+        )
     blocks: dict[str, dict] = {}
     limit = asyncio.Semaphore(args.parallel)
 
@@ -101,15 +115,27 @@ async def run(args: argparse.Namespace) -> dict:
 
         async with limit, async_session() as session:
             llm = shared if shared is not None else OracleLLM(gold)
-            block = await run_debate(
-                session,
-                llm,
-                gold,
-                name,
-                transform=transform,
-                max_turns=args.max_turns,
-                on_turn=on_turn,
-            )
+            if clock is not None:
+                block = await replay_debate(
+                    session,
+                    llm,
+                    gold,
+                    name,
+                    clock,
+                    transform=transform,
+                    max_turns=args.max_turns,
+                    on_turn=on_turn,
+                )
+            else:
+                block = await run_debate(
+                    session,
+                    llm,
+                    gold,
+                    name,
+                    transform=transform,
+                    max_turns=args.max_turns,
+                    on_turn=on_turn,
+                )
         block["gold"] = str(path)
         blocks[name] = block
         save()
@@ -136,6 +162,38 @@ def main() -> int:
     parser.add_argument("--compare", type=Path, help="an earlier run to compare with")
     parser.add_argument("--check", choices=sorted(CHECKS))
     parser.add_argument(
+        "--replay",
+        action="store_true",
+        help="play each debate on a clock, in rounds as the worker makes them:"
+        " also measures how long after it was said something is marked."
+        " Needs gold files with the subtitle lines of every turn",
+    )
+    parser.add_argument(
+        "--no-running",
+        action="store_true",
+        help="with --replay: read every turn when it is over, also an answer"
+        " of the bewindspersoon",
+    )
+    parser.add_argument(
+        "--subtitle-lag",
+        type=float,
+        default=Clock.subtitle_lag,
+        help="with --replay: seconds between a line being said and being read",
+    )
+    parser.add_argument(
+        "--running-every",
+        type=float,
+        help="with --replay: seconds an answer that goes on is left alone"
+        " after a window of it was asked about; the worker's own when not given",
+    )
+    parser.add_argument(
+        "--voices",
+        choices=(VOICES_AT_ONCE, VOICES_NEVER),
+        default=VOICES_AT_ONCE,
+        help="with --replay: the voices decide about a line near a change of"
+        " speaker as soon as they may, or never",
+    )
+    parser.add_argument(
         "--any-database",
         action="store_true",
         help="also run against a database whose name does not end in _eval",
@@ -158,6 +216,9 @@ def main() -> int:
         compare = (earlier, load_golds(earlier))
     print()
     print(build_report(result, load_golds(result), compare=compare, check=args.check))
+    if args.replay:
+        print()
+        print(timing_report(result, load_golds(result)))
     return 0
 
 

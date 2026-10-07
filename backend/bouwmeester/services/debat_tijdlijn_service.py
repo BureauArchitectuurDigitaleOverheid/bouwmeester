@@ -302,8 +302,6 @@ class DebatTijdlijnService:
         stem.VOICES.keep_only(sessie_ids)
         stem.VOICES.expire(now)
         self._sessies = len(sessie_ids)
-        if not sessie_ids:
-            return result
         if not await self.mattermost.is_enabled():
             return result
 
@@ -319,6 +317,19 @@ class DebatTijdlijnService:
                     await self.session.rollback()
                     result.fouten += 1
                     logger.exception("Tijdlijn van sessie %s liep vast", sessie_id)
+        try:
+            # After the debates of today, which is what a round is for,
+            # and also with none on today: people tick questions off in
+            # the channel of a debate that is over.
+            await DebatTranscript(self.session, self.mattermost).write_counts(
+                result, now
+            )
+        except Exception as exc:
+            await self.session.rollback()
+            result.fouten += 1
+            logger.warning(
+                "Tellingen onder berichten niet bijgewerkt (%s)", type(exc).__name__
+            )
         return result
 
     async def _advance(
