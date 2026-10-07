@@ -578,6 +578,26 @@ class TestAnAnswerThatGoesOn:
 
         assert outside.sprekers_calls == 1
 
+    async def test_one_look_at_the_list_tells_who_everyone_is(
+        self, db_session, monkeypatch
+    ):
+        """A member speaks and is looked up. The minister who gets the
+        floor a minute later is on the same list: looking again only after
+        five minutes would leave the first minutes of the answer unread."""
+        outside = w.Outside(monkeypatch)
+        mm = w.Chat()
+        s = await w._running(db_session)
+        a = await w._row(db_session, s, "speaker", 60, "a")
+        await _say(db_session, s, a, ANSWER)
+        w._in_channel(mm, a)
+
+        await w._tick(db_session, mm, PerKind(), 120)
+
+        assert outside.sprekers_calls == 1
+        assert mod._roles.of(s.id, "a") is False
+        assert mod._roles.of(s.id, "m") is True
+        assert mod._roles.of(s.id, "gast") is None
+
     async def test_someone_who_is_not_on_the_list_is_asked_about_again_later(
         self, db_session, monkeypatch
     ):

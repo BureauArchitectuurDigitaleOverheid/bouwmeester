@@ -483,8 +483,11 @@ class _Roles:
         """Whether this person answers; ``None`` when not known."""
         return self._known.get((sessie_id, who))
 
-    def learn(self, sessie_id: uuid.UUID, who: str, answers: bool) -> None:
-        self._known[(sessie_id, who)] = answers
+    def learn(self, sessie_id: uuid.UUID, sprekers: dict[str, dd.Spreker]) -> None:
+        """Everyone on a list of speakers at once: who speaks next is on
+        it too, and must not wait for the list to be asked for again."""
+        for who, spreker in sprekers.items():
+            self._known[(sessie_id, who)] = is_bewindspersoon(spreker)
 
     def may_ask(self, sessie_id: uuid.UUID, now: datetime) -> bool:
         asked = self._asked.get(sessie_id)
@@ -879,11 +882,8 @@ class DebatVraagWorker:
         known = _roles.of(sessie_id, who)
         if known is None and _roles.may_ask(sessie_id, now):
             _roles.asked(sessie_id, now)
-            sprekers = await self._sprekers_for(client, item.first)
-            spreker = (sprekers or {}).get(who)
-            if spreker is not None:
-                known = is_bewindspersoon(spreker)
-                _roles.learn(sessie_id, who, known)
+            _roles.learn(sessie_id, await self._sprekers_for(client, item.first) or {})
+            known = _roles.of(sessie_id, who)
         return bool(known)
 
     async def _turn_lines(self, turn: Turn) -> list[SubLine]:
@@ -1164,6 +1164,7 @@ class DebatVraagWorker:
             # questions. A later round has the list again.
             result.fouten += 1
             return True
+        _roles.learn(sessie_id, sprekers)
         kind, who = turn.key
         spreker = sprekers.get(who)
         if spreker is None:
@@ -1174,7 +1175,6 @@ class DebatVraagWorker:
             await self._mark(turn.row_id, now)
             return False
         answer = is_bewindspersoon(spreker)
-        _roles.learn(sessie_id, who, answer)
         if answer and answers is not None:
             answers.append(item)
             return False
