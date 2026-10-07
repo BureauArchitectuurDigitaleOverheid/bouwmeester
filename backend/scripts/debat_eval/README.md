@@ -145,63 +145,92 @@ lists the check started from were written with all four debates in view, so
 the debate that was kept apart is less unseen for the questions than it is
 for the moties.
 
-Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs before and
-three after, 135 calls each. The mean, and the lowest and highest run:
+Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs each, 135
+calls a run. The mean, and the lowest and highest run. "After" is the first
+version that was built; "after the review" is what is in the code now, with
+the rules for moties narrowed and the question-form check widened (see
+below).
 
 | Questions | Marked | Wrong | Precision | Recall |
 |---|---|---|---|---|
 | Three debates the rules were made on, before | 133 to 145 | 32 to 43 | 73% (70 to 76) | 95% (93 to 96) |
 | The same, after | 116 to 117 | 13 to 16 | 87% (86 to 89) | 93% (91 to 94) |
+| The same, after the review | 111 to 116 | 11 to 13 | 89% (88 to 90) | 91% (90 to 94) |
 | The debate kept apart, before | 41 to 49 | 12 to 19 | 65% (60 to 70) | 93% (93 to 93) |
 | The same, after | 35 to 36 | 6 to 9 | 79% (75 to 82) | 90% (86 to 93) |
+| The same, after the review | 34 to 42 | 6 to 10 | 80% (76 to 82) | 91% (90 to 93) |
 | All four, before | 182 to 191 | 51 to 55 | 71% (70 to 72) | 95% (93 to 96) |
 | All four, after | 152 | 19 to 24 | 85% (84 to 87) | 92% (90 to 93) |
+| All four, after the review | 145 to 153 | 17 to 23 | 87% (85 to 88) | 91% (90 to 93) |
 
 What that says:
 
 - The debate that was kept apart gains as many points of precision as the
-  other three (14), from a lower start to a lower end. Its recall loses more:
-  3 points against 2.
-- The checks cost real questions only there. Over the three runs after, the
-  question-form check dropped no question the labeller was sure of in the
-  three debates it was made on (105 per run), and 1, 1 and 0 of the 29 in the
-  debate kept apart. It was the same question both times: a demand worded
-  as a wish, without the word order or the words of a request, and with the
-  request for a reaction in the next sentence, which the model left out of
-  its quote. Reading the sentence after the quote would catch it. That was
-  tried on the three debates before the last run, gained about one right
-  marking and one wrong one per run, and was left out; it was not put back
-  after seeing this, because that would be tuning on the debate kept apart.
-- The rest of the lost recall is not the checks. Of the 134 questions the
-  runs before found 128, 127 and 125, the runs after 125, 121 and 125. That
-  is the model finding a little less with the new paragraphs, or chance:
-  three runs do not tell those apart.
+  other three (about 15), from a lower start to a lower end.
+- The review widened the question-form check for questions without a
+  question mark: a preposition in front of the question word, indirect
+  questions, requests for a reaction or a toezegging, a condition or a
+  vocative first, a verb with a subject that is nobody at the table. That
+  cost no precision that three runs can show: 87% after it against 85%
+  before it on all four, inside the spread of either. Applied to the stored
+  answers of the three runs before, the wider check lets one more wrong
+  marking through in one run of three, and keeps one more sure question in
+  two.
+- What the check still costs. In the debate kept apart it dropped one
+  question the labeller was sure of in every run, the same one: a demand
+  worded as a wish, without the word order or the words of a request, and
+  with the request for a reaction in the next sentence, which the model left
+  out of its quote. Reading the sentence after the quote would catch it.
+  That was tried on the three debates, gained about one right marking and
+  one wrong one per run, and was left out. In the three debates the rules
+  were made on it dropped a quote of a sure question in two runs of three:
+  the tail of a question whose first words the model had cut off. One of
+  those shapes ("met me eens dat") was added to the rule after these runs.
+- The rest of the lost recall is not the form check. Of the 134 questions the
+  runs before found 128, 127 and 125, the runs after the review 122, 121 and
+  125. Per run 1 to 3 more were named by the model with a quote that is not
+  in the turn; the others the model did not name. That is the model finding
+  a little less with the new paragraphs, or chance: three runs do not tell
+  those apart.
 - The checks alone, applied to the answers of the three runs before, without
-  asking the model again: 83% precision (81 to 84) at 93% recall on all four.
-  The paragraphs in the prompt add about two points on top of that.
-- Wrong markings left, summed over the three runs after, all four debates:
-  18 statements, 17 not labelled yet, 9 questions to nobody in the debate with
-  initiatiefnemers, 6 rhetorical, 4 to another member, 4 retold, 3 to the
-  initiatiefnemers, 3 calls, 2 about the cabinet. Before: 65 statements, 24
-  times the text of a motie, 6 about the cabinet.
+  asking the model again: 83% precision (81 to 85) at 94% recall on all four.
+- Wrong markings left, summed over the three runs after the review, all four
+  debates: 20 statements, 9 questions to nobody in the debate with
+  initiatiefnemers, 7 not labelled yet, 6 calls, 6 retold, 5 rhetorical, 3 to
+  the initiatiefnemers, 2 to another member, 1 about the cabinet. Before: 65
+  statements, 24 times the text of a motie, 6 about the cabinet.
 - The names of the initiatiefnemers: one debate has them. In the turns of the
   initiatiefnemers the checks left 4 or 5 markings per run, of which 0 to 2
   were right; asking that the quote names the bewindspersoon takes 1 to 3 of
   the wrong ones away and none of the right ones. Too little to say more
   than that it does no harm.
+- The debate kept apart was read after the first three runs, to see what was
+  lost in it. The rules of the review were written from made-up sentences
+  and checked on the other three debates, but it is no longer unseen.
 
 | Moties | Gold, sure | Found | Gold, unsure or repeated | Found | Marked | Wrong |
 |---|---|---|---|---|---|---|
 | Three debates the rule was made on | 10 | 10 | 2 | 2 | 12 | 0 |
 | The debate kept apart | 1 | 1 | 1 | 0 | 1 | 0 |
 
-The same in every run: the rule asks no model. Of the 11, 9 were read out
-and 2 announced. The one that was not found is a motie a member said to be
-considering, in a clause that leaves its subject out; the codebook calls
-that unsure. One debate with one announcement is not a test of the rule for
-announcements: that rule is narrow on purpose and will miss other wordings.
-Nothing of what the text of a motie used to cost is left: no dictum was
-marked as a question in any run after, against 6 to 9 per run before.
+The same in every run, before and after the review: the rule asks no model.
+Of the 11, 9 were read out and 2 announced. The one that was not found is a
+motie a member said to be considering, in a clause that leaves its subject
+out; the codebook calls that unsure. One debate with one announcement is not
+a test of the rule for announcements: that rule is narrow on purpose and will
+miss other wordings. No dictum was marked as a question in any run after,
+against 6 to 9 per run before.
+
+The gold set does not show what the review found, because nobody in these
+four debates says "aan de orde van de dag" next to a question or tells what
+an earlier motie "verzoekt" in a turn with another part of the formula. So
+the rule now takes a part of the formula only in the shape it has in a motie
+("overwegende dat", not "aan de orde van de dag", not "de motie verzoekt"),
+and only close to the other parts: at most 600 characters between two parts
+in front of the dictum and 900 from the dictum to the close, against 404 and
+619 at most in the 9 moties that were read out. A dictum with "motie" in the
+five words in front of it is told about and is no motie; none of the 9 has
+that. Those cases are tested on made-up sentences only.
 
 ### What is still open
 
@@ -214,6 +243,16 @@ marked as a question in any run after, against 6 to 9 per run before.
   it. A summary by the model would read better and cost a call per motie.
 - Whether the TK API lists the initiatiefnemers before a debate begins is not
   known. Meetings that are planned carry none; 20 of 33 that were held do.
+- A dictum whose opening and considerans fell in the turn before and whose
+  close was not heard is a dictum alone, and is not marked: the rule reads
+  one turn and cannot tell it from someone talking about a motie. Reading
+  it would take the end of the turn before.
+- A turn of which only moties are stored counts as not read by the model, so
+  that a model that was away loses no questions. Read a second time, such a
+  turn costs one more call; the worker reads a turn once.
+- In a turn of an initiatiefnemer a question counts when its quote names the
+  bewindspersoon by title, misheard titles included. "Kan hij dat toezeggen"
+  with nothing but "hij" is dropped there.
 
 ## Making a gold file
 

@@ -121,6 +121,8 @@ class TestWithoutAQuestionMark:
             "krijgen de gemeenten daar geld voor",
             "betekent dit dat de regeling stopt",
             "misschien kan de minister daar iets over zeggen",
+            # The start of the question cut off by the model.
+            "Met mij eens dat dit sneller moet.",
         ],
     )
     def test_these_are_questions(self, quote):

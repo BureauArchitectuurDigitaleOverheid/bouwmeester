@@ -149,6 +149,9 @@ _REQUEST = re.compile(
     # "[Is de] minister het met me eens dat": the verb in front is what the
     # transcript or the model drops first.
     rf"|\b{_WHO} het (?:\w+ ){{0,3}}eens\b"
+    # The same question with more of its start cut off by the model: "met
+    # me eens dat". Seen in two of three runs on one debate.
+    r"|\bmet (?:me|mij|ons) eens dat\b"
 )
 _CLAUSE_END = re.compile(r"\.\.\.|[.!?…:;,]")
 # Not the three dots: those are a subtitle line that runs on.
