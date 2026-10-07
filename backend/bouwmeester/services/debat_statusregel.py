@@ -77,6 +77,11 @@ _STATUS_LABEL: dict[str, str] = {
     STATUS_BEANTWOORD: "beantwoord",
     STATUS_VERVALT: "hoeft geen antwoord",
 }
+# In front of what is still open, and of nothing else. Someone scrolling
+# through the channel looks for what is open; a sign on every status made
+# the done ones as loud as the open ones, and coloured emoji are louder
+# than bold.
+ICOON_OPEN = "🔴"
 # The words of a status that differ for a soort. A motie is not answered:
 # it gets an oordeel. A toezegging is not answered either: it is kept.
 _STATUS_LABEL_PER_SOORT: dict[str, dict[str, str]] = {
@@ -135,15 +140,19 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
 
     Each item is (soort, status). One line per soort:
 
-        ❓ 1 vraag · open
-        ❓ 3 vragen · open
-        ❓ 3 vragen · 2 open · 1 beantwoord
-        📜 1 motie · open
-        🤝 1 toezegging · open
+        ❓ 1 vraag · 🔴 **open**
+        ❓ 3 vragen · 🔴 **2 open** · 1 beantwoord
+        ❓ 2 vragen · 1 opgepakt · 1 beantwoord
+        📜 1 motie · oordeel gegeven
+        🤝 1 toezegging · 🔴 **open**
+
+    Made to be read while scrolling: what is still open has a red dot and
+    is bold, everything else is plain words. A line without a dot needs
+    nobody.
 
     Short, because it stands under every message with a question in it. A
-    block in the channel that still has the longer words of before is
-    written anew the next time its message is.
+    block in the channel that still has the words of before is written
+    anew the next time its message is.
 
     A rejected markering does not count. Nothing to show is an empty string.
     """
@@ -164,10 +173,20 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
             for status in _STATUS_LABEL
             if status in statussen
         ]
-        if len(per_status) == 1:
-            stand = woorden[per_status[0][0]]
-        else:
-            stand = " · ".join(f"{n} {woorden[status]}" for status, n in per_status)
+        alleen = len(per_status) == 1
+        stand = " · ".join(
+            _stand(status, woorden[status], None if alleen else n)
+            for status, n in per_status
+        )
         regel = f"{_SOORT_ICOON[soort]} {kop}"
         regels.append(f"{regel} · {stand}" if stand else regel)
     return "\n".join(regels)
+
+
+def _stand(status: str, woord: str, aantal: int | None) -> str:
+    """One status in a line of the block; `aantal` is left out when every
+    markering of the soort has this status."""
+    tekst = woord if aantal is None else f"{aantal} {woord}"
+    if status == STATUS_OPEN:
+        return f"{ICOON_OPEN} **{tekst}**"
+    return tekst
