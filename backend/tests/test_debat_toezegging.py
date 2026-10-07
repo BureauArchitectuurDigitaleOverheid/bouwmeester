@@ -304,6 +304,94 @@ class TestDeVormVanEenToezegging:
         # The words of a commitment are in it: the model would be asked.
         assert may_hold_commitment(citaat)
 
+    @pytest.mark.parametrize(
+        "citaat",
+        [
+            # The negation far behind the wording, in the same clause.
+            "ik stuur u daar op dit moment geen brief over",
+            "ik zal dat onderzoek op dit moment zeker niet laten doen",
+            # What was promised before, by someone else or by the speaker.
+            "mijn voorganger heeft toegezegd dat de kamer een brief krijgt",
+            "ik heb dat vorige week al toegezegd",
+            # A question told back.
+            "u vraagt of ik kan toezeggen dat de kamer daarover een brief krijgt",
+            # Later in this debate, whatever it comes in.
+            "ik kom daar in de tweede termijn schriftelijk op terug",
+            # No commitment at all.
+            "ik kom uit een gezin met drie kinderen",
+        ],
+    )
+    def test_what_a_reviewer_found_getting_through_is_dropped(self, citaat):
+        assert not has_commitment_form(citaat)
+        # And the model is not pointed at it either.
+        assert commitment_passages(f"Dank, voorzitter. {citaat}. Dan het geld.") == []
+        zin = citaat[0].upper() + citaat[1:] + "."
+        assert commitment_passages(f"Dank, voorzitter. {zin} Dan het geld.") == []
+
+    @pytest.mark.parametrize(
+        "citaat",
+        [
+            "de kamer wordt daarover voor de zomer geinformeerd",
+            "De Kamer wordt daarover vóór de zomer geïnformeerd.",
+            "er komt een brief voor de begrotingsbehandeling",
+            "bij dezen toegezegd",
+            "Dat is toegezegd.",
+            "die toezegging doe ik graag",
+            "prima doen we",
+            # A contrast is no refusal.
+            "ik kom daar niet nu maar schriftelijk voor de zomer op terug",
+            "Ik stuur die brief niet morgen maar volgende week.",
+            # Before the second term, in writing: that is a commitment.
+            "Ik kom daar schriftelijk vóór de tweede termijn op terug.",
+            # A word between who and the verb, and the cabinet preparing.
+            "Wat ik wel wil doen is de regels nog eens nalopen.",
+            "Het kabinet bereidt daarover een brief voor.",
+            "Ik kom vóór de zomer met een voorstel.",
+            # A condition behind it is not its refusal.
+            "Ik zal de Kamer informeren als het niet lukt.",
+        ],
+    )
+    def test_forms_that_have_to_reach_the_model(self, citaat):
+        assert may_hold_commitment(citaat)
+        assert has_commitment_form(citaat)
+
+    @pytest.mark.parametrize(
+        "citaat",
+        [
+            "Dat is vorige week al toegezegd door mijn collega.",
+            "De gemeente heeft toegezegd dat er een overzicht komt.",
+            "Ik heb vorig jaar toegezegd dat ik de Kamer zou informeren.",
+            "De Kamer vroeg of ik wil toezeggen dat er een evaluatie komt.",
+        ],
+    )
+    def test_what_was_promised_or_asked_before_is_not_promised_now(self, citaat):
+        assert not has_commitment_form(citaat)
+
+    def test_a_refusal_without_a_comma_does_not_reach_past_maar(self):
+        assert has_commitment_form(
+            "dat kan ik niet toezeggen maar ik zal het wel laten uitzoeken"
+        )
+        assert not has_commitment_form(
+            "dat kan ik niet toezeggen maar het is een goed idee"
+        )
+
+    def test_the_dot_in_a_number_ends_no_sentence(self):
+        assert has_commitment_form("Ik maak daar volgend jaar 750.000 euro voor vrij.")
+
+    def test_a_wording_does_not_reach_over_a_full_stop(self):
+        assert not has_commitment_form("Daar kom ik vandaan. Terug naar het geld.")
+        assert not has_commitment_form("Zo doen. We zijn er bijna.")
+
+    def test_a_negation_in_the_next_sentence_refuses_nothing(self):
+        assert has_commitment_form(
+            "Ik stuur de Kamer een brief. Dat is niet te veel gevraagd."
+        )
+        # Nor a dozen words on, where no clause is that long.
+        assert has_commitment_form(
+            "ik stuur de kamer voor de zomer een brief over de bezetting van alle"
+            " bewaakte stallingen per provincie en dat is niet te veel gevraagd"
+        )
+
     def test_a_refusal_does_not_hide_the_commitment_behind_it(self):
         assert has_commitment_form(WEIGERT["tekst"])
         assert has_commitment_form(
@@ -394,6 +482,15 @@ class TestDeVormVanEenToezegging:
             ("vóór de begrotingsbehandeling", T_BRIEF, True),
             ("in het voorjaar", T_UITZOEKEN, True),
             ("in het eerste kwartaal", T_EVALUATIE, True),
+            # Short words are a moment too.
+            ("in mei", "Ik stuur de Kamer in mei een brief.", True),
+            # The wrong way round is not what was said.
+            ("voor de zomer", "Ik stuur de Kamer na de zomer een brief.", False),
+            ("na de zomer", "Ik stuur de Kamer na de zomer een brief.", True),
+            # The words, one after the other; a line that runs on is one line.
+            ("voor de zomer", "Ik stuur de Kamer voor... de zomer een brief.", True),
+            ("de zomer voor", "Ik stuur de Kamer voor de zomer een brief.", False),
+            ("zomer", "Ik stuur de Kamer in de nazomer een brief.", False),
             # Worked out by the model, not said.
             ("eind 2030", T_UITZOEKEN, False),
             ("voor het kerstreces", T_UITZOEKEN, False),
@@ -621,7 +718,8 @@ class TestLeesToezeggingen:
             set(),
         )
         assert len(nieuw[0].samenvatting) == service_mod.MAX_SAMENVATTING
-        assert len(nieuw[0].termijn) <= service_mod.MAX_TERMIJN
+        # A moment that long is not one that was said.
+        assert nieuw[0].termijn is None
 
 
 # --- the prompt and the provider ---------------------------------------
@@ -1166,7 +1264,8 @@ class TestToezeggingMarkeren:
         tekst = mm.replies[0][2]
         assert "@" not in tekst
         assert "https://kwaad.example" not in tekst
-        assert "in het voorjaar all" in tekst
+        # A moment with anything in it that was not said is not shown at all.
+        assert "voorjaar @" not in tekst and " · in het voorjaar" not in tekst
 
 
 class TestWieNietWordtGelezenVoorToezeggingen:

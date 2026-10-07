@@ -14,19 +14,30 @@ krijgt die brief voor de zomer"). Its job is to drop plain statements. In
 doubt it says yes: whether "ik wil daar graag naar kijken" is a commitment
 or a politeness is the model's call.
 
-Three things are dropped although they have that form, because the codebook
+Five things are dropped although they have that form, because the codebook
 names them and they can be told from the words:
 
-* a refusal: "dat kan ik niet toezeggen", "dat ga ik niet doen";
+* a refusal, wherever in the clause the "niet" or "geen" stands: "dat kan
+  ik niet toezeggen", "ik stuur u daar op dit moment geen brief over". Not
+  a contrast: "ik kom daar niet nu maar schriftelijk op terug" commits;
 * coming back to it later in the same answer or debate: "daar kom ik zo op
-  terug", "dat doe ik in de tweede termijn";
+  terug", "ik kom daar in de tweede termijn schriftelijk op terug". Also
+  with a product named: the second term is this debate, and what is said
+  there is heard there. "Schriftelijk vóór de tweede termijn" is a
+  commitment, and is not this rule;
 * coming back to it without saying when or in what: "ik kom daarop terug"
   counts only with a moment ("voor het kerstreces") or something to deliver
-  ("schriftelijk", "in het halfjaarbericht").
+  ("schriftelijk", "in het halfjaarbericht");
+* what was promised before, by anyone: "mijn voorganger heeft toegezegd dat
+  de Kamer een brief krijgt", "ik heb dat vorige week al toegezegd". Said
+  as the deed itself it counts: "bij dezen toegezegd", "dat is toegezegd";
+* a question that is told back: "u vraagt of ik kan toezeggen dat".
 
 The transcript comes from speech recognition: the punctuation is not to be
-trusted and sentences are not finished. So nothing here depends on where a
-sentence ends; everything is a distance in words.
+trusted and sentences are not finished. A clause therefore ends at a
+punctuation mark if there is one, at "maar" or "want", at a word that
+opens a condition ("als", "omdat", "tenzij"), and otherwise a dozen words
+behind the wording: far enough for any refusal, and not the whole quote.
 
 Pure functions, no I/O.
 """
@@ -89,8 +100,14 @@ _LATER_HERE = re.compile(
     r"|in (?:het|mijn) (?:volgende|tweede|derde|laatste) blokj?e?"
     r"|bij het (?:volgende )?blokj?e?)\b"
 )
-_NEGATION = re.compile(r"\b(?:niet(?! alleen)|geen|nooit|niets|niks)\b")
 _COMES_BACK = re.compile(r"\bterug\w*\b")
+
+# What a bewindspersoon comes with, or what comes.
+_BROUGHT = (
+    r"(?:brief|kamerbrief|voorstel|wetsvoorstel|plan|reactie|kabinetsreactie"
+    r"|overzicht|notitie|nota|uitwerking|rapportage|evaluatie|planning|update"
+    r"|verslag|antwoord)"
+)
 
 # The wordings that say little by themselves: "ik zal", "dat ga ik doen",
 # "ik wil daar een proef mee starten". A bewindspersoon says "ik wil" and
@@ -99,13 +116,16 @@ _COMES_BACK = re.compile(r"\bterug\w*\b")
 _WEAK_CUES: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern)
     for pattern in (
-        rf"\b{_I} (?:zal|zullen|ga|gaan|wil|willen)\b",
+        # With room for one word between who and the verb: "wat ik wel
+        # wil doen", "ik ook ga".
+        rf"\b{_I} (?:\w+ )?(?:zal|zullen|ga|gaan|wil|willen)\b",
         rf"\b(?:zal|zullen|ga|gaan|wil|willen) {_I}\b",
-        rf"\b{_CABINET} (?:zal|gaat|wil|komt|stuurt|informeert)\b",
-        rf"\b(?:zal|gaat|wil|komt|stuurt|informeert) {_CABINET}\b",
+        rf"\b{_CABINET} (?:zal|gaat|wil|komt|stuurt|informeert|bereidt)\b",
+        rf"\b(?:zal|gaat|wil|komt|stuurt|informeert|bereidt) {_CABINET}\b",
         rf"\b(?:ben|zijn) {_I} {_GAP}bereid\b",
         rf"\b{_I} (?:ben|zijn) {_GAP}bereid\b",
-        r"\bdat (?:doe|doen) (?:ik|wij|we)\b",
+        # "dat doe ik", "prima, doen we"
+        rf"\b(?:doe|doen) {_I}\b",
     )
 )
 # The wordings that name the promise or the deed. Each pattern is looked
@@ -117,9 +137,14 @@ _STRONG_CUES: tuple[re.Pattern[str], ...] = tuple(
         # "dat zeg ik toe", "ik zeg u dat toe", "laat ik toezeggen dat"
         rf"\b{_I} zeg(?:gen)? {_GAP}toe\b",
         rf"\bzeg(?:gen)? {_I} {_GAP}toe\b",
-        rf"\b{_I} {_GAP}toe(?:zeg|zeggen|gezegd)\b",
+        rf"\b{_I} {_GAP}toe(?:zeg|zeggen)\b",
         rf"\b(?:kan|kunnen|wil|willen|zal|zullen) {_I} {_GAP}toezeggen\b",
-        r"\b(?:mijn|onze|een|de|deze) toezegging\b",
+        r"\b(?:mijn|onze|een|de|deze|die) toezegging\b",
+        # The participle only where saying it is doing it: "bij dezen
+        # toegezegd", "dat is toegezegd". With "heb" or "heeft" it tells
+        # what was promised before, and is no wording at all.
+        r"\b(?:bij deze|bij dezen|hierbij) (?:\w+ ){0,3}toegezegd\b",
+        r"\b(?:dat|dit) is (?:dan |dus |hierbij |bij deze |bij dezen )?toegezegd\b",
         # "ik stuur de Kamer", "ik informeer u", "ik beloof"
         rf"\b{_I} (?:stuur|sturen|informeer|informeren|beloof|beloven|bespreek"
         r"|bespreken|betrek|betrekken|lever|leveren|rapporteer|rapporteren)\b",
@@ -135,8 +160,14 @@ _STRONG_CUES: tuple[re.Pattern[str], ...] = tuple(
         rf"\b(?:zoek|zoeken) {_I} {_LONG_GAP}uit\b",
         rf"\b{_I} (?:pak|pakken) {_LONG_GAP}op\b",
         rf"\b(?:pak|pakken) {_I} {_LONG_GAP}op\b",
-        rf"\b{_I} (?:kom|komen) {_LONG_GAP}(?:terug|met)\b",
-        rf"\b(?:kom|komen) {_I} {_LONG_GAP}(?:terug|met)\b",
+        # "Terug" can stand far behind: "ik kom daar niet nu maar
+        # schriftelijk voor de zomer op terug".
+        rf"\b{_I} (?:kom|komen) (?:\w+ ){{0,12}}terug\b",
+        rf"\b(?:kom|komen) {_I} (?:\w+ ){{0,12}}terug\b",
+        # "Ik kom met" only with what is brought: "ik kom uit een gezin met
+        # drie kinderen" comes with nothing.
+        rf"\b{_I} (?:kom|komen) (?:\w+ ){{0,4}}met (?:een |de |het ){_BROUGHT}\b",
+        rf"\b(?:kom|komen) {_I} (?:\w+ ){{0,4}}met (?:een |de |het ){_BROUGHT}\b",
         rf"\b{_I} (?:laat|laten) {_LONG_GAP}"
         r"(?:weten|uitzoeken|onderzoeken|nagaan|uitwerken|toekomen)\b",
         rf"\b(?:laat|laten) {_I} {_LONG_GAP}"
@@ -161,17 +192,65 @@ _STRONG_CUES: tuple[re.Pattern[str], ...] = tuple(
         rf"\b(?:kunt u|kan de kamer|kan uw kamer|mag u|mag de kamer) {_LONG_GAP}"
         r"(?:verwachten|tegemoet|rekenen)\b",
         r"\bdoen toekomen\b",
+        # Nobody named as who does it: "de Kamer wordt daarover voor de
+        # zomer geïnformeerd", "er komt een brief voor de begroting".
+        rf"\b{_KAMER} (?:wordt|worden) {_LONG_GAP}(?:geinformeerd|bericht|ingelicht)\b",
+        rf"\b(?:wordt|worden) {_KAMER} {_LONG_GAP}(?:geinformeerd|bericht|ingelicht)\b",
+        rf"\b(?:er (?:komt|volgt)|(?:komt|volgt) er) (?:\w+ ){{0,3}}{_BROUGHT}\b",
+        rf"\btoezegging (?:doe|doen) {_I}\b",
     )
 )
 # Every way a commitment is worded.
 _CUES = (*_STRONG_CUES, *_WEAK_CUES)
 
-# How far behind a cue its "niet" can stand: "dat ga ik nu echt niet doen".
-_NEGATION_REACH = 3
-# How far around a cue the words stand that say when: "daar kom ik zo
-# meteen in het blokje handhaving nog op terug".
+# How far a clause reaches behind a wording when nothing ends it: speech
+# recognition leaves whole answers without a comma. The two refusals this
+# was widened for have their "niet" and "geen" five and seven words behind
+# the wording; it was three words before, and both got through.
+_CLAUSE_REACH = 12
+# How far in front of a wording the word can stand that says when:
+# "straks zal ik daar meer over zeggen".
 _BEFORE = 4
+# How far behind it "terug" still belongs to it.
 _AFTER = 9
+# Where a clause ends when the transcript has no punctuation there.
+_CONJUNCTIONS = frozenset("maar want doch".split())
+_CONDITIONS = frozenset(
+    "als omdat zodat tenzij mits zodra wanneer indien terwijl hoewel".split()
+)
+_NEGATIONS = frozenset("niet geen nooit niets niks".split())
+# "Niet nu maar schriftelijk": within this many words a "maar" makes a
+# "niet" a contrast, and what stands behind "maar" is what is promised.
+_CONTRAST_REACH = 4
+# What was promised before, told: "heeft toegezegd dat", "heb ik al
+# toegezegd". Looked for in the words in front of a wording.
+_TOLD = re.compile(
+    r"\b(?:heb|heeft|hebben|had|hadden) (?:\w+ ){0,6}toegezegd(?: dat)?(?: \w+){0,4}$"
+)
+# A question told back: "u vraagt of ik kan toezeggen".
+_ASKED = re.compile(
+    r"\b(?:vraag|vraagt|vragen|vroeg|vroegen|gevraagd) (?:\w+ ){0,3}of$"
+)
+# Only in front of a space or at the end: the dot in "500.000" ends nothing.
+_MARK = re.compile(r"\.\.\.|…|[.?!;:,](?=\s|$)")
+
+
+def _split(text: str) -> tuple[list[str], set[int]]:
+    """The words of a text, and which of them come first after a mark.
+
+    The three dots of a subtitle line that runs on are no mark: the
+    sentence goes on behind them.
+    """
+    tokens: list[str] = []
+    breaks: set[int] = set()
+    at = 0
+    for mark in _MARK.finditer(text):
+        tokens.extend(words(text[at : mark.start()]))
+        if mark.group() not in ("...", "…"):
+            breaks.add(len(tokens))
+        at = mark.end()
+    tokens.extend(words(text[at:]))
+    return tokens, breaks
 
 
 def _flat(text: str) -> str:
@@ -201,25 +280,72 @@ def has_commitment_form(quote: str) -> bool:
     When in doubt it says yes: a statement that slips through was the
     model's choice, a commitment that is stopped is lost.
     """
-    return _commits(_flat(quote), _CUES)
+    return _commits(quote, _CUES)
 
 
-def _commits(flat: str, cues: tuple[re.Pattern[str], ...]) -> bool:
-    """Whether one of `cues` stands in a flattened text as a commitment."""
-    tokens = flat.split()
+def _commits(text: str, cues: tuple[re.Pattern[str], ...]) -> bool:
+    """Whether one of `cues` stands in a text as a commitment."""
+    tokens, breaks = _split(text)
+    flat = " ".join(tokens)
     named = bool(_PRODUCT.search(flat) or _MOMENT.search(flat))
     for cue in cues:
         for found in cue.finditer(flat):
             first = flat.count(" ", 0, found.start())
             last = first + found.group().count(" ")
-            said = found.group()
-            behind = " ".join(tokens[last + 1 : last + 1 + _NEGATION_REACH])
-            if _NEGATION.search(f"{said} {behind}"):
+            if any(first < mark <= last for mark in breaks):
+                # Two halves of a wording on either side of a full stop
+                # are two sentences, not a wording.
                 continue
-            around = " ".join(tokens[max(0, first - _BEFORE) : last + 1 + _AFTER])
-            if not named and (_LATER_HERE.search(around) or _COMES_BACK.search(around)):
+            end = _clause_end(tokens, breaks, last)
+            if _is_refused(tokens, first, last, end):
+                continue
+            before = " ".join(tokens[max(0, first - 12) : first])
+            if _TOLD.search(before) or _ASKED.search(before):
+                continue
+            around = " ".join(tokens[max(0, first - _BEFORE) : end + 1])
+            if _LATER_HERE.search(around):
+                continue
+            behind = " ".join(tokens[first : min(end, last + _AFTER) + 1])
+            if not named and _COMES_BACK.search(behind):
                 continue
             return True
+    return False
+
+
+def _clause_end(tokens: list[str], breaks: set[int], last: int) -> int:
+    """The last word of the clause a wording stands in."""
+    end = last
+    while (
+        end + 1 < len(tokens)
+        and end - last < _CLAUSE_REACH
+        and end + 1 not in breaks
+        and tokens[end + 1] not in _CONJUNCTIONS
+        and tokens[end + 1] not in _CONDITIONS
+    ):
+        end += 1
+    return end
+
+
+def _is_refused(tokens: list[str], first: int, last: int, end: int) -> bool:
+    """Whether a wording is refused: a negation in its clause, from the
+    wording on. The wording itself is `first` to `last`.
+
+    Not "niet alleen", and not a contrast: "ik stuur die brief niet morgen
+    maar volgende week", "ik kom daar niet nu maar schriftelijk op terug".
+    A contrast is a "niet" with "maar" close behind it, where what stands
+    behind "maar" still belongs to the wording. In "dat kan ik niet
+    toezeggen maar het is een goed idee" the wording ends before "maar",
+    with the "niet" in it: that is a refusal and then something else.
+    """
+    for at in range(first, end + 1):
+        if tokens[at] not in _NEGATIONS:
+            continue
+        if tokens[at] == "niet" and tokens[at + 1 : at + 2] == ["alleen"]:
+            continue
+        reach = tokens[at + 1 : at + 1 + _CONTRAST_REACH]
+        if "maar" in reach and (at > last or at + 1 + reach.index("maar") <= last):
+            continue
+        return True
     return False
 
 
@@ -260,7 +386,9 @@ def commitment_passages(text: str, limit: int = MAX_PASSAGES) -> list[str]:
         if not flat:
             continue
         named = bool(_PRODUCT.search(flat) or _MOMENT.search(flat))
-        if _commits(flat, _STRONG_CUES) or (named and _commits(flat, _WEAK_CUES)):
+        if _commits(sentence, _STRONG_CUES) or (
+            named and _commits(sentence, _WEAK_CUES)
+        ):
             found.append(" ".join(sentence.split())[:MAX_PASSAGE])
             if len(found) >= limit:
                 break
@@ -272,11 +400,13 @@ def deadline_is_said(deadline: str, quote: str) -> bool:
 
     The model is asked for the moment in the words of the speaker. One it
     worked out itself ("eind 2030" for "volgend jaar") is not shown as what
-    was promised: at least one word of it that says something has to stand
-    in the quote.
+    was promised, and neither is one it got the wrong way round: "voor de
+    zomer" where "na de zomer" was said. So the words of the moment have to
+    stand in the quote as they are, one after the other. Short words count:
+    "in mei" is a moment.
     """
-    said = set(words(quote))
-    return any(len(word) >= 4 and word in said for word in words(deadline))
+    said = _flat(deadline)
+    return bool(said) and f" {said} " in f" {_flat(quote)} "
 
 
 # Words that say nothing about what a question or a toezegging is about:
