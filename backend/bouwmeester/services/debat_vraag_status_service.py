@@ -46,6 +46,8 @@ from bouwmeester.services.debat_vraag_reacties import (
 )
 from bouwmeester.services.debat_vraag_service import (
     format_thread,
+    is_bevestigd,
+    komt_uit_slotlijst,
     schrijf_statusregel,
 )
 from bouwmeester.services.mattermost_service import (
@@ -236,6 +238,8 @@ class DebatVraagStatusService:
             door=await self._naam(stand, gebruiker),
             termijn=markering.termijn,
             bij_volgnummer=markering.bij_volgnummer,
+            bevestigd=await is_bevestigd(self.session, markering_id),
+            uit_lijst=komt_uit_slotlijst(markering.beurt_sleutel),
         )
         if gewijzigd:
             await self.session.execute(

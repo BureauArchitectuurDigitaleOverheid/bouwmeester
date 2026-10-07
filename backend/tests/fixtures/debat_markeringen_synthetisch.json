@@ -25,7 +25,7 @@
    "start": "2030-01-14T10:02:00+01:00",
    "onderbroken": null,
    "onderbroken_is_bewindspersoon": false,
-   "tekst": "Ik open de vergadering. Aan de orde is de initiatiefnota van het lid E over veilige fietsenstallingen bij stations. Ik heet de initiatiefnemer, de minister en de leden welkom. De spreektijd is vier minuten per fractie. Het woord is aan Kamerlid A."
+   "tekst": "Ik open de vergadering. Aan de orde is de initiatiefnota van het lid E over veilige fietsenstallingen bij stations. Ik heet de initiatiefnemer, de minister en de leden welkom. Uit het vorige overleg staan nog twee toezeggingen open: de minister zou de Kamer een brief sturen over de heling van fietsen en een overzicht van de kosten per gemeente. De spreektijd is vier minuten per fractie. Het woord is aan Kamerlid A."
   },
   {
    "nr": 2,
@@ -388,7 +388,7 @@
    "start": "2030-01-14T11:00:00+01:00",
    "onderbroken": null,
    "onderbroken_is_bewindspersoon": false,
-   "tekst": "Dat sta ik toe. Ik lees eerst de toezeggingen voor. De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie. De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord. Daarna is er nog ruimte voor één interruptie, van Kamerlid C."
+   "tekst": "Dat sta ik toe. Ik lees eerst de toezeggingen voor. De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie. De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord. De minister zegt toe de Kamer vóór het kerstreces te informeren over de verlichting in de kelders van de stallingen. Dat is een toezegging aan Kamerlid C. Daarna is er nog ruimte voor één interruptie, van Kamerlid C."
   },
   {
    "nr": 35,
@@ -421,7 +421,7 @@
    "start": "2030-01-14T11:04:00+01:00",
    "onderbroken": null,
    "onderbroken_is_bewindspersoon": false,
-   "tekst": "Dank aan de minister en aan de leden. Ik sluit de vergadering."
+   "tekst": "Dank aan de minister en aan de leden. Er zijn vier moties ingediend; daarover wordt dinsdag gestemd. Ik sluit de vergadering."
   }
  ],
  "items": [
@@ -709,6 +709,15 @@
    "notitie": "the chairman reads the list"
   },
   {
+   "beurt": 34,
+   "soort": "toezegging",
+   "citaat": "De minister zegt toe de Kamer vóór het kerstreces te informeren over de verlichting in de kelders van de stallingen.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "only in the chairman's list: the promise itself is not in the transcript"
+  },
+  {
    "beurt": 35,
    "soort": "verzoek_om_brief",
    "citaat": "Kan de minister toezeggen dat hij de Kamer vóór het kerstreces een overzicht stuurt van wat de camera's per station kosten?",
@@ -727,6 +736,12 @@
   }
  ],
  "negatieven": [
+  {
+   "beurt": 1,
+   "type": "toezegging_van_eerder",
+   "citaat": "Uit het vorige overleg staan nog twee toezeggingen open: de minister zou de Kamer een brief sturen over de heling van fietsen en een overzicht van de kosten per gemeente.",
+   "notitie": "the chairman recalls what was promised in an earlier debate, at the start"
+  },
   {
    "beurt": 2,
    "type": "aan_initiatiefnemers",
@@ -900,6 +915,18 @@
    "type": "voorwaardelijk",
    "citaat": "Als zij ze willen delen, zou ik kunnen overwegen ze door te sturen.",
    "notitie": "a condition and a maybe, nothing to hold anyone to"
+  },
+  {
+   "beurt": 34,
+   "type": "toezegging_aan",
+   "citaat": "Dat is een toezegging aan Kamerlid C.",
+   "notitie": "who the item before it was promised to; no item of its own"
+  },
+  {
+   "beurt": 37,
+   "type": "geen_motie",
+   "citaat": "Er zijn vier moties ingediend; daarover wordt dinsdag gestemd.",
+   "notitie": "the chairman counts the moties: no list of toezeggingen, and no motie"
   }
  ]
 }

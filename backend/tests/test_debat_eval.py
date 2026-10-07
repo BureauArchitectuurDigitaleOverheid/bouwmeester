@@ -30,7 +30,9 @@ from debat_eval.apply_labels import (  # noqa: E402
 from debat_eval.harness import (  # noqa: E402
     OracleLLM,
     beurt_from,
+    closing_list_of,
     interruption_before,
+    list_beurt,
     run_debate,
 )
 from debat_eval.report import (  # noqa: E402
@@ -507,8 +509,88 @@ class TestTheInterruptionBeforeAnAnswer:
         assert answer.is_bewindspersoon
         assert answer.voorafgaand == "Kamerlid A (X)"
         assert answer.voorafgaand_tekst == self.TURNS[23]["tekst"]
+        # The key of the interruption is the key its questions are stored by.
+        asked = beurt_from(self.TURNS[23], sessie_id)
+        assert answer.voorafgaand_sleutel == asked.sleutel
         member = beurt_from(self.TURNS[23], sessie_id, self.TURNS[21])
         assert (member.voorafgaand, member.voorafgaand_tekst) == (None, "")
+        assert member.voorafgaand_sleutel is None
+
+
+class TestTheClosingListOfTheChairman:
+    TURNS = FIXTURE["beurten"]
+
+    def test_the_list_of_the_fixture(self):
+        closing = closing_list_of(self.TURNS)
+        assert [self.TURNS[index]["nr"] for index, _ in closing.delen] == [34, 37]
+        assert closing.tekst == f"{self.TURNS[33]['tekst']} {self.TURNS[36]['tekst']}"
+
+    def test_a_debate_that_stops_before_the_list_has_none(self):
+        assert closing_list_of(self.TURNS[:33]) is None
+        assert closing_list_of([]) is None
+
+    def test_the_list_as_the_turn_the_service_reads(self):
+        sessie_id = uuid.uuid4()
+        closing = closing_list_of(self.TURNS)
+        beurt = list_beurt(self.TURNS, closing, sessie_id)
+        assert beurt.slotlijst
+        assert (beurt.soort, beurt.spreker, beurt.fractie) == (
+            "chairman",
+            "de voorzitter",
+            None,
+        )
+        assert beurt.tekst == closing.tekst
+        assert beurt.start.isoformat() == self.TURNS[33]["start"]
+        # Under the last message of the chairman, and with a key of its own:
+        # that message is also a turn the harness hands in.
+        last = beurt_from(self.TURNS[36], sessie_id)
+        assert beurt.post_id == last.post_id
+        assert beurt.sleutel == f"slotlijst:{last.sleutel}"
+
+    async def test_what_the_list_stored_is_kept_with_the_turn_it_stands_in(
+        self, db_session
+    ):
+        block = await run_debate(db_session, OracleLLM(FIXTURE), FIXTURE, "synthetisch")
+        outcomes = {turn["nr"]: turn for turn in block["beurten"]}
+        summary = block["slotlijst"]
+        assert summary["beurten"] == [34, 37]
+        assert summary["uitkomst"] == "gemarkeerd"
+        # The oracle names no earlier toezegging, and writes the same
+        # summary for everything: what is confirmed is what the code found
+        # by the words of the quotes alone.
+        assert len(summary["nieuw"]) + len(summary["bevestigd"]) == 3
+        marked = outcomes[34]["gemarkeerd"]
+        assert [m["soort"] for m in marked] == ["toezegging"] * 3
+        only_listed = next(m for m in marked if "kelders" in m["citaat"])
+        assert only_listed["herhaling"] is False
+        assert only_listed["slotlijst"] is True
+        # Who the chairman said it was promised to, if they asked something.
+        assert only_listed["gericht_aan"] == "Kamerlid C (Z)"
+        # The closing words hold no item.
+        assert outcomes[37]["gemarkeerd"] == []
+        assert (outcomes[34]["uitkomst"], outcomes[34]["reden"]) == (
+            "gemarkeerd",
+            "slotlijst",
+        )
+        assert outcomes[37]["reden"] == "slotlijst"
+        # One call, kept with the turn the list begins in.
+        assert (outcomes[34]["aanroepen"], outcomes[37]["aanroepen"]) == (1, 0)
+        assert len(outcomes[34]["ruw"]) == 3
+        assert block["aanroepen"] == sum(t["aanroepen"] for t in block["beurten"])
+        # The opening, where the chairman recalls toezeggingen of an
+        # earlier debate, is skipped as every other turn of the chairman.
+        assert (outcomes[1]["reden"], outcomes[1]["aanroepen"]) == ("voorzitter", 0)
+
+    async def test_a_debate_without_a_list(self, db_session):
+        gold = copy.deepcopy(FIXTURE)
+        gold["beurten"] = gold["beurten"][:33]
+        block = await run_debate(db_session, OracleLLM(gold), gold, "kort")
+        assert block["slotlijst"] is None
+        assert all(
+            turn["reden"] == "voorzitter"
+            for turn, raw in zip(block["beurten"], gold["beurten"], strict=True)
+            if raw["soort"] == "chairman"
+        )
 
 
 class TestTheProductionPathOnTheFixture:
@@ -519,8 +601,20 @@ class TestTheProductionPathOnTheFixture:
     ):
         """The link leaves a vermelding on the question. The harness keeps
         it as a link, and does not count it as the question marked again."""
-        gevraagd = "Wie betaalt de rekening als een gemeente het geld niet heeft?"
+        gevraagd = (
+            "Klopt het dat het budget voor bewaakte stallingen volgend jaar met 12"
+            " miljoen euro wordt verlaagd?"
+        )
         assert gevraagd in FIXTURE["beurten"][1]["tekst"]
+        # A toezegging is linked to a question when its own words name what
+        # the question is about. In the fixture the minister says "die
+        # brief"; here he says which.
+        said = "de Kamer krijgt die brief vóór de begrotingsbehandeling."
+        named = (
+            "de Kamer krijgt die brief over het budget vóór de begrotingsbehandeling."
+        )
+        gold = json.loads(json.dumps(FIXTURE, ensure_ascii=False).replace(said, named))
+        assert gold != FIXTURE
 
         class Linking(OracleLLM):
             async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
@@ -531,21 +625,22 @@ class TestTheProductionPathOnTheFixture:
                                 {
                                     "citaat": gevraagd,
                                     "gericht_aan": "de minister",
-                                    "samenvatting": "Rekening van een gemeente?",
+                                    "samenvatting": "Wordt het budget verlaagd?",
                                 }
                             ]
                         }
                     )
-                listed = re.search(r"(\d+)\. Kamerlid A \(X\): Rekening", prompt)
-                if listed and "laten uitzoeken" in prompt:
+                listed = re.search(r"(\d+)\. Kamerlid A \(X\): Wordt", prompt)
+                if listed and "Dat zeg ik toe" in prompt:
                     return json.dumps(
                         {
                             "toezeggingen": [
                                 {
-                                    "citaat": "Ik zal dat laten uitzoeken en kom"
-                                    " daar in het voorjaar schriftelijk op terug.",
-                                    "samenvatting": "Zoekt uit wie de rekening van"
-                                    " een gemeente betaalt.",
+                                    # The answer speaks of the budget right
+                                    # before it: that is what the link is
+                                    # kept on.
+                                    "citaat": f"Dat zeg ik toe: {named}",
+                                    "samenvatting": "Stuurt een brief over het budget.",
                                     "bij_vraag": int(listed.group(1)),
                                 }
                             ]
@@ -554,7 +649,7 @@ class TestTheProductionPathOnTheFixture:
                 return await super()._complete(prompt, max_tokens)
 
         block = await run_debate(
-            db_session, Linking(FIXTURE), FIXTURE, "synthetisch", max_turns=18
+            db_session, Linking(gold), gold, "synthetisch", max_turns=18
         )
         outcomes = {turn["nr"]: turn for turn in block["beurten"]}
         (vraag,) = outcomes[2]["gemarkeerd"]
@@ -624,16 +719,17 @@ class TestTheProductionPathOnTheFixture:
         assert {r["soort"] for r in outcomes[18]["ruw"]} == {"toezegging"}
         toezegging = scores["toezegging"]
         assert toezegging.false_positives == []
-        # Six the labeller is sure of. Five are in a turn of the minister
-        # and are found; the sixth stands in the turn of the member who
-        # interrupted, where nothing looks for a toezegging.
-        assert (toezegging.required, toezegging.found) == (6, 5)
+        # Seven the labeller is sure of. Five are in a turn of the minister
+        # and are found, and one stands only in the list the chairman reads
+        # at the end, which is read for it. The seventh stands in the turn
+        # of the member who interrupted, where nothing looks for one.
+        assert (toezegging.required, toezegging.found) == (7, 6)
         assert [(m.item.beurt, m.reason) for m in toezegging.misses] == [
             (22, REASON_NOT_AN_ANSWER)
         ]
-        # Of the optional ones the effort is found; the two the chairman
-        # reads out at the end are not, his turn is skipped.
-        assert (toezegging.optional, toezegging.optional_found) == (3, 1)
+        # Of the optional ones the effort is found, and so are the two the
+        # chairman reads out at the end.
+        assert (toezegging.optional, toezegging.optional_found) == (3, 3)
         # The refusal and the condition in the last answer are not marked,
         # the toezegging behind them is.
         assert [m["citaat"][:14] for m in outcomes[36]["gemarkeerd"]] == [

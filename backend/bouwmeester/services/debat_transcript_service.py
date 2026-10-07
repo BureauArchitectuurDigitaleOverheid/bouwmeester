@@ -358,7 +358,15 @@ class DebatTranscript:
             if turn.closing:
                 # `tekst_geplaatst` of this row counts the chairman's words
                 # shown under it, which are kept on other rows.
-                if await self._rewrite(turn.post_id, render_closing(turn.kop, text)):
+                closing = render_closing(turn.kop, text)
+                # The message of the end is where the toezeggingen from the
+                # chairman's list hang. Written again from the words alone,
+                # it would lose their count.
+                blok = await statusblok_voor_post(self.session, turn.post_id)
+                if blok:
+                    room = MESSAGE_MAX - len(blok) - len(SCHEIDING) - 3
+                    closing = voeg_samen(closing[:room], blok)
+                if await self._rewrite(turn.post_id, closing):
                     await self._keep(turn.row_id, **placed)
                 else:
                     logger.warning(

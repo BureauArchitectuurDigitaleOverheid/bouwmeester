@@ -32,7 +32,8 @@ it measured.
 Tests: `backend/tests/test_debat_eval.py`. The fixture
 `backend/tests/fixtures/debat_markeringen_synthetisch.json` is a made-up debate
 of 37 turns in the gold format that covers every kind and every hard negative
-of the codebook. It is meant for prompt tests with a fake model.
+of the codebook, the list of toezeggingen the chairman reads at the end
+included. It is meant for prompt tests with a fake model.
 
 ## The gold set is not in this repository
 
@@ -94,7 +95,9 @@ before reading the numbers as production numbers.
 ### What a run costs
 
 The service skips the chairman, turns under five words and interruptions of
-a member that name no bewindspersoon. On the first gold set (328 turns, 5.8
+a member that name no bewindspersoon. Of the chairman one thing is read: the
+list of toezeggingen at the end of a debate, one call for a debate that has
+one (1 of the 4 in the set). On the first gold set (328 turns, 5.8
 hours of speech) that left 135 turns of members for the model, 136 calls with
 one retry. With four debates in parallel the run took 7 minutes through the
 CLI. Run it in the background and read the progress lines; each turn prints
@@ -283,9 +286,12 @@ skip, is read for toezeggingen and for nothing else.
 | The quote has the form of a commitment. Dropped: a refusal anywhere in the clause, "daar kom ik zo op terug" and the second term, coming back without a moment or anything to deliver, what was promised before, a question told back | Code (`has_commitment_form`) |
 | The moment is shown only when its words stand in the quote, one after the other | Code (`deadline_is_said`) |
 | A repeat is one only when it shares two words of substance with the toezegging it points at; otherwise it is new | Code (`shares_a_subject`) |
-| The question it is linked to is open, was asked before the answer, was put to this bewindspersoon, and shares two words of substance with the toezegging | Code (`_vragen_aan`, `shares_a_subject`) |
+| Which question it is linked to. At the start of an answer to an interruption that has the form of a question: a question that was marked in that interruption, asked or asked again, that shares a word with the toezegging and a word with what was said. Anywhere else: the question the model named, when it is open, was asked before the answer, was put to this bewindspersoon, and shares two words with what the bewindspersoon said (the quote and the 400 characters in front of it), one of them in the quote itself, and one with the summary | Code (`_vragen_aan`, `_vragen_in`, `link_to_question`) |
 | The same toezegging seen by two windows is stored once | Code (`_nog_niet_opgeslagen`) |
-| Who it was promised to: whoever asked the linked question, or the member who interrupted right before a toezegging at the start of the answer, unless the meeting was suspended in between; otherwise nobody | Code (`_aan_wie`) |
+| Which words of the chairman are the list of toezeggingen read out at the end: a turn with the formula of reading out or noting down, not taken back in its own sentence, within half an hour of the end and after an answer of a bewindspersoon; from there on every turn of the chairman, and nobody else's | Code (`find_closing_list`, `opens_closing_list`) |
+| Which sentences of that list are items, what each promises and by when, and which toezegging of the debate it is | Model |
+| An item stands literally in the list and has the form of one: the promise named ("de minister zegt toe"), or the shape of an item ("de staatssecretaris zal", "er komt", "de Kamer ontvangt") with something that is delivered. It is a toezegging of the debate only when the model names it and the two share two words; when the model says it is new, or names one the words do not bear out, it is new. Who it was promised to is the one member the chairman names right behind it, up to the next thing the model quoted, when that is the surname of a member of whom something was marked | Code (`lees_slotlijst`, `is_listed_commitment`, `match_listed`, `promised_to`) |
+| Who it was promised to: whoever asked the linked question. Without a link: the member who interrupted right before a toezegging at the start of the answer, when that interruption asks something and the quote names no other member, unless the meeting was suspended in between. Otherwise nobody | Code (`link_to_question`) |
 
 ### Which debate was kept apart, and how far that still holds
 
@@ -320,11 +326,18 @@ ones stand in a turn of the bewindspersoon; the others no run can find.
 | The same, now, no longer unseen | 4 | 3 | 3 | 2 of 7 | 6 to 7 | 1 | 84% (83 to 86) | 75% |
 | Both, first version | 12 | 9 | 5 to 7 | 2 to 4 of 14 | 9 to 12 | 1 | 90% (89 to 92) | 50% (42 to 58) |
 | Both, now | 12 | 9 | 8 | 5 of 14 | 15 to 16 | 2 | 87% (87 to 88) | 67% |
+| Both, after the rule for the link changed | 12 | 9 | 8 | 3 to 6 of 14 | 13 to 15 | 2 to 3 | 84% (80 to 87) | 67% |
+| Notaoverleg, with the chairman's list read (it has none) | 8 | 6 | 5 | 2 to 4 of 7 | 8 to 9 | 1 | 88% (88 to 89) | 62% |
+| Wetgevingsoverleg, with the chairman's list read | 4 | 4 | 4 | 3 to 4 of 7 | 8 to 10 | 1 | 89% (88 to 90) | 100% |
+| Both, with the chairman's list read | 12 | 10 | 9 | 6 to 7 of 14 | 17 to 18 | 2 | 88% (88 to 89) | 75% |
+| Both, after the review of the list (three more runs) | 12 | 10 | 9 | 7 of 14 | 17 to 19 | 1 to 2 | 91% (89 to 94) | 75% |
 
 Counted as for the questions: an unsure or repeated item that is found is
 right, one that is not found is no miss. "First version" is one call per
 answer and the rules before the review; "now" is windows of 4,000
-characters, the rules after the review, 162 calls a run.
+characters, the rules after the review, 162 calls a run. The last rows
+are three runs of what is in the code now, 163 calls a run: with the list
+read, one more sure toezegging stands where a run can find it.
 
 What that says, and what it cannot:
 
@@ -357,29 +370,219 @@ What that says, and what it cannot:
 ### The link to a question
 
 The gold set does not say which question a toezegging answers, so this was
-read by hand, by one reader.
+read by hand, by one reader, with the turn before each answer next to it.
+A wrong link is worse than none: it points a civil servant at the wrong
+question and names the wrong member.
 
-| | Named by the model | Kept by the code | Of those, the question that was answered |
+Three runs each, each with the code of that moment. Per run, and together:
+
+| | Toezeggingen | Named by the model | Kept by the code | Of those, the question that was answered |
+|---|---|---|---|---|
+| Two shared words in summary and quote (the rule until now) | 38 | 9, 6, 10 | 4, 3, 4 | 2, 2, 2 |
+| Where it stands first, as first built | 37 | 9, 8, 7 | 4, 4, 3 | 4, 4, 2 |
+| The same, the summary no longer counted after an interruption | 36 | 7, 5, 13 | 4, 2, 5 | 4, 2, 4 |
+| A word of the quote itself has to be shared too | 35 | 7, 8, 8 | 4, 4, 5 | 4, 4, 5 |
+| The rule now, after the review: whether an interruption asks is the question-form check, and its question needs a word of what was said | 35 | 7, 5, 6 | 4, 2, 3 | 3, 2, 3 |
+| The rule now on the answers of the twelve runs before it, the model not asked again | 136 | 96 | 39 | 39 |
+
+So 6 of 11 before, and 21 of 22 in the last six runs. Each of the first
+two sets of new runs showed one wrong link, and the rule was changed for
+it; the third showed none; the fourth, after a review tightened two
+conditions, one again. That one is not a fault of the link: it points at
+a question of an initiatiefnemer that should not have been marked as a
+question at all, and shares "landelijke regeling" with it. The target,
+every kept link right, is not met in a run that marks such a question.
+And it is a rule that was fitted to two debates twice over: it needs a
+debate nobody read before the numbers mean more than that.
+
+An earlier reading of the first three runs counted 10 kept and 7 right. It
+took two links as right that point at a question of another member on the
+same subject, where the answer was to the member who had just interrupted;
+read with the interruption next to it, those two are wrong. Read that way
+the first version of the rule was not clean either: 12 kept in its three
+runs, 9 right, the three wrong ones that same link in every run.
+
+What the five wrong links of the rule until now have in common:
+
+- Four stand at the start of an answer to an interruption, and point at a
+  question from the first term, more than an hour earlier. Twice it is
+  another question of the member who interrupted: the interruption itself
+  had been stored as a repeat of the right question, and nothing used
+  that. Twice it is the question of another member on the same subject.
+- One shares its words with the question through the summary only, which
+  the model writes with the list of questions in front of it. The words of
+  the bewindspersoon point at no question: it is said in the introduction
+  of a long answer.
+- None of them is one of the wordings that were added in the last round
+  ("doen we"). And a question from much earlier is not what gives a wrong
+  link away: the questions the right links point at were asked 66 to 201
+  minutes before the answer, in a first term the bewindspersoon answers in
+  one block. The model names a number for two in three toezeggingen, as it
+  did before (22 of 25 in the first version).
+
+So the rule became: where a toezegging stands comes first, and the model's
+number confirms (`link_to_question`).
+
+- How often is the right question simply the question of the turn before?
+  Of the 21 toezeggingen in an answer, 7 stand at the start of an answer
+  that follows a turn of a member, and 5 of those answer that turn. The
+  other two follow a turn that asks nothing: once the words of the
+  bewindspersoon the time put under the name of a member, once a remark on
+  a motie that was judged already. For the 14 said further into an answer,
+  or in an answer to a whole term: never. A link by position needs that
+  question to be stored: of the 5 interruptions the model stored a
+  question for 2 to 3 per run, nearly always as a repeat of a question
+  from the first term, and the link then goes to that question.
+- With no question stored in the interruption, the model's number counts
+  only for a question of the same member that shares two words with what
+  was said, by the member and in the quote. Not with the summary: the one
+  wrong link of the second set of runs came from a summary into which the
+  model had written the words of the question it named.
+- Outside that case the model's number counts only when the question
+  shares two words with what the bewindspersoon said: the quote and the 400
+  characters in front of it, where the question is repeated ("mevrouw A
+  vroeg naar ..."), at least one of them in the quote itself, and one with
+  the summary. The word in the quote came from the one wrong link of the
+  third set: a toezegging without a word of its own, tied to a question the
+  answer had spoken of two sentences earlier. On the twelve sets of
+  answers: without the text in front 12 links are kept, with 300
+  characters 24, with 400 to 1,200 characters 39, none of them wrong. One
+  shared word instead of two keeps 52, of which 8 wrong; three keeps 23.
+
+One link of the new runs is counted as right with a note: it points at a
+question of a member that the bewindspersoon answers in the same breath as
+the question next to it, of the same member, which a stricter reader would
+have picked.
+
+It is shown in the reply as "bij vraag 12". It is still not enough to tick
+a question off by: 2 to 5 links per run on 134 questions, and a toezegging
+to come back to something in writing is the opposite of an answer.
+
+### Who it was promised to
+
+Follows the link, or the interruption right before the answer. Checked on
+the toezeggingen of which the gold set shows who asked without a reader
+having to decide on a link: the chairman names the member in the list at
+the end, the bewindspersoon names the member right before committing, or
+the member thanks for it in the next turn. That is 10 places in the two
+debates; a run marks 5 to 9 of them.
+
+| Per run | Named and right | Named and wrong | Left empty |
 |---|---|---|---|
-| First version, three runs | 22 | 11 | 11 |
-| Now, three runs | 25 | 10 | 7 |
+| The rule until now | 2, 4, 3 | 2, 1, 2 | 3, 3, 3 |
+| Where it stands first, the two sets of runs in between | 4, 4, 4 and 4, 3, 5 | none | 3, 3, 4 and 3, 3, 4 |
+| A word of the quote itself | 4, 2, 4 | none | 3, 3, 4 |
+| The rule now, after the review | 3, 2, 3 | none | 4, 5, 4 |
 
-Of the 3 that were kept and are not right, one is a question near it and
-two link a toezegging about one part of a regulation to a question about
-another part of it: they share the name of the regulation and one more
-word. The check that was tightened after the review (words every debate is
-about no longer count) kept all 11 of the first version when applied to
-those runs again; the three wrong ones are new links of new runs.
+Before, 5 of 14 names were wrong; since, none of 42. After the review an
+interruption names its member only when it has the form of a question by
+the check there is for that; one of the five interruptions of the set
+asks in a form that check does not know, and its toezegging is left
+without a name where it had the right one. The wrong ones were
+of two kinds. A link to the question of another member gave that member's
+name (twice). And the member who interrupted right before a turn was named
+for a toezegging that was to others: the bewindspersoon had moved on to
+the next motie and named the two members whose points he took up, in the
+quote itself (once in every run). An interruption that asks nothing no
+longer names anyone, and neither does a quote that names other members.
+What is left empty is a toezegging in a long answer without a link: who it
+is to is said there in a way the code does not read, and nobody is named
+rather than guessed. A name that follows a wrong link is wrong with it;
+that happened once, in the third set of runs, at a place where the gold
+set does not show who asked.
 
-So about one link in six is wrong over the two sets of runs together (18
-of 21 right). It is shown in the reply as "bij vraag 12", where a reader
-sees at once when it is off. It is not enough to tick a question off by: 3
-to 4 links per run on 134 questions, and a toezegging to come back to
-something in writing is the opposite of an answer. Asking for three shared
-words instead of two would have dropped the three wrong ones and two of
-the right ones; that was not measured in a run. Who a toezegging was
-promised to follows the link or the interruption before it; that was not
-checked against anything.
+### The list the chairman reads at the end
+
+At the end of a commissiedebat the chairman reads out the toezeggingen the
+griffier noted. A turn of the chairman used to be skipped, so a toezegging
+that was missed stayed missed and nothing confirmed the ones that were
+found. Now that list is read, once, when the debate is over, and nothing
+else the chairman says ever is (`debat_slotlijst`).
+
+How often there is one: in 1 of the 4 debates of the set. The plenary
+debate and the fragment have none by their nature. Of the two debates with
+a bewindspersoon one has a list of three items; of the other the second
+term is missing from the recording. The rule finds the one list and none
+anywhere else. In that one debate the list is cut into three turns of the
+chairman, by a member who corrects an item and by a word of the
+bewindspersoon; the three are read as one.
+
+What the three items are, by the gold set: one toezegging that stands
+nowhere else in the transcript, because the promise itself fell in a hole
+in the recording, and two that repeat a toezegging of the debate.
+
+| Per run | Items the model gave | Dropped by the code | Not marked before, stored as new | Repeats confirmed on the right toezegging | Repeats confirmed on a wrong one | Repeats stored a second time |
+|---|---|---|---|---|---|---|
+| As first built | 3, 3, 3 | 0 | 1, 1, 0 | 2, 1, 1 | 0, 0, 1 | 0, 1, 1 |
+| "Terugkomen" is no subject | 3, 3, 3 | 0 | 1, 1, 1 | 2, 1, 2 | 0 | 0, 1, 0 |
+| Now: a repeat only when the model names it and the words bear it out | 3, 3, 3 | 0 | 1, 1, 1 | 2, 1, 1 | 0 | 0, 1, 1 |
+
+- Recall: the toezegging that is only in the list is found in every run
+  of the last two sets. Of the 12 sure ones 9 are found where it was 8,
+  75% against 67%; the other three stand in the turn of a member, or are a
+  wish.
+- Nothing wrong came in through the list: the model gave no sentence that
+  is no item in any of nine runs. As first built, one run of three took
+  the item that stands nowhere else for a repeat of another toezegging,
+  because both "komen terug" before the same moment.
+- A review then showed that the code could still do that by itself. It
+  matched an item to a toezegging on two shared words also when the model
+  had said the item was new, and two toezeggingen about one regulation
+  share its name and the word "regeling". Now it takes both: the model
+  names the toezegging and the words bear it out. That is the choice
+  between two mistakes: a toezegging that is confirmed wrongly gets the
+  chairman's word, moment and member, and the item itself is lost; a
+  repeat that is not matched is in the channel twice. The second is what
+  the last row shows: in two runs of three the same repeat is stored a
+  second time, where it was one run of three. The bewindspersoon had
+  promised it in words that share little with the griffier's, and the
+  model named it in one run of three.
+- Who it was promised to: the chairman says so behind each item, and all
+  9 names of each set of runs are the right member. The name is of the
+  item it directly follows: not of the item before one the model passed
+  over or the code dropped, and "de leden A en B" is nobody rather than A.
+  For a toezegging that was marked without a name or a moment, the list
+  fills them in.
+- Cost: one call per debate that has a list.
+
+What the review changed besides, tested on made-up sentences only, since
+the set has one list:
+
+- What opens a list is the formula of reading out or noting down ("ik lees
+  de toezeggingen voor", "ik heb de volgende toezeggingen genoteerd", "dan
+  de toezeggingen", or a count that is then summed up), not the word with
+  any verb near it: "ik dank de minister voor de toezeggingen die we hebben
+  gekregen" sent everything the chairman said after it to the model. The
+  word is also read as speech recognition writes it ("toe zeggingen",
+  "toezegging en"). "Geen" or "eerder" take a formula back only in its own
+  sentence, within ten words.
+- The window counts from the turn with the formula and is half an hour
+  (`LIST_WITHIN`): the list is the last thing of a debate, and one that is
+  not read is lost, because the end of a debate is looked at once.
+- An item needs more than the shape of one: "zij gaan nu stemmen" and "de
+  minister zal de moties van een oordeel voorzien" are none. "Er komt voor
+  de zomer een brief" is one.
+- A model that is away is asked five times over 22 minutes, a reply that
+  cannot be read twice; before, three times within a minute. The list of
+  speakers that cannot be fetched waits the same way.
+- A debate that had ended when this was deployed is not read: a migration
+  marks the ends that are there as looked at, and no list is read later
+  than an hour after its end (`LIST_NOT_AFTER`).
+- A toezegging a reader rejected and the chairman reads out is matched, so
+  it does not come back as a new one; where it stands is left to the
+  reader.
+- With no message of the end of the debate, or one that was deleted, a
+  toezegging from the list goes into the channel as a message of its own.
+
+In the channel a confirmed toezegging says so in its reply, which is
+written again from the row, and one from the list says where it comes
+from, and who promised when the chairman names them:
+
+    🤝 **Stuurt de Kamer een brief met de bezetting per provincie.**
+    Toezegging 7 · bevestigd door de voorzitter · vóór de begrotingsbehandeling · 10:36
+
+    🤝 **Informeert de Kamer over de verlichting in de kelders.**
+    Toezegging 31 · uit de lijst van de voorzitter · toegezegd door de minister · aan Kamerlid C (Z) · vóór het kerstreces · 11:00
 
 ### How long a toezegging waits
 
@@ -408,6 +611,24 @@ Within a point or two either way, with ranges that overlap; three runs of
 the same code do not tell that apart from chance. The moties are the same
 in every run: 11 of 11 sure ones, 13 marked, none wrong.
 
+The same with what is in the code now, the rule for the link changed and
+the chairman's list read, three new runs. Nothing on the path of a
+question or a motie changed with either, and nothing moved further than
+three runs of the same code do:
+
+| Questions | Marked | Wrong | Precision | Recall |
+|---|---|---|---|---|
+| Three debates the rules were made on | 118 to 119 | 15 to 16 | 87% (86 to 87) | 93% (91 to 95) |
+| The debate kept apart | 35 to 39 | 4 to 7 | 83% (79 to 89) | 91% (90 to 93) |
+| All four | 153 to 157 | 19 to 23 | 86% (85 to 88) | 93% (91 to 94) |
+| Three debates the rules were made on, after the review | 112 to 119 | 12 to 17 | 88% (85 to 89) | 93% (92 to 93) |
+| The debate kept apart, after the review | 33 to 37 | 6 to 7 | 82% (81 to 83) | 90% |
+| All four, after the review | 149 to 152 | 19 to 23 | 86% (85 to 87) | 92% (92 to 93) |
+
+The two sets of three runs in between gave 87% and 92%, and 87% and 93%,
+on all four. The moties: 11 of 11 sure ones, 13 marked, none wrong, in
+every one of the twelve runs.
+
 ### What is still open
 
 - A toezegging is marked when the turn it is in is over, minutes after it
@@ -422,11 +643,30 @@ in every run: 11 of 11 sure ones, 13 marked, none wrong.
   channel, and the status line is under the first. The time in the reply
   links to the moment the toezegging was said. Hanging it under the message
   that holds the quote goes with reading during the turn.
-- The list of toezeggingen the chairman reads at the end of a commissiedebat
-  is not read: a turn of the chairman is skipped, as before. The list is
-  what the griffie registers, and it would confirm or correct what was
-  marked. Matching a line of it to a toezegging of two hours earlier takes
-  a model; the one debate with a list has three lines.
+- The list the chairman reads at the end is read from one debate: every
+  number about it is that list of three items. How long before the end a
+  list begins (`LIST_WITHIN`), and the words that open it, are a guess from
+  one list and made-up sentences; a chairman who opens it another way is
+  not read, and nothing says so afterwards.
+- A member who corrects an item of the list is not read: only the
+  chairman's words go to the model. The one list of the set has such a
+  correction, and the item is stored as the chairman read it.
+- An item that was marked during the debate and that the model does not
+  name, or names with too few words shared, is stored a second time, as a
+  toezegging from the list: two runs of three on the one list. A second
+  reader would see at once that it is the same one; nothing merges them.
+- A toezegging from the list hangs under the message of the end of the
+  debate. A debate that is cut off before its end event never has its list
+  read, and neither has one whose list could not be read within the hour.
+- The member the chairman names is only taken when something of that member
+  was marked in the debate: that is where the code knows the names from.
+  Two members named for one item are stored as nobody.
+- Where in a long turn of the chairman the formula stands is not known:
+  the window counts from the start of that turn.
+- A link can point at a question that was marked wrongly; one of nine in
+  the last three runs did.
+- The rule for the link to a question was made on the answers of the two
+  debates of the set. It needs a debate nobody read.
 - A sentence of the bewindspersoon that the time put in the turn of the
   member who interrupted is not found: such a turn is read for questions
   and moties only. In production the voices move most of those lines before
@@ -502,6 +742,12 @@ taking it up with someone.
   (`toezegging_aangehaald`), a refusal (`weigering`: "dat kan ik niet
   toezeggen"), a condition that commits to nothing (`voorwaardelijk`: "als
   zij dat willen, zou ik kunnen overwegen"), the oordeel on a motion.
+- In the list the chairman reads at the end every item is a toezegging: a
+  `herhaling` when it was said in the debate, a toezegging of its own when
+  it stands nowhere else in the transcript. Not an item: who an item was
+  promised to (`toezegging_aan`: "dat is een toezegging aan mevrouw A"),
+  and what the chairman recalls at the start of what was promised in an
+  earlier debate (`toezegging_van_eerder`).
 - A member who asks for one ("kan de minister toezeggen dat") asks a
   question, or for a letter. It is a `vraag` or a `verzoek_om_brief`.
 

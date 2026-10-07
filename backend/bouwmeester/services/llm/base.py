@@ -613,6 +613,61 @@ class BaseLLMService(ABC):
                 )
         return DebatToezeggingenResult(fout=DEBAT_VRAGEN_ONBRUIKBAAR)
 
+    async def markeer_debat_slotlijst(
+        self,
+        *,
+        onderwerp: str,
+        soort_vergadering: str | None,
+        tekst: str,
+        eerdere: list[tuple[int, str, str]],
+    ) -> DebatToezeggingenResult:
+        """Take the items from the list of toezeggingen the chairman reads
+        out at the end of a debate.
+
+        `tekst` is what the chairman said from the opening of the list on.
+        `eerdere` are the toezeggingen that were marked during the debate,
+        as (number, who promised, summary). An item comes back as a
+        `DebatToezegging` whose `hoort_bij` is the number of the one it
+        is, or ``None`` for one that was not marked; `bij_vraag` is never
+        set.
+
+        The same two tries as for the questions, and for the same reason.
+
+        PUBLIC: a debate is public and broadcast.
+        """
+        from bouwmeester.services.llm.prompts import build_debat_slotlijst_prompt
+
+        prompt = build_debat_slotlijst_prompt(
+            onderwerp=onderwerp,
+            soort_vergadering=soort_vergadering,
+            tekst=tekst,
+            eerdere=eerdere,
+        )
+        for poging in (1, 2):
+            try:
+                text = await self._complete(prompt, max_tokens=4096)
+            except Exception:
+                logger.exception("LLM onbereikbaar bij het lezen van de slotlijst")
+                return DebatToezeggingenResult(fout=DEBAT_VRAGEN_ONBEREIKBAAR)
+            try:
+                gelezen = _lees_debat_toezeggingen(self, text)
+            except Exception as exc:
+                logger.warning(
+                    "Onbruikbaar LLM-antwoord bij de slotlijst (poging %d, %s: %s)",
+                    poging,
+                    type(exc).__name__,
+                    str(exc)[:200],
+                )
+                continue
+            # A list answers no question: a number the model put there
+            # anyway is not passed on.
+            return DebatToezeggingenResult(
+                toezeggingen=[
+                    item.model_copy(update={"bij_vraag": None}) for item in gelezen
+                ]
+            )
+        return DebatToezeggingenResult(fout=DEBAT_VRAGEN_ONBRUIKBAAR)
+
     async def is_mattermost_noise(self, message: str) -> bool:
         """True als het bericht ruis is (ack/emoji/no-content)."""
         from bouwmeester.services.llm.prompts import build_is_noise_prompt

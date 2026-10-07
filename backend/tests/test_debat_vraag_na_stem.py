@@ -156,7 +156,12 @@ class Debate:
                 DebatSpreekbeurt.object_id,
                 DebatSpreekbeurt.event_start,
                 DebatSpreekbeurt.beoordeeld_at,
-            ).where(DebatSpreekbeurt.beoordeeld_at.is_not(None))
+            ).where(
+                DebatSpreekbeurt.beoordeeld_at.is_not(None),
+                # The row of the end is marked as well, once its closing
+                # words were looked at for the chairman's list; no turn.
+                DebatSpreekbeurt.event_type.in_(("speaker", "interrupter")),
+            )
         )
         return {
             f"{who}@{round((start - START).total_seconds())}": round(

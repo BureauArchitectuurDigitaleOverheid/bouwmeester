@@ -45,8 +45,10 @@ Pure functions, no I/O.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
 
-from bouwmeester.services.debat_vraag_vorm import words
+from bouwmeester.services.debat_vraag_vorm import has_question_form, words
 
 # Who commits: the speaker, or the cabinet they speak for.
 _I = r"(?:ik|wij|we)"
@@ -424,15 +426,22 @@ _GENERIC = frozenset(
     # about the same thing yet.
     " gemeente gemeenten provincie provincies rijksoverheid overheid overheden"
     " nederland nederlandse europa europese burgers bedrijven beleid"
-    " miljoen miljard euros bedrag gesprek gesprekken overleg".split()
+    " miljoen miljard euros bedrag gesprek gesprekken overleg terug".split()
 )
+# Coming back to it, in every form the verb takes: "terugkomen",
+# "terugkomt", "terugkom". Every other toezegging does, and so does every
+# other item of the list the chairman reads at the end: in one of three
+# runs an item was taken for a toezegging about something else because
+# both "komen terug" on what they are about.
+_GENERIC_STEMS = frozenset({"terugk"})
 # A word counts from this many letters, and two words are the same word when
 # they start alike: "bezuinigd" and "bezuinigingen", "onderzoek" and
 # "onderzoeken".
 _STEM = 6
 _MIN_WORD = 5
-# How many of those a toezegging and a question have to share before the
-# model's "this answers question 12" is believed. See `shares_a_subject`.
+# How many of those two texts have to share before the model's "this is
+# about the same thing" is believed. See `shares_a_subject` and
+# `link_to_question`.
 MIN_SHARED = 2
 
 
@@ -442,26 +451,224 @@ def _subject_words(text: str, without: frozenset[str] | set[str]) -> set[str]:
         for word in words(text)
         if len(word) >= _MIN_WORD
         and word not in _GENERIC
+        and word[:_STEM] not in _GENERIC_STEMS
         and word[:_STEM] not in without
     }
 
 
-def shares_a_subject(toezegging: str, question: str, onderwerp: str = "") -> bool:
-    """Whether a toezegging and a question are about the same thing, by their words.
+def shared_subject_words(a: str, b: str, onderwerp: str = "") -> set[str]:
+    """The words two texts share that say what they are about.
 
-    The model names the open question a toezegging answers. On the debate
-    the rules were made on it named one for six of seven toezeggingen, and
-    three of the six were the question that was answered; the others were a
-    question about something near it. So the link is checked: the two have
-    to share at least `MIN_SHARED` words that say what they are about. Not
-    the words of the subject of the debate, which every question shares,
-    and not the words of asking and promising.
-
-    Both texts are the summary and the quote together: the summaries are
-    the model's and spell the terms right, the quotes are what was said.
-    A link that is dropped costs a line in the reply; a wrong one tells
-    whoever asked that they got an answer.
+    Not the words of the subject of the debate, which everything in it
+    shares, and not the words of asking and promising.
     """
     subject = {word[:_STEM] for word in words(onderwerp)}
-    shared = _subject_words(toezegging, subject) & _subject_words(question, subject)
-    return len(shared) >= MIN_SHARED
+    return _subject_words(a, subject) & _subject_words(b, subject)
+
+
+def shares_a_subject(toezegging: str, question: str, onderwerp: str = "") -> bool:
+    """Whether two texts are about the same thing, by their words.
+
+    For a toezegging the model calls a repeat of an earlier one: the two
+    have to share at least `MIN_SHARED` words that say what they are about
+    (`shared_subject_words`). Both texts are the summary and the quote
+    together: the summaries are the model's and spell the terms right, the
+    quotes are what was said.
+
+    The link from a toezegging to a question was checked with this as
+    well, and that was not enough; see `link_to_question`.
+    """
+    return len(shared_subject_words(toezegging, question, onderwerp)) >= MIN_SHARED
+
+
+# --- which question a toezegging answers, and who it was promised to ----
+
+# How much of the answer in front of the quote counts as said with it, in
+# characters. A bewindspersoon repeats the question and then commits
+# ("mevrouw A vroeg naar de bezetting. Daar kom ik schriftelijk op
+# terug"), and the model quotes the second sentence. On the answers of
+# twelve runs: without the text in front 12 right links were kept, with 300
+# characters 24, with 400 to 1,200 characters 39, and none wrong at any
+# of these.
+SAID_BEFORE = 400
+# A toezegging counts as an answer to the interruption right before the
+# turn when it starts this early in the turn: about the first half-minute
+# of speech. In the gold set the six toezeggingen that answer an
+# interruption start at character 0 to 490. Further on, the bewindspersoon
+# has usually moved on to someone else's question.
+AT_START = 600
+# A member named the way a bewindspersoon names one.
+_MEMBER_NAMED = re.compile(r"\b(?:de heer|meneer|mevrouw|het lid|collega) [a-z]")
+
+
+@dataclass(frozen=True)
+class Interruption:
+    """The interruption of a member right before an answer."""
+
+    # The label of the member, as it stands on their questions.
+    spreker: str
+    tekst: str
+    # The numbers of the open questions that were marked in it: asked in
+    # it, or asked again in it.
+    vragen: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class Link:
+    """What a toezegging is tied to: a question, and who it was promised to."""
+
+    vraag: int | None = None
+    aan: str = ""
+
+
+def asks_something(text: str) -> bool:
+    """Whether an interruption asks the bewindspersoon anything.
+
+    By the check there is for the form of a question
+    (`has_question_form`), and nothing looser: a verb in front of its
+    subject is the order of a question and also of "dan kan het dus niet".
+    A turn that only states something is no question an answer can be to:
+    in the gold set that is the words of the bewindspersoon the time put
+    under the name of a member, and a remark about a motie that was judged
+    already. An interruption that asks in a form the check does not know
+    names nobody: one of the five in the gold set.
+    """
+    return has_question_form(text)
+
+
+def names_someone_else(quote: str, spreker: str) -> bool:
+    """Whether a quote names a member, and not the one with this label.
+
+    "Die brief gaat ook in op wat de heer A en mevrouw B vroegen" is
+    promised to those two, whoever interrupted before it.
+    A name the transcript got wrong counts as someone else: nobody is
+    named then, rather than the wrong member.
+    """
+    flat = _flat(quote)
+    if not _MEMBER_NAMED.search(flat):
+        return False
+    name = words(spreker.split("(")[0])
+    return not name or name[-1] not in flat.split()
+
+
+def link_to_question(
+    *,
+    quote: str,
+    said_before: str,
+    summary: str,
+    named: int | None,
+    questions: Mapping[int, str],
+    askers: Mapping[int, str],
+    onderwerp: str = "",
+    interruption: Interruption | None = None,
+    at_start: bool = False,
+) -> Link:
+    """The question a toezegging answers and who it was promised to.
+
+    `named` is the number the model gave, `questions` the open questions
+    put to this bewindspersoon by number, each as its summary and quote
+    together, `askers` who asked each. `said_before` is the answer in
+    front of the quote (`SAID_BEFORE`), `interruption` the turn of a member
+    right before the answer and `at_start` whether the quote begins within
+    `AT_START` of it.
+
+    A wrong link is worse than none: it points a civil servant at the
+    wrong question and names the wrong member. The model names a number
+    for two in three toezeggingen (25 of 38 in three runs), and the check
+    there was (two words shared by the summaries and quotes) kept 11 of
+    them, of which 6 were the question that was answered. What the five
+    wrong ones were:
+
+    * Four stood at the start of an answer to an interruption, and
+      pointed at a question from the first term, an hour or two earlier:
+      twice another question of the member who interrupted, twice the
+      question of another member on the same subject. An answer right
+      after an interruption is to that interruption.
+    * One shared its words through the summary only, which the model
+      writes with the list of questions in front of it. What the
+      bewindspersoon said did not point at the question.
+
+    So where a toezegging stands comes first, and the model's number
+    confirms:
+
+    1. At the start of an answer to an interruption that asks something,
+       the question is one that was marked in that interruption, asked in
+       it or asked again, if it shares a word with the toezegging, summary
+       and quote, and one with what was said: the interruption, the quote
+       or the answer in front of it. With
+       none marked there, the model's number counts only for a question
+       of the same member that shares `MIN_SHARED` words with what was
+       said: the interruption and the quote. Not the summary: in one of
+       three new runs the model had written the words of the question it
+       named into it, and that was the one wrong link of those runs.
+       Promised to whoever interrupted, link or no link.
+    2. Anywhere else, the model's number counts when the question shares
+       `MIN_SHARED` words with what was said, the quote and the answer in
+       front of it, at least one of them with the quote itself, and at
+       least one with the summary. Promised to whoever asked that
+       question; without a link, to nobody. The word in the quote was
+       added after new runs: a toezegging without a word of its own ("daar
+       doen we ook die evaluatie naar") was linked to a question the
+       answer had spoken of two sentences earlier.
+
+    Recency does not help outside the first case: the questions the right
+    links of the gold set point at were asked 66 to 201 minutes before
+    the answer, in a first term the bewindspersoon answers in one block.
+
+    Applied to what the model answered in twelve saved runs (136
+    toezeggingen, a question named for 96) this keeps 39 links, 2 to 4 a
+    run, and all 39 are the question that was answered. One shared word
+    instead of two keeps 52, of which 8 wrong; three keeps 23. The rule
+    was made on those same answers, and twice changed for a wrong link a
+    new run showed, so that is what it can do, not what it does on a
+    debate nobody read.
+    """
+    own = f"{summary} {quote}"
+    if (
+        interruption is not None
+        and at_start
+        and (interruption.vragen or asks_something(interruption.tekst))
+        and not names_someone_else(quote, interruption.spreker)
+    ):
+        aan = interruption.spreker
+        marked = [
+            number
+            for number in interruption.vragen
+            if number in questions
+            and shared_subject_words(own, questions[number], onderwerp)
+            # Not on the word of the summary alone, which is the model's:
+            # what was said has to point at the question too, by the
+            # member or by the bewindspersoon.
+            and shared_subject_words(
+                f"{interruption.tekst} {said_before} {quote}",
+                questions[number],
+                onderwerp,
+            )
+        ]
+        if named in marked:
+            return Link(named, aan)
+        if len(marked) == 1:
+            return Link(marked[0], aan)
+        if (
+            not marked
+            and named in questions
+            and askers.get(named) == aan
+            and len(
+                shared_subject_words(
+                    f"{interruption.tekst} {quote}", questions[named], onderwerp
+                )
+            )
+            >= MIN_SHARED
+        ):
+            return Link(named, aan)
+        return Link(None, aan)
+    if named is not None and named in questions:
+        question = questions[named]
+        said = shared_subject_words(f"{said_before} {quote}", question, onderwerp)
+        if (
+            len(said) >= MIN_SHARED
+            and shared_subject_words(quote, question, onderwerp)
+            and shared_subject_words(summary, question, onderwerp)
+        ):
+            return Link(named, askers.get(named, ""))
+    return Link()
