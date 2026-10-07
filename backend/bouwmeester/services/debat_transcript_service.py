@@ -97,6 +97,9 @@ class Turn:
     # When the turn began, and when it was read for questions.
     start: datetime
     beoordeeld_at: datetime | None = None
+    # Of an answer of the bewindspersoon: how many characters of it were
+    # read for toezeggingen so far (`antwoord_gelezen_tot`).
+    gelezen_tot: int = 0
     texts: list[str] = field(default_factory=list)
     # The rows those texts are of, in the same order.
     rows: list[uuid.UUID] = field(default_factory=list)
@@ -388,20 +391,21 @@ class DebatTranscript:
             done = True
             for number in range(first, len(pieces)):
                 message = render(turn.kop, pieces[number], vervolg=number > 0)
-                if number == 0:
-                    # The first message is also where the questions of the
-                    # turn are counted. Writing it again from the text alone
-                    # would wipe that, so it goes back in, below the text
-                    # and outside what is cut into messages.
-                    blok = await statusblok_voor_post(self.session, turn.post_id)
+                if number <= len(vervolg):
+                    target = turn.post_id if number == 0 else vervolg[number - 1]
+                    # A message is also where what was marked in it is
+                    # counted: the questions of the turn under the first,
+                    # a toezegging under the message that holds its quote.
+                    # Writing it again from the text alone would wipe that,
+                    # so it goes back in, below the text and outside what
+                    # is cut into messages.
+                    blok = await statusblok_voor_post(self.session, target)
                     if blok:
                         # Room for the rule and the block: what Mattermost
                         # refuses for its length is cut from the text.
                         room = MESSAGE_MAX - len(blok) - len(SCHEIDING) - 3
                         message = message[:room]
                     message = voeg_samen(message, blok)
-                if number <= len(vervolg):
-                    target = turn.post_id if number == 0 else vervolg[number - 1]
                     ok = await self._rewrite(target, message)
                 else:
                     post_id = await self.mattermost.send_channel_message(
@@ -551,6 +555,7 @@ async def load_turns(
                 DebatSpreekbeurt.vervolg_post_ids,
                 DebatSpreekbeurt.beoordeeld_at,
                 DebatSpreekbeurt.beurt_soort,
+                DebatSpreekbeurt.antwoord_gelezen_tot,
             )
             .where(
                 DebatSpreekbeurt.sessie_id == sessie_id,
@@ -579,6 +584,7 @@ async def load_turns(
         vervolg,
         read,
         turn_kind,
+        read_until,
     ) in rows:
         if kind in _SPEAKING and turn_kind:
             # Two events of one person in two roles, seconds apart, are
@@ -625,6 +631,7 @@ async def load_turns(
                     list(vervolg or []),
                     start,
                     read,
+                    read_until or 0,
                 )
                 turns.append(current)
         elif kind in _SPEAKING and (current is None or current.key != (kind, who)):

@@ -56,7 +56,7 @@ from bouwmeester.models.debat_markering import (
     DebatMarkering,
     DebatMarkeringVermelding,
 )
-from bouwmeester.models.debat_sessie import DebatSessie
+from bouwmeester.models.debat_sessie import DebatSessie, DebatSpreekbeurt
 from bouwmeester.services import debat_direct as dd
 from bouwmeester.services.debat_kanaal_service import AMSTERDAM
 from bouwmeester.services.debat_motie import (
@@ -263,6 +263,13 @@ class Beurt:
     # caller keeps it between calls; `Beoordeling.gelezen_tot` is what to
     # keep.
     gelezen_tot: int = 0
+    # For an answer of the bewindspersoon that is still being given:
+    # `tekst` is the part of the turn that is final, and more will follow.
+    # It is read as far as `running_window` says, and never counts as done.
+    loopt: bool = False
+    # The messages a long turn continues in, after `post_id`, in order. A
+    # toezegging hangs under the one that holds its quote (`post_holding`).
+    vervolg_post_ids: tuple[str, ...] = ()
     # The subtitle lines `tekst` is made of, in order, each with the moment
     # it was spoken. Empty when they are not known; a question then gets
     # the time of the start of the turn.
@@ -1335,6 +1342,126 @@ def skip_window(tekst: str, vanaf: int) -> int:
     return len(tekst) if venster is None else venster[2]
 
 
+# --- an answer that is still being given --------------------------------
+#
+# A turn of the bewindspersoon is read while it goes on, so that a
+# toezegging is in the channel a minute after it was said and not when the
+# turn is over: in the gold set that was a median of 74 seconds later and a
+# ninth decile of 429. What is read is the part of the turn that is final
+# (the worker decides which lines those are), up to the last sentence of it
+# that is complete. Every round of a quarter of a minute brings a sentence
+# or two, and a call per round would be 240 calls an hour, so a window is
+# only asked about when one of these holds:
+#
+# * it is full: more than a window of final text is waiting, as in a turn
+#   that is over;
+# * a sentence in it looks like a toezegging (`commitment_passages`) and
+#   the sentence after it is there. The sentence after it, because that is
+#   where the moment is named ("Dat zeg ik toe. Die brief komt voor de
+#   zomer."), and a quote stored without it is not stored again with it;
+# * the words of a commitment stand somewhere in it and this much has been
+#   said since the last window: `MEELEES_VENSTER`.
+#
+# Everything else waits for more text or for the end of the turn, where
+# what is left is read as before.
+MEELEES_VENSTER = 1500
+
+
+def final_end(tekst: str) -> int:
+    """Where the last complete sentence of a text ends.
+
+    For the final part of a turn that goes on: what stands behind this is
+    a sentence the speaker has not finished, or one the next subtitle line
+    goes on with. The end of the text counts when it is a full stop: the
+    next line starts a new sentence. Not the three dots of a line that
+    runs on.
+    """
+    kaal = tekst.rstrip()
+    if kaal and kaal[-1] in ".?!" and not kaal.endswith(".."):
+        return len(kaal)
+    einden = [found.end() for found in _ZIN_EINDE.finditer(tekst)]
+    return einden[-1] if einden else 0
+
+
+def _zinnen(tekst: str, vanaf: int, tot: int) -> list[tuple[int, int]]:
+    """The sentences of `tekst[vanaf:tot]`, each as (begin, end)."""
+    grenzen = [vanaf + found.end() for found in _ZIN_EINDE.finditer(tekst[vanaf:tot])]
+    if not grenzen or grenzen[-1] < tot:
+        grenzen.append(tot)
+    zinnen: list[tuple[int, int]] = []
+    begin = vanaf
+    for einde in grenzen:
+        if tekst[begin:einde].strip():
+            zinnen.append((begin, einde))
+        begin = einde
+    return zinnen
+
+
+def running_window(
+    tekst: str, vanaf: int, venster: int | None = None
+) -> tuple[int, int, int] | None:
+    """The window of an answer that goes on that is worth a call now, as
+    (read up to, begin, end); ``None`` when there is none yet.
+
+    `tekst` is the final part of the turn, `vanaf` how far it was read.
+    The window ends where a sentence ends that is complete, and never
+    behind the last such sentence: the tail that is still coming is left
+    for a later round. See above for when a window is asked about.
+    `venster` is `MEELEES_VENSTER` when not given.
+
+    As for a turn that is over (`next_window`), a full window without the
+    words of a commitment is passed over, and `read up to` is where the
+    passing over stopped.
+    """
+    drempel = MEELEES_VENSTER if venster is None else venster
+    vast = tekst[: final_end(tekst)]
+    while (gevonden := answer_window(vast, vanaf)) is not None:
+        begin, einde = gevonden
+        if einde < len(vast):
+            # Full: cut by its size, with more final text behind it.
+            if may_hold_commitment(vast[vanaf:einde]):
+                return vanaf, begin, einde
+            vanaf = einde
+            continue
+        # The last of what is final. A sentence that looks like a
+        # toezegging at its very end waits for the sentence after it.
+        zinnen = _zinnen(vast, vanaf, einde)
+        lijkt = [bool(commitment_passages(vast[a:b])) for a, b in zinnen]
+        while lijkt and lijkt[-1]:
+            lijkt.pop()
+        if not lijkt:
+            return None
+        einde = zinnen[len(lijkt) - 1][1]
+        nieuw = vast[vanaf:einde]
+        if any(lijkt) or (len(nieuw) >= drempel and may_hold_commitment(nieuw)):
+            return vanaf, begin, einde
+        return None
+    return None
+
+
+def post_holding(
+    tekst: str, plek: int, post_id: str | None, vervolg: Sequence[str]
+) -> str | None:
+    """The message of a turn that holds the character at `plek` of its text.
+
+    A long turn is cut over several messages (`split_text`): the first,
+    and the ones in `vervolg`. A cut depends only on the text in front of
+    it, so for a place in text that is final this is the message it stays
+    in, however the turn goes on. A piece for which there is no message
+    was put into the last one there is (`fit_messages`).
+    """
+    if post_id is None or not vervolg:
+        return post_id
+    einde = 0
+    nummer = 0
+    for nummer, stuk in enumerate(split_text(tekst)):
+        einde = tekst.index(stuk, einde) + len(stuk)
+        if plek < einde:
+            break
+    nummer = min(nummer, len(vervolg))
+    return post_id if nummer == 0 else vervolg[nummer - 1]
+
+
 def rol_van(spreker: str) -> str | None:
     """Whether a bewindspersoon is a minister or a staatssecretaris.
 
@@ -1622,27 +1749,45 @@ class DebatVraagService:
             )
         tekst = beurt.tekst
         gelezen = min(max(0, beurt.gelezen_tot), len(tekst))
-        if gelezen == 0 and not may_hold_commitment(tekst):
-            return Beoordeling(
-                UITKOMST_OVERGESLAGEN,
-                reden=REDEN_BEWINDSPERSOON,
-                threads=threads,
-                gelezen_tot=len(tekst),
-            )
-        # One window per call. An answer of ten minutes is three windows,
-        # each a model call of its own, and a caller that waits for all of
-        # them waits longer than a turn may take. What a window holds is
-        # stored before the call returns, so a window that was read is
-        # never asked about again, whatever becomes of the next.
-        venster = next_window(tekst, gelezen)
-        if venster is None:
-            return Beoordeling(
-                UITKOMST_AL_BEOORDEELD if gelezen else UITKOMST_GEEN_TOEZEGGING,
-                threads=threads,
-                gelezen_tot=len(tekst),
-            )
+        if beurt.loopt:
+            # The turn goes on: only what `running_window` says is worth a
+            # call now, and whatever comes of it there is more to read.
+            venster = running_window(tekst, gelezen)
+            if venster is None:
+                return Beoordeling(
+                    UITKOMST_GEEN_TOEZEGGING,
+                    threads=threads,
+                    gelezen_tot=gelezen,
+                    meer=True,
+                )
+        else:
+            if gelezen == 0 and not may_hold_commitment(tekst):
+                return Beoordeling(
+                    UITKOMST_OVERGESLAGEN,
+                    reden=REDEN_BEWINDSPERSOON,
+                    threads=threads,
+                    gelezen_tot=len(tekst),
+                )
+            # One window per call. An answer of ten minutes is three
+            # windows, each a model call of its own, and a caller that
+            # waits for all of them waits longer than a turn may take. What
+            # a window holds is stored before the call returns, so a window
+            # that was read is never asked about again, whatever becomes of
+            # the next.
+            venster = next_window(tekst, gelezen)
+            if venster is None:
+                return Beoordeling(
+                    UITKOMST_AL_BEOORDEELD if gelezen else UITKOMST_GEEN_TOEZEGGING,
+                    threads=threads,
+                    gelezen_tot=len(tekst),
+                )
         vanaf, begin, einde = venster
-        heel = gelezen == 0 and begin == 0 and next_window(tekst, einde) is None
+        heel = (
+            not beurt.loopt
+            and gelezen == 0
+            and begin == 0
+            and next_window(tekst, einde) is None
+        )
         if heel:
             # The whole answer is one window: stored once, as a turn of a
             # member is, and a second call for it asks nothing.
@@ -1655,10 +1800,10 @@ class DebatVraagService:
                     gelezen_tot=len(tekst),
                 )
         deel = tekst[begin:einde]
-        volgende = next_window(tekst, einde)
-        meer = volgende is not None
         # With no window behind this one that needs the model, the answer
-        # is read to its end.
+        # is read to its end. Not one that goes on: it is read as far as
+        # this window, and its end is not there yet.
+        meer = beurt.loopt or next_window(tekst, einde) is not None
         tot = einde if meer else len(tekst)
 
         vragen = await self._vragen_aan(beurt.sessie_id, beurt.spreker, beurt.start)
@@ -1762,6 +1907,9 @@ class DebatVraagService:
             afgevallen,
             # Of a longer answer every window adds to what is there.
             aanvullen=not heel,
+            # While the turn goes on, how far it was read is kept with what
+            # was found: see `_leg_vast`.
+            gelezen_tot=tot if beurt.loopt else None,
         )
         return replace(stored, gelezen_tot=tot, meer=meer)
 
@@ -2037,10 +2185,16 @@ class DebatVraagService:
         afgevallen: int,
         *,
         aanvullen: bool = False,
+        gelezen_tot: int | None = None,
     ) -> Beoordeling:
         """Store what was found in a turn and put it in the channel."""
         opgeslagen = await self._leg_vast(
-            beurt, nieuw, herhaald, open_ids, aanvullen=aanvullen
+            beurt,
+            nieuw,
+            herhaald,
+            open_ids,
+            aanvullen=aanvullen,
+            gelezen_tot=gelezen_tot,
         )
         if opgeslagen is None:
             # Someone else stored this turn while the model was reading.
@@ -2186,6 +2340,7 @@ class DebatVraagService:
         open_ids: dict[int, uuid.UUID],
         *,
         aanvullen: bool = False,
+        gelezen_tot: int | None = None,
     ) -> tuple[tuple[uuid.UUID, ...], dict[str, int]] | None:
         """Store what was found in this turn, in one commit.
 
@@ -2212,6 +2367,14 @@ class DebatVraagService:
         far the answer was read. Neither leaves anything a second time: a
         toezegging whose quote overlaps one of this turn is the same one,
         and a vermelding is written once per markering and kind.
+
+        `gelezen_tot` is for an answer that is read while it goes on: how
+        far the turn is read with this window, kept on its row in the same
+        commit as what the window held. When that turn is over, a read
+        position of nothing has to mean that nothing of it was stored: a
+        short answer is then read in one call and counts as read when
+        anything of it is there. Kept apart, a restart between the two
+        would leave the first sentences stored and the rest never read.
         """
         locked = (
             await self.session.execute(
@@ -2270,7 +2433,7 @@ class DebatVraagService:
                             soort=vraag.soort,
                             status=STATUS_OPEN,
                             channel_id=beurt.channel_id,
-                            beurt_post_id=beurt.post_id,
+                            beurt_post_id=self._post_van(beurt, vraag),
                             spreker=beurt.spreker,
                             fractie=beurt.fractie,
                             gericht_aan=vraag.gericht_aan,
@@ -2353,11 +2516,36 @@ class DebatVraagService:
                         .where(*eigen, DebatMarkering.gericht_aan == "")
                         .values(gericht_aan=herhaling.aan)
                     )
+        if gelezen_tot is not None and beurt.spreekbeurt_id is not None:
+            await self.session.execute(
+                update(DebatSpreekbeurt)
+                .where(DebatSpreekbeurt.id == beurt.spreekbeurt_id)
+                .values(antwoord_gelezen_tot=gelezen_tot, beoordeel_pogingen=0)
+            )
         await self.session.commit()
         aantal: dict[str, int] = {}
         for n in nieuw:
             aantal[n.soort] = aantal.get(n.soort, 0) + 1
         return (*er_al.values(), *ids), aantal
+
+    @staticmethod
+    def _post_van(beurt: Beurt, gevonden: _Nieuw) -> str | None:
+        """The message a markering hangs under.
+
+        A toezegging hangs under the message of the turn that holds its
+        quote: an answer of ten minutes is five messages, and a reply
+        under the first is four screens above what it is about. That is
+        safe for an answer because what is read of it is final: the text
+        in front of the quote does not change any more, so the quote stays
+        in the message it is in. A question and a motie hang under the
+        first message, as they did: the turn of a member is read when it
+        is over, and nothing was measured that says they should move.
+        """
+        if gevonden.soort != SOORT_TOEZEGGING or beurt.slotlijst:
+            return beurt.post_id
+        return post_holding(
+            beurt.tekst, gevonden.plek, beurt.post_id, beurt.vervolg_post_ids
+        )
 
     async def _nog_niet_opgeslagen(
         self,

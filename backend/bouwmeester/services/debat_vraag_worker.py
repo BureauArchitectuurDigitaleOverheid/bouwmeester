@@ -24,6 +24,13 @@ a line can go to the turn before or after. A question read under one
 speaker and then moved to the other would leave a thread under the wrong
 message. So a turn waits for as long as a line can still move into or out
 of it; see `rows_in_play`.
+
+One kind of turn is not left until it is over: an answer of the
+bewindspersoon. A toezegging in the second minute of an answer of ten is
+of use when it is said, so the part of such a turn that is final is read
+while the turn goes on (`final_lines`, `DebatVraagWorker._final`), a
+window at a time, and the turn counts as read only when it is over and
+the rest was read as well.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ import asyncio
 import logging
 import re
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
@@ -61,6 +69,7 @@ from bouwmeester.services.debat_slotlijst import (
 from bouwmeester.services.debat_stemmen_service import (
     AFTER,
     BEFORE,
+    RETRY_FOR,
     WAIT,
 )
 from bouwmeester.services.debat_tijdlijn_service import (
@@ -68,6 +77,8 @@ from bouwmeester.services.debat_tijdlijn_service import (
     GIVE_UP_AFTER,
     LOOKAHEAD,
 )
+from bouwmeester.services.debat_toezegging import may_hold_commitment
+from bouwmeester.services.debat_transcript import append_text
 from bouwmeester.services.debat_transcript_service import (
     _CLOSING,
     _SPEAKING,
@@ -88,6 +99,7 @@ from bouwmeester.services.debat_vraag_service import (
     DebatVraagService,
     is_bewindspersoon,
     next_window,
+    running_window,
     skip_window,
     turn_sleutel,
 )
@@ -168,6 +180,39 @@ class _Waiting:
     # whoever interrupted there. The chairman giving the floor in between
     # is no turn: his words have no message of their own in the channel.
     before: Turn | None = None
+    # The part of the debate it is in.
+    part: str = ""
+    # Not over, or not final as a whole: only an answer of the
+    # bewindspersoon is read then, as far as it is final.
+    running: bool = False
+
+
+@dataclass(frozen=True)
+class SubLine:
+    """A subtitle line of a turn, as far as reading the turn needs it."""
+
+    id: uuid.UUID
+    row_id: uuid.UUID
+    start: datetime
+    tekst: str
+    # Whether the voices are done with it (`stem_klaar`).
+    klaar: bool
+
+
+@dataclass(frozen=True)
+class _Final:
+    """The part of a turn that goes on that will not change any more."""
+
+    turn: Turn
+    lines: tuple[SubLine, ...]
+    # Lines that are not marked as decided about yet and have to be before
+    # this part is read: the ones in it, and the ones that have waited for
+    # the voices too long and could still be moved into it.
+    settle: tuple[uuid.UUID, ...]
+
+    @property
+    def tekst(self) -> str:
+        return text_of(self.lines)
 
 
 @dataclass(frozen=True)
@@ -262,26 +307,111 @@ def rows_in_play(
     * A line that is not near a change stays where it is, and so does one
       the voices have given up on.
     """
-    found: set[uuid.UUID] = set()
+    return set(first_in_play(turns, lines, now))
+
+
+def reach_of(
+    turns: list[stemmen.Turn],
+    start: datetime,
+    row_id: uuid.UUID | None,
+    now: datetime,
+) -> set[uuid.UUID]:
+    """The events a line can still be under: where it is and where the
+    voices can put it. Empty for a line that stays where it is.
+
+    However long the line has waited; `NEVER_MOVES_AFTER` is for whoever
+    asks.
+    """
+    if now - start < WAIT:
+        reached = [turn for turn in turns if turn.distance(start) <= REACH]
+    else:
+        around = stemmen.candidates(turns, start)
+        persons = dict.fromkeys(turn.person for turn in around)
+        reached = [
+            stemmen.nearest(turns, person, start)
+            for person in persons
+            if person is not None
+        ]
+        if not reached:
+            return set()
+    found = {turn.row_id for turn in reached}
+    if row_id is not None:
+        found.add(row_id)
+    return found
+
+
+def first_in_play(
+    turns: list[stemmen.Turn],
+    lines: list[tuple[datetime, uuid.UUID | None]],
+    now: datetime,
+) -> dict[uuid.UUID, datetime]:
+    """Per event whose text can still change by a line moving, the moment
+    of the first such line. See `rows_in_play` for which lines those are.
+
+    What was said in an event before that moment does not change any
+    more: a line that moves takes its place by its moment, so it lands
+    behind everything that was said earlier.
+    """
+    found: dict[uuid.UUID, datetime] = {}
     for start, row_id in lines:
         if now - start > NEVER_MOVES_AFTER:
             continue
-        if now - start < WAIT:
-            reached = [turn for turn in turns if turn.distance(start) <= REACH]
-        else:
-            around = stemmen.candidates(turns, start)
-            persons = dict.fromkeys(turn.person for turn in around)
-            reached = [
-                stemmen.nearest(turns, person, start)
-                for person in persons
-                if person is not None
-            ]
-            if not reached:
-                continue
-        found.update(turn.row_id for turn in reached)
-        if row_id is not None:
-            found.add(row_id)
+        for reached in reach_of(turns, start, row_id, now):
+            if reached not in found or start < found[reached]:
+                found[reached] = start
     return found
+
+
+def text_of(lines: Sequence[SubLine]) -> str:
+    """The text of a turn made of these lines, as `derive_text` and
+    `load_turns` make it: the lines of a row with a space between them,
+    and row after row.
+
+    `lines` are in the order of the text. For the part of a turn that is
+    final this is how the text of the whole turn begins, so a place in it
+    counted in characters is the same place in the turn when it is over.
+    """
+    joined = ""
+    row: list[str] = []
+    current: uuid.UUID | None = None
+    for line in lines:
+        if line.row_id != current and row:
+            joined = append_text(joined, " ".join(row))
+            row = []
+        current = line.row_id
+        row.append(line.tekst)
+    if row:
+        joined = append_text(joined, " ".join(row))
+    return joined
+
+
+def final_lines(lines: Sequence[SubLine], bound: datetime | None) -> list[SubLine]:
+    """The lines of a turn that goes on that are final, in order.
+
+    `lines` are all its lines in the order of its text, `bound` the moment
+    of the first line that can still move into or out of the turn
+    (`first_in_play`), or ``None`` when there is none. Every line of
+    before that moment is final:
+
+    * It is all there. The subtitles are read file after file and a line
+      is in the file it starts in, so nothing is added in front of a line
+      that was read.
+    * It does not leave the turn: the voices are done with it, or it is
+      not near a change of speaker, or it has waited for the voices longer
+      than `NEVER_MOVES_AFTER`. And whoever reads it marks it as decided
+      first, so that this is also true ten minutes from now.
+    * Nothing is put in front of it: a line that moves into the turn lands
+      at its own moment, which is `bound` or later.
+
+    A line the voices can still move, and everything said after it, is
+    left for a later round.
+    """
+    final: list[SubLine] = []
+    for line in lines:
+        if bound is not None and line.start >= bound:
+            break
+        final.append(line)
+    return final
 
 
 def _names_may_follow(context: DebatContext, now: datetime) -> bool:
@@ -334,6 +464,50 @@ class _Pause:
         self._failures.clear()
 
 
+class _Roles:
+    """Who answers in a debate and who asks, as far as it was looked up.
+
+    A turn that goes on is looked at every round, and whether it is an
+    answer is on the list of speakers of Debat Direct. Asking for that
+    list every quarter of a minute for as long as someone speaks is 240
+    requests an hour for something that does not change during a debate.
+    In the memory of the process, per debate: after a restart it is asked
+    once more.
+    """
+
+    def __init__(self) -> None:
+        self._known: dict[tuple[uuid.UUID, str], bool] = {}
+        self._asked: dict[uuid.UUID, datetime] = {}
+
+    def of(self, sessie_id: uuid.UUID, who: str) -> bool | None:
+        """Whether this person answers; ``None`` when not known."""
+        return self._known.get((sessie_id, who))
+
+    def learn(self, sessie_id: uuid.UUID, who: str, answers: bool) -> None:
+        self._known[(sessie_id, who)] = answers
+
+    def may_ask(self, sessie_id: uuid.UUID, now: datetime) -> bool:
+        asked = self._asked.get(sessie_id)
+        return asked is None or abs(now - asked) >= ASK_ROLES_AGAIN
+
+    def asked(self, sessie_id: uuid.UUID, now: datetime) -> None:
+        self._asked[sessie_id] = now
+
+    def keep_only(self, sessie_ids: list[uuid.UUID]) -> None:
+        keep = set(sessie_ids)
+        self._known = {k: v for k, v in self._known.items() if k[0] in keep}
+        self._asked = {k: v for k, v in self._asked.items() if k in keep}
+
+    def reset(self) -> None:
+        self._known.clear()
+        self._asked.clear()
+
+
+# How long the list of speakers is not asked for again for a turn that goes
+# on and whose speaker is not on it: a guest, or a bewindspersoon the list
+# does not have yet. A turn that is over asks every round, as it did.
+ASK_ROLES_AGAIN = timedelta(minutes=5)
+_roles = _Roles()
 _pause = _Pause()
 # The same for one answer of the bewindspersoon of which a window could not
 # be read: that turn is left alone for a while, and the debate is not. When
@@ -411,6 +585,9 @@ class DebatVraagWorker:
         self.contexts = contexts if contexts is not None else {}
         # Per day, for the length of one round.
         self._sprekers: dict[str, dict[str, dd.Spreker]] = {}
+        # Per debate, the turns `_waiting` found that are not over or not
+        # final as a whole: an answer among them is read as far as it is.
+        self._going: dict[uuid.UUID, list[_Waiting]] = {}
 
     async def close(self) -> None:
         await self.mattermost.close()
@@ -430,6 +607,7 @@ class DebatVraagWorker:
             DebatSessie.tijdlijn_status == TIJDLIJN_LOOPT,
         )
         sessie_ids = list((await self.session.execute(stmt)).scalars().all())
+        _roles.keep_only(sessie_ids)
         if not sessie_ids:
             return result
         if not await self.mattermost.is_enabled():
@@ -451,16 +629,27 @@ class DebatVraagWorker:
                         for part in ended
                         if not _list_pause.waiting(part.row_id, now)
                     ]
-                    if not waiting and not ended:
+                    # The answers that go on and of which something final
+                    # is worth a call now. Nothing is looked up and no
+                    # model is looked for when there is none: nearly every
+                    # round of a debate.
+                    going = await self._ready(
+                        sessie_id,
+                        self._going.pop(sessie_id, []),
+                        {item.turn.row_id for item in waiting},
+                        client,
+                        now,
+                    )
+                    if not waiting and not ended and not going:
                         continue
                     if vragen is None:
                         vragen = await self._service()
                     if vragen is None:
                         result.model = False
                         return result
-                    if waiting:
+                    if waiting or going:
                         await self._read(
-                            sessie_id, waiting, vragen, client, now, result
+                            sessie_id, waiting, going, vragen, client, now, result
                         )
                     for part in ended:
                         await self._read_list(
@@ -566,6 +755,7 @@ class DebatVraagWorker:
         open_lines = await self._open_lines(sessie_id, heard, now)
 
         waiting: list[_Waiting] = []
+        going: list[_Waiting] = []
         for debate_id in parts:
             entry = dict(ondertitels.get(debate_id) or {})
             turns = await load_turns(self.session, sessie_id, debate_id)
@@ -598,17 +788,17 @@ class DebatVraagWorker:
                     before.start < moment <= turn.start for moment in breaks
                 ):
                     before = None
-                if (
-                    turn.beoordeeld_at is None
-                    and turn.row_id not in unsettled
-                    and text_is_complete(
-                        entry, next_message.get(turn.row_id), ends.get(debate_id), now
-                    )
-                ):
+                if turn.beoordeeld_at is None:
                     offset = timedelta(milliseconds=entry.get("offset_ms") or 0)
-                    waiting.append(
-                        _Waiting(turn, floor, turns[0].start, offset, before)
+                    item = _Waiting(
+                        turn, floor, turns[0].start, offset, before, debate_id
                     )
+                    if turn.row_id not in unsettled and text_is_complete(
+                        entry, next_message.get(turn.row_id), ends.get(debate_id), now
+                    ):
+                        waiting.append(item)
+                    elif turn.text:
+                        going.append(replace(item, running=True))
                 if turn.key[0] == dd.EVENT_SPEAKER:
                     floor = turn
                 before = turn
@@ -618,7 +808,225 @@ class DebatVraagWorker:
         # question it repeats from a later turn is then filed under that
         # later one.
         waiting.sort(key=lambda w: w.turn.start)
+        going.sort(key=lambda w: w.turn.start)
+        self._going[sessie_id] = going
         return waiting
+
+    async def _ready(
+        self,
+        sessie_id: uuid.UUID,
+        going: list[_Waiting],
+        waiting: set[uuid.UUID],
+        client: httpx.AsyncClient,
+        now: datetime,
+    ) -> list[_Waiting]:
+        """Of the turns that go on, the answers of a bewindspersoon of which
+        a window is worth a call now. `waiting` are the turns that are
+        over and are read this round, before any of these.
+
+        Cheapest first, so that a round in which nothing is ready costs
+        next to nothing: the words of a commitment have to stand in what
+        was not read, then who speaks is looked up, and only then the
+        lines of the turn are read to see what of it is final.
+        """
+        ready: list[_Waiting] = []
+        for item in going:
+            turn = item.turn
+            if _answer_pause.waiting(turn.row_id, now):
+                continue
+            if not may_hold_commitment(turn.text[turn.gelezen_tot :]):
+                continue
+            before = item.before
+            if (
+                before is not None
+                and before.beoordeeld_at is None
+                and before.text
+                and before.row_id not in waiting
+            ):
+                # A toezegging at the start of an answer is tied to the
+                # question that was marked in the interruption before it
+                # (`link_to_question`). When a turn is over, the turn
+                # before it has been read as a rule; one that goes on is
+                # looked at half a minute after it began, and has to wait
+                # for that. Not for long: the turn before is over, and is
+                # read within `NEVER_MOVES_AFTER` whatever the voices do.
+                # One that is read this very round is checked again when
+                # it is this turn's turn (`_read_running`).
+                continue
+            if not await self._answers(sessie_id, item, client, now):
+                continue
+            final = await self._final(sessie_id, item, now)
+            if final is None:
+                continue
+            if running_window(final.tekst, final.turn.gelezen_tot) is None:
+                continue
+            ready.append(item)
+        return ready
+
+    async def _answers(
+        self,
+        sessie_id: uuid.UUID,
+        item: _Waiting,
+        client: httpx.AsyncClient,
+        now: datetime,
+    ) -> bool:
+        """Whether a turn that goes on is one of a bewindspersoon.
+
+        From what was looked up before (`_roles`). Someone who is not
+        known is looked up on the list of speakers, not more often than
+        every `ASK_ROLES_AGAIN`; until then the turn is left for when it
+        is over.
+        """
+        who = item.turn.key[1]
+        known = _roles.of(sessie_id, who)
+        if known is None and _roles.may_ask(sessie_id, now):
+            _roles.asked(sessie_id, now)
+            sprekers = await self._sprekers_for(client, item.first)
+            spreker = (sprekers or {}).get(who)
+            if spreker is not None:
+                known = is_bewindspersoon(spreker)
+                _roles.learn(sessie_id, who, known)
+        return bool(known)
+
+    async def _turn_lines(self, turn: Turn) -> list[SubLine]:
+        """The subtitle lines of a turn, in the order of its text: row
+        after row as `load_turns` joined them, and within a row by moment,
+        as `derive_text` does."""
+        if not turn.rows:
+            return []
+        found = (
+            await self.session.execute(
+                select(
+                    DebatOndertitel.id,
+                    DebatOndertitel.spreekbeurt_id,
+                    DebatOndertitel.start,
+                    DebatOndertitel.tekst,
+                    DebatOndertitel.stem_klaar,
+                )
+                .where(DebatOndertitel.spreekbeurt_id.in_(turn.rows))
+                .order_by(DebatOndertitel.start)
+            )
+        ).all()
+        per_row: dict[uuid.UUID, list[SubLine]] = {}
+        for row in found:
+            per_row.setdefault(row[1], []).append(SubLine(*row))
+        return [line for row_id in turn.rows for line in per_row.get(row_id, [])]
+
+    async def _final(
+        self, sessie_id: uuid.UUID, item: _Waiting, now: datetime
+    ) -> _Final | None:
+        """The part of a turn that goes on that is final, as it is now.
+
+        Read anew, not taken from the start of the round: the turns of
+        the members are read first and that can take a minute, in which
+        lines came in and were moved. ``None`` when nothing of the turn
+        is final, or the turn is not what it was.
+
+        What is final is said by `final_lines`. Where the voices are not
+        listened to, or the part has no audio, no line ever moves and
+        every line that was read is final.
+        """
+        turns = await load_turns(self.session, sessie_id, item.part)
+        turn = next((t for t in turns if t.row_id == item.turn.row_id), None)
+        if turn is None or turn.closing or turn.beoordeeld_at is not None:
+            return None
+        lines = await self._turn_lines(turn)
+        bound: datetime | None = None
+        late: list[tuple[datetime, uuid.UUID]] = []
+        ondertitels = await self.session.scalar(
+            select(DebatSessie.ondertitels).where(DebatSessie.id == sessie_id)
+        )
+        heard = ((ondertitels or {}).get(item.part) or {}).get("audio")
+        if heard and voices_listen():
+            events = (
+                await self.session.execute(
+                    select(
+                        DebatSpreekbeurt.id,
+                        DebatSpreekbeurt.event_type,
+                        DebatSpreekbeurt.event_start,
+                        DebatSpreekbeurt.object_id,
+                    )
+                    .where(
+                        DebatSpreekbeurt.sessie_id == sessie_id,
+                        DebatSpreekbeurt.debat_direct_id == item.part,
+                    )
+                    .order_by(*ORDER)
+                )
+            ).all()
+            voiced = stemmen.as_turns([tuple(row) for row in events])
+            under = stemmen.message_of(voiced, {t.row_id for t in turns})
+            # Every line the voices have not decided about and still can:
+            # they give up on a line after `RETRY_FOR`.
+            undecided = (
+                await self.session.execute(
+                    select(
+                        DebatOndertitel.id,
+                        DebatOndertitel.start,
+                        DebatOndertitel.spreekbeurt_id,
+                    )
+                    .where(
+                        DebatOndertitel.sessie_id == sessie_id,
+                        DebatOndertitel.debat_direct_id == item.part,
+                        DebatOndertitel.stem_klaar.is_(False),
+                        DebatOndertitel.start >= now - RETRY_FOR - NEVER_MOVES_AFTER,
+                    )
+                    .order_by(DebatOndertitel.start)
+                )
+            ).all()
+            in_play = first_in_play(
+                voiced, [(start, row_id) for _, start, row_id in undecided], now
+            )
+            bounds = [
+                moment
+                for row_id, moment in in_play.items()
+                if under.get(row_id) == turn.row_id
+            ]
+            bound = min(bounds) if bounds else None
+            # A line that has waited for the voices longer than
+            # `NEVER_MOVES_AFTER` does not hold the turn up, and the voices
+            # keep trying for it until `RETRY_FOR`. One that could be put
+            # into this turn is marked as decided before the turn is read.
+            late = [
+                (start, line_id)
+                for line_id, start, row_id in undecided
+                if now - start > NEVER_MOVES_AFTER
+                and turn.row_id
+                in {under.get(row) for row in reach_of(voiced, start, row_id, now)}
+            ]
+        final = final_lines(lines, bound)
+        if not final:
+            return None
+        last = max(line.start for line in final)
+        settle = {line.id for line in final if not line.klaar}
+        settle.update(line_id for start, line_id in late if start <= last)
+        return _Final(turn, tuple(final), tuple(sorted(settle, key=str)))
+
+    async def _settle(self, final: _Final) -> bool:
+        """Mark the lines of what is about to be read as decided about, and
+        say whether the turn still begins with exactly those lines.
+
+        The voices move a line only while it is not marked as decided
+        (`DebatStemmen._assign`), in one statement that looks at that mark.
+        So once this is committed, no line of what is read can leave the
+        turn, and none of the lines that waited too long can be put into
+        it: what the model is shown is what stays under the message. A
+        line the voices moved in the moment before is seen by the second
+        look, and the turn is then left for the next round.
+        """
+        if final.settle:
+            await self.session.execute(
+                update(DebatOndertitel)
+                .where(
+                    DebatOndertitel.id.in_(final.settle),
+                    DebatOndertitel.stem_klaar.is_(False),
+                )
+                .values(stem_klaar=True)
+            )
+            await self.session.commit()
+        head = (await self._turn_lines(final.turn))[: len(final.lines)]
+        return [line.id for line in head] == [line.id for line in final.lines] and all(
+            line.klaar for line in head
+        )
 
     async def _open_lines(
         self, sessie_id: uuid.UUID, parts: list[str], now: datetime
@@ -654,6 +1062,7 @@ class DebatVraagWorker:
         self,
         sessie_id: uuid.UUID,
         waiting: list[_Waiting],
+        going: list[_Waiting],
         vragen: DebatVraagService,
         client: httpx.AsyncClient,
         now: datetime,
@@ -693,23 +1102,38 @@ class DebatVraagWorker:
             # An answer that was set aside does not use up the round: the
             # turns of members behind a row of answers are still reached.
             members += len(answers) == set_aside
+        # The answers that are over first, then the ones that go on: all
+        # of them after the members, and together not more windows than a
+        # round may take.
         parts = 0
-        for item in answers:
+        for item in [*answers, *going]:
             if parts >= MAX_ANSWER_WINDOWS_PER_ROUND:
                 break
             if _answer_pause.waiting(item.turn.row_id, now):
                 continue
             parts += 1
-            if await self._read_turn(
-                sessie_id,
-                item,
-                vragen,
-                client,
-                now,
-                result,
-                (channel_id, activiteit_id, onderwerp),
-                None,
-            ):
+            if item.running:
+                stop = await self._read_running(
+                    sessie_id,
+                    item,
+                    vragen,
+                    client,
+                    now,
+                    result,
+                    (channel_id, activiteit_id, onderwerp),
+                )
+            else:
+                stop = await self._read_turn(
+                    sessie_id,
+                    item,
+                    vragen,
+                    client,
+                    now,
+                    result,
+                    (channel_id, activiteit_id, onderwerp),
+                    None,
+                )
+            if stop:
                 return
 
     async def _read_turn(
@@ -754,48 +1178,19 @@ class DebatVraagWorker:
             await self._mark(turn.row_id, now)
             return False
         answer = is_bewindspersoon(spreker)
+        _roles.learn(sessie_id, who, answer)
         if answer and answers is not None:
             answers.append(item)
             return False
-        onderbroken = None
-        if kind == dd.EVENT_INTERRUPTER and item.floor is not None:
-            onderbroken = sprekers.get(item.floor.key[1])
         context = await self._context(sessie_id, activiteit_id, onderwerp, client)
-        # For an answer of the bewindspersoon: the member who
-        # interrupted right before it, and what they said. Someone
-        # without a party is no member, and someone the list does not
-        # have is nobody to name.
-        asked: dd.Spreker | None = None
-        if (
-            answer
-            and item.before is not None
-            and item.before.key[0] == dd.EVENT_INTERRUPTER
-        ):
-            asked = sprekers.get(item.before.key[1])
-            if asked is not None and not asked.fractie:
-                asked = None
-        beurt = Beurt(
-            sessie_id=sessie_id,
-            spreekbeurt_id=turn.row_id,
-            post_id=turn.post_id,
-            channel_id=channel_id,
-            soort=kind,
-            spreker=spreker.label,
-            fractie=spreker.fractie,
-            start=turn.start,
-            moment_url=moment_url_from_kop(turn.kop),
+        beurt = self._as_beurt(
+            sessie_id,
+            item,
+            turn,
+            sprekers,
+            channel_id,
             tekst=tekst,
             lines=await self._lines(turn, item.offset),
-            is_bewindspersoon=answer,
-            onderbroken=onderbroken.label if onderbroken else None,
-            onderbroken_is_bewindspersoon=bool(
-                onderbroken and is_bewindspersoon(onderbroken)
-            ),
-            voorafgaand=asked.label if asked else None,
-            voorafgaand_tekst=item.before.text if asked and item.before else "",
-            voorafgaand_sleutel=(
-                turn_sleutel(item.before.row_id) if asked and item.before else None
-            ),
             gelezen_tot=await self._position(turn.row_id) if answer else 0,
         )
         outcome = None
@@ -868,6 +1263,166 @@ class DebatVraagWorker:
             return False
         await self._mark(turn.row_id, now)
         result.beoordeeld += 1
+        return False
+
+    def _as_beurt(
+        self,
+        sessie_id: uuid.UUID,
+        item: _Waiting,
+        turn: Turn,
+        sprekers: dict[str, dd.Spreker],
+        channel_id: str,
+        *,
+        tekst: str,
+        lines: tuple[Line, ...],
+        gelezen_tot: int,
+        loopt: bool = False,
+    ) -> Beurt:
+        """A turn as the marking reads it. `turn` is the turn as it is
+        now, whose speaker is on the list."""
+        kind, who = turn.key
+        spreker = sprekers[who]
+        answer = is_bewindspersoon(spreker)
+        onderbroken = None
+        if kind == dd.EVENT_INTERRUPTER and item.floor is not None:
+            onderbroken = sprekers.get(item.floor.key[1])
+        # For an answer of the bewindspersoon: the member who
+        # interrupted right before it, and what they said. Someone
+        # without a party is no member, and someone the list does not
+        # have is nobody to name.
+        asked: dd.Spreker | None = None
+        if (
+            answer
+            and item.before is not None
+            and item.before.key[0] == dd.EVENT_INTERRUPTER
+        ):
+            asked = sprekers.get(item.before.key[1])
+            if asked is not None and not asked.fractie:
+                asked = None
+        return Beurt(
+            sessie_id=sessie_id,
+            spreekbeurt_id=turn.row_id,
+            post_id=turn.post_id,
+            channel_id=channel_id,
+            soort=kind,
+            spreker=spreker.label,
+            fractie=spreker.fractie,
+            start=turn.start,
+            moment_url=moment_url_from_kop(turn.kop),
+            tekst=tekst,
+            lines=lines,
+            is_bewindspersoon=answer,
+            onderbroken=onderbroken.label if onderbroken else None,
+            onderbroken_is_bewindspersoon=bool(
+                onderbroken and is_bewindspersoon(onderbroken)
+            ),
+            voorafgaand=asked.label if asked else None,
+            voorafgaand_tekst=item.before.text if asked and item.before else "",
+            voorafgaand_sleutel=(
+                turn_sleutel(item.before.row_id) if asked and item.before else None
+            ),
+            gelezen_tot=gelezen_tot,
+            loopt=loopt,
+            vervolg_post_ids=tuple(turn.vervolg),
+        )
+
+    async def _read_running(
+        self,
+        sessie_id: uuid.UUID,
+        item: _Waiting,
+        vragen: DebatVraagService,
+        client: httpx.AsyncClient,
+        now: datetime,
+        result: VraagTickResult,
+        sessie: tuple[str, str, str],
+    ) -> bool:
+        """Read one window of an answer that goes on. ``True`` when the
+        round of this debate has to stop.
+
+        The turn is never marked as read here: that is for when it is
+        over, and what is left of it was read as any other turn is. What
+        is kept is how far it was read (`antwoord_gelezen_tot`), counted
+        in characters of its text. That is a safe place because the text
+        in front of it cannot change: it is made of lines that were
+        marked as decided before they were read (`_settle`), and such a
+        line is never moved or taken away. A line that is put in front of
+        it after all, by a rule that is not foreseen here, makes the next
+        window start a line early: read twice and stored once, never
+        skipped.
+        """
+        channel_id, activiteit_id, onderwerp = sessie
+        sprekers = await self._sprekers_for(client, item.first)
+        if sprekers is None:
+            result.fouten += 1
+            return True
+        spreker = sprekers.get(item.turn.key[1])
+        if spreker is None or not is_bewindspersoon(spreker):
+            return False
+        if (
+            item.before is not None
+            and item.before.text
+            and await self._read_at(item.before.row_id) is None
+        ):
+            # The turn before was to be read earlier in this round and
+            # was not: the model was away, or more turns waited than a
+            # round reads. See `_ready`.
+            return False
+        final = await self._final(sessie_id, item, now)
+        if final is None:
+            return False
+        turn, tekst = final.turn, final.tekst
+        gelezen = turn.gelezen_tot
+        venster = running_window(tekst, gelezen)
+        if venster is None or not await self._settle(final):
+            # Nothing to read after all, or a line moved a moment ago: the
+            # next round looks again.
+            return False
+        context = await self._context(sessie_id, activiteit_id, onderwerp, client)
+        beurt = self._as_beurt(
+            sessie_id,
+            item,
+            turn,
+            sprekers,
+            channel_id,
+            tekst=tekst,
+            lines=tuple(
+                Line(line.start - item.offset, line.tekst) for line in final.lines
+            ),
+            gelezen_tot=gelezen,
+            loopt=True,
+        )
+        try:
+            outcome = await asyncio.wait_for(
+                vragen.beoordeel_beurt(beurt, context), WINDOW_TIMEOUT
+            )
+            failed = outcome.opnieuw_proberen
+        except Exception:
+            logger.exception("Lopende spreekbeurt %s niet gelezen", turn.row_id)
+            await self.session.rollback()
+            outcome = None
+            failed = True
+        if failed or outcome is None:
+            result.fouten += 1
+            attempts = await self._count_attempt(turn.row_id)
+            # Only this turn waits, as for an answer that is over.
+            _answer_pause.failed(turn.row_id, now)
+            if attempts >= WINDOW_ATTEMPTS:
+                logger.warning(
+                    "Lopende spreekbeurt %s: venster vanaf teken %d na %d pogingen"
+                    " overgeslagen, verder vanaf %d",
+                    turn.row_id,
+                    gelezen,
+                    attempts,
+                    venster[2],
+                )
+                await self._keep_position(turn.row_id, venster[2])
+                _answer_pause.succeeded(turn.row_id)
+            return False
+        _answer_pause.succeeded(turn.row_id)
+        if outcome.gelezen_tot > gelezen:
+            await self._keep_position(turn.row_id, outcome.gelezen_tot)
+        if outcome.uitkomst == UITKOMST_GEMARKEERD:
+            result.toezeggingen += outcome.toezeggingen
         return False
 
     async def _ended(self, sessie_id: uuid.UUID, now: datetime) -> list[_Ended]:
@@ -1101,6 +1656,12 @@ class DebatVraagWorker:
         for row_id, start, tekst in found:
             per_row.setdefault(row_id, []).append(Line(start - offset, tekst))
         return tuple(line for row_id in rows for line in per_row.get(row_id, []))
+
+    async def _read_at(self, row_id: uuid.UUID) -> datetime | None:
+        """When a turn was read, as the table has it now."""
+        return await self.session.scalar(
+            select(DebatSpreekbeurt.beoordeeld_at).where(DebatSpreekbeurt.id == row_id)
+        )
 
     async def _position(self, row_id: uuid.UUID) -> int:
         """How many characters of an answer were read and stored."""
