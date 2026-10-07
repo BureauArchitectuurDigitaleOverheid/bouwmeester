@@ -1277,6 +1277,7 @@ def build_debat_toezeggingen_prompt(
     eerdere: list[tuple[int, str]],
     voorafgaand: str | None = None,
     voorafgaand_tekst: str = "",
+    passages: list[str] | None = None,
 ) -> str:
     """Prompt that takes the toezeggingen from one turn of the bewindspersoon.
 
@@ -1290,6 +1291,11 @@ def build_debat_toezeggingen_prompt(
     (`debat_toezegging.has_commitment_form`), so the paragraphs on what
     does not count save the model work and do not have to hold by
     themselves.
+
+    `passages` are the sentences of the turn in which the code found the
+    words of a commitment (`debat_toezegging.commitment_passages`). They
+    are given as places to look, because a model reading a long answer
+    passes over some of them, and which ones differs from run to run.
     """
     aan_tafel = (
         "\n".join(f"- {_op_een_regel(b)}" for b in bewindspersonen)
@@ -1326,6 +1332,21 @@ def build_debat_toezeggingen_prompt(
             "<interruptie>\n"
             f"{gezegd}\n"
             "</interruptie>\n\n"
+        )
+
+    aanwijzingen = ""
+    if passages:
+        aanwijzingen = (
+            "## Waar je in elk geval kijkt\n"
+            "In deze zinnen uit de spreekbeurt staan woorden waarmee een"
+            " bewindspersoon iets toezegt. Beoordeel ze stuk voor stuk: het kan"
+            " een toezegging zijn, maar ook een weigering, beleid dat al loopt"
+            " of een aankondiging van wat de spreker gaat zeggen. Er kunnen ook"
+            " toezeggingen in de spreekbeurt staan die hier niet bij staan. Het"
+            " citaat neem je over uit de spreekbeurt zelf, niet uit deze"
+            " lijst.\n"
+            + "\n".join(f"- {_op_een_regel_lang(passage)}" for passage in passages)
+            + "\n\n"
         )
 
     return (
@@ -1401,6 +1422,7 @@ def build_debat_toezeggingen_prompt(
         ' zich verbindt ("ik zal", "ik zeg toe", "ik stuur", "ik neem dat'
         ' mee", "u krijgt"). Maak van een uitleg geen toezegging. Kun je die'
         " woorden niet aanwijzen, markeer dan niets.\n\n"
+        f"{aanwijzingen}"
         "## Nieuw of al gedaan\n"
         "Een bewindspersoon herhaalt een toezegging vaak, of maakt hem"
         " preciezer. Is het dezelfde toezegging als een uit de lijst"
@@ -1441,4 +1463,4 @@ def build_debat_toezeggingen_prompt(
 def _op_een_regel_lang(tekst: str) -> str:
     """A summary on one line: what `_op_een_regel` does, with room for a sentence."""
     schoon = "".join(c if c.isprintable() else " " for c in tekst)
-    return " ".join(schoon.split())[:240].strip()
+    return " ".join(schoon.split())[:300].strip()

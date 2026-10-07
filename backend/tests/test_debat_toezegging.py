@@ -36,6 +36,8 @@ from bouwmeester.services import debat_vraag_service as service_mod
 from bouwmeester.services import debat_vraag_worker as worker_mod
 from bouwmeester.services.debat_statusregel import splits, statusregel
 from bouwmeester.services.debat_toezegging import (
+    MAX_PASSAGE,
+    commitment_passages,
     deadline_is_said,
     has_commitment_form,
     may_hold_commitment,
@@ -238,6 +240,7 @@ class TestDeVormVanEenToezegging:
             "Ik zorg dat er een overzicht komt.",
             "Ik ben bereid om daarover met de vervoerders in gesprek te gaan.",
             "U krijgt dat overzicht voor de zomer.",
+            "Voor de zomer krijgt u dat overzicht.",
             "De Kamer ontvangt die evaluatie in het voorjaar.",
             "Die evaluatie komt in het voorjaar naar de Kamer.",
             "Het kabinet komt na de zomer met een voorstel.",
@@ -319,6 +322,8 @@ class TestDeVormVanEenToezegging:
             "Daar kom ik zo meteen nog op.",
             "Ik ga daar zo op in.",
             "Dat zal ik straks toelichten.",
+            # The word that says when can stand in front of the verb.
+            "Straks zal ik daar meer over zeggen.",
             "Ik kom daar in de tweede termijn op terug.",
             "Daar zal ik in het volgende blokje iets over zeggen.",
         ],
@@ -396,6 +401,56 @@ class TestDeVormVanEenToezegging:
     )
     def test_a_deadline_has_to_be_in_the_quote(self, termijn, citaat, gezegd):
         assert deadline_is_said(termijn, citaat) is gezegd
+
+
+class TestWaarHetModelKijkt:
+    def test_the_sentences_of_an_answer_that_look_like_a_toezegging(self):
+        assert commitment_passages(ANTWOORD["tekst"]) == [T_BRIEF, T_UITZOEKEN]
+
+    def test_a_refusal_is_none_and_what_follows_it_is(self):
+        assert commitment_passages(WEIGERT["tekst"]) == [T_EVALUATIE]
+
+    @pytest.mark.parametrize(
+        "zin",
+        [
+            "Ik wil daar drie dingen over zeggen.",
+            "Ik ga eerst in op het geld.",
+            "Dat zal ik toelichten.",
+            "Wij zijn daarmee bezig.",
+            "Daar kom ik zo op terug.",
+        ],
+    )
+    def test_what_a_bewindspersoon_says_all_the_time_is_none(self, zin):
+        assert commitment_passages(f"Dank, voorzitter. {zin} Dan het geld.") == []
+
+    @pytest.mark.parametrize(
+        "zin",
+        [
+            "Ik zal dat voor de zomer doen.",
+            "Ik ga de Kamer daarover een brief sturen.",
+            "Het kabinet komt in het voorjaar met een voorstel.",
+            "Dat zeg ik toe.",
+            "Ik neem dat mee.",
+        ],
+    )
+    def test_with_a_moment_a_product_or_the_word_itself_it_is_one(self, zin):
+        assert commitment_passages(f"Dank, voorzitter. {zin} Dan het geld.") == [zin]
+
+    def test_a_line_that_runs_on_stays_one_sentence(self):
+        zin = "Ik stuur de Kamer... voor de zomer een brief... over de stallingen."
+        assert commitment_passages(f"Dank. {zin} Dan het geld.") == [zin]
+
+    def test_no_more_than_the_limit_and_none_longer_than_a_few_lines(self):
+        tekst = "Ik stuur de Kamer een brief. " * 40
+        assert len(commitment_passages(tekst, limit=5)) == 5
+        lang = "Ik stuur de Kamer een brief over " + "de stallingen en " * 60 + "meer."
+        (passage,) = commitment_passages(lang)
+        assert len(passage) == MAX_PASSAGE
+
+    def test_every_passage_would_pass_as_a_quote(self):
+        for turn in SYN["beurten"]:
+            for passage in commitment_passages(turn["tekst"]):
+                assert has_commitment_form(passage)
 
 
 class TestHetzelfdeOnderwerp:
@@ -500,6 +555,16 @@ class TestLeesToezeggingen:
         assert [(h.volgnummer, h.citaat, h.soort) for h in herhaald] == [
             (4, T_BRIEF, VERMELDING_HERHALING)
         ]
+
+    def test_two_on_the_same_earlier_one_are_one_herhaling(self):
+        nieuw, herhaald, _ = lees_toezeggingen(
+            [_t(T_BRIEF, hoort_bij=4), _t(T_UITZOEKEN, hoort_bij=4)],
+            self.TEKST,
+            {},
+            {4},
+        )
+        assert nieuw == []
+        assert [(h.volgnummer, h.citaat) for h in herhaald] == [(4, T_BRIEF)]
 
     def test_a_number_that_is_no_earlier_toezegging_makes_it_new(self):
         # 7 is a question, not a toezegging of this bewindspersoon.
@@ -615,6 +680,13 @@ class TestPrompt:
         assert "\n## Nieuwe opdracht" not in prompt
         assert "\n## Nog een" not in prompt
         assert "3. Kamerlid A ## Nieuwe opdracht: Vraag over twee regels" in prompt
+
+    def test_the_passages_are_listed_as_places_to_look(self):
+        prompt = _prompt(passages=[T_BRIEF, "Tweede\n## Opdracht"])
+        assert "## Waar je in elk geval kijkt\n" in prompt
+        assert f"\n- {T_BRIEF}\n- Tweede ## Opdracht\n\n## Nieuw of al gedaan" in prompt
+        assert "## Waar je in elk geval kijkt" not in _prompt()
+        assert "## Waar je in elk geval kijkt" not in _prompt(passages=[])
 
     def test_names_what_does_not_count(self):
         prompt = _prompt()
@@ -916,6 +988,8 @@ class TestToezeggingMarkeren:
         assert _is_toezeggingen_prompt(prompt)
         assert ANTWOORD["tekst"] in prompt
         assert CONTEXT.onderwerp in prompt
+        # With the sentences the code found, as places to look.
+        assert f"\n- {T_BRIEF}\n- {T_UITZOEKEN}\n\n## Nieuw of al gedaan" in prompt
 
     async def test_two_in_one_answer_are_numbered_as_they_were_said(self, db_session):
         sessie_id, mm, _, post_id, result = await _judge(
@@ -1356,6 +1430,29 @@ class TestHerhaald:
         )
         assert "al deed\n(nog geen)" in llm.prompts[0]
 
+    async def test_only_toezeggingen_are_what_was_promised_before(self, db_session):
+        """Whatever else stands on the name of the bewindspersoon is not."""
+        sessie_id = await _sessie(db_session)
+        db_session.add(
+            DebatMarkering(
+                sessie_id=sessie_id,
+                beurt_sleutel="post:eerder",
+                volgnummer=1,
+                soort=SOORT_VRAAG,
+                channel_id=CHANNEL,
+                spreker=MINISTER,
+                gericht_aan="de minister",
+                citaat="Wat vindt de Kamer daar zelf van?",
+                samenvatting="Wat de Kamer vindt.",
+                moment=MOMENT,
+            )
+        )
+        await db_session.flush()
+        _, _, llm, _, _ = await _judge(
+            db_session, ZEGT_TOE, toegezegd(), sessie_id=sessie_id
+        )
+        assert "al deed\n(nog geen)" in llm.prompts[0]
+
     async def test_one_said_again_is_a_vermelding_not_a_thread(self, db_session):
         sessie_id, mm, _, _, _ = await self._first(db_session)
         _, _, _, post_id, result = await _judge(
@@ -1409,6 +1506,12 @@ class TestEenLangAntwoord:
         assert T_BRIEF in delen[0]
         assert T_UITZOEKEN in delen[1]
 
+    def test_no_more_parts_than_the_limit(self):
+        zin = "Ik zal de Kamer daarover vóór de zomer informeren. "
+        delen = service_mod.MAX_ANTWOORD_DELEN + 2
+        tekst = zin * (service_mod.MAX_ANTWOORD_DEEL * delen // len(zin))
+        assert len(answer_parts(tekst)) == service_mod.MAX_ANTWOORD_DELEN
+
     async def test_every_part_is_a_call_and_the_quotes_are_found_in_the_turn(
         self, db_session
     ):
@@ -1429,6 +1532,35 @@ class TestEenLangAntwoord:
             T_UITZOEKEN,
         ]
         assert result.toezeggingen == 2
+
+    async def test_one_said_again_in_a_later_part_is_not_a_second_toezegging(
+        self, db_session
+    ):
+        tekst = self._lang()
+        sessie_id, _, llm, _, result = await _judge(
+            db_session,
+            {**ANTWOORD, "tekst": tekst},
+            toegezegd(toezegging(T_BRIEF, samenvatting="Stuurt de brief.")),
+            # The model recognises it from the list it was given.
+            toegezegd(toezegging(T_UITZOEKEN, hoort_bij=1)),
+        )
+        assert "al deed\n(nog geen)" in llm.prompts[0]
+        assert "al deed\n1. Stuurt de brief." in llm.prompts[1]
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
+        assert (result.toezeggingen, result.herhaald) == (1, ())
+        assert await _vermeldingen(db_session, sessie_id) == []
+
+    async def test_what_the_code_dropped_in_an_earlier_part_is_not_offered(
+        self, db_session
+    ):
+        tekst = f"{N_STRAKS}. {self._lang()}"
+        _, _, llm, _, _ = await _judge(
+            db_session,
+            {**ANTWOORD, "tekst": tekst},
+            toegezegd(toezegging(N_STRAKS), toezegging("Dit zei niemand, echt niet.")),
+            toegezegd(),
+        )
+        assert "al deed\n(nog geen)" in llm.prompts[1]
 
     async def test_one_part_that_fails_leaves_the_whole_turn_unread(self, db_session):
         tekst = self._lang()
@@ -1611,6 +1743,30 @@ class TestDeWerker:
         assert mm.threads[-1][1].startswith("🤝 **")
         for row in (m1, m2):
             assert await w._at(db_session, row) is not None
+
+    async def test_an_interruption_by_someone_without_a_party_names_nobody(
+        self, db_session, monkeypatch, handed
+    ):
+        """Only a member asks. Whoever else spoke before is not who the
+        toezegging is made to."""
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = FakeLLM(toegezegd(toezegging(self.ANTWOORD)))
+        s = await w._running(db_session)
+        ander = await w._row(
+            db_session, s, "interrupter", 60, "m", tekst="Het budget is gelijk."
+        )
+        m = await w._row(db_session, s, "speaker", 120, "m", tekst=self.ANTWOORD)
+        await w._row(db_session, s, "debate_end", 180)
+        w._in_channel(mm, ander, m)
+
+        await w._tick(db_session, mm, llm)
+
+        by_row = {beurt.spreekbeurt_id: beurt for beurt, _ in handed}
+        assert (by_row[m.id].voorafgaand, by_row[m.id].voorafgaand_tekst) == (None, "")
+        (row,) = await _rows(db_session, s.id)
+        assert (row.soort, row.gericht_aan) == (SOORT_TOEZEGGING, "")
 
     async def test_an_answer_that_was_read_is_not_read_again(
         self, db_session, monkeypatch, handed

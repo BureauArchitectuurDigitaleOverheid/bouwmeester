@@ -75,6 +75,7 @@ from bouwmeester.services.debat_statusregel import (
     statusregel,
 )
 from bouwmeester.services.debat_toezegging import (
+    commitment_passages,
     deadline_is_said,
     has_commitment_form,
     may_hold_commitment,
@@ -139,7 +140,11 @@ MAX_EERDERE_TOEZEGGINGEN = 30
 # prompt keeps only the end of a longer text (`MAX_BEURT_IN_PROMPT`), which
 # is right for a question, asked at the end of an argument, and wrong for
 # an answer: what is promised in the first ten minutes would never be
-# read. The longest answer in the gold set is 11,248 characters.
+# read. The longest answer in the gold set is 11,248 characters, so there
+# every answer is one part. Smaller parts were tried on the debate the
+# rules were made on, to see whether a model that reads less finds more:
+# with parts of 4,000 characters it took 7 calls instead of 5 and found the
+# same 3 or 4 of the 6 toezeggingen it could find, in three runs each.
 MAX_ANTWOORD_DEEL = 12000
 # And no more parts than this: a turn of an hour is a transcript that lost
 # its changes of speaker, not an answer.
@@ -1326,6 +1331,13 @@ class DebatVraagService:
         vragen = await self._vragen_aan(beurt.sessie_id, beurt.spreker)
         eerdere = await self._toezeggingen_van(beurt.sessie_id, beurt.spreker)
         gevonden: list[DebatToezegging] = []
+        # What an earlier part of this same answer promised, under numbers
+        # no markering has. The model gets them with the toezeggingen of
+        # before, so that one said again further on in a long answer is
+        # recognised; it is then left out, not filed: there is no row yet
+        # to file it under, and the first time it was said is the one kept.
+        in_dit_antwoord: dict[int, str] = {}
+        vrij = max([n for n, *_ in vragen] + [n for n, *_ in eerdere] + [0])
         for deel in delen:
             result = await self.llm.markeer_debat_toezeggingen(
                 onderwerp=context.onderwerp,
@@ -1337,9 +1349,13 @@ class DebatVraagService:
                 spreker=beurt.spreker,
                 tekst=deel,
                 vragen=[(nummer, wie, wat) for nummer, wie, wat, _, _ in vragen],
-                eerdere=[(nummer, wat) for nummer, wat, _ in eerdere],
+                eerdere=[
+                    *((nummer, wat) for nummer, wat, _ in eerdere),
+                    *in_dit_antwoord.items(),
+                ],
                 voorafgaand=beurt.voorafgaand,
                 voorafgaand_tekst=beurt.voorafgaand_tekst,
+                passages=commitment_passages(deel),
             )
             if result.fout:
                 # One part that was not read is a turn that was not read:
@@ -1357,7 +1373,16 @@ class DebatVraagService:
                     else UITKOMST_LLM_ONBRUIKBAAR,
                     threads=threads,
                 )
-            gevonden.extend(result.toezeggingen)
+            for toezegging in result.toezeggingen:
+                if toezegging.hoort_bij in in_dit_antwoord:
+                    continue
+                gevonden.append(toezegging)
+                citaat = vind_citaat(beurt.tekst, toezegging.citaat)
+                if citaat is not None and has_commitment_form(citaat):
+                    vrij += 1
+                    in_dit_antwoord[vrij] = _kort(
+                        toezegging.samenvatting or citaat, MAX_SAMENVATTING
+                    )
 
         nieuw, herhaald, afgevallen = lees_toezeggingen(
             gevonden,

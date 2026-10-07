@@ -4,15 +4,16 @@ Measures how well the application marks what happens in a debate, on real
 debates with the real model, and shows what a change to the prompt or to the
 checks in the code gains or costs.
 
-Today the code marks two kinds: a `vraag` put to the bewindspersoon, and a
-`motie` that a member announces or reads out. Three more kinds are named in
-`models/debat_markering.py`. The gold format, the codebook and the scoring
-cover all five, so a kind that gets built can be measured from its first
-prompt.
+Today the code marks three kinds: a `vraag` put to the bewindspersoon, a
+`motie` that a member announces or reads out, and a `toezegging` of the
+bewindspersoon. Two more kinds are named in `models/debat_markering.py`. The
+gold format, the codebook and the scoring cover all five, so a kind that gets
+built can be measured from its first prompt.
 
 Nothing in this directory is used by the application. `VOORSTEL.md` (Dutch)
 holds the proposal that came out of the first measurement; "What was built
-from the proposal" below says what became of it and what it measured.
+from the proposal" and "Toezeggingen" below say what became of it and what
+it measured.
 
 ## What is where
 
@@ -30,7 +31,7 @@ from the proposal" below says what became of it and what it measured.
 
 Tests: `backend/tests/test_debat_eval.py`. The fixture
 `backend/tests/fixtures/debat_markeringen_synthetisch.json` is a made-up debate
-of 34 turns in the gold format that covers every kind and every hard negative
+of 37 turns in the gold format that covers every kind and every hard negative
 of the codebook. It is meant for prompt tests with a fake model.
 
 ## The gold set is not in this repository
@@ -84,7 +85,7 @@ nobody for.
 |---|---|---|
 | `claude_cli` (default) | `ClaudeCliLLMService`: one `claude -p` process per call | The `claude` binary, logged in. No key: without `CLAUDE_CODE_OAUTH_TOKEN` it uses the login of the local CLI |
 | `configured` | Whatever `get_llm_service` picks, as in production | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or the VLAM settings, in the environment or the config table |
-| `oracle` | Answers with the gold questions of the turn | Nothing. Shows what the code alone loses |
+| `oracle` | Answers with the gold questions of the turn, and for a turn of the bewindspersoon with its gold toezeggingen | Nothing. Shows what the code alone loses |
 
 The first measurement used `claude_cli` with the default `LLM_MODEL`
 (`claude-haiku-4-5-20251001`). Check which model production is configured with
@@ -318,7 +319,11 @@ taking it up with someone.
 - Not a toezegging: coming back to it later in the same answer
   (`later_in_debat`), work that is going on (`lopend_beleid`), what another
   minister promised (`toezegging_van_ander`), a member recalling a promise
-  (`toezegging_aangehaald`), the oordeel on a motion.
+  (`toezegging_aangehaald`), a refusal (`weigering`: "dat kan ik niet
+  toezeggen"), a condition that commits to nothing (`voorwaardelijk`: "als
+  zij dat willen, zou ik kunnen overwegen"), the oordeel on a motion.
+- A member who asks for one ("kan de minister toezeggen dat") asks a
+  question, or for a letter. It is a `vraag` or a `verzoek_om_brief`.
 
 ### verzoek_om_brief
 

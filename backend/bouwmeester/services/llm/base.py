@@ -558,6 +558,7 @@ class BaseLLMService(ABC):
         eerdere: list[tuple[int, str]],
         voorafgaand: str | None = None,
         voorafgaand_tekst: str = "",
+        passages: list[str] | None = None,
     ) -> DebatToezeggingenResult:
         """Take the toezeggingen from one turn of the bewindspersoon.
 
@@ -568,6 +569,7 @@ class BaseLLMService(ABC):
         that one said again is not marked twice. `voorafgaand` is the
         member whose interruption came right before this turn, with what
         they said: "dat zeg ik toe" cannot be summarised without it.
+        `passages` are sentences of the turn to look at in any case.
 
         The same two tries as for the questions, and for the same reason.
 
@@ -587,6 +589,7 @@ class BaseLLMService(ABC):
             eerdere=eerdere,
             voorafgaand=voorafgaand,
             voorafgaand_tekst=voorafgaand_tekst,
+            passages=passages,
         )
         for poging in (1, 2):
             try:

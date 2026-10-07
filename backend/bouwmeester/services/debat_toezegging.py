@@ -79,8 +79,8 @@ _MOMENT = re.compile(
 )
 
 # Later in this answer or this debate: nothing the Kamer can hold anyone to.
-# "Zo" only where it means "in a moment": "zo snel mogelijk" is a moment,
-# and "zo'n" is flattened to one word before this is looked for.
+# "Zo" only in front of a word it means "in a moment" with: "zo snel
+# mogelijk" is a moment, and "zo'n proef" is no time at all.
 _LATER_HERE = re.compile(
     r"\b(?:straks|dadelijk|zometeen|zo meteen|zo direct|zo dadelijk|verderop"
     r"|zo (?:nog |even |meteen )?(?:op|terug|over|bij|naar|aan|in|toe|doen|iets|wat)"
@@ -92,9 +92,26 @@ _LATER_HERE = re.compile(
 _NEGATION = re.compile(r"\b(?:niet(?! alleen)|geen|nooit|niets|niks)\b")
 _COMES_BACK = re.compile(r"\bterug\w*\b")
 
-# Every way a commitment is worded. Each pattern is looked for by itself, so
-# that a refusal at the start of a quote does not hide a commitment after it.
-_CUES: tuple[re.Pattern[str], ...] = tuple(
+# The wordings that say little by themselves: "ik zal", "dat ga ik doen",
+# "ik wil daar een proef mee starten". A bewindspersoon says "ik wil" and
+# "ik ga" in every other sentence of an answer, mostly about what comes
+# next in it.
+_WEAK_CUES: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern)
+    for pattern in (
+        rf"\b{_I} (?:zal|zullen|ga|gaan|wil|willen)\b",
+        rf"\b(?:zal|zullen|ga|gaan|wil|willen) {_I}\b",
+        rf"\b{_CABINET} (?:zal|gaat|wil|komt|stuurt|informeert)\b",
+        rf"\b(?:zal|gaat|wil|komt|stuurt|informeert) {_CABINET}\b",
+        rf"\b(?:ben|zijn) {_I} {_GAP}bereid\b",
+        rf"\b{_I} (?:ben|zijn) {_GAP}bereid\b",
+        r"\bdat (?:doe|doen) (?:ik|wij|we)\b",
+    )
+)
+# The wordings that name the promise or the deed. Each pattern is looked
+# for by itself, so that a refusal at the start of a quote does not hide a
+# commitment after it.
+_STRONG_CUES: tuple[re.Pattern[str], ...] = tuple(
     re.compile(pattern)
     for pattern in (
         # "dat zeg ik toe", "ik zeg u dat toe", "laat ik toezeggen dat"
@@ -103,13 +120,6 @@ _CUES: tuple[re.Pattern[str], ...] = tuple(
         rf"\b{_I} {_GAP}toe(?:zeg|zeggen|gezegd)\b",
         rf"\b(?:kan|kunnen|wil|willen|zal|zullen) {_I} {_GAP}toezeggen\b",
         r"\b(?:mijn|onze|een|de|deze) toezegging\b",
-        # "ik zal", "dat ga ik doen", "ik wil daar een proef mee starten"
-        rf"\b{_I} (?:zal|zullen|ga|gaan|wil|willen)\b",
-        rf"\b(?:zal|zullen|ga|gaan|wil|willen) {_I}\b",
-        rf"\b{_CABINET} (?:zal|gaat|wil|komt|stuurt|informeert)\b",
-        rf"\b(?:zal|gaat|wil|komt|stuurt|informeert) {_CABINET}\b",
-        rf"\b(?:ben|zijn) {_I} {_GAP}bereid\b",
-        rf"\b{_I} (?:ben|zijn) {_GAP}bereid\b",
         # "ik stuur de Kamer", "ik informeer u", "ik beloof"
         rf"\b{_I} (?:stuur|sturen|informeer|informeren|beloof|beloven|bespreek"
         r"|bespreken|betrek|betrekken|lever|leveren|rapporteer|rapporteren)\b",
@@ -139,7 +149,6 @@ _CUES: tuple[re.Pattern[str], ...] = tuple(
         # van volgend jaar twee miljoen euro voor vrij".
         rf"\b{_I} (?:maak|maken) (?:\w+ ){{0,12}}vrij\b",
         rf"\b{_I} (?:doe|doen) {_LONG_GAP}(?:toekomen|graag)\b",
-        r"\bdat (?:doe|doen) (?:ik|wij|we)\b",
         # The verb at the end, as in a clause: "dat ik dat meeneem".
         rf"\b{_I} {_LONG_GAP}(?:meeneem|meenemen|uitzoek|uitzoeken|oppak|oppakken"
         r"|terugkom|terugkomen|doorgeef|toestuur|toesturen|nastuur|nasturen)\b",
@@ -154,6 +163,8 @@ _CUES: tuple[re.Pattern[str], ...] = tuple(
         r"\bdoen toekomen\b",
     )
 )
+# Every way a commitment is worded.
+_CUES = (*_STRONG_CUES, *_WEAK_CUES)
 
 # How far behind a cue its "niet" can stand: "dat ga ik nu echt niet doen".
 _NEGATION_REACH = 3
@@ -165,8 +176,6 @@ _AFTER = 9
 
 def _flat(text: str) -> str:
     """A text as its words with one space between them."""
-    # "zo'n proef" is not "zo": in a moment.
-    text = re.sub(r"\bzo['’`]n\b", "zon", text.lower())
     return " ".join(words(text))
 
 
@@ -192,10 +201,14 @@ def has_commitment_form(quote: str) -> bool:
     When in doubt it says yes: a statement that slips through was the
     model's choice, a commitment that is stopped is lost.
     """
-    flat = _flat(quote)
+    return _commits(_flat(quote), _CUES)
+
+
+def _commits(flat: str, cues: tuple[re.Pattern[str], ...]) -> bool:
+    """Whether one of `cues` stands in a flattened text as a commitment."""
     tokens = flat.split()
     named = bool(_PRODUCT.search(flat) or _MOMENT.search(flat))
-    for cue in _CUES:
+    for cue in cues:
         for found in cue.finditer(flat):
             first = flat.count(" ", 0, found.start())
             last = first + found.group().count(" ")
@@ -208,6 +221,50 @@ def has_commitment_form(quote: str) -> bool:
                 continue
             return True
     return False
+
+
+# Where a sentence ends in a transcript: a full stop and then a capital.
+# The three dots of a line that runs on go on in lower case.
+_SENTENCE = re.compile(r"(?<=[.?!])\s+(?=[A-ZÀ-Ý])")
+MAX_PASSAGES = 15
+MAX_PASSAGE = 300
+
+
+def commitment_passages(text: str, limit: int = MAX_PASSAGES) -> list[str]:
+    """The sentences of an answer that most look like a toezegging.
+
+    For the model, as places to look. A model that reads an answer of ten
+    minutes for toezeggingen finds some and passes over others, and which
+    ones differs from run to run: on the debate the rules were made on it
+    found 3 to 5 of the 6 it could find over five runs, and among the ones
+    it passed over was a sentence with "dat zeg ik toe" in it. Finding such
+    a sentence is what code is good at; judging it is still the model's.
+    With these sentences in the prompt it found the same 4 of the 6 in
+    three runs out of three. Nothing it marked on that debate was wrong, in
+    any of eleven runs.
+    The two it still misses are not among these sentences: a promise to do
+    "something" and one worded as a wish, each without a moment or
+    anything to deliver.
+
+    A sentence is one when it has the form of a commitment
+    (`has_commitment_form`) by a wording that names the promise or the
+    deed, or by any wording together with a moment or something to
+    deliver. "Ik wil daar iets over zeggen" alone is none: an answer has
+    dozens of those.
+
+    As they stand in the text, in order, each cut to `MAX_PASSAGE`.
+    """
+    found: list[str] = []
+    for sentence in _SENTENCE.split(text):
+        flat = _flat(sentence)
+        if not flat:
+            continue
+        named = bool(_PRODUCT.search(flat) or _MOMENT.search(flat))
+        if _commits(flat, _STRONG_CUES) or (named and _commits(flat, _WEAK_CUES)):
+            found.append(" ".join(sentence.split())[:MAX_PASSAGE])
+            if len(found) >= limit:
+                break
+    return found
 
 
 def deadline_is_said(deadline: str, quote: str) -> bool:

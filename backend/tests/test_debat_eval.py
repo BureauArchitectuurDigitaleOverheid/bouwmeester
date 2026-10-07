@@ -474,6 +474,56 @@ class TestVariants:
 class TestTheProductionPathOnTheFixture:
     """`DebatVraagService` over the made-up debate, the model an oracle."""
 
+    async def test_a_toezegging_that_answers_a_question_is_not_a_second_question(
+        self, db_session
+    ):
+        """The link leaves a vermelding on the question. The harness keeps
+        it as a link, and does not count it as the question marked again."""
+        gevraagd = "Wie betaalt de rekening als een gemeente het geld niet heeft?"
+        assert gevraagd in FIXTURE["beurten"][1]["tekst"]
+
+        class Linking(OracleLLM):
+            async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
+                if gevraagd in prompt and '{"vragen"' in prompt:
+                    return json.dumps(
+                        {
+                            "vragen": [
+                                {
+                                    "citaat": gevraagd,
+                                    "gericht_aan": "de minister",
+                                    "samenvatting": "Rekening van een gemeente?",
+                                }
+                            ]
+                        }
+                    )
+                listed = re.search(r"(\d+)\. Kamerlid A \(X\): Rekening", prompt)
+                if listed and "laten uitzoeken" in prompt:
+                    return json.dumps(
+                        {
+                            "toezeggingen": [
+                                {
+                                    "citaat": "Ik zal dat laten uitzoeken en kom"
+                                    " daar in het voorjaar schriftelijk op terug.",
+                                    "samenvatting": "Zoekt uit wie de rekening van"
+                                    " een gemeente betaalt.",
+                                    "bij_vraag": int(listed.group(1)),
+                                }
+                            ]
+                        }
+                    )
+                return await super()._complete(prompt, max_tokens)
+
+        block = await run_debate(
+            db_session, Linking(FIXTURE), FIXTURE, "synthetisch", max_turns=18
+        )
+        outcomes = {turn["nr"]: turn for turn in block["beurten"]}
+        (vraag,) = outcomes[2]["gemarkeerd"]
+        (toezegging,) = outcomes[18]["gemarkeerd"]
+        assert (toezegging["soort"], toezegging["herhaling"]) == ("toezegging", False)
+        assert toezegging["bij_volgnummer"] == vraag["volgnummer"]
+        assert toezegging["gericht_aan"] == "Kamerlid A (X)"
+        assert outcomes[18]["ruw"][0]["bij_vraag"] == vraag["volgnummer"]
+
     async def test_the_code_marks_what_the_oracle_says_and_cleans_up(self, db_session):
         block = await run_debate(db_session, OracleLLM(FIXTURE), FIXTURE, "synthetisch")
         block["gold"] = str(FIXTURE_PATH)
