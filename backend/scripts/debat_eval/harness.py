@@ -297,6 +297,12 @@ def list_beurt(turns: list[dict], closing: ClosingList, sessie_id: uuid.UUID) ->
     )
 
 
+def _later(soort: str, citaat: str) -> str | None:
+    """What a question that is asked again asks for on paper this time."""
+    found = paper_request(citaat) if soort == KIND_VRAAG else None
+    return found.product if found else None
+
+
 def _raw_answer(llm: RecordingLLM, text: str) -> list[dict]:
     """What the model said, read the way production reads it."""
     try:
@@ -532,16 +538,13 @@ async def run_debate(
                     "citaat": row[1],
                     "herhaling": True,
                     # A question asked again, this time for something on
-                    # paper: the question carries it because of this turn.
-                    "vraagt_om": row[2] if paper_request(row[1]) else None,
+                    # paper: the reply of the question says so from this
+                    # quote, so the request is found in this turn.
+                    "vraagt_om": _later(row[0], row[1]),
                 }
                 for row in (
                     await session.execute(
-                        select(
-                            DebatMarkering.soort,
-                            DebatMarkeringVermelding.citaat,
-                            DebatMarkering.vraagt_om,
-                        )
+                        select(DebatMarkering.soort, DebatMarkeringVermelding.citaat)
                         .join(
                             DebatMarkering,
                             DebatMarkering.id == DebatMarkeringVermelding.markering_id,

@@ -49,6 +49,7 @@ from bouwmeester.services.debat_vraag_service import (
     format_thread,
     is_bevestigd,
     komt_uit_slotlijst,
+    later_op_papier,
     schrijf_statusregel,
     toezeggingen_bij,
 )
@@ -224,6 +225,11 @@ class DebatVraagStatusService:
             or stand.mattermost_user_id != markering.status_door_mattermost_user_id
         )
         gebruiker = await self._gebruiker(stand.mattermost_user_id)
+        later = (
+            await later_op_papier(self.session, markering_id)
+            if markering.soort == SOORT_VRAAG and markering.vraagt_om is None
+            else None
+        )
         # What the reply is made from, read before the commit expires it.
         tekst = format_thread(
             markering.soort,
@@ -250,6 +256,8 @@ class DebatVraagStatusService:
                 if markering.soort == SOORT_VRAAG
                 else ()
             ),
+            later_om=later.product if later else None,
+            later_termijn=later.moment if later else None,
         )
         # A toezegging that is rejected, or taken back in, changes what the
         # reply of its question says: that one is written again as well.
@@ -287,7 +295,6 @@ class DebatVraagStatusService:
                     DebatMarkering.sessie_id == sessie_id,
                     DebatMarkering.volgnummer == vraag_bij,
                     DebatMarkering.soort == SOORT_VRAAG,
-                    DebatMarkering.thread_post_id.is_not(None),
                 )
                 .values(reacties_gewijzigd_at=now)
             )

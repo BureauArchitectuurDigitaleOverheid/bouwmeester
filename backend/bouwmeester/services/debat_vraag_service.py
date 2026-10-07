@@ -94,7 +94,11 @@ from bouwmeester.services.debat_toezegging import (
     shares_a_subject,
 )
 from bouwmeester.services.debat_transcript import _RUNS_ON, split_text
-from bouwmeester.services.debat_vraag_brief import PRODUCTS, paper_request
+from bouwmeester.services.debat_vraag_brief import (
+    PRODUCTS,
+    PaperRequest,
+    paper_request,
+)
 from bouwmeester.services.debat_vraag_moment import (
     SAFE_URL as _VEILIGE_URL,
 )
@@ -553,6 +557,8 @@ def format_vraag_thread(
     vraagt_om: str | None = None,
     termijn: str | None = None,
     toegezegd: Sequence[int] = (),
+    later_om: str | None = None,
+    later_termijn: str | None = None,
 ) -> str:
     """The reply under the message of a turn that is the thread of a question.
 
@@ -561,22 +567,26 @@ def format_vraag_thread(
         📄 <agenda document>
         > <the quote>
 
-    A question that asks for something on paper says so in the second
-    line, and one a toezegging was linked to names it:
+    A question that asks for something on paper, or that a toezegging was
+    linked to, gets one short line more, under the line that was there:
 
-        Vraag 12 · ✉️ een brief voor de begrotingsbehandeling
-            · 🤝 toezegging 15 · aan de minister · [21:55](<link>)
+        ❓ **<the question>**
+        Vraag 12 · aan de minister · [21:55](<link>)
+        ✉️ een overzicht, vóór de begrotingsbehandeling · 🤝 toezegging 15
+        > <the quote>
 
-    `vraagt_om` is what is asked for, in our words
-    (`debat_vraag_brief.PRODUCTS`), and `termijn` by when, in the words of
-    the member. In the line that is there and not in one of their own: a
-    reply is four lines at most, and most questions ask for nothing on
-    paper. An icon and not "vraagt om": seven characters shorter, in a
-    line that has to fit a phone. `toegezegd` are the numbers of the
-    toezeggingen that answer this question; their replies say "bij vraag
-    12", so the two read as a pair from either side. It says nothing
-    about where the question stands: that is for the people who follow
-    the debate.
+    The second line stays what it was for every question, 34 characters
+    with the time in a fixed place; with the request in it, it came to
+    three lines on a phone. `vraagt_om` is what is asked for, the word
+    the member used in a fixed spelling (`debat_vraag_brief.PRODUCTS`),
+    and `termijn` by when, in the member's words. `later_om` and
+    `later_termijn` are the same for a question that asked for nothing on
+    paper when it was marked and was asked again later for a letter: the
+    quote of this reply names no letter, so the line says it came later.
+    `toegezegd` are the numbers of the toezeggingen that answer this
+    question; their replies say "bij vraag 12", so the two read as a pair
+    from either side. None of it says where the question stands: that is
+    for the people who follow the debate.
 
     Who asks is not in it: the reply hangs under the message of the
     speaker. The number is the one of the markering in this debate, so
@@ -613,17 +623,21 @@ def format_vraag_thread(
         # reaction away brings the whole reply back.
         return f"{icoon} ~~Vraag {volgnummer} · {kop}~~ · {stand}"
     tijd = _tijd_met_link(moment, moment_url, vraag_moment)
-    meta = [f"Vraag {volgnummer}"]
+    meta = [f"Vraag {volgnummer}", f"aan {aan_wie(gericht_aan)}", tijd]
     if stand:
-        meta.append(stand)
-    op_papier = _op_papier(vraagt_om, termijn)
-    if op_papier:
-        meta.append(op_papier)
-    if toegezegd:
-        nummers = ", ".join(str(int(n)) for n in list(toegezegd)[:MAX_TOEGEZEGD])
-        meta.append(f"{ICOON_TOEZEGGING} toezegging {nummers}")
-    meta += [f"aan {aan_wie(gericht_aan)}", tijd]
+        meta.insert(1, stand)
     regels = [f"{icoon or ICOON_VRAAG} **{kop}**", " · ".join(meta)]
+    erbij = [
+        deel
+        for deel in (
+            _op_papier(vraagt_om, termijn)
+            or _op_papier(later_om, later_termijn, later=True),
+            _toegezegd(toegezegd),
+        )
+        if deel
+    ]
+    if erbij:
+        regels.append(" · ".join(erbij))
     if stuk:
         regels.append(f"{ICOON_STUK} {_vrij(_kort(stuk, 300))}")
     regels.append(f"> {_vrij(_kort(gezegd, MAX_CITAAT))}")
@@ -634,12 +648,15 @@ def format_vraag_thread(
     return "\n".join(regels)
 
 
-# How many toezeggingen on one question are named in its reply.
-MAX_TOEGEZEGD = 3
+# How many toezeggingen on one question are named in its reply; the rest
+# is counted behind them.
+MAX_TOEGEZEGD = 2
+# In front of what a question was asked for later, when it was asked again.
+LATER_GEVRAAGD = "later gevraagd:"
 
 
-def _op_papier(vraagt_om: str | None, termijn: str | None) -> str:
-    """What a question asks for on paper, for the line under it.
+def _op_papier(vraagt_om: str | None, termijn: str | None, later: bool = False) -> str:
+    """What a question asks for on paper, for the line under its meta line.
 
     Only a product this code knows: the column is ours, but a row is not
     trusted to hold nothing else. The moment is the member's words from
@@ -647,8 +664,25 @@ def _op_papier(vraagt_om: str | None, termijn: str | None) -> str:
     """
     if vraagt_om not in PRODUCTS:
         return ""
+    wat = f"{LATER_GEVRAAGD} {vraagt_om}" if later else vraagt_om
     wanneer = _vrij(_kort(termijn or "", MAX_TERMIJN)).strip()
-    return " ".join(part for part in (ICOON_OP_PAPIER, vraagt_om, wanneer) if part)
+    return f"{ICOON_OP_PAPIER} {wat}" + (f", {wanneer}" if wanneer else "")
+
+
+def _toegezegd(nummers: Sequence[int]) -> str:
+    """The toezeggingen on a question, for the line under its meta line.
+
+    The first `MAX_TOEGEZEGD` by number and how many more there are: a
+    toezegging is never left out without the line saying so.
+    """
+    alle = [int(n) for n in nummers]
+    if not alle:
+        return ""
+    genoemd = ", ".join(str(n) for n in alle[:MAX_TOEGEZEGD])
+    meer = len(alle) - MAX_TOEGEZEGD
+    return f"{ICOON_TOEZEGGING} toezegging {genoemd}" + (
+        f" +{meer}" if meer > 0 else ""
+    )
 
 
 def _tijd_met_link(
@@ -861,6 +895,8 @@ def format_thread(
     uit_lijst: bool = False,
     vraagt_om: str | None = None,
     toegezegd: Sequence[int] = (),
+    later_om: str | None = None,
+    later_termijn: str | None = None,
 ) -> str:
     """The reply of a markering, whatever kind it is.
 
@@ -912,6 +948,8 @@ def format_thread(
         # Of a question the column holds by when the member asks it.
         termijn=termijn,
         toegezegd=toegezegd,
+        later_om=later_om,
+        later_termijn=later_termijn,
     )
 
 
@@ -992,9 +1030,11 @@ class _Herhaling:
     # Of a toezegging read out by the chairman: who it was promised to, if
     # the chairman said so.
     aan: str | None = None
-    # Of a question asked again: what it asks for on paper this time, if
-    # anything. `termijn` is then by when.
-    vraagt_om: str | None = None
+    # Of a question asked again: whether it asks for something on paper
+    # this time. What and by when is read from `citaat` when the reply of
+    # the question is written (`later_op_papier`); this only says that
+    # the reply has to be written again.
+    op_papier: bool = False
 
 
 def _woorden(tekst: str) -> list[str]:
@@ -1059,11 +1099,17 @@ def lees_antwoord(
 
     A question that is kept is looked at once more, by rule: whether it
     asks for something on paper, and by when (`paper_request`). That adds
-    a property to the question and never drops or adds one. A question
-    that is asked again carries it too: "dan wil ik daar een brief over"
-    is how a member comes back to a question that got no answer, and the
-    model files that under the question that is open. In the first run on
-    the gold set that was one of the two requests that were missed.
+    a property to the question and never drops or adds one.
+
+    A member who comes back to a question that got no answer often asks
+    for a letter then ("Kan de minister dat overzicht dan naar de Kamer
+    sturen?"), and the model files that under the question that is open:
+    one of the two requests that were missed in the first run on the gold
+    set. The property is not put on that question: its quote names no
+    letter, and what a rule got wrong there would stay for good. The
+    later turn is a vermelding with its own quote, and the reply of the
+    question says what was asked for later, read from that quote each
+    time the reply is written.
     """
     nieuw: list[_Nieuw] = []
     herhaald: list[_Herhaling] = []
@@ -1104,9 +1150,7 @@ def lees_antwoord(
         if vraag.hoort_bij is not None and vraag.hoort_bij in openstaand:
             if all(h.volgnummer != vraag.hoort_bij for h in herhaald):
                 herhaald.append(
-                    _Herhaling(
-                        vraag.hoort_bij, citaat, termijn=termijn, vraagt_om=vraagt_om
-                    )
+                    _Herhaling(vraag.hoort_bij, citaat, op_papier=bool(vraagt_om))
                 )
             continue
         stuk = None
@@ -1141,13 +1185,13 @@ def _geen_vraag(
         for motie in moties
     ):
         return "tekst van een motie"
-    # A request for something on paper is a request, also in a form the
-    # check for questions does not know: "wij verwachten een briefje
-    # waarin staat hoeveel", "ik zou graag vóór de begroting een brief
-    # ontvangen". The
-    # form check dropped 2 of the 6 requests the labeller was sure of. Of
-    # what the model gave in four saved runs this lets through one quote a
-    # run at most that was dropped before, and each was such a request.
+    # A request for something on paper is a request, also in a wording
+    # the check for questions does not know ("Ik zou graag vóór de
+    # begrotingsbehandeling een brief van de minister ontvangen", from the
+    # made-up debate). The form check dropped 2 of the 6 requests the
+    # labeller was sure of. Only a wording of asking counts for this
+    # (`paper_request`): a statement with a letter and a verb of sending in
+    # it ("de wethouder stuurt ouders een brief") is dropped as before.
     if not has_question_form(citaat) and paper_request(citaat) is None:
         return "geen vorm van een vraag"
     if van_initiatiefnemer and not _noemt_bewindspersoon(citaat):
@@ -1499,7 +1543,9 @@ async def toezeggingen_bij(
     """The numbers of the toezeggingen that answer a question of a debate.
 
     For whoever writes the reply of a question from its row. One that was
-    rejected as no toezegging is not named: it promised nothing.
+    rejected as no toezegging is not named: it promised nothing. Neither
+    is one whose own reply is not in the channel: "toezegging 15" would
+    point at nothing anyone can find.
     """
     return tuple(
         (
@@ -1510,6 +1556,7 @@ async def toezeggingen_bij(
                     DebatMarkering.soort == SOORT_TOEZEGGING,
                     DebatMarkering.bij_volgnummer == volgnummer,
                     DebatMarkering.status != STATUS_VERWORPEN,
+                    DebatMarkering.thread_post_id.is_not(None),
                 )
                 .order_by(DebatMarkering.volgnummer)
             )
@@ -1517,6 +1564,38 @@ async def toezeggingen_bij(
         .scalars()
         .all()
     )
+
+
+async def later_op_papier(
+    session: AsyncSession, markering_id: uuid.UUID
+) -> PaperRequest | None:
+    """What a question was asked for on paper when it was asked again.
+
+    The first of the later turns that asks for something, by the rule on
+    its own quote. Not kept on the row: read each time the reply is
+    written, so what the rule says of that quote is what the reply shows.
+    """
+    citaten = (
+        (
+            await session.execute(
+                select(DebatMarkeringVermelding.citaat)
+                .where(
+                    DebatMarkeringVermelding.markering_id == markering_id,
+                    DebatMarkeringVermelding.soort == VERMELDING_HERHALING,
+                )
+                .order_by(
+                    DebatMarkeringVermelding.created_at, DebatMarkeringVermelding.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for citaat in citaten:
+        found = paper_request(citaat)
+        if found is not None:
+            return found
+    return None
 
 
 async def schrijf_statusregel(
@@ -2424,24 +2503,19 @@ class DebatVraagService:
                     moment_url=beurt.moment_url,
                 )
             )
-            if herhaling.vraagt_om and herhaling.soort == VERMELDING_HERHALING:
+            if herhaling.op_papier and herhaling.soort == VERMELDING_HERHALING:
                 # A question that is asked again, now for something on
-                # paper: the question asks for it from here on. Only when
-                # it asked for nothing before; what it asked for first
-                # stays. Marked the way a reaction marks it, so that the
-                # round of the reactions writes its reply again.
+                # paper: its reply says so, from the quote of this turn.
+                # The row of the question keeps what it was marked with.
+                # Marked the way a reaction marks it, so that the round of
+                # the reactions writes its reply again.
                 await self.session.execute(
                     update(DebatMarkering)
                     .where(
                         DebatMarkering.id == open_ids[herhaling.volgnummer],
                         DebatMarkering.soort == SOORT_VRAAG,
-                        DebatMarkering.vraagt_om.is_(None),
                     )
-                    .values(
-                        vraagt_om=herhaling.vraagt_om,
-                        termijn=herhaling.termijn,
-                        reacties_gewijzigd_at=datetime.now(UTC),
-                    )
+                    .values(reacties_gewijzigd_at=datetime.now(UTC))
                 )
             if herhaling.termijn and herhaling.soort == VERMELDING_HERHALING:
                 # A toezegging that is made more precise: the first time
@@ -2459,24 +2533,6 @@ class DebatVraagService:
                         termijn=herhaling.termijn,
                         reacties_gewijzigd_at=datetime.now(UTC),
                     )
-                )
-            if herhaling.soort == VERMELDING_ANTWOORD:
-                # A toezegging answers this question: the reply of the
-                # question names it ("toezegging 15"), as the reply of the
-                # toezegging names the question. The reply is in the
-                # channel already, so it is marked the way a reaction marks
-                # it, and the round of the reactions writes it again from
-                # the row, in the same commit that stores the toezegging.
-                # One builder and one writer for a reply, whoever changed
-                # the row. Where the question stands is not touched.
-                await self.session.execute(
-                    update(DebatMarkering)
-                    .where(
-                        DebatMarkering.id == open_ids[herhaling.volgnummer],
-                        DebatMarkering.soort == SOORT_VRAAG,
-                        DebatMarkering.thread_post_id.is_not(None),
-                    )
-                    .values(reacties_gewijzigd_at=datetime.now(UTC))
                 )
             if herhaling.soort == VERMELDING_BEVESTIGING:
                 # Read out by the chairman: the reply has to say so. Marked
@@ -2648,6 +2704,11 @@ class DebatVraagService:
             )
         )
 
+        later = (
+            await later_op_papier(self.session, markering_id)
+            if row[10] == SOORT_VRAAG and row[14] is None
+            else None
+        )
         tekst = format_thread(
             row[10],
             volgnummer=row[2],
@@ -2666,12 +2727,15 @@ class DebatVraagService:
             bevestigd=await is_bevestigd(self.session, markering_id),
             uit_lijst=komt_uit_slotlijst(row[13]),
             vraagt_om=row[14],
-            # A question that is posted late can have its toezegging by now.
+            # A question that is posted late can have its toezegging by
+            # now, and can have been asked again.
             toegezegd=(
                 await toezeggingen_bij(self.session, row[15], row[2])
                 if row[10] == SOORT_VRAAG
                 else ()
             ),
+            later_om=later.product if later else None,
+            later_termijn=later.moment if later else None,
         )
         post_id = None
         if row[1] is not None:
@@ -2707,6 +2771,28 @@ class DebatVraagService:
                 .where(DebatMarkering.id == markering_id)
                 .values(thread_post_id=post_id, met_noot=first)
             )
+            if row[10] == SOORT_TOEZEGGING and row[12] is not None:
+                # A toezegging that answers a question is in the channel
+                # now: the reply of that question names it ("toezegging
+                # 15"), as this reply names the question. Here and not
+                # where the toezegging is stored: one that never got a
+                # reply is not named, and every toezegging on a question
+                # marks it, also the second one in a later window of the
+                # same answer. The question is marked the way a reaction
+                # marks it, in the commit that makes this reply known, and
+                # the round of the reactions writes its reply again from
+                # the row: one builder and one writer for a reply, whoever
+                # changed the row. Where the question stands is not
+                # touched.
+                await self.session.execute(
+                    update(DebatMarkering)
+                    .where(
+                        DebatMarkering.sessie_id == row[15],
+                        DebatMarkering.volgnummer == row[12],
+                        DebatMarkering.soort == SOORT_VRAAG,
+                    )
+                    .values(reacties_gewijzigd_at=datetime.now(UTC))
+                )
         else:
             logger.warning("Thread voor markering %s niet geplaatst", markering_id)
             await self.session.execute(

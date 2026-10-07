@@ -24,8 +24,8 @@ Counting, per kind:
   it matches, the other kind it matches, or `ongelabeld`.
 * A request for a letter is not a kind the code stores: it is a question
   with `vraagt_om` set. So for `verzoek_om_brief` the markings that count
-  are the questions that carry that property, also when they got it from
-  the turn in which the question was asked again. A gold request is found when
+  are the questions that carry that property, and the turns in which a
+  question is asked again for something on paper. A gold request is found when
   such a question matches it. A gold request that was marked as a plain
   question is a miss of the request, with a reason of its own: found as a
   question, missed as a request. A question that carries the property and
