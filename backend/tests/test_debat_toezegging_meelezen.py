@@ -89,11 +89,13 @@ def _nothing_left_over(monkeypatch):
     """What the worker remembers lives in the process; a test starts clean."""
     for memory in (mod._pause, mod._answer_pause, mod._roles):
         memory.reset()
+    mod._asked_at.clear()
     stem.VOICES.clear()
     monkeypatch.setattr(stem, "_loaded", {})
     yield
     for memory in (mod._pause, mod._answer_pause, mod._roles):
         memory.reset()
+    mod._asked_at.clear()
     stem.VOICES.clear()
 
 
@@ -669,7 +671,11 @@ class TestAnAnswerThatGoesOn:
         await w._tick(db_session, mm, llm, 120)
 
         await _say(db_session, s, m, [(78, "de uitvoering."), (82, T_PROEF), (86, NOG)])
+        # Not a quarter of a minute after the last window: a turn is left
+        # alone for a while after it was asked about.
         await w._tick(db_session, mm, llm, 135)
+        assert len(llm.asked) == 1
+        await w._tick(db_session, mm, llm, 120 + mod.RUNNING_EVERY.total_seconds())
 
         assert [citaat for citaat, _ in await _toezeggingen(db_session, s)] == [
             T_BRIEF,
@@ -692,13 +698,56 @@ class TestAnAnswerThatGoesOn:
         await w._tick(db_session, mm, llm, 120)
         await _say(db_session, s, m, [(78, "de uitvoering."), (82, T_PROEF), (86, NOG)])
 
-        await w._tick(db_session, mm, llm, 135)
+        await w._tick(db_session, mm, llm, 150)
 
         assert [citaat for citaat, _ in await _toezeggingen(db_session, s)] == [
             T_BRIEF,
             T_PROEF,
         ]
         assert len(mm.threads) == 2
+
+    async def test_a_full_window_does_not_wait_for_the_floor(
+        self, db_session, monkeypatch
+    ):
+        """More than a window is waiting: the answer runs ahead of its
+        reading, and holding it back would only make that worse."""
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = PerKind()
+        s, m = await self._minister(db_session, mm)
+        await w._tick(db_session, mm, llm, 120)
+        more = ["de uitvoering.", WENS, *_filler(80)]
+        await _say(
+            db_session, s, m, [(78 + i / 10, text) for i, text in enumerate(more)]
+        )
+
+        await w._tick(db_session, mm, llm, 135)
+
+        assert len(llm.asked) == 2
+
+    async def test_a_turn_without_a_call_does_not_use_up_the_round(
+        self, db_session, monkeypatch, handed
+    ):
+        """Two answers that are over and hold nothing to ask about come
+        first. They cost no call, so the answer that goes on is still read
+        in this round."""
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = PerKind(toegezegd(toezegging(T_BRIEF)))
+        s = await w._running(db_session)
+        stil = " ".join(_filler(3))
+        m1 = await w._row(db_session, s, "speaker", 10, "m", tekst=stil)
+        a = await w._row(db_session, s, "speaker", 20, "a", tekst=w.OPENING)
+        m2 = await w._row(db_session, s, "speaker", 30, "m", tekst=stil)
+        b = await w._row(db_session, s, "speaker", 40, "b", tekst=w.OPENING)
+        m3 = await w._row(db_session, s, "speaker", 60, "m")
+        await _say(db_session, s, m3, ANSWER)
+        w._in_channel(mm, m1, a, m2, b, m3)
+
+        await w._tick(db_session, mm, llm, 120)
+
+        assert len(llm.asked) == 1
+        assert [beurt.spreekbeurt_id for beurt in handed][-3:] == [m1.id, m2.id, m3.id]
 
     async def test_when_the_turn_is_over_the_rest_is_read_and_it_counts_as_read(
         self, db_session, monkeypatch, handed
@@ -1030,7 +1079,7 @@ class TestWhatTheVoicesCanStillMove:
             db_session, s, m, [(80, INTRO), (84, T_BRIEF), (88, VERDER)], done=True
         )
 
-        await w._tick(db_session, mm, PerKind(), 150)
+        await w._tick(db_session, mm, PerKind(), 120)
         assert handed == []
         # And nobody was asked who speaks: there is nothing to read yet.
         assert outside.sprekers_calls == 0
@@ -1040,13 +1089,60 @@ class TestWhatTheVoicesCanStillMove:
             .where(DebatOndertitel.tekst == "Tot zover.")
             .values(stem_klaar=True)
         )
-        await w._tick(db_session, mm, PerKind(), 165)
+        await w._tick(db_session, mm, PerKind(), 135)
 
         assert [beurt.spreekbeurt_id for beurt in handed] == [a.id, b.id, m.id]
         answer = handed[-1]
         assert answer.loopt is True
         assert answer.voorafgaand == "Kamerlid B (Y)"
         assert Q_INTERRUPTIE in answer.voorafgaand_tekst
+
+
+@pytest.mark.asyncio
+class TestHowLongAnAnswerWaitsForTheTurnBefore:
+    async def _debate(self, db_session, monkeypatch, mm, kind: str):
+        w.Outside(monkeypatch)
+        _listening(monkeypatch)
+        s = await w._running(db_session, ondertitels=_heard())
+        a = await w._row(db_session, s, "speaker", 0, "a", tekst=w.OPENING)
+        b = await w._row(
+            db_session, s, kind, 40, "b", tekst=f"{w.OPENING} {Q_INTERRUPTIE}"
+        )
+        m = await w._row(db_session, s, "speaker", 60, "m")
+        w._in_channel(mm, a, b, m)
+        # Undecided at the change from a to b: b is not read yet.
+        await _say(db_session, s, a, [(38, "Tot zover.")])
+        await _say(
+            db_session, s, m, [(80, INTRO), (84, T_BRIEF), (88, VERDER)], done=True
+        )
+        return s, b, m
+
+    async def test_not_for_a_turn_that_is_no_interruption(
+        self, db_session, monkeypatch, handed
+    ):
+        """The turn before is a term of a member. A toezegging is tied to
+        nothing in it, so the answer does not wait behind its lines."""
+        mm = w.Chat()
+        s, b, m = await self._debate(db_session, monkeypatch, mm, "speaker")
+
+        await w._tick(db_session, mm, PerKind(), 125)
+
+        assert [beurt.spreekbeurt_id for beurt in handed] == [m.id]
+        assert await w._at(db_session, b) is None
+
+    async def test_and_for_an_interruption_not_for_ever(
+        self, db_session, monkeypatch, handed
+    ):
+        mm = w.Chat()
+        s, b, m = await self._debate(db_session, monkeypatch, mm, "interrupter")
+        bound = 60 + mod.WAIT_FOR_INTERRUPTION.total_seconds()
+
+        await w._tick(db_session, mm, PerKind(), bound - 1)
+        assert handed == []
+
+        await w._tick(db_session, mm, PerKind(), bound)
+        assert [beurt.spreekbeurt_id for beurt in handed] == [m.id]
+        assert await w._at(db_session, b) is None
 
 
 @pytest.mark.asyncio
@@ -1330,13 +1426,13 @@ class TestTheVoicesAndTheMarkingAtTheSameMoment:
         assert await self._text(check, m) == f"{INTRO} {T_BRIEF} {VERDER}"
         assert T_BRIEF not in await self._text(check, b)
 
-    async def test_a_line_being_moved_is_waited_for_and_then_the_turn_is_left(
+    async def test_a_line_the_voices_are_moving_is_not_waited_for(
         self, real, monkeypatch
     ):
-        """The voices have moved a line and not committed yet. The marking
-        cannot mark that line as decided while they hold it: it waits, and
-        then sees that the turn no longer begins with what it meant to
-        read. Nothing is read this round."""
+        """The voices have moved a line and not committed yet: they hold
+        it. Waiting for it while they wait for a line held here would be a
+        deadlock, so the marking passes it over, sees that not every line
+        has its mark, and leaves the turn for the next round."""
         _listening(monkeypatch)
         new_session, _ = real
         s, b, m = await self._debate(real)
@@ -1350,17 +1446,44 @@ class TestTheVoicesAndTheMarkingAtTheSameMoment:
         voices = DebatStemmen(timeline, None, Budget.share(1))
         assert await voices._assign(line, b.id) is True
 
-        settling = asyncio.create_task(worker._settle(final))
-        await asyncio.sleep(0.3)
-        assert not settling.done()
+        # At once, while the voices still hold the line.
+        assert await asyncio.wait_for(worker._settle(final), 2) is False
+        await marking.commit()
+        # And the lines that were free have their mark, in their order.
+        assert await _settled(new_session(), s) == {
+            INTRO: True,
+            T_BRIEF: False,
+            VERDER: True,
+        }
 
         await timeline.commit()
-        assert await asyncio.wait_for(settling, 5) is False
-        await marking.commit()
-
         # The next round reads the turn as it is now.
         worker, final = await self._final(marking, s, m)
         assert [line.tekst for line in final.lines] == [INTRO, VERDER]
+        assert await worker._settle(final) is True
+
+    async def test_a_line_the_voices_hold_and_leave_where_it_is(
+        self, real, monkeypatch
+    ):
+        """Held and not moved: the turn still begins with the same lines,
+        and one of them has no mark. It is not read until it has."""
+        _listening(monkeypatch)
+        new_session, _ = real
+        s, b, m = await self._debate(real)
+        marking, timeline = new_session(), new_session()
+        worker, final = await self._final(marking, s, m)
+        await marking.commit()
+
+        await timeline.execute(
+            select(DebatOndertitel.id)
+            .where(DebatOndertitel.tekst == T_BRIEF)
+            .with_for_update()
+        )
+        assert await asyncio.wait_for(worker._settle(final), 2) is False
+        await marking.commit()
+
+        await timeline.rollback()
+        worker, final = await self._final(marking, s, m)
         assert await worker._settle(final) is True
 
     async def test_a_line_that_comes_in_meanwhile_lands_behind_what_is_read(
@@ -1604,3 +1727,104 @@ class TestOneWriterOfAMessage:
             )
         )
         return len(rows.all())
+
+
+@pytest.mark.asyncio
+class TestWhatTheVoicesKeepForALine:
+    async def test_what_was_kept_for_a_line_the_marking_marked_is_let_go(
+        self, db_session
+    ):
+        """The voices keep what a line sounds like until they decide about
+        it. A line the marking marked as decided is never decided about by
+        them, so nothing would ever let it go."""
+        s = await w._running(db_session, ondertitels=_heard())
+        m = await w._row(db_session, s, "speaker", 60, "m")
+        await _say(db_session, s, m, [(62, INTRO)], done=True)
+        await _say(db_session, s, m, [(66, T_BRIEF)])
+        ids = dict(
+            (
+                await db_session.execute(
+                    select(DebatOndertitel.tekst, DebatOndertitel.id).where(
+                        DebatOndertitel.sessie_id == s.id
+                    )
+                )
+            ).all()
+        )
+        # Long after: nothing was said lately, so nothing is listened to.
+        now = _now(62 + stemmen.RETRY_FOR.total_seconds() - 1 + 600)
+        held = stem.VOICES.of(s.id, now)
+        held.lines[ids[INTRO]] = object()
+        held.lines[ids[T_BRIEF]] = object()
+        await db_session.execute(
+            update(DebatOndertitel)
+            .where(DebatOndertitel.id == ids[T_BRIEF])
+            .values(start=now - timedelta(seconds=60), einde=now)
+        )
+
+        early = now - stemmen.WAIT + timedelta(seconds=40)
+        await DebatStemmen(db_session, None, Budget.share(1)).update(
+            s.id, PART, AUDIO, None, early
+        )
+
+        assert list(held.lines) == [ids[T_BRIEF]]
+
+
+@pytest.mark.asyncio
+class TestWhoElseLeavesTheMessageToTheTranscription:
+    async def test_the_round_of_the_reactions_writes_no_turn_message(self, db_session):
+        """A reaction that changes nothing a reader sees in the status
+        still has the reply written again. The message of the turn is left
+        to the transcription, with its count marked as out of date."""
+        from tests import test_debat_vraag_status as st
+
+        mm = st.FakeMattermost()
+        s = await w._running(db_session)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        mm.messages[a.post_id] = f"{w.KOP}\n{w.OPENING}"
+        await w._marked(db_session, s, a)
+        thread = await db_session.scalar(
+            select(DebatMarkering.thread_post_id).where(
+                DebatMarkering.sessie_id == s.id
+            )
+        )
+        mm.messages[thread] = "oud"
+        await db_session.execute(
+            update(DebatMarkering)
+            .where(DebatMarkering.sessie_id == s.id)
+            .values(statusregel_at=_now(0), reacties_gewijzigd_at=datetime.now(UTC))
+        )
+
+        ronde = await st._ronde(db_session, mm)
+
+        assert (ronde.bijgewerkt, ronde.mislukt) == (1, 0)
+        assert a.post_id not in [post_id for post_id, _ in mm.updates]
+        stale = await db_session.scalar(
+            select(DebatMarkering.statusregel_at).where(
+                DebatMarkering.sessie_id == s.id
+            )
+        )
+        assert stale is None
+
+    async def test_the_count_under_the_end_of_a_debate_is_written_once(
+        self, db_session
+    ):
+        """A toezegging from the chairman's list hangs under the message of
+        the end. With the chairman's words under it, that is a message of
+        the transcription too."""
+        mm = w.Chat()
+        s = await w._running(db_session)
+        await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        await w._row(
+            db_session, s, "chairman", 200, "v", post=False, tekst="Ik sluit af."
+        )
+        end = await w._row(db_session, s, "debate_end", 300, kop="⏹️ **Afgelopen**")
+        mm.messages[end.post_id] = "⏹️ **Afgelopen**"
+        await w._marked(db_session, s, end)
+
+        await _counts(db_session, mm, s)
+        writes = len(mm.updates)
+        await _counts(db_session, mm, s)
+
+        assert mm.messages[end.post_id].endswith(f"\n\n---\n{w.STATUS_EEN}")
+        assert "Ik sluit af." in mm.messages[end.post_id]
+        assert len(mm.updates) == writes

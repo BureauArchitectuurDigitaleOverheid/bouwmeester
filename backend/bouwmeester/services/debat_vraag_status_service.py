@@ -309,8 +309,15 @@ class DebatVraagStatusService:
             )
             if geschreven is None:
                 # A message of the transcription: the row says its count
-                # is out of date, and the transcription writes it.
-                pass
+                # is out of date, and the transcription writes it. Also
+                # when the status did not change: whatever else the count
+                # is made of may have.
+                await self.session.execute(
+                    update(DebatMarkering)
+                    .where(DebatMarkering.id == markering_id)
+                    .values(statusregel_at=None)
+                )
+                await self.session.commit()
             elif geschreven:
                 await self.session.execute(
                     update(DebatMarkering)

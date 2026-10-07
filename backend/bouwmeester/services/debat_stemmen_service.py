@@ -322,6 +322,12 @@ class DebatStemmen:
         if held is not None:
             for line in expired:
                 held.lines.pop(line.id, None)
+            # And what was kept for a line somebody else marked as decided
+            # in the meantime: the marking does, for the lines of an
+            # answer it reads while it goes on. Nobody asks for it again.
+            waits = {line.id for line in lines if not line.done}
+            for line_id in [kept for kept in held.lines if kept not in waits]:
+                del held.lines[line_id]
         if held is None or not busy:
             return
         if held.retry_at is not None and now < held.retry_at:

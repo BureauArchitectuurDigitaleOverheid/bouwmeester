@@ -697,6 +697,13 @@ calls; with 2,000 characters it is 171 for 36 calls, with 1,500 it is 141
 for 37, with 1,000 it is 115 for 41, with 600 it is 108 for 43 (counted
 without a model, on which window would hold each of the 21).
 
+After a window of a turn was asked about, the turn is left alone for 30
+seconds (`RUNNING_EVERY`), unless a full window waits: three commitments
+in three sentences are one call and not three. On this gold set that
+changes nothing: with a floor of 0, 20, 30 and 45 seconds the replay asks
+about the same 37 windows and the toezeggingen wait the same 71 seconds,
+so it is a bound for a debate that is not in the set.
+
 A round in which nothing new is final costs no call, no look at the list
 of speakers and no look for a model. Who answers in a debate is
 remembered for as long as the process lives.
@@ -706,10 +713,26 @@ that holds the quote: the first, or the one a long turn continues in
 (`post_holding`). A cut between two messages depends only on the text in
 front of it, so the message of a quote in final text does not change when
 more is said. The count ("1 toezegging") stands under that same message.
-The transcription is the one that puts a message together and puts the
-count back under every message it writes; the round of the reactions
-writes it from the row, by the message the row names. A question and a
-motie hang under the first message, as they did.
+A question and a motie hang under the first message, as they did.
+
+**One writer of a message.** The marking used to put the count under a
+message itself: read the message, replace the block, write it back. On a
+turn that goes on, the transcription can write the next lines in between,
+and the message written back was those lines short until the turn grew
+again, or for good. So the marking no longer writes the message of a turn
+at all, for a turn that goes on or one that is over, from the question
+worker, the chairman's list or the round of the reactions
+(`schrijf_statusregel` returns ``None`` for such a message). It stores
+what it found and leaves the row without `statusregel_at`. Every round of
+the timeline writes the messages with such a row again, text and count
+from the rows, by the code that writes the text
+(`DebatTranscript.write_counts`), and only that one message of a long
+turn. Also for a debate the timeline no longer follows, where most
+questions are ticked off. A change of status shows after one round of the
+marking and one of the timeline: 25 seconds at most with the intervals as
+they are (15 and 10), where it was 15. Only a message the transcription
+never writes (the end of a debate without words of the chairman) still
+gets its count from the marking.
 
 **What it measured.** The four debates played on a clock (`--replay`),
 with the subtitles 40 seconds behind, a round every 15 seconds and 6
@@ -837,10 +860,15 @@ every one of the twelve runs.
   long silence, or before the minister is interrupted, waits for the end
   of the turn: nothing comes after it.
 - At the start of an answer nothing is read until the lines around the
-  change of speaker are decided about, and until the interruption before
-  it was read: up to three minutes when the voices do not know the
-  speakers yet. A toezegging in the first sentences of an answer is the
-  one that gains least.
+  change of speaker are decided about: up to three minutes when the
+  voices do not know the speakers yet. And an answer to an interruption
+  waits for that interruption to be read, a minute and a half after the
+  answer began at most (`WAIT_FOR_INTERRUPTION`); read without it, a
+  toezegging at its start is tied to no question and promised to nobody.
+  A toezegging in the first sentences of an answer is the one that gains
+  least.
+- A line of an answer the voices hold at the moment it is to be read is
+  not waited for: the window is read a round later.
 - A line the worker marks as decided is one the voices no longer look at.
   A sentence of the member who interrupted that the time put at the start
   of the answer and that the voices would have moved after three minutes

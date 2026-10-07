@@ -44,6 +44,7 @@ from bouwmeester.services.debat_vraag_service import (
     Beoordeling,
     Beurt,
     DebatVraagService,
+    final_end,
     running_window,
 )
 from bouwmeester.services.debat_vraag_worker import (
@@ -51,6 +52,8 @@ from bouwmeester.services.debat_vraag_worker import (
     MAX_ANSWER_WINDOWS_PER_ROUND,
     MAX_TURNS,
     NEVER_MOVES_AFTER,
+    RUNNING_EVERY,
+    WAIT_FOR_INTERRUPTION,
 )
 from bouwmeester.services.llm.base import BaseLLMService
 
@@ -98,6 +101,11 @@ class Clock:
     # Whether an answer of the bewindspersoon is read while it goes on.
     # Without it, as it was: every turn is read when it is over.
     meelezen: bool = True
+    # How long an answer that goes on is left alone after a window of it
+    # was asked about, and how long it waits for the interruption before
+    # it to be read: the worker's own numbers.
+    running_every: float = RUNNING_EVERY.total_seconds()
+    wait_for_interruption: float = WAIT_FOR_INTERRUPTION.total_seconds()
 
 
 @dataclass
@@ -116,6 +124,8 @@ class _Turn:
     done_at: datetime
     position: int = 0
     read: bool = False
+    # When a window of it was last asked about while it went on.
+    asked_at: datetime | None = None
     calls: int = 0
     outcome: Beoordeling | None = None
     answers: list[str] | None = None
@@ -325,17 +335,32 @@ async def replay_debate(
                     if turn in over or not turn.raw.get("is_bewindspersoon"):
                         continue
                     earlier = before.get(turn.index)
-                    if earlier is not None and not earlier.read:
-                        # The turn before it has to be read first, for
-                        # the question a toezegging is tied to.
+                    if (
+                        earlier is not None
+                        and not earlier.read
+                        and earlier.raw["soort"] == "interrupter"
+                        and (now - turn.start).total_seconds()
+                        < clock.wait_for_interruption
+                    ):
+                        # The interruption before it has to be read
+                        # first, for the question a toezegging is tied to.
                         continue
                     tekst, _ = final_part(turn, now)
-                    if running_window(tekst, turn.position) is not None:
-                        going.append(turn)
+                    venster = running_window(tekst, turn.position)
+                    if venster is None:
+                        continue
+                    if (
+                        turn.asked_at is not None
+                        and (now - turn.asked_at).total_seconds() < clock.running_every
+                        and venster[2] == final_end(tekst)
+                    ):
+                        continue
+                    going.append(turn)
             for turn in [*answers, *going][:MAX_ANSWER_WINDOWS_PER_ROUND]:
                 if turn in going:
                     tekst, lines = final_part(turn, now)
                     beurt = as_beurt(turn, tekst=tekst, lines=lines, loopt=True)
+                    turn.asked_at = now
                     now = await hand_in(turn, beurt, now)
                     continue
                 lines = tuple(Line(start, text) for start, _, text in turn.lines)

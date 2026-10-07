@@ -79,6 +79,11 @@ async def run(args: argparse.Namespace) -> dict:
             subtitle_lag=args.subtitle_lag,
             voices=args.voices,
             meelezen=not args.no_running,
+            **(
+                {}
+                if args.running_every is None
+                else {"running_every": args.running_every}
+            ),
         )
     blocks: dict[str, dict] = {}
     limit = asyncio.Semaphore(args.parallel)
@@ -174,6 +179,12 @@ def main() -> int:
         type=float,
         default=Clock.subtitle_lag,
         help="with --replay: seconds between a line being said and being read",
+    )
+    parser.add_argument(
+        "--running-every",
+        type=float,
+        help="with --replay: seconds an answer that goes on is left alone"
+        " after a window of it was asked about; the worker's own when not given",
     )
     parser.add_argument(
         "--voices",

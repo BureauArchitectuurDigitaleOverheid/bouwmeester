@@ -97,6 +97,7 @@ from bouwmeester.services.debat_vraag_service import (
     Beurt,
     DebatContext,
     DebatVraagService,
+    final_end,
     is_bewindspersoon,
     next_window,
     running_window,
@@ -362,6 +363,27 @@ def first_in_play(
     return found
 
 
+def waits_for_interruption(item: _Waiting, now: datetime) -> bool:
+    """Whether an answer that goes on has to wait for the turn before it
+    to be read.
+
+    Only for the interruption of a member right before it: a toezegging
+    at the start of an answer is tied to the question that was marked in
+    that interruption, and promised to who asked it (`link_to_question`).
+    No other turn before it is needed for anything, so an answer does not
+    wait behind an earlier answer in its pause, or behind a term whose
+    lines are not decided about. And not for longer than
+    `WAIT_FOR_INTERRUPTION`.
+    """
+    before = item.before
+    return (
+        before is not None
+        and before.key[0] == dd.EVENT_INTERRUPTER
+        and bool(before.text)
+        and now - item.turn.start < WAIT_FOR_INTERRUPTION
+    )
+
+
 def text_of(lines: Sequence[SubLine]) -> str:
     """The text of a turn made of these lines, as `derive_text` and
     `load_turns` make it: the lines of a row with a space between them,
@@ -511,6 +533,25 @@ class _Roles:
 # does not have yet. A turn that is over asks every round, as it did.
 ASK_ROLES_AGAIN = timedelta(minutes=5)
 _roles = _Roles()
+# How long an answer that goes on is left alone after a window of it was
+# asked about. A bewindspersoon who commits to three things in three
+# sentences would otherwise cost a call a round. On the gold set it costs
+# nothing: played on the clock with a floor of 0, 20, 30 and 45 seconds
+# the same 37 windows are asked about and the toezeggingen wait the same
+# median of 71 seconds, so no two calls on one turn came that close
+# there. A window that is full does not wait: that is an answer running
+# ahead of its reading.
+RUNNING_EVERY = timedelta(seconds=30)
+# When a window of each answer that goes on was last asked about, in the
+# memory of the process.
+_asked_at: dict[uuid.UUID, datetime] = {}
+# How long an answer that goes on waits for the interruption before it to
+# be read. The two are ready at about the same moment, a minute after the
+# answer began: the lines around the change of speaker between them hold
+# both. Past this the interruption is stuck on something else (the lines
+# at its own start, a model that is away), and the answer is read without
+# the question it may be tied to.
+WAIT_FOR_INTERRUPTION = timedelta(seconds=90)
 _pause = _Pause()
 # The same for one answer of the bewindspersoon of which a window could not
 # be read: that turn is left alone for a while, and the debate is not. When
@@ -611,6 +652,8 @@ class DebatVraagWorker:
         )
         sessie_ids = list((await self.session.execute(stmt)).scalars().all())
         _roles.keep_only(sessie_ids)
+        for row_id in [r for r, at in _asked_at.items() if abs(now - at) > PAUSE_MAX]:
+            del _asked_at[row_id]
         if not sessie_ids:
             return result
         if not await self.mattermost.is_enabled():
@@ -840,17 +883,10 @@ class DebatVraagWorker:
             before = item.before
             if (
                 before is not None
+                and waits_for_interruption(item, now)
                 and before.beoordeeld_at is None
-                and before.text
                 and before.row_id not in waiting
             ):
-                # A toezegging at the start of an answer is tied to the
-                # question that was marked in the interruption before it
-                # (`link_to_question`). When a turn is over, the turn
-                # before it has been read as a rule; one that goes on is
-                # looked at half a minute after it began, and has to wait
-                # for that. Not for long: the turn before is over, and is
-                # read within `NEVER_MOVES_AFTER` whatever the voices do.
                 # One that is read this very round is checked again when
                 # it is this turn's turn (`_read_running`).
                 continue
@@ -859,7 +895,15 @@ class DebatVraagWorker:
             final = await self._final(sessie_id, item, now)
             if final is None:
                 continue
-            if running_window(final.tekst, final.turn.gelezen_tot) is None:
+            venster = running_window(final.tekst, final.turn.gelezen_tot)
+            if venster is None:
+                continue
+            last = _asked_at.get(turn.row_id)
+            if (
+                last is not None
+                and abs(now - last) < RUNNING_EVERY
+                and venster[2] == final_end(final.tekst)
+            ):
                 continue
             ready.append(item)
         return ready
@@ -1008,21 +1052,42 @@ class DebatVraagWorker:
         So once this is committed, no line of what is read can leave the
         turn, and none of the lines that waited too long can be put into
         it: what the model is shown is what stays under the message. A
-        line the voices moved in the moment before is seen by the second
-        look, and the turn is then left for the next round.
+        line the voices moved in the moment before, or hold at this
+        moment, is seen by the second look, and the turn is then left for
+        the next round.
         """
         if final.settle:
-            await self.session.execute(
-                update(DebatOndertitel)
-                .where(
-                    DebatOndertitel.id.in_(final.settle),
-                    DebatOndertitel.stem_klaar.is_(False),
+            # The voices decide line after line and hold each one until
+            # their round is committed. Waiting for a line they hold while
+            # they wait for one held here is a deadlock, so nothing is
+            # waited for: a line they hold is passed over, stays without
+            # its mark, and the turn is left for the next round.
+            free = (
+                (
+                    await self.session.execute(
+                        select(DebatOndertitel.id)
+                        .where(
+                            DebatOndertitel.id.in_(final.settle),
+                            DebatOndertitel.stem_klaar.is_(False),
+                        )
+                        .order_by(DebatOndertitel.start)
+                        .with_for_update(skip_locked=True)
+                    )
                 )
-                .values(stem_klaar=True)
+                .scalars()
+                .all()
             )
+            if free:
+                await self.session.execute(
+                    update(DebatOndertitel)
+                    .where(DebatOndertitel.id.in_(free))
+                    .values(stem_klaar=True)
+                )
             await self.session.commit()
         head = (await self._turn_lines(final.turn))[: len(final.lines)]
-        return [line.id for line in head] == [line.id for line in final.lines]
+        return [line.id for line in head] == [line.id for line in final.lines] and all(
+            line.klaar for line in head
+        )
 
     async def _open_lines(
         self, sessie_id: uuid.UUID, parts: list[str], now: datetime
@@ -1107,7 +1172,7 @@ class DebatVraagWorker:
                 break
             if _answer_pause.waiting(item.turn.row_id, now):
                 continue
-            parts += 1
+            asked = vragen.aanroepen
             if item.running:
                 stop = await self._read_running(
                     sessie_id,
@@ -1129,6 +1194,10 @@ class DebatVraagWorker:
                     (channel_id, activiteit_id, onderwerp),
                     None,
                 )
+            # A slot is a call of the model. A turn that turned out to
+            # hold nothing to ask about, or whose line moved a moment ago,
+            # does not use one up for the turns behind it.
+            parts += vragen.aanroepen > asked
             if stop:
                 return
 
@@ -1356,7 +1425,7 @@ class DebatVraagWorker:
             return False
         if (
             item.before is not None
-            and item.before.text
+            and waits_for_interruption(item, now)
             and await self._read_at(item.before.row_id) is None
         ):
             # The turn before was to be read earlier in this round and
@@ -1387,6 +1456,7 @@ class DebatVraagWorker:
             gelezen_tot=gelezen,
             loopt=True,
         )
+        _asked_at[turn.row_id] = now
         try:
             outcome = await asyncio.wait_for(
                 vragen.beoordeel_beurt(beurt, context), WINDOW_TIMEOUT

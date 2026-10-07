@@ -1785,6 +1785,8 @@ class DebatVraagService:
         self.mattermost = mattermost
         self.llm = llm
         self._ingehaald: set[uuid.UUID] = set()
+        # How often the model was asked, for whoever bounds that.
+        self.aanroepen = 0
 
     @classmethod
     async def create(
@@ -2018,6 +2020,7 @@ class DebatVraagService:
         # With what earlier windows of this same answer promised: those
         # are rows by now, so one said again further on is a herhaling.
         eerdere = await self._toezeggingen_van(beurt.sessie_id, beurt.spreker)
+        self.aanroepen += 1
         result = await self.llm.markeer_debat_toezeggingen(
             onderwerp=context.onderwerp,
             soort_vergadering=context.soort,
