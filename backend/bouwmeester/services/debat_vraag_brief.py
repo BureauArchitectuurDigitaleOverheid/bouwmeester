@@ -16,7 +16,7 @@ dat niet klopt" have both, and ask nothing. So the rule knows a handful of
 ways of asking, and the product has to be what is asked for in one of them:
 
 * the bewindspersoon is asked to send, write or promise it: "kan de
-  minister een overzicht naar de Kamer sturen", "is de staatssecretaris
+  minister een notitie naar de Kamer sturen", "is de staatssecretaris
   bereid een notitie op te stellen", "stuurt de minister ons een brief";
 * the member wants to get it: "ik zou graag een brief ontvangen", "krijgen
   wij daar een rapportage over", "graag een brief", "wij verwachten een

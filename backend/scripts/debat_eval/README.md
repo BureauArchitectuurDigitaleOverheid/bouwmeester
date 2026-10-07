@@ -699,35 +699,50 @@ said with this markering, by whoever spoke).
 ### What is rule and what is the model
 
 All of it is rule (`services/debat_vraag_brief.py`), on the quote of a
-question the model marked. The prompt did not change. The rule reached
-every request the labeller was sure of that was marked as a question in
-four saved runs (4 to 6 of 6 a run), with no plain question flagged among
-some 600 marked ones, so there was nothing for a model to add but its own
-words for the product, and those can name a letter nobody asked for. What
-is shown is one of ten fixed wordings, picked by the word the member used
-("een brief", "een overzicht", "een schriftelijk antwoord", "bericht aan de
-Kamer"); the moment is the member's words from the transcript.
+question the model marked. The prompt did not change. What is shown is the
+member's own word in a fixed spelling ("een brief", "een overzicht", "een
+planning", "een schriftelijk antwoord", "bericht aan de Kamer"), fourteen
+in all; the moment is the member's words from the transcript.
+
+The first version looked for a word for paper near a word for sending or
+getting. A review showed what that lets through: a statement holds both
+("the alderman sends parents a letter with a fine"), and so does a question
+about a letter that is there. So the rule now knows a handful of ways of
+asking, and the product has to be what is asked for in one of them: the
+bewindspersoon asked to send, write or promise it; the member wanting to
+get it; a letter named as where an answer can come; a form of answering
+("schriftelijk", "per brief", "op papier zetten"); the Kamer informed by a
+moment. A condition ("tenzij de minister een brief toezegt") and a question
+about when or why are left alone.
 
 Two things changed for the question itself, both because a request was
 lost otherwise:
 
 - A quote that asks for something on paper is kept as a question also when
   it has no form the check for questions knows (a member who "expects" a
-  letter). The form check dropped 2 of the 6 sure requests. On what the
-  model gave in four saved runs this lets through one quote a run at most,
-  each such a request.
+  letter). The form check dropped 2 of the 6 sure requests. Only a wording
+  of asking counts for this, so a statement is dropped as before: of what
+  the model gave in eleven saved runs it lets through one quote in five of
+  them, each time the same sure request, and nothing else.
 - A question that is asked again, this time for a letter, is filed by the
-  model under the question that is open. That question carries the property
-  from then on, when it asked for nothing on paper before.
+  model under the question that is open. The row of that question is left
+  as it was marked: its quote names no letter, and what a rule got wrong
+  there would stay for good. The later turn is a vermelding with its own
+  quote, and the reply of the question says "later gevraagd: een brief",
+  read from that quote every time the reply is written.
 
 ### What it measured
 
-Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs, 163
-calls a run. The mean, and the lowest and highest run.
+Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs of what
+is in the code now, 163 calls a run. The mean, and the lowest and highest
+run.
 
 | Requests for a letter | Sure | Found | Unsure, found | Flagged | Wrong | Precision | Recall |
 |---|---|---|---|---|---|---|---|
-| All four debates | 6 | 5 to 6 | 0 of 4 | 5 to 6 | 0 | 100% | 94% (83 to 100) |
+| All four debates | 6 | 6 | 0 of 4 | 6 | 0 | 100% | 100% |
+
+The three runs of the first version, before the review, found 5 to 6 with
+none wrong.
 
 What that says, and what it cannot:
 
@@ -735,20 +750,17 @@ What that says, and what it cannot:
   of recall. And the rule was made on these six, so "found" says the rule
   does what it was written to do. What it says about a debate nobody read
   is nothing.
-- "No question flagged wrongly" is the firmer number: 132 to 140 questions
-  were stored per run, and the 5 or 6 that were flagged were all requests.
-  Over the four saved runs from before the rule it is none of some 600.
-- The one miss, in one run of three, was not the rule's: the model did not
-  mark that request as a question at all. Such a miss counts as "niet
-  gevonden door het model"; a request that is marked and not flagged would
-  say "wel als vraag gemarkeerd, niet als verzoek om een brief", and no run
-  had one after the second change above. In the one run before it, one
-  had: the request the member came back to a question with.
-- One request in every run was found only because a question that is asked
-  again can carry the property. The other change, keeping a request
-  without the form of a question, let nothing through in these three runs,
-  right or wrong: the model gave those quotes with a sentence that asks
-  around them, or filed them as asked again.
+- "No question flagged wrongly" is the firmer number: some 135 questions
+  are stored per run, and the 6 that were flagged were all requests. On the
+  questions marked in eleven saved runs from before this version the rule
+  flags none wrongly either. Both are questions the model marked on these
+  four debates; the statements a review made up show that the first
+  version could be wrong where this set never went.
+- One request in every run is found as "later gevraagd": the member comes
+  back to a question with it, and the model files it there.
+- Keeping a request without the form of a question let nothing through in
+  these three runs, right or wrong. In five of the eleven earlier runs it
+  would have kept one quote, each time the same sure request.
 - None of the four requests the labeller was unsure of is flagged. Three
   name no product; one is a suggestion that a letter could be sent.
 - A moment was read for the one sure request that names one. Nothing says
@@ -760,55 +772,66 @@ last rows of the tables above:
 
 | | Marked | Wrong | Precision | Recall |
 |---|---|---|---|---|
-| Questions, three debates the rules were made on | 113 to 119 | 13 to 17 | 87% (86 to 88) | 93% (91 to 95) |
-| Questions, the debate kept apart | 36 to 37 | 6 to 9 | 79% (75 to 83) | 92% (90 to 93) |
-| Questions, all four | 149 to 156 | 20 to 25 | 85% (84 to 87) | 93% (92 to 95) |
+| Questions, three debates the rules were made on | 114 to 119 | 14 to 15 | 87% (87 to 88) | 93% (92 to 94) |
+| Questions, the debate kept apart | 34 to 39 | 4 to 10 | 81% (74 to 88) | 92% (90 to 93) |
+| Questions, all four | 152 to 153 | 19 to 24 | 86% (84 to 87) | 93% (92 to 94) |
 | Moties, all four | 13 | 0 | 100% | 11 of 11 |
-| Toezeggingen, both debates with answers | 15 to 20 | 1 to 3 | 89% (85 to 93) | 72% (67 to 75) |
+| Toezeggingen, both debates with answers | 17 to 18 | 1 to 2 | 90% (88 to 94) | 75% |
 
 Before: 87% and 93%, 83% and 91%, 86% and 93% for the questions; 91% (89 to
-94) and 75% for the toezeggingen. Recall of the questions is where it was.
-The debate kept apart has two or three wrong ones more of some 36 than in
-the three runs before, and is where it was in the sets of runs before
-those (80%, 82%, 82%). One run found 8 toezeggingen where every run before
-found 9. Nothing on the path of a toezegging changed, and of what changed
-for a question nothing was used in these runs (see above), so both are
-what three runs of the same code do; three runs cannot show a difference
-of this size either way.
+94) and 75% for the toezeggingen. Nothing moved further than three runs of
+the same code do. The debate kept apart swings most, 4 to 10 wrong of some
+36: that is the model, since of what changed for a question nothing was
+used in these runs (see above).
 
 ### What is shown
 
-In the line that is there, behind where the question stands:
+One short line under the line that was there, and only when there is
+something to show:
 
     ❓ **Een overzicht van de bezetting per provincie?**
-    Vraag 12 · ✉️ een overzicht voor de begrotingsbehandeling · aan de minister · [21:55](link)
+    Vraag 12 · aan de minister · [21:55](link)
+    ✉️ een overzicht, vóór de begrotingsbehandeling · 🤝 toezegging 15
     > Kan de minister vóór de begrotingsbehandeling een overzicht sturen ...
 
-An icon and not "vraagt om": without a moment the line is 48 characters
-against 55, and a line of a reply has to fit a phone. With a long moment
-neither fits one line; the moment is capped at 80 characters.
+The first version put it all in the second line, which came to some 100
+characters and three lines on a phone, with the time at the end. Now that
+line is what it was for every question (34 characters, the status words in
+it when there are any), and the new one is 66 here and at most 80 with a
+moment of ordinary length; the moment is capped at 80 characters of its
+own. At most two toezeggingen are named and the rest is counted ("🤝
+toezegging 15, 17 +1"). A question that was asked again for a letter shows
+"✉️ later gevraagd: een brief". A rejected question is the one struck line
+it was.
 
 The status block under the message of the turn does not count requests
-apart: "❓ 3 vragen · open" stays what it was. The block says where things
-stand, and a request stands where its question stands; which of the three
-asks for a letter is in the reply, one tap away.
+apart. The block says where things stand, and a request stands where its
+question stands; which of the questions asks for a letter is in the reply.
 
 ### A request that is granted
 
 A toezegging that is linked to a question says "bij vraag 12" in its reply.
-The reply of the question now names the toezegging as well ("🤝 toezegging
-15"), for every question a toezegging is linked to and not only for one
-that asked for paper. Storing the toezegging marks the question the way a
-reaction marks it, in the same commit, and the round of the reactions
-writes the reply again from the row: one builder and one writer for a
-reply, whoever changed the row. A toezegging that is rejected with a
+The reply of the question names the toezegging as well, for every question
+a toezegging is linked to and not only for one that asked for paper. When
+the reply of the toezegging goes into the channel, the question is marked
+the way a reaction marks it, in the commit that makes that reply known, and
+the round of the reactions writes the reply of the question again from the
+row: one builder and one writer for a reply, whoever changed the row. Not
+when the toezegging is stored: one that never got a reply is not named,
+and a second toezegging on the same question from a later window of a long
+answer marks it as the first did. A toezegging that is rejected with a
 reaction is no longer named, one round later. Where the question stands
 does not change by any of this.
 
 ### What is still open
 
 - The rule was made with the six sure requests of the gold set in view,
-  and they are all there are. No debate was kept apart for it.
+  and they are all there are. No debate was kept apart for it. The
+  sentences the review brought are made up; they show what the wordings do,
+  not how often such sentences are said.
+- A request in a wording the rule does not know is not found. The wordings
+  are few on purpose: a missed request is a plain question, a statement
+  with an envelope is a mistake someone has to click away.
 - A request that names no product and no form is not found: a wish to have
   something clear by a moment, a suggestion about when to report back. The
   labeller was unsure of all four of those.
@@ -817,12 +840,19 @@ does not change by any of this.
 - "Wanneer komt de evaluatie naar de Kamer" is left a plain question. It
   can be answered with a date, and it can be a polite way to ask for the
   evaluatie.
-- A moment is only read from the wordings of a deadline ("vóór", "uiterlijk",
-  "binnen", "nog dit jaar"). "In maart" is not shown: it says as often what
-  the letter is to be about.
-- In none of the three runs was a toezegging linked to a question that
-  asks for a letter (3 to 6 links a run, all to plain questions). That the
-  two read as a pair is tested on made-up turns only.
+- "Ik overweeg een motie, tenzij de minister een brief toezegt" is not
+  flagged. It asks for a letter in effect; in form it announces a motie,
+  and that is what gets marked.
+- A moment is shown when one stands in the wording of the request or right
+  behind it. Two moments there show none. A moment in front of the wording
+  ("vóór het reces graag een brief" is found, "vóór het reces, kan de
+  minister dan een brief sturen" is not) is not read.
+- A question about a letter that the check for the form of a question does
+  not know as a question ("de minister schrijft in een brief dat het goed
+  gaat is dat zo", without a mark) is dropped as it was before this rule;
+  that is the form check's, and was left.
+- In none of the runs was a toezegging linked to a question that asks for
+  a letter. That the two read as a pair is tested on made-up turns only.
 - The link between a request and the toezegging that grants it is the link
   there was (`debat_toezegging.link_to_question`); that a question asks for
   a letter is not used to make it.
