@@ -360,9 +360,6 @@ def _announces(near: list[str], at: int) -> str | None:
     """
     if any(word in _NOT_NOW for word in near):
         return None
-    if any(pair == ("af", "van") for pair in zip(near, near[1:], strict=False)):
-        # "Dan zie ik af van de motie."
-        return None
     after = near[at + 1 :]
     for i, word in enumerate(near):
         if word not in _FIRST_PERSON:

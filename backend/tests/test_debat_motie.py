@@ -338,6 +338,10 @@ class TestThePartsStandCloseTogether:
             "die motie verzoekt de regering om een plan te maken en agressie is"
             " aan de orde van de dag",
             "mijn fractie spreekt uit haar hart en dit is aan de orde van de dag",
+            "Het voorstel verzoekt de regering om een plan en dat is aan de orde"
+            " van de dag",
+            "Zij spreekt uit ervaring en gaat over tot de orde van de dag",
+            "Overwegende dat het al laat is: ik verzoek de regering om haast te maken.",
             "overwegende dat het kan zeg ik: mijn motie verzoekt de regering om"
             " haast te maken",
             "Alles overwegende verzoekt de regering dit zelf ook, zegt zij.",
