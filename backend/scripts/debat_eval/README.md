@@ -6,9 +6,12 @@ checks in the code gains or costs.
 
 Today the code marks three kinds: a `vraag` put to the bewindspersoon, a
 `motie` that a member announces or reads out, and a `toezegging` of the
-bewindspersoon. Two more kinds are named in `models/debat_markering.py`. The
-gold format, the codebook and the scoring cover all five, so a kind that gets
-built can be measured from its first prompt.
+bewindspersoon. A request for a letter is not a kind of its own: it is a
+question that says what it asks for on paper (`vraagt_om` on the row, see
+"A question that asks for a letter"). The fifth kind, the feitelijke claim,
+is named in `models/debat_markering.py` and not built. The gold format, the
+codebook and the scoring cover all five, so a kind that gets built can be
+measured from its first prompt.
 
 Nothing in this directory is used by the application. `VOORSTEL.md` (Dutch)
 holds the proposal that came out of the first measurement; "What was built
@@ -33,7 +36,9 @@ Tests: `backend/tests/test_debat_eval.py`. The fixture
 `backend/tests/fixtures/debat_markeringen_synthetisch.json` is a made-up debate
 of 37 turns in the gold format that covers every kind and every hard negative
 of the codebook, the list of toezeggingen the chairman reads at the end
-included. It is meant for prompt tests with a fake model.
+included. It is meant for prompt tests with a fake model. Its requests for a
+letter carry two fields a gold file does not need: `vraagt_om` and `termijn`,
+what the code should name as asked for and by when.
 
 ## The gold set is not in this repository
 
@@ -129,6 +134,14 @@ Per kind:
 - A `vraag` marking on a gold `verzoek_om_brief` is left out of the count.
   Such a request is put to the bewindspersoon and the current prompt treats it
   as a question.
+- For `verzoek_om_brief` the markings that count are the questions that carry
+  `vraagt_om`. A gold request is found when such a question matches it. A
+  gold request that was marked as a plain question is found as a question
+  (left out of that count, as above) and missed as a request, with the reason
+  "wel als vraag gemarkeerd, niet als verzoek om een brief". A question that
+  carries the property and matches no gold request is a false positive of the
+  request (`soort:vraag` when it is a gold question) and counts for `vraag`
+  as it did.
 - Every other marking is a false positive, named after the hard negative it
   matches, the other kind it matches (`soort:motie`), or `ongelabeld`.
 
@@ -674,6 +687,146 @@ every one of the twelve runs.
 - A toezegging does not change where a question stands.
 - The form of a toezegging (a letter, a debate, an inquiry) is not stored.
 - The page with the debates that were followed counts questions only.
+
+## A question that asks for a letter
+
+Step 5 of the proposal. A member who asks for a letter, an overview or a
+report asks a question, so nothing is marked a second time: the question
+carries what it asks for on paper (`DebatMarkering.vraagt_om`) and by when
+(`termijn`, the column a toezegging keeps its moment in: the moment that was
+said with this markering, by whoever spoke).
+
+### What is rule and what is the model
+
+All of it is rule (`services/debat_vraag_brief.py`), on the quote of a
+question the model marked. The prompt did not change. The rule reached
+every request the labeller was sure of that was marked as a question in
+four saved runs (4 to 6 of 6 a run), with no plain question flagged among
+some 600 marked ones, so there was nothing for a model to add but its own
+words for the product, and those can name a letter nobody asked for. What
+is shown is one of ten fixed wordings, picked by the word the member used
+("een brief", "een overzicht", "een schriftelijk antwoord", "bericht aan de
+Kamer"); the moment is the member's words from the transcript.
+
+Two things changed for the question itself, both because a request was
+lost otherwise:
+
+- A quote that asks for something on paper is kept as a question also when
+  it has no form the check for questions knows (a member who "expects" a
+  letter). The form check dropped 2 of the 6 sure requests. On what the
+  model gave in four saved runs this lets through one quote a run at most,
+  each such a request.
+- A question that is asked again, this time for a letter, is filed by the
+  model under the question that is open. That question carries the property
+  from then on, when it asked for nothing on paper before.
+
+### What it measured
+
+Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs, 163
+calls a run. The mean, and the lowest and highest run.
+
+| Requests for a letter | Sure | Found | Unsure, found | Flagged | Wrong | Precision | Recall |
+|---|---|---|---|---|---|---|---|
+| All four debates | 6 | 5 to 6 | 0 of 4 | 5 to 6 | 0 | 100% | 94% (83 to 100) |
+
+What that says, and what it cannot:
+
+- Six requests is too few for a percentage: one more or less is 17 points
+  of recall. And the rule was made on these six, so "found" says the rule
+  does what it was written to do. What it says about a debate nobody read
+  is nothing.
+- "No question flagged wrongly" is the firmer number: 132 to 140 questions
+  were stored per run, and the 5 or 6 that were flagged were all requests.
+  Over the four saved runs from before the rule it is none of some 600.
+- The one miss, in one run of three, was not the rule's: the model did not
+  mark that request as a question at all. Such a miss counts as "niet
+  gevonden door het model"; a request that is marked and not flagged would
+  say "wel als vraag gemarkeerd, niet als verzoek om een brief", and no run
+  had one after the second change above. In the one run before it, one
+  had: the request the member came back to a question with.
+- One request in every run was found only because a question that is asked
+  again can carry the property. The other change, keeping a request
+  without the form of a question, let nothing through in these three runs,
+  right or wrong: the model gave those quotes with a sentence that asks
+  around them, or filed them as asked again.
+- None of the four requests the labeller was unsure of is flagged. Three
+  name no product; one is a suggestion that a letter could be sent.
+- A moment was read for the one sure request that names one. Nothing says
+  how well a moment is read beyond that and the made-up sentences.
+- Four of the ten requests of the set are in one debate.
+
+The questions, moties and toezeggingen in the same three runs, against the
+last rows of the tables above:
+
+| | Marked | Wrong | Precision | Recall |
+|---|---|---|---|---|
+| Questions, three debates the rules were made on | 113 to 119 | 13 to 17 | 87% (86 to 88) | 93% (91 to 95) |
+| Questions, the debate kept apart | 36 to 37 | 6 to 9 | 79% (75 to 83) | 92% (90 to 93) |
+| Questions, all four | 149 to 156 | 20 to 25 | 85% (84 to 87) | 93% (92 to 95) |
+| Moties, all four | 13 | 0 | 100% | 11 of 11 |
+| Toezeggingen, both debates with answers | 15 to 20 | 1 to 3 | 89% (85 to 93) | 72% (67 to 75) |
+
+Before: 87% and 93%, 83% and 91%, 86% and 93% for the questions; 91% (89 to
+94) and 75% for the toezeggingen. Recall of the questions is where it was.
+The debate kept apart has two or three wrong ones more of some 36 than in
+the three runs before, and is where it was in the sets of runs before
+those (80%, 82%, 82%). One run found 8 toezeggingen where every run before
+found 9. Nothing on the path of a toezegging changed, and of what changed
+for a question nothing was used in these runs (see above), so both are
+what three runs of the same code do; three runs cannot show a difference
+of this size either way.
+
+### What is shown
+
+In the line that is there, behind where the question stands:
+
+    ❓ **Een overzicht van de bezetting per provincie?**
+    Vraag 12 · ✉️ een overzicht voor de begrotingsbehandeling · aan de minister · [21:55](link)
+    > Kan de minister vóór de begrotingsbehandeling een overzicht sturen ...
+
+An icon and not "vraagt om": without a moment the line is 48 characters
+against 55, and a line of a reply has to fit a phone. With a long moment
+neither fits one line; the moment is capped at 80 characters.
+
+The status block under the message of the turn does not count requests
+apart: "❓ 3 vragen · open" stays what it was. The block says where things
+stand, and a request stands where its question stands; which of the three
+asks for a letter is in the reply, one tap away.
+
+### A request that is granted
+
+A toezegging that is linked to a question says "bij vraag 12" in its reply.
+The reply of the question now names the toezegging as well ("🤝 toezegging
+15"), for every question a toezegging is linked to and not only for one
+that asked for paper. Storing the toezegging marks the question the way a
+reaction marks it, in the same commit, and the round of the reactions
+writes the reply again from the row: one builder and one writer for a
+reply, whoever changed the row. A toezegging that is rejected with a
+reaction is no longer named, one round later. Where the question stands
+does not change by any of this.
+
+### What is still open
+
+- The rule was made with the six sure requests of the gold set in view,
+  and they are all there are. No debate was kept apart for it.
+- A request that names no product and no form is not found: a wish to have
+  something clear by a moment, a suggestion about when to report back. The
+  labeller was unsure of all four of those.
+- A request that is not marked as a question is not found either: the rule
+  only looks at what was marked.
+- "Wanneer komt de evaluatie naar de Kamer" is left a plain question. It
+  can be answered with a date, and it can be a polite way to ask for the
+  evaluatie.
+- A moment is only read from the wordings of a deadline ("vóór", "uiterlijk",
+  "binnen", "nog dit jaar"). "In maart" is not shown: it says as often what
+  the letter is to be about.
+- In none of the three runs was a toezegging linked to a question that
+  asks for a letter (3 to 6 links a run, all to plain questions). That the
+  two read as a pair is tested on made-up turns only.
+- The link between a request and the toezegging that grants it is the link
+  there was (`debat_toezegging.link_to_question`); that a question asks for
+  a letter is not used to make it.
+- The page with the debates that were followed does not show the property.
 
 ## Making a gold file
 
