@@ -43,6 +43,7 @@ from bouwmeester.services.debat_slotlijst import (
     Spoken,
     find_closing_list,
 )
+from bouwmeester.services.debat_vraag_brief import paper_request
 from bouwmeester.services.debat_vraag_service import (
     SOORT_CHAIRMAN,
     Beurt,
@@ -58,7 +59,7 @@ from bouwmeester.services.llm.base import (
 )
 from bouwmeester.services.tk_activiteit import Bewindspersoon, Initiatiefnemer
 
-from .gold import KIND_TOEZEGGING, KIND_VRAAG
+from .gold import KIND_TOEZEGGING, KIND_VERZOEK_OM_BRIEF, KIND_VRAAG
 
 CHANNEL = "evalchannel000000000000000"
 TEAM = "evalteam000000000000000000"
@@ -98,7 +99,9 @@ class OracleLLM(BaseLLMService):
 
     For trying the harness without a model, and for tests: what the code
     then misses or drops is the doing of the code alone. Asked for
-    questions it gives the gold questions of the turn, asked for
+    questions it gives the gold questions of the turn, the requests for a
+    letter among them: such a request is a question, and whether it asks
+    for something on paper is for the code to say. Asked for
     toezeggingen the gold toezeggingen. Asked for the chairman's list it
     gives the gold toezeggingen of the chairman's turns that stand in the
     words it is shown, and says of none which earlier one it is: matching
@@ -108,7 +111,13 @@ class OracleLLM(BaseLLMService):
     capabilities = ProviderCapabilities(allowed_data={DataSensitivity.PUBLIC})
 
     def __init__(
-        self, gold: dict, kinds: tuple[str, ...] = (KIND_VRAAG, KIND_TOEZEGGING)
+        self,
+        gold: dict,
+        kinds: tuple[str, ...] = (
+            KIND_VRAAG,
+            KIND_VERZOEK_OM_BRIEF,
+            KIND_TOEZEGGING,
+        ),
     ) -> None:
         self.turns = [(t["tekst"], t["nr"]) for t in gold["beurten"]]
         self.chairman = {t["nr"] for t in gold["beurten"] if t["soort"] == CHAIRMAN}
@@ -160,7 +169,7 @@ class OracleLLM(BaseLLMService):
                 "stuk": None,
             }
             for item in self.items.get(number, [])
-            if item["soort"] == KIND_VRAAG
+            if item["soort"] in (KIND_VRAAG, KIND_VERZOEK_OM_BRIEF)
         ]
         return json.dumps({"vragen": vragen}, ensure_ascii=False)
 
@@ -286,6 +295,12 @@ def list_beurt(turns: list[dict], closing: ClosingList, sessie_id: uuid.UUID) ->
         tekst=closing.tekst,
         slotlijst=True,
     )
+
+
+def _later(soort: str, citaat: str) -> str | None:
+    """What a question that is asked again asks for on paper this time."""
+    found = paper_request(citaat) if soort == KIND_VRAAG else None
+    return found.product if found else None
 
 
 def _raw_answer(llm: RecordingLLM, text: str) -> list[dict]:
@@ -495,6 +510,7 @@ async def run_debate(
                     "volgnummer": row[4],
                     "termijn": row[5],
                     "bij_volgnummer": row[6],
+                    "vraagt_om": row[7],
                 }
                 for row in (
                     await session.execute(
@@ -506,6 +522,7 @@ async def run_debate(
                             DebatMarkering.volgnummer,
                             DebatMarkering.termijn,
                             DebatMarkering.bij_volgnummer,
+                            DebatMarkering.vraagt_om,
                         )
                         .where(
                             DebatMarkering.sessie_id == sessie_id,
@@ -516,7 +533,15 @@ async def run_debate(
                 ).all()
             ]
             marked += [
-                {"soort": row[0], "citaat": row[1], "herhaling": True}
+                {
+                    "soort": row[0],
+                    "citaat": row[1],
+                    "herhaling": True,
+                    # A question asked again, this time for something on
+                    # paper: the reply of the question says so from this
+                    # quote, so the request is found in this turn.
+                    "vraagt_om": _later(row[0], row[1]),
+                }
                 for row in (
                     await session.execute(
                         select(DebatMarkering.soort, DebatMarkeringVermelding.citaat)

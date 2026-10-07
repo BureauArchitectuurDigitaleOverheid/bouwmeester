@@ -34,7 +34,10 @@ from bouwmeester.core.database import Base
 
 # What was marked. The vraag, the motie and the toezegging are built; the
 # others are named here so the column, the status line and the thread do
-# not have to change shape when they arrive.
+# not have to change shape when they arrive. A request for a letter is not
+# a kind that is stored: it is a question that asks for something on paper,
+# and `vraagt_om` on the row of that question says so. The name stays for
+# the gold sets, which label it apart.
 SOORT_VRAAG = "vraag"
 SOORT_TOEZEGGING = "toezegging"
 SOORT_FEITELIJKE_CLAIM = "feitelijke_claim"
@@ -201,11 +204,21 @@ class DebatMarkering(Base):
     vraag_moment: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # For a toezegging: by when, in the words of the bewindspersoon ("voor
-    # het kerstreces"). Text, because that is what was said; working out a
-    # date from it is for whoever registers the toezegging. NULL when no
-    # moment was named, and for every other kind.
+    # By when, in the words of whoever spoke. For a toezegging: when the
+    # bewindspersoon promised it by ("voor het kerstreces"). For a question
+    # that asks for something on paper (`vraagt_om`): when the member wants
+    # it by ("voor de begrotingsbehandeling"). One column for both, because
+    # it is one thing seen from two sides: the moment that was said with
+    # this markering. Text, because that is what was said; working out a
+    # date from it is for whoever registers it. NULL when no moment was
+    # named, for a question that asks for nothing on paper, and for a motie.
     termijn: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # For a question: what it asks for on paper, when it does ("een brief",
+    # "een overzicht"). One of `debat_vraag_brief.PRODUCTS`: our word for
+    # the word the member used, picked by a rule on the quote, never a
+    # word of a model. NULL for a question that can be answered on the
+    # spot, and for every other kind.
+    vraagt_om: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # For a toezegging: the number of the question in this debate it
     # answers, if the model named one that was open. The number and not the
     # row: it is what the reply shows ("bij vraag 12"), and numbers of a
