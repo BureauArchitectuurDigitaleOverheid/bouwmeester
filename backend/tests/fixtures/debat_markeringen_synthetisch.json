@@ -388,7 +388,40 @@
    "start": "2030-01-14T11:00:00+01:00",
    "onderbroken": null,
    "onderbroken_is_bewindspersoon": false,
-   "tekst": "Dat sta ik toe. Ik lees eerst de toezeggingen voor. De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie. De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord. Ik sluit de vergadering."
+   "tekst": "Dat sta ik toe. Ik lees eerst de toezeggingen voor. De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie. De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord. Daarna is er nog ruimte voor één interruptie, van Kamerlid C."
+  },
+  {
+   "nr": 35,
+   "soort": "interrupter",
+   "spreker": "Kamerlid C (Z)",
+   "fractie": "Z",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T11:02:00+01:00",
+   "onderbroken": "Bewindspersoon A (minister van Voorbeelden)",
+   "onderbroken_is_bewindspersoon": true,
+   "tekst": "Dank, voorzitter. Kan de minister toezeggen dat hij de Kamer vóór het kerstreces een overzicht stuurt van wat de camera's per station kosten?"
+  },
+  {
+   "nr": 36,
+   "soort": "speaker",
+   "spreker": "Bewindspersoon A (minister van Voorbeelden)",
+   "fractie": null,
+   "is_bewindspersoon": true,
+   "start": "2030-01-14T11:03:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Nee, dat kan ik niet toezeggen, want die cijfers zijn van de vervoerders. Als zij ze willen delen, zou ik kunnen overwegen ze door te sturen. Wel stuur ik de Kamer in het eerste kwartaal de evaluatie van de proef met camera's."
+  },
+  {
+   "nr": 37,
+   "soort": "chairman",
+   "spreker": "de voorzitter",
+   "fractie": null,
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T11:04:00+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dank aan de minister en aan de leden. Ik sluit de vergadering."
   }
  ],
  "items": [
@@ -674,6 +707,23 @@
    "onzeker": false,
    "herhaling": true,
    "notitie": "the chairman reads the list"
+  },
+  {
+   "beurt": 35,
+   "soort": "verzoek_om_brief",
+   "citaat": "Kan de minister toezeggen dat hij de Kamer vóór het kerstreces een overzicht stuurt van wat de camera's per station kosten?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "a member asks for a toezegging: a request, not a toezegging"
+  },
+  {
+   "beurt": 36,
+   "soort": "toezegging",
+   "citaat": "Wel stuur ik de Kamer in het eerste kwartaal de evaluatie van de proef met camera's.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false
   }
  ],
  "negatieven": [
@@ -838,6 +888,18 @@
    "beurt": 33,
    "type": "orde",
    "citaat": "Als de minister kort antwoordt, kunnen we dan elk nog één interruptie krijgen?"
+  },
+  {
+   "beurt": 36,
+   "type": "weigering",
+   "citaat": "Nee, dat kan ik niet toezeggen",
+   "notitie": "the bewindspersoon refuses"
+  },
+  {
+   "beurt": 36,
+   "type": "voorwaardelijk",
+   "citaat": "Als zij ze willen delen, zou ik kunnen overwegen ze door te sturen.",
+   "notitie": "a condition and a maybe, nothing to hold anyone to"
   }
  ]
 }

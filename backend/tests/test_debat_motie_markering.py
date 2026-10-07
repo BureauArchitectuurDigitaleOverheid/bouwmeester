@@ -353,7 +353,7 @@ class TestWoordenVanEenMotie:
         assert stand_marker(STATUS_OPEN, soort=SOORT_MOTIE) == ("", "")
 
     def test_a_kind_without_words_of_its_own_gets_those_of_a_question(self):
-        assert stand_marker(STATUS_VERVALT, soort="toezegging") == (
+        assert stand_marker(STATUS_VERVALT, soort="feitelijke_claim") == (
             "🚫",
             "hoeft geen antwoord",
         )

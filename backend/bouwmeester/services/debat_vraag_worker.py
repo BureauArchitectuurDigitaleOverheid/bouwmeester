@@ -2,8 +2,10 @@
 
 The timeline posts a message per turn and the transcription puts the text
 under it. This looks, a few times a minute, for turns that are over and
-whose text is complete, and has each one read once for questions to the
-bewindspersoon (`DebatVraagService.beoordeel_beurt`).
+whose text is complete, and has each one read once
+(`DebatVraagService.beoordeel_beurt`): a turn of a member for questions to
+the bewindspersoon and for moties, a turn of the bewindspersoon for
+toezeggingen. Every rule in here holds for both.
 
 A round of its own, not part of the timeline: reading one turn takes the
 model three to fourteen seconds, and the timeline has to say who speaks
@@ -116,6 +118,7 @@ class VraagTickResult:
     beoordeeld: int = 0
     vragen: int = 0
     moties: int = 0
+    toezeggingen: int = 0
     fouten: int = 0
     # False when there was something to read and no model to read it.
     model: bool = True
@@ -125,7 +128,8 @@ class VraagTickResult:
             return "geen taalmodel ingesteld"
         return (
             f"{self.sessies} debatten, {self.beoordeeld} spreekbeurten gelezen, "
-            f"{self.vragen} vragen, {self.moties} moties, {self.fouten} fouten"
+            f"{self.vragen} vragen, {self.moties} moties, "
+            f"{self.toezeggingen} toezeggingen, {self.fouten} fouten"
         )
 
 
@@ -139,6 +143,9 @@ class _Waiting:
     first: datetime
     # How much later than the events the sound of its part is.
     offset: timedelta = timedelta(0)
+    # The turn right before it, the chairman's words in between left out:
+    # an answer of the bewindspersoon is to whoever interrupted there.
+    before: Turn | None = None
 
 
 def moment_url_from_kop(kop: str) -> str | None:
@@ -459,6 +466,7 @@ class DebatVraagWorker:
                     if row_id in under
                 }
             floor: Turn | None = None
+            before: Turn | None = None
             for turn in turns:
                 if turn.closing:
                     # A suspension or the end, with the words of the
@@ -472,9 +480,13 @@ class DebatVraagWorker:
                     )
                 ):
                     offset = timedelta(milliseconds=entry.get("offset_ms") or 0)
-                    waiting.append(_Waiting(turn, floor, turns[0].start, offset))
+                    waiting.append(
+                        _Waiting(turn, floor, turns[0].start, offset, before)
+                    )
                 if turn.key[0] == dd.EVENT_SPEAKER:
                     floor = turn
+                if turn.key[0] != dd.EVENT_CHAIRMAN:
+                    before = turn
         # In the order they were spoken: a question asked again has to
         # find the first time it was asked. A turn that waits for a line
         # does not hold up the ones after it, which can be minutes; a
@@ -561,6 +573,19 @@ class DebatVraagWorker:
             if kind == dd.EVENT_INTERRUPTER and item.floor is not None:
                 onderbroken = sprekers.get(item.floor.key[1])
             context = await self._context(sessie_id, activiteit_id, onderwerp, client)
+            # For an answer of the bewindspersoon: the member who
+            # interrupted right before it, and what they said. Someone
+            # without a party is no member, and someone the list does not
+            # have is nobody to name.
+            asked: dd.Spreker | None = None
+            if (
+                is_bewindspersoon(spreker)
+                and item.before is not None
+                and item.before.key[0] == dd.EVENT_INTERRUPTER
+            ):
+                asked = sprekers.get(item.before.key[1])
+                if asked is not None and not asked.fractie:
+                    asked = None
             beurt = Beurt(
                 sessie_id=sessie_id,
                 spreekbeurt_id=turn.row_id,
@@ -578,6 +603,8 @@ class DebatVraagWorker:
                 onderbroken_is_bewindspersoon=bool(
                     onderbroken and is_bewindspersoon(onderbroken)
                 ),
+                voorafgaand=asked.label if asked else None,
+                voorafgaand_tekst=item.before.text if asked and item.before else "",
             )
             try:
                 outcome = await asyncio.wait_for(
@@ -611,8 +638,11 @@ class DebatVraagWorker:
             await self._mark(turn.row_id, now)
             result.beoordeeld += 1
             if outcome.uitkomst == UITKOMST_GEMARKEERD:
-                result.vragen += len(outcome.markering_ids) - outcome.moties
+                result.vragen += (
+                    len(outcome.markering_ids) - outcome.moties - outcome.toezeggingen
+                )
                 result.moties += outcome.moties
+                result.toezeggingen += outcome.toezeggingen
 
     async def _lines(self, turn: Turn, offset: timedelta) -> tuple[Line, ...]:
         """The subtitle lines the text of a turn is made of, in its order.

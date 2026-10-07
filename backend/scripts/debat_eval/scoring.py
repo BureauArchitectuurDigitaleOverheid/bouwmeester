@@ -37,6 +37,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
 from .gold import (
+    KIND_TOEZEGGING,
     KIND_VERZOEK_OM_BRIEF,
     KIND_VRAAG,
     KINDS,
@@ -56,6 +57,10 @@ REASON_DROPPED = "door het model genoemd, door de code afgekeurd"
 REASON_SKIPPED = "beurt overgeslagen"
 REASON_NOT_RUN = "beurt niet gedraaid"
 REASON_FAILED = "model gaf geen bruikbaar antwoord"
+# A toezegging the time put in the turn of the member who interrupted. The
+# code reads only turns of the bewindspersoon for toezeggingen, so nothing
+# could have found it.
+REASON_NOT_AN_ANSWER = "staat niet in een beurt van de bewindspersoon"
 
 
 def words(text: str) -> list[str]:
@@ -224,6 +229,22 @@ def miss_reasons(run: dict) -> dict[tuple[str, int], tuple[str, list[str]]]:
     return turns
 
 
+def answer_turns(run: dict) -> set[tuple[str, int]] | None:
+    """The turns of a run that were the bewindspersoon's, if the run says.
+
+    ``None`` for a run from before the harness kept that.
+    """
+    found: set[tuple[str, int]] = set()
+    known = False
+    for debat in run.get("debatten") or []:
+        for turn in debat.get("beurten") or []:
+            if "bewindspersoon" in turn:
+                known = True
+                if turn["bewindspersoon"]:
+                    found.add((debat["naam"], turn["nr"]))
+    return found if known else None
+
+
 def _best(quote: str, candidates: Iterable[tuple[str, str]]) -> str | None:
     """The name of the candidate that shares most with the quote, if any does."""
     best_name, best_share = None, 0.0
@@ -240,8 +261,13 @@ def score(
     negatives: Sequence[Negative] = (),
     turns: dict[tuple[str, int], tuple[str, list[str]]] | None = None,
     kinds: Sequence[str] = KINDS,
+    answers: set[tuple[str, int]] | None = None,
 ) -> dict[str, KindScore]:
-    """The score per kind. `turns` is `miss_reasons(run)`, for why a miss."""
+    """The score per kind. `turns` is `miss_reasons(run)`, for why a miss.
+
+    `answers` is `answer_turns(run)`: with it, a toezegging that was missed
+    in a turn of someone else says so.
+    """
     by_turn_items: dict[tuple[str, int], list[GoldItem]] = {}
     for item in items:
         by_turn_items.setdefault((item.debat, item.beurt), []).append(item)
@@ -278,6 +304,13 @@ def score(
                     same_passage(quote, item.citaat) for quote in raw
                 ):
                     reason = REASON_DROPPED
+                if (
+                    kind == KIND_TOEZEGGING
+                    and answers is not None
+                    and (item.debat, item.beurt) not in answers
+                    and not reason.startswith(REASON_SKIPPED)
+                ):
+                    reason = REASON_NOT_AN_ANSWER
                 result.misses.append(Miss(item, reason))
 
         for marking in (m for m in markings if m.soort == kind):

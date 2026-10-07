@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 
 from bouwmeester.models.debat_markering import (
     SOORT_MOTIE,
+    SOORT_TOEZEGGING,
     SOORT_VRAAG,
     STATUS_BEANTWOORD,
     STATUS_OPEN,
@@ -64,9 +65,18 @@ _MARKER_MOTIE: dict[str, tuple[str, str]] = {
     STATUS_VERVALT: ("🚫", "hoeft geen oordeel"),
     STATUS_VERWORPEN: ("❌", "geen motie"),
 }
+# And for a toezegging, which is neither answered nor judged: it is kept,
+# or someone is seeing to it, or it turned out not to be needed.
+_MARKER_TOEZEGGING: dict[str, tuple[str, str]] = {
+    STATUS_BEANTWOORD: ("✅", "nagekomen"),
+    STATUS_TOEGEWEZEN: ("👀", "wordt opgepakt"),
+    STATUS_VERVALT: ("🚫", "hoeft niet"),
+    STATUS_VERWORPEN: ("❌", "geen toezegging"),
+}
 _MARKERS: dict[str, dict[str, tuple[str, str]]] = {
     SOORT_VRAAG: _MARKER,
     SOORT_MOTIE: _MARKER_MOTIE,
+    SOORT_TOEZEGGING: _MARKER_TOEZEGGING,
 }
 
 # In the pinned message of a debate channel, so that the reactions can be
@@ -75,8 +85,9 @@ LEGENDA = (
     "Reageer op een gemarkeerde vraag met ✅ beantwoord · 👀 ik pak dit op · "
     "🚫 hoeft geen antwoord · ❌ geen vraag. Bij een motie betekenen ze: ✅ "
     "oordeel gegeven · 👀 ik pak dit op · 🚫 hoeft geen oordeel · ❌ geen "
-    "motie. De laatste reactie telt; haal je je reactie weg, dan telt ze "
-    "niet meer."
+    "motie. Bij een toezegging: ✅ nagekomen · 👀 ik pak dit op · 🚫 hoeft "
+    "niet · ❌ geen toezegging. De laatste reactie telt; haal je je reactie "
+    "weg, dan telt ze niet meer."
 )
 
 

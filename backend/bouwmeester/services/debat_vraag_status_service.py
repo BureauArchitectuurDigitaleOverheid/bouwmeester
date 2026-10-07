@@ -230,6 +230,8 @@ class DebatVraagStatusService:
             first_in_thread=markering.met_noot,
             status=stand.status,
             door=await self._naam(stand, gebruiker),
+            termijn=markering.termijn,
+            bij_volgnummer=markering.bij_volgnummer,
         )
         if gewijzigd:
             await self.session.execute(

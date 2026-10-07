@@ -744,7 +744,8 @@ class TestWhichTurns:
         assert await _at(db_session, a) == when
         assert await _at(db_session, b) == when
         assert (
-            "2 spreekbeurten gelezen, 2 vragen, 0 moties, 0 fouten" in result.summary()
+            "2 spreekbeurten gelezen, 2 vragen, 0 moties, 0 toezeggingen, 0 fouten"
+            in result.summary()
         )
 
     async def test_a_turn_that_was_read_is_not_read_again(

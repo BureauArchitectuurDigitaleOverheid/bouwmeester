@@ -23,6 +23,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_markering import (
+    VERMELDING_ANTWOORD,
     DebatMarkering,
     DebatMarkeringVermelding,
 )
@@ -40,7 +41,7 @@ from bouwmeester.services.llm.base import (
 )
 from bouwmeester.services.tk_activiteit import Bewindspersoon, Initiatiefnemer
 
-from .gold import KIND_VRAAG
+from .gold import KIND_TOEZEGGING, KIND_VRAAG
 
 CHANNEL = "evalchannel000000000000000"
 TEAM = "evalteam000000000000000000"
@@ -75,15 +76,19 @@ class RecordingLLM(BaseLLMService):
 
 
 class OracleLLM(BaseLLMService):
-    """A model that answers with the gold questions of the turn it is shown.
+    """A model that answers with the gold items of the turn it is shown.
 
     For trying the harness without a model, and for tests: what the code
-    then misses or drops is the doing of the code alone.
+    then misses or drops is the doing of the code alone. Asked for
+    questions it gives the gold questions of the turn, asked for
+    toezeggingen the gold toezeggingen.
     """
 
     capabilities = ProviderCapabilities(allowed_data={DataSensitivity.PUBLIC})
 
-    def __init__(self, gold: dict, kinds: tuple[str, ...] = (KIND_VRAAG,)) -> None:
+    def __init__(
+        self, gold: dict, kinds: tuple[str, ...] = (KIND_VRAAG, KIND_TOEZEGGING)
+    ) -> None:
         self.turns = [(t["tekst"], t["nr"]) for t in gold["beurten"]]
         self.items: dict[int, list[dict]] = {}
         for item in gold.get("items") or []:
@@ -96,6 +101,19 @@ class OracleLLM(BaseLLMService):
         shown = _TURN_TEXT.search(prompt)
         text = (shown.group(1) if shown else "").removeprefix("(...) ")
         number = next((nr for full, nr in self.turns if full.endswith(text)), None)
+        if '{"toezeggingen"' in prompt:
+            toezeggingen = [
+                {
+                    "citaat": item["citaat"],
+                    "samenvatting": "Toezegging uit de gouden set.",
+                    "termijn": None,
+                    "bij_vraag": None,
+                    "hoort_bij": None,
+                }
+                for item in self.items.get(number, [])
+                if item["soort"] == KIND_TOEZEGGING
+            ]
+            return json.dumps({"toezeggingen": toezeggingen}, ensure_ascii=False)
         vragen = [
             {
                 "citaat": item["citaat"],
@@ -105,6 +123,7 @@ class OracleLLM(BaseLLMService):
                 "stuk": None,
             }
             for item in self.items.get(number, [])
+            if item["soort"] == KIND_VRAAG
         ]
         return json.dumps({"vragen": vragen}, ensure_ascii=False)
 
@@ -150,7 +169,23 @@ def context_from(gold: dict) -> DebatContext:
     )
 
 
-def beurt_from(turn: dict, sessie_id: uuid.UUID) -> Beurt:
+def interruption_before(turns: list[dict], index: int) -> dict | None:
+    """The interruption of a member right before a turn, as the worker has it.
+
+    The chairman's words in between are passed over. ``None`` when what
+    came before is not an interruption, or is not by a member.
+    """
+    for earlier in reversed(turns[:index]):
+        if earlier["soort"] == "chairman":
+            continue
+        if earlier["soort"] == "interrupter" and earlier.get("fractie"):
+            return earlier
+        return None
+    return None
+
+
+def beurt_from(turn: dict, sessie_id: uuid.UUID, before: dict | None = None) -> Beurt:
+    asked = before if turn.get("is_bewindspersoon") else None
     return Beurt(
         sessie_id=sessie_id,
         spreekbeurt_id=None,
@@ -165,11 +200,29 @@ def beurt_from(turn: dict, sessie_id: uuid.UUID) -> Beurt:
         is_bewindspersoon=bool(turn.get("is_bewindspersoon")),
         onderbroken=turn.get("onderbroken"),
         onderbroken_is_bewindspersoon=bool(turn.get("onderbroken_is_bewindspersoon")),
+        voorafgaand=asked["spreker"] if asked else None,
+        voorafgaand_tekst=asked["tekst"] if asked else "",
     )
 
 
 def _raw_answer(llm: RecordingLLM, text: str) -> list[dict]:
     """What the model said, read the way production reads it."""
+    try:
+        toezeggingen = llm_base._lees_debat_toezeggingen(llm, text)
+    except Exception:
+        toezeggingen = None
+    if toezeggingen is not None:
+        return [
+            {
+                "soort": KIND_TOEZEGGING,
+                "citaat": t.citaat,
+                "samenvatting": t.samenvatting,
+                "termijn": t.termijn,
+                "bij_vraag": t.bij_vraag,
+                "hoort_bij": t.hoort_bij,
+            }
+            for t in toezeggingen
+        ]
     try:
         vragen = llm_base._lees_debat_vragen(llm, text)
     except Exception:
@@ -214,8 +267,10 @@ async def run_debate(
     context = context_from(gold)
     block: dict = {"naam": name, "beurten": [], "aanroepen": 0}
     try:
-        for turn in gold["beurten"][:max_turns]:
-            beurt = beurt_from(turn, sessie_id)
+        for index, turn in enumerate(gold["beurten"][:max_turns]):
+            beurt = beurt_from(
+                turn, sessie_id, interruption_before(gold["beurten"], index)
+            )
             mattermost.messages[beurt.post_id] = turn["tekst"][:200]
             before = len(recorder.answers)
             outcome = await asyncio.wait_for(
@@ -229,6 +284,9 @@ async def run_debate(
                     "gericht_aan": row[2],
                     "samenvatting": row[3],
                     "herhaling": False,
+                    "volgnummer": row[4],
+                    "termijn": row[5],
+                    "bij_volgnummer": row[6],
                 }
                 for row in (
                     await session.execute(
@@ -237,6 +295,9 @@ async def run_debate(
                             DebatMarkering.citaat,
                             DebatMarkering.gericht_aan,
                             DebatMarkering.samenvatting,
+                            DebatMarkering.volgnummer,
+                            DebatMarkering.termijn,
+                            DebatMarkering.bij_volgnummer,
                         )
                         .where(
                             DebatMarkering.sessie_id == sessie_id,
@@ -258,6 +319,10 @@ async def run_debate(
                         .where(
                             DebatMarkeringVermelding.sessie_id == sessie_id,
                             DebatMarkeringVermelding.beurt_sleutel == beurt.sleutel,
+                            # A toezegging that answers a question leaves a
+                            # vermelding on that question. That is a link,
+                            # not a second marking of the question.
+                            DebatMarkeringVermelding.soort != VERMELDING_ANTWOORD,
                         )
                     )
                 ).all()
@@ -266,10 +331,15 @@ async def run_debate(
             result = {
                 "nr": turn["nr"],
                 "uitkomst": outcome.uitkomst,
+                "bewindspersoon": bool(turn.get("is_bewindspersoon")),
                 "reden": outcome.reden,
                 "afgevallen": outcome.afgevallen,
                 "aanroepen": len(answers),
-                "ruw": _raw_answer(recorder, answers[-1]) if answers else [],
+                # Every answer: a long turn of the bewindspersoon is asked
+                # about in parts.
+                "ruw": [
+                    raw for answer in answers for raw in _raw_answer(recorder, answer)
+                ],
                 "gemarkeerd": marked,
             }
             block["beurten"].append(result)

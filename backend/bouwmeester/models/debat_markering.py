@@ -32,9 +32,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from bouwmeester.core.database import Base
 
-# What was marked. The vraag and the motie are built; the others are named
-# here so the column, the status line and the thread do not have to change
-# shape when they arrive.
+# What was marked. The vraag, the motie and the toezegging are built; the
+# others are named here so the column, the status line and the thread do
+# not have to change shape when they arrive.
 SOORT_VRAAG = "vraag"
 SOORT_TOEZEGGING = "toezegging"
 SOORT_FEITELIJKE_CLAIM = "feitelijke_claim"
@@ -49,7 +49,10 @@ SOORT_VERZOEK_OM_BRIEF = "verzoek_om_brief"
 # not answered but gets an oordeel, so `beantwoord` is shown as "oordeel
 # gegeven", `vervalt` as "hoeft geen oordeel" and `verworpen` as "geen
 # motie". Which oordeel it was is not stored: reading that from the debate
-# is not built, and it will need a column of its own.
+# is not built, and it will need a column of its own. A toezegging is kept
+# and not answered: `beantwoord` is shown as "nagekomen", `toegewezen` as
+# "wordt opgepakt", `vervalt` as "hoeft niet", `verworpen` as "geen
+# toezegging".
 STATUS_OPEN = "open"
 # Someone said they are on it.
 STATUS_TOEGEWEZEN = "toegewezen"
@@ -62,8 +65,11 @@ STATUS_VERVALT = "vervalt"
 # quote and summary, because that is what the prompt is improved with.
 STATUS_VERWORPEN = "verworpen"
 
-# How a later turn relates to a markering. Only `herhaling` is written
-# today: the same question, asked again.
+# How a later turn relates to a markering. `herhaling` is the same question
+# asked again, or the same toezegging said again. `antwoord` is written on
+# a question when a toezegging of the bewindspersoon answers it; it does
+# not change where the question stands, people do that with a reaction.
+# `aanvulling` is not written by anything yet.
 VERMELDING_HERHALING = "herhaling"
 VERMELDING_AANVULLING = "aanvulling"
 VERMELDING_ANTWOORD = "antwoord"
@@ -184,6 +190,17 @@ class DebatMarkering(Base):
     vraag_moment: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # For a toezegging: by when, in the words of the bewindspersoon ("voor
+    # het kerstreces"). Text, because that is what was said; working out a
+    # date from it is for whoever registers the toezegging. NULL when no
+    # moment was named, and for every other kind.
+    termijn: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # For a toezegging: the number of the question in this debate it
+    # answers, if the model named one that was open. The number and not the
+    # row: it is what the reply shows ("bij vraag 12"), and numbers of a
+    # debate never change. The question carries a vermelding of the kind
+    # `antwoord` for the same link, seen from its side.
+    bij_volgnummer: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Whether its reply carries the note that goes under the first reply of
     # a thread. Kept, because the reply is written again when its status
     # changes, and must then say what it said.

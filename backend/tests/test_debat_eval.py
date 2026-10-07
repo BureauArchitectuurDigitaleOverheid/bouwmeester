@@ -35,6 +35,7 @@ from debat_eval.report import (  # noqa: E402
 )
 from debat_eval.scoring import (  # noqa: E402
     REASON_DROPPED,
+    REASON_NOT_AN_ANSWER,
     REASON_NOT_FOUND,
     REASON_NOT_RUN,
     UNLABELLED,
@@ -481,10 +482,9 @@ class TestTheProductionPathOnTheFixture:
 
         outcomes = {turn["nr"]: turn for turn in block["beurten"]}
         assert len(outcomes) == len(FIXTURE["beurten"])
-        # The chairman, the minister, and a member who interrupts a member
-        # without naming a bewindspersoon are never shown to the model.
+        # The chairman, and a member who interrupts a member without naming
+        # a bewindspersoon, are never shown to the model.
         assert outcomes[1]["reden"] == "voorzitter"
-        assert outcomes[18]["reden"] == "bewindspersoon"
         assert outcomes[4]["reden"] == "interruptie van een ander"
         assert outcomes[4]["aanroepen"] == 0
         # An interruption of a member that names the minister is shown.
@@ -512,7 +512,9 @@ class TestTheProductionPathOnTheFixture:
         assert outcomes[30]["reden"] == ""
         assert outcomes[30]["aanroepen"] == 0
         assert [m["soort"] for m in outcomes[30]["gemarkeerd"]] == ["motie"]
+        # That turn holds no words of a commitment either, so it costs no call.
         assert outcomes[31]["reden"] == "bewindspersoon"
+        assert outcomes[31]["aanroepen"] == 0
         assert outcomes[32]["gemarkeerd"] == []
         # A question and two moties in one turn: each once.
         assert [m["soort"] for m in outcomes[29]["gemarkeerd"]] == [
@@ -521,9 +523,39 @@ class TestTheProductionPathOnTheFixture:
             "motie",
         ]
 
+        # The answers of the minister are read for toezeggingen, and for
+        # nothing else: one call each, with the prompt of its own.
+        assert outcomes[18]["bewindspersoon"] is True
+        assert outcomes[18]["aanroepen"] == 1
+        assert [m["soort"] for m in outcomes[18]["gemarkeerd"]] == [
+            "toezegging",
+            "toezegging",
+        ]
+        assert {r["soort"] for r in outcomes[18]["ruw"]} == {"toezegging"}
+        toezegging = scores["toezegging"]
+        assert toezegging.false_positives == []
+        # Six the labeller is sure of. Five are in a turn of the minister
+        # and are found; the sixth stands in the turn of the member who
+        # interrupted, where nothing looks for a toezegging.
+        assert (toezegging.required, toezegging.found) == (6, 5)
+        assert [(m.item.beurt, m.reason) for m in toezegging.misses] == [
+            (22, REASON_NOT_AN_ANSWER)
+        ]
+        # Of the optional ones the effort is found; the two the chairman
+        # reads out at the end are not, his turn is skipped.
+        assert (toezegging.optional, toezegging.optional_found) == (3, 1)
+        # The refusal and the condition in the last answer are not marked,
+        # the toezegging behind them is.
+        assert [m["citaat"][:14] for m in outcomes[36]["gemarkeerd"]] == [
+            "Wel stuur ik d"
+        ]
+        # A member who asks for a toezegging is asked about questions.
+        assert outcomes[35]["bewindspersoon"] is False
+        assert all(m["soort"] != "toezegging" for m in outcomes[35]["gemarkeerd"])
+
         report = build_report(run, golds)
         assert "Run orakel" in report
-        assert "toezegging" in not_marked(run, golds)
+        assert "toezegging" not in not_marked(run, golds)
 
         left = (
             await db_session.execute(
