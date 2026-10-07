@@ -896,10 +896,26 @@ class TestHetBericht:
         tekst = self._reply(uit_lijst=True)
         assert tekst.split("\n") == [
             "🤝 **Informeert de Kamer over de verlichting.**",
-            "Toezegging 7 · uit de lijst van de voorzitter · aan Kamerlid C (Z) ·"
-            " vóór het kerstreces · 11:00 (begin van de spreekbeurt)",
+            "Toezegging 7 · uit de lijst van de voorzitter · toegezegd door de"
+            " minister · aan Kamerlid C (Z) · vóór het kerstreces · 11:00 (begin"
+            " van de spreekbeurt)",
             f"> {I_KELDERS}",
         ]
+
+    def test_who_promised_is_who_the_chairman_names(self):
+        """The reply hangs under the end of the debate, not under an answer."""
+        zal = "De staatssecretaris zal de Kamer vóór de zomer een brief sturen."
+        assert "voorzitter · toegezegd door de staatssecretaris · " in self._reply(
+            uit_lijst=True, citaat=zal
+        )
+        # Nobody named: nothing said about who.
+        hij = "Hierop zal hij vóór de zomer terugkomen."
+        assert "toegezegd door" not in self._reply(uit_lijst=True, citaat=hij)
+        komt = "Er komt vóór de zomer een brief over de wachttijden."
+        assert "toegezegd door" not in self._reply(uit_lijst=True, citaat=komt)
+        # A toezegging of the debate hangs under the answer it was made in.
+        assert "toegezegd door" not in self._reply(bevestigd=True)
+        assert "toegezegd door" not in self._reply()
         # It is not also confirmed by the list it came from.
         assert BEVESTIGD_DOOR_VOORZITTER not in self._reply(
             uit_lijst=True, bevestigd=True
@@ -1223,13 +1239,82 @@ class TestDeLijstLezen:
         assert reply[1] == post_id
         assert reply[2] == (
             f"🤝 **{S_KELDERS}**\n"
-            "Toezegging 4 · uit de lijst van de voorzitter · aan Kamerlid C (Z) ·"
-            f" vóór het kerstreces · [11:00]({MOMENT_URL}) (begin van de spreekbeurt)\n"
+            "Toezegging 4 · uit de lijst van de voorzitter · toegezegd door de"
+            " minister · aan Kamerlid C (Z) · vóór het kerstreces ·"
+            f" [11:00]({MOMENT_URL}) (begin van de spreekbeurt)\n"
             f"> {I_KELDERS}\n"
             "\n"
             f"{NOOT}"
         )
         assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · open"
+
+    async def test_without_a_message_of_the_end_it_is_a_message_of_its_own(
+        self, db_session
+    ):
+        """Stored and seen by nobody is the one thing it must not be."""
+        sessie_id, mm, _, _, _ = await _first_answer(db_session)
+        llm = FakeLLM(toegezegd(toezegging(I_KELDERS, samenvatting=S_KELDERS)))
+        result = await DebatVraagService(db_session, mm, llm).beoordeel_beurt(
+            _lijst_beurt(sessie_id, None), CONTEXT
+        )
+        assert (result.toezeggingen, result.threads) == (1, 1)
+        row = (await _rows(db_session, sessie_id))[-1]
+        assert (row.beurt_post_id, row.thread_post_id) == (None, mm.replies[-1][3])
+        channel, root, tekst, _ = mm.replies[-1]
+        assert root is None
+        assert tekst.startswith(f"🤝 **{S_KELDERS}**\nToezegging 3 · uit de lijst")
+
+    async def test_under_an_end_message_that_was_deleted_too(self, db_session):
+        sessie_id, mm, _, _, _ = await _first_answer(db_session)
+        post_id = mm.turn("⏹️ **Het debat is afgelopen**")
+        mm.gone.add(post_id)
+        mm.fail_sends = 1
+        result, _, _ = await _read_list(
+            db_session,
+            sessie_id,
+            mm,
+            toegezegd(toezegging(I_KELDERS, samenvatting=S_KELDERS)),
+            post_id=post_id,
+        )
+        assert result.threads == 1
+        row = (await _rows(db_session, sessie_id))[-1]
+        assert row.thread_post_id == mm.replies[-1][3]
+        assert mm.replies[-1][1] is None
+
+    async def test_an_end_message_that_is_there_is_tried_again(self, db_session):
+        """Posting failed, the message is not gone: no message of its own,
+        the reply comes with the backlog."""
+        sessie_id, mm, _, _, _ = await _first_answer(db_session)
+        mm.fail_sends = 1
+        replies = len(mm.replies)
+        result, post_id, _ = await _read_list(
+            db_session,
+            sessie_id,
+            mm,
+            toegezegd(toezegging(I_KELDERS, samenvatting=S_KELDERS)),
+        )
+        assert result.threads == 0
+        assert len(mm.replies) == replies
+        row = (await _rows(db_session, sessie_id))[-1]
+        assert (row.thread_post_id, row.post_pogingen) == (None, 1)
+        await _judge(db_session, WEIGERT, toegezegd(), sessie_id=sessie_id, mm=mm)
+        assert mm.replies[-1][1] == post_id
+
+    async def test_a_toezegging_of_a_turn_gets_no_message_of_its_own(self, db_session):
+        """Only what came from the list: a reply to a turn whose message
+        is gone has nothing to say without it."""
+        mm = FakeMattermost()
+        mm.fail_sends = 1
+        sessie_id, _, _, post_id, result = await _judge(
+            db_session,
+            ANTWOORD,
+            toegezegd(toezegging(T_BRIEF, samenvatting=S_BRIEF)),
+            mm=mm,
+        )
+        mm.gone.add(post_id)
+        assert result.threads == 0
+        await _judge(db_session, WEIGERT, toegezegd(), sessie_id=sessie_id, mm=mm)
+        assert all(reply[1] is not None for reply in mm.replies)
 
     async def test_the_whole_list_of_the_fixture(self, db_session):
         sessie_id, mm, _, _, _ = await _first_answer(db_session)

@@ -38,7 +38,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
-from sqlalchemy import exists, func, literal, select, update
+from sqlalchemy import exists, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -708,6 +708,11 @@ KOP_TOEZEGGING = "Toezegging"
 # that list only.
 BEVESTIGD_DOOR_VOORZITTER = "bevestigd door de voorzitter"
 UIT_LIJST_VAN_VOORZITTER = "uit de lijst van de voorzitter"
+# Who the chairman names as who promised an item. Our own words go into
+# the reply, never the transcript's; "hij" names nobody.
+_BEWINDSPERSOON_IN_LIJST = re.compile(
+    r"\bde (?:minister-president|staatssecretaris|minister)\b"
+)
 
 
 def format_toezegging_thread(
@@ -761,6 +766,12 @@ def format_toezegging_thread(
         meta.append(stand)
     if uit_lijst:
         meta.append(UIT_LIJST_VAN_VOORZITTER)
+        # The reply hangs under the end of the debate and not under an
+        # answer, so who promised is only known from what the chairman
+        # read: "de minister zegt toe", "de staatssecretaris zal".
+        wie_beloofde = _BEWINDSPERSOON_IN_LIJST.search(gezegd.lower())
+        if wie_beloofde:
+            meta.append(f"toegezegd door {wie_beloofde.group()}")
     elif bevestigd:
         meta.append(BEVESTIGD_DOOR_VOORZITTER)
     wie = _vrij(_kort(aan or "", MAX_GERICHT_AAN)).strip()
@@ -1359,6 +1370,15 @@ async def statusblok_voor_post(session: AsyncSession, post_id: str) -> str:
         )
     ).all()
     return statusregel([(r[0], r[1]) for r in rows])
+
+
+# Which markeringen can be put in the channel: those of a turn that has a
+# message, and those from the chairman's list, which go in by themselves
+# when the end of the debate has none.
+_HEEFT_EEN_PLEK = or_(
+    DebatMarkering.beurt_post_id.is_not(None),
+    DebatMarkering.beurt_sleutel.like(f"{SLEUTEL_SLOTLIJST}%"),
+)
 
 
 def komt_uit_slotlijst(beurt_sleutel: str) -> bool:
@@ -2439,7 +2459,7 @@ class DebatVraagService:
                 .where(
                     DebatMarkering.id == markering_id,
                     DebatMarkering.thread_post_id.is_(None),
-                    DebatMarkering.beurt_post_id.is_not(None),
+                    _HEEFT_EEN_PLEK,
                 )
                 .with_for_update(skip_locked=True)
             )
@@ -2491,13 +2511,31 @@ class DebatVraagService:
             bevestigd=await is_bevestigd(self.session, markering_id),
             uit_lijst=komt_uit_slotlijst(row[13]),
         )
-        try:
-            post_id = await self.mattermost.send_channel_message(
-                row[0], tekst, root_id=row[1]
-            )
-        except Exception:
-            logger.exception("Thread voor markering %s niet geplaatst", markering_id)
-            post_id = None
+        post_id = None
+        if row[1] is not None:
+            try:
+                post_id = await self.mattermost.send_channel_message(
+                    row[0], tekst, root_id=row[1]
+                )
+            except Exception:
+                logger.exception(
+                    "Thread voor markering %s niet geplaatst", markering_id
+                )
+        if (
+            not post_id
+            and komt_uit_slotlijst(row[13])
+            and (row[1] is None or await self._is_weg(row[1]))
+        ):
+            # A toezegging from the chairman's list hangs under the message
+            # of the end of the debate. Without that message, or with one
+            # somebody deleted, it would be stored and seen by nobody: it
+            # goes into the channel as a message of its own.
+            try:
+                post_id = await self.mattermost.send_channel_message(row[0], tekst)
+            except Exception:
+                logger.exception(
+                    "Toezegging %s uit de slotlijst niet geplaatst", markering_id
+                )
 
         if post_id:
             # Before anything else: a thread that is in the channel has to
@@ -2518,6 +2556,17 @@ class DebatVraagService:
         if post_id:
             await self._zet_hint(post_id)
         return bool(post_id)
+
+    async def _is_weg(self, post_id: str) -> bool:
+        """Whether a message is known to be gone. Not when it cannot be
+        read for another reason: then it may come back."""
+        try:
+            await self.mattermost.get_post(post_id)
+        except PostNotFoundError:
+            return True
+        except Exception:
+            return False
+        return False
 
     async def _zet_hint(self, post_id: str) -> None:
         """Put one reaction under a new reply, as something to click.
@@ -2541,7 +2590,7 @@ class DebatVraagService:
                     .where(
                         DebatMarkering.sessie_id == sessie_id,
                         DebatMarkering.thread_post_id.is_(None),
-                        DebatMarkering.beurt_post_id.is_not(None),
+                        _HEEFT_EEN_PLEK,
                         DebatMarkering.post_pogingen < MAX_POST_POGINGEN,
                     )
                     .order_by(DebatMarkering.volgnummer)

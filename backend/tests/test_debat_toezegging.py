@@ -715,6 +715,19 @@ class TestBijWelkeVraagRegel:
         remark = Interruption(self.A, "De kelders zijn donker.", (3,))
         assert self._link(interruption=remark) == Link(3, self.A)
 
+    def test_the_summary_alone_does_not_tie_it_to_the_marked_question(self):
+        """A bare yes after an interruption that names nothing: the only
+        word shared with the question is one the model wrote."""
+        kaal = Interruption(self.A, "Kan hij dat toezeggen?", (3,))
+        bare = {"quote": "Ja, dat zeg ik toe.", "summary": self.KORT}
+        assert self._link(interruption=kaal, **bare) == Link(None, self.A)
+        # With a word of the question in what the member said, it is tied.
+        assert self._link(**bare) == Link(3, self.A)
+        # Or in what the bewindspersoon said in front of it.
+        assert self._link(
+            interruption=kaal, said_before="Over de kelders dan.", **bare
+        ) == Link(3, self.A)
+
     def test_a_question_that_is_not_open_is_no_link(self):
         closed = Interruption(self.A, self.INTERRUPTIE, (9,))
         assert self._link(interruption=closed) == Link(None, self.A)
@@ -831,10 +844,6 @@ class TestBijWelkeVraagRegel:
             "Kan hij ook iets zeggen over de fietsen buiten de stalling",
             "maar zou het niet beter zijn om eerst de kelders te tellen",
             "Ik miste een antwoord. Wat doet de minister met de kelders?",
-            # No form of a question as a whole; the verb in front of its
-            # subject says that something is asked.
-            "Dank voor de toezegging, alleen zou het niet beter zijn om de kelders"
-            " eerst te tellen, want dan heeft de Kamer er iets aan.",
         ],
     )
     def test_an_interruption_that_asks(self, tekst):
@@ -846,6 +855,9 @@ class TestBijWelkeVraagRegel:
             "Ja. De stalling in Dorpstede is vorig jaar al opgeknapt.",
             "Een telling per station lijkt mij ook goed. Dat is een mooi begin.",
             "Dank voor dit antwoord.",
+            # The verb in front of its subject, and nothing asked.
+            "Dan kan het dus niet.",
+            "Dat is mooi, dan is het voor de zomer geregeld.",
             "",
         ],
     )

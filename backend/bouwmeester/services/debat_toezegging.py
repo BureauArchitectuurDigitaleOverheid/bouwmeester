@@ -497,15 +497,6 @@ SAID_BEFORE = 400
 # interruption start at character 0 to 490. Further on, the bewindspersoon
 # has usually moved on to someone else's question.
 AT_START = 600
-# The verb in front of its subject: the order of a question. Only looked
-# for in an interruption, to tell one that asks from one that does not;
-# "dan kan het" has the same order and asks nothing, which errs to naming
-# the member who interrupted, as before this rule.
-_INVERTED = re.compile(
-    r"(?<!\bik )(?<!\bwe )(?<!\bwij )"
-    r"\b(?:zou|kan|kunt|wil|wilt|mag|moet|gaat|komt|heeft|is)"
-    r" (?:het|dat|dit|er|hij|zij|u|de minister|de staatssecretaris)\b"
-)
 # A member named the way a bewindspersoon names one.
 _MEMBER_NAMED = re.compile(r"\b(?:de heer|meneer|mevrouw|het lid|collega) [a-z]")
 
@@ -533,13 +524,16 @@ class Link:
 def asks_something(text: str) -> bool:
     """Whether an interruption asks the bewindspersoon anything.
 
-    The form of a question (`has_question_form`), or a verb in front of
-    its subject anywhere ("zou het niet beter zijn om"). A turn that
-    only states something is no question an answer can be to: in the gold
-    set that is the words of the bewindspersoon the time put under the
-    name of a member, and a remark about a motie that was judged already.
+    By the check there is for the form of a question
+    (`has_question_form`), and nothing looser: a verb in front of its
+    subject is the order of a question and also of "dan kan het dus niet".
+    A turn that only states something is no question an answer can be to:
+    in the gold set that is the words of the bewindspersoon the time put
+    under the name of a member, and a remark about a motie that was judged
+    already. An interruption that asks in a form the check does not know
+    names nobody: one of the five in the gold set.
     """
-    return has_question_form(text) or bool(_INVERTED.search(_flat(text)))
+    return has_question_form(text)
 
 
 def names_someone_else(quote: str, spreker: str) -> bool:
@@ -599,7 +593,9 @@ def link_to_question(
 
     1. At the start of an answer to an interruption that asks something,
        the question is one that was marked in that interruption, asked in
-       it or asked again, if it shares a word with the toezegging. With
+       it or asked again, if it shares a word with the toezegging, summary
+       and quote, and one with what was said: the interruption, the quote
+       or the answer in front of it. With
        none marked there, the model's number counts only for a question
        of the same member that shares `MIN_SHARED` words with what was
        said: the interruption and the quote. Not the summary: in one of
@@ -640,6 +636,14 @@ def link_to_question(
             for number in interruption.vragen
             if number in questions
             and shared_subject_words(own, questions[number], onderwerp)
+            # Not on the word of the summary alone, which is the model's:
+            # what was said has to point at the question too, by the
+            # member or by the bewindspersoon.
+            and shared_subject_words(
+                f"{interruption.tekst} {said_before} {quote}",
+                questions[number],
+                onderwerp,
+            )
         ]
         if named in marked:
             return Link(named, aan)
