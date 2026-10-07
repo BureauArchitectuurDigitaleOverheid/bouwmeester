@@ -507,8 +507,12 @@ class TestTheInterruptionBeforeAnAnswer:
         assert answer.is_bewindspersoon
         assert answer.voorafgaand == "Kamerlid A (X)"
         assert answer.voorafgaand_tekst == self.TURNS[23]["tekst"]
+        # The key of the interruption is the key its questions are stored by.
+        asked = beurt_from(self.TURNS[23], sessie_id)
+        assert answer.voorafgaand_sleutel == asked.sleutel
         member = beurt_from(self.TURNS[23], sessie_id, self.TURNS[21])
         assert (member.voorafgaand, member.voorafgaand_tekst) == (None, "")
+        assert member.voorafgaand_sleutel is None
 
 
 class TestTheProductionPathOnTheFixture:
@@ -519,7 +523,10 @@ class TestTheProductionPathOnTheFixture:
     ):
         """The link leaves a vermelding on the question. The harness keeps
         it as a link, and does not count it as the question marked again."""
-        gevraagd = "Wie betaalt de rekening als een gemeente het geld niet heeft?"
+        gevraagd = (
+            "Klopt het dat het budget voor bewaakte stallingen volgend jaar met 12"
+            " miljoen euro wordt verlaagd?"
+        )
         assert gevraagd in FIXTURE["beurten"][1]["tekst"]
 
         class Linking(OracleLLM):
@@ -531,21 +538,23 @@ class TestTheProductionPathOnTheFixture:
                                 {
                                     "citaat": gevraagd,
                                     "gericht_aan": "de minister",
-                                    "samenvatting": "Rekening van een gemeente?",
+                                    "samenvatting": "Wordt het budget verlaagd?",
                                 }
                             ]
                         }
                     )
-                listed = re.search(r"(\d+)\. Kamerlid A \(X\): Rekening", prompt)
-                if listed and "laten uitzoeken" in prompt:
+                listed = re.search(r"(\d+)\. Kamerlid A \(X\): Wordt", prompt)
+                if listed and "Dat zeg ik toe" in prompt:
                     return json.dumps(
                         {
                             "toezeggingen": [
                                 {
-                                    "citaat": "Ik zal dat laten uitzoeken en kom"
-                                    " daar in het voorjaar schriftelijk op terug.",
-                                    "samenvatting": "Zoekt uit wie de rekening van"
-                                    " een gemeente betaalt.",
+                                    # The answer speaks of the budget right
+                                    # before it: that is what the link is
+                                    # kept on.
+                                    "citaat": "Dat zeg ik toe: de Kamer krijgt die"
+                                    " brief vóór de begrotingsbehandeling.",
+                                    "samenvatting": "Stuurt een brief over het budget.",
                                     "bij_vraag": int(listed.group(1)),
                                 }
                             ]

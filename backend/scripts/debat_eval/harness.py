@@ -187,6 +187,7 @@ def interruption_before(turns: list[dict], index: int) -> dict | None:
 
 def beurt_from(turn: dict, sessie_id: uuid.UUID, before: dict | None = None) -> Beurt:
     asked = before if turn.get("is_bewindspersoon") else None
+    asked_key = beurt_from(asked, sessie_id).sleutel if asked else None
     return Beurt(
         sessie_id=sessie_id,
         spreekbeurt_id=None,
@@ -203,6 +204,7 @@ def beurt_from(turn: dict, sessie_id: uuid.UUID, before: dict | None = None) -> 
         onderbroken_is_bewindspersoon=bool(turn.get("onderbroken_is_bewindspersoon")),
         voorafgaand=asked["spreker"] if asked else None,
         voorafgaand_tekst=asked["tekst"] if asked else "",
+        voorafgaand_sleutel=asked_key,
     )
 
 

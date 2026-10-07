@@ -73,6 +73,7 @@ from bouwmeester.services.debat_vraag_service import (
     is_bewindspersoon,
     next_window,
     skip_window,
+    turn_sleutel,
 )
 from bouwmeester.services.debat_vraag_status_service import DebatVraagStatusService
 from bouwmeester.services.llm.base import BaseLLMService
@@ -709,6 +710,9 @@ class DebatVraagWorker:
             ),
             voorafgaand=asked.label if asked else None,
             voorafgaand_tekst=item.before.text if asked and item.before else "",
+            voorafgaand_sleutel=(
+                turn_sleutel(item.before.row_id) if asked and item.before else None
+            ),
             gelezen_tot=await self._position(turn.row_id) if answer else 0,
         )
         outcome = None

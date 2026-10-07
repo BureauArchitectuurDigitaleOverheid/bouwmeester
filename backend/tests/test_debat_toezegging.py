@@ -37,11 +37,18 @@ from bouwmeester.services import debat_vraag_service as service_mod
 from bouwmeester.services import debat_vraag_worker as worker_mod
 from bouwmeester.services.debat_statusregel import splits, statusregel
 from bouwmeester.services.debat_toezegging import (
+    AT_START,
     MAX_PASSAGE,
+    SAID_BEFORE,
+    Interruption,
+    Link,
+    asks_something,
     commitment_passages,
     deadline_is_said,
     has_commitment_form,
+    link_to_question,
     may_hold_commitment,
+    names_someone_else,
     shares_a_subject,
 )
 from bouwmeester.services.debat_vraag_reacties import (
@@ -53,7 +60,6 @@ from bouwmeester.services.debat_vraag_reacties import (
     stand_marker,
 )
 from bouwmeester.services.debat_vraag_service import (
-    AAN_INTERRUPTIE_BINNEN,
     UITKOMST_AL_BEOORDEELD,
     UITKOMST_GEEN_TOEZEGGING,
     UITKOMST_GEMARKEERD,
@@ -614,6 +620,191 @@ class TestHetzelfdeOnderwerp:
         )
 
 
+class TestBijWelkeVraagRegel:
+    """`link_to_question`: where a toezegging stands first, the model's
+    number as confirmation."""
+
+    ONDERWERP = SYN["debat"]["onderwerp"]
+    A, B = "Kamerlid A (X)", "Kamerlid B (Y)"
+    # Three questions of the first term: two of A, one of B.
+    VRAGEN = {
+        3: "Verlichting in de kelders? Is de verlichting in de kelders op orde?",
+        4: "Toezicht in de nacht? Komt er toezicht in de nacht bij de kelders?",
+        5: "Verlichting bij de ingang? Wie betaalt de verlichting bij de ingang?",
+    }
+    VRAGERS = {3: A, 4: A, 5: B}
+    INTERRUPTIE = (
+        "Kan de minister toezeggen dat hij de verlichting in de kelders nakijkt?"
+    )
+    BELOFTE = "Dat zeg ik toe, ik laat de verlichting nakijken."
+    KORT = "Laat de verlichting in de kelders nakijken."
+
+    def _link(self, **extra) -> Link:
+        values = {
+            "quote": self.BELOFTE,
+            "said_before": "",
+            "summary": self.KORT,
+            "named": None,
+            "questions": self.VRAGEN,
+            "askers": self.VRAGERS,
+            "onderwerp": self.ONDERWERP,
+            "interruption": Interruption(self.A, self.INTERRUPTIE, (3,)),
+            "at_start": True,
+        }
+        values.update(extra)
+        return link_to_question(**values)
+
+    def test_the_question_of_the_interruption_before_it(self):
+        """Marked in the interruption, asked there or asked again: that is
+        what the answer is to, also when the model names no number."""
+        assert self._link() == Link(3, self.A)
+
+    def test_another_question_of_the_same_member_does_not_win(self):
+        """The model points at another question of the member's first
+        term. Where the toezegging stands says which it is."""
+        assert self._link(named=4) == Link(3, self.A)
+
+    def test_the_question_of_another_member_does_not_win(self):
+        assert self._link(named=5) == Link(3, self.A)
+        # Nor when nothing was marked in the interruption: the answer is to
+        # who interrupted, and the question of another member is not theirs.
+        nothing = Interruption(self.A, self.INTERRUPTIE)
+        assert self._link(named=5, interruption=nothing) == Link(None, self.A)
+
+    def test_a_marked_question_about_something_else_is_no_link(self):
+        """An interruption can hold two questions and be filed under one;
+        the toezegging is to the other."""
+        andere = Interruption(self.A, self.INTERRUPTIE, (4,))
+        vragen = {**self.VRAGEN, 4: "Kosten van de camera's? Wat kosten de camera's?"}
+        assert self._link(interruption=andere, questions=vragen) == Link(None, self.A)
+        # Then the model's number counts, for a question of the same member
+        # that the interruption and the toezegging are about.
+        assert self._link(interruption=andere, questions=vragen, named=3) == Link(
+            3, self.A
+        )
+
+    def test_of_two_marked_questions_the_model_s_number_chooses(self):
+        both = Interruption(self.A, self.INTERRUPTIE, (3, 4))
+        vragen = {**self.VRAGEN, 4: "Verlichting in de nacht? Brandt de verlichting?"}
+        assert self._link(interruption=both, questions=vragen) == Link(None, self.A)
+        assert self._link(interruption=both, questions=vragen, named=4) == Link(
+            4, self.A
+        )
+
+    def test_a_question_that_is_not_open_is_no_link(self):
+        closed = Interruption(self.A, self.INTERRUPTIE, (9,))
+        assert self._link(interruption=closed) == Link(None, self.A)
+
+    def test_without_a_marked_question_the_same_member_s_question_needs_two_words(
+        self,
+    ):
+        nothing = Interruption(self.A, self.INTERRUPTIE)
+        assert self._link(interruption=nothing, named=3) == Link(3, self.A)
+        # Question 4 shares "kelders" with the interruption and no more.
+        assert self._link(interruption=nothing, named=4) == Link(None, self.A)
+
+    def test_an_interruption_that_asks_nothing_is_not_what_the_answer_is_to(self):
+        """The words of the bewindspersoon under the name of a member, or
+        a remark: nobody is named for it."""
+        remark = Interruption(
+            self.A, "De stalling in Dorpstede is vorig jaar al opgeknapt."
+        )
+        assert self._link(interruption=remark) == Link()
+        # The model's number then counts as anywhere else in an answer.
+        said = "Kamerlid B vroeg naar de verlichting bij de ingang van de stalling."
+        assert self._link(
+            interruption=remark,
+            named=5,
+            said_before=said,
+            summary="Laat de verlichting bij de ingang nakijken.",
+        ) == Link(5, self.B)
+
+    def test_a_quote_that_names_other_members_is_not_to_who_interrupted(self):
+        quote = (
+            "Ik stuur de Kamer een brief, en die gaat ook over de fietsen van de heer"
+            " Voorbeeld en mevrouw Proef mee."
+        )
+        assert self._link(quote=quote) == Link()
+        assert names_someone_else(quote, self.A)
+        # Who interrupted, named: still theirs.
+        eigen = "Dat zeg ik mevrouw A graag toe."
+        assert not names_someone_else(eigen, self.A)
+        assert self._link(quote=f"{eigen} Ik laat de verlichting nakijken.") == Link(
+            3, self.A
+        )
+        assert not names_someone_else("Dat zeg ik toe.", self.A)
+
+    def test_further_into_the_answer_it_is_no_longer_to_the_interruption(self):
+        assert self._link(at_start=False) == Link()
+
+    def test_in_a_long_answer_the_model_s_number_needs_what_was_said(self):
+        said = "Kamerlid A vroeg of de verlichting in de kelders op orde is."
+        long_answer = {"interruption": None, "at_start": False}
+        assert self._link(**long_answer, named=3, said_before=said) == Link(3, self.A)
+        # Two words in the quote itself are as good.
+        quote = "Ik laat de verlichting in de kelders nakijken."
+        assert self._link(**long_answer, named=3, quote=quote) == Link(3, self.A)
+        # One word is a subject, not a question.
+        assert self._link(**long_answer, named=3) == Link()
+        # No number, no link.
+        assert self._link(**long_answer, said_before=said) == Link()
+        # A number that is no open question.
+        assert self._link(**long_answer, named=9, said_before=said) == Link()
+
+    def test_words_only_the_summary_shares_are_the_model_s(self):
+        """The model writes the summary with the questions in front of it.
+        What the bewindspersoon said has to point at the question too."""
+        long_answer = {"interruption": None, "at_start": False}
+        assert (
+            self._link(
+                **long_answer,
+                named=3,
+                quote="Dat zeg ik toe, ik kom daar schriftelijk op terug.",
+                summary="Komt terug op de verlichting in de kelders.",
+            )
+            == Link()
+        )
+        # And the other way round: said, but summarised as something else.
+        assert (
+            self._link(
+                **long_answer,
+                named=3,
+                quote="Ik laat de verlichting in de kelders nakijken.",
+                summary="Stuurt een brief over de camera's.",
+            )
+            == Link()
+        )
+
+    def test_who_asked_is_unknown(self):
+        long_answer = {"interruption": None, "at_start": False}
+        quote = "Ik laat de verlichting in de kelders nakijken."
+        assert self._link(**long_answer, named=3, quote=quote, askers={}) == Link(3, "")
+
+    @pytest.mark.parametrize(
+        "tekst",
+        [
+            "Kan hij dat toezeggen?",
+            "Kan hij ook iets zeggen over de fietsen buiten de stalling",
+            "maar zou het niet beter zijn om eerst de kelders te tellen",
+            "Ik miste een antwoord. Wat doet de minister met de kelders?",
+        ],
+    )
+    def test_an_interruption_that_asks(self, tekst):
+        assert asks_something(tekst)
+
+    @pytest.mark.parametrize(
+        "tekst",
+        [
+            "Ja. De stalling in Dorpstede is vorig jaar al opgeknapt.",
+            "Een telling per station lijkt mij ook goed. Dat is een mooi begin.",
+            "Dank voor dit antwoord.",
+            "",
+        ],
+    )
+    def test_an_interruption_that_does_not(self, tekst):
+        assert not asks_something(tekst)
+
+
 # --- what the model answered -------------------------------------------
 
 
@@ -624,7 +815,8 @@ def _t(citaat: str, **extra) -> DebatToezegging:
 class TestLeesToezeggingen:
     TEKST = ANTWOORD["tekst"]
     VRAAG = (
-        "Bezetting van de beugels? Kan de minister de bezetting van de beugels geven?"
+        "Overzicht van de bezetting? Kan de minister een overzicht geven van de"
+        " bezetting van de stallingen?"
     )
     BELOOFD = "Stuurt de Kamer een overzicht van de bezetting van de beugels."
     # What was promised before, in words both toezeggingen of the turn share.
@@ -770,6 +962,68 @@ class TestLeesToezeggingen:
         )
         assert len(nieuw) == 1
         assert nieuw[0].bij_volgnummer is None
+
+    def test_who_asked_the_linked_question_is_who_it_was_promised_to(self):
+        nieuw, _, _ = lees_toezeggingen(
+            [_t(T_BRIEF, samenvatting=self.BELOOFD, bij_vraag=7)],
+            self.TEKST,
+            {7: self.VRAAG},
+            set(),
+            CONTEXT.onderwerp,
+            vragenstellers={7: "Kamerlid A (X)"},
+        )
+        assert (nieuw[0].bij_volgnummer, nieuw[0].gericht_aan) == (7, "Kamerlid A (X)")
+
+    def test_what_the_bewindspersoon_said_before_the_quote_counts(self):
+        """The quote itself shares one word with the question; the sentence
+        in front of it, where the question is repeated, has the others."""
+        citaat = "Ik zal dat laten uitzoeken en kom daar schriftelijk op terug."
+        tekst = (
+            "Kamerlid A vroeg naar de verlichting in de kelders van de"
+            f" stallingen. {citaat}"
+        )
+        vraag_tekst = (
+            "Verlichting in de kelders? Is de verlichting in de kelders op orde?"
+        )
+        toezeggingen = [
+            _t(citaat, samenvatting="Zoekt de verlichting uit.", bij_vraag=7)
+        ]
+        nieuw, _, _ = lees_toezeggingen(
+            toezeggingen, tekst, {7: vraag_tekst}, set(), CONTEXT.onderwerp
+        )
+        assert nieuw[0].bij_volgnummer == 7
+        # Further away than what counts as said with it, it does not.
+        ver = tekst.replace(citaat, "Dat is een ander onderwerp. " * 20 + citaat)
+        assert ver.index(citaat) - ver.index("kelders") > SAID_BEFORE
+        nieuw, _, _ = lees_toezeggingen(
+            toezeggingen, ver, {7: vraag_tekst}, set(), CONTEXT.onderwerp
+        )
+        assert nieuw[0].bij_volgnummer is None
+
+    def test_an_answer_to_an_interruption_is_to_who_interrupted(self):
+        """Without a question to link it to."""
+        nieuw, _, _ = lees_toezeggingen(
+            [_t(T_ZOMER)],
+            ZEGT_TOE["tekst"],
+            {},
+            set(),
+            interruptie=Interruption("Kamerlid A (X)", "Kan hij dat toezeggen?"),
+        )
+        assert (nieuw[0].bij_volgnummer, nieuw[0].gericht_aan) == (
+            None,
+            "Kamerlid A (X)",
+        )
+
+    def test_a_long_name_is_cut(self):
+        naam = "Kamerlid " + "A" * 200
+        nieuw, _, _ = lees_toezeggingen(
+            [_t(T_ZOMER)],
+            ZEGT_TOE["tekst"],
+            {},
+            set(),
+            interruptie=Interruption(naam, "Kan hij dat toezeggen?"),
+        )
+        assert len(nieuw[0].gericht_aan) == service_mod.MAX_GERICHT_AAN
 
     def test_a_deadline_that_was_not_said_is_left_out(self):
         nieuw, _, _ = lees_toezeggingen(
@@ -1406,18 +1660,20 @@ class TestWieNietWordtGelezenVoorToezeggingen:
 
 
 class TestBijWelkeVraag:
-    BELOOFD = "Stuurt de Kamer de bezetting van de beugels."
+    BELOOFD = "Stuurt de Kamer een overzicht van de bezetting."
 
     async def _with_question(self, db_session, **extra):
         """A member asks; the question is open as number 1."""
         sessie_id = await _sessie(db_session)
         mm = FakeMattermost()
-        citaat = "Kan de minister de bezetting van de beugels in beeld brengen?"
+        citaat = "Kan de minister een overzicht geven van de bezetting per provincie?"
         raw = {**VRAAGT, "tekst": f"Voorzitter, dank u wel voor het woord. {citaat}"}
         await _judge(
             db_session,
             raw,
-            antwoord(vraag(citaat, samenvatting="Bezetting van de beugels?", **extra)),
+            antwoord(
+                vraag(citaat, samenvatting="Overzicht van de bezetting?", **extra)
+            ),
             sessie_id=sessie_id,
             mm=mm,
         )
@@ -1428,7 +1684,7 @@ class TestBijWelkeVraag:
         _, _, llm, _, _ = await _judge(
             db_session, ANTWOORD, toegezegd(), sessie_id=sessie_id, mm=mm
         )
-        assert "1. Kamerlid A (X): Bezetting van de beugels?" in llm.prompts[0]
+        assert "1. Kamerlid A (X): Overzicht van de bezetting?" in llm.prompts[0]
 
     async def test_a_toezegging_that_answers_a_question_is_linked_to_it(
         self, db_session
@@ -1572,6 +1828,126 @@ class TestBijWelkeVraag:
         ]
 
 
+class TestNaEenInterruptie:
+    """An answer right after an interruption is to that interruption."""
+
+    EERSTE = (
+        "Kan de minister zeggen wanneer de Kamer de uitkomst van het gesprek hoort?"
+    )
+    ANDERE = "Kan de minister zeggen wat het gesprek met de vervoerders kost?"
+
+    async def _first_term(self, db_session):
+        """A member asks two questions in the first term: numbers 1 and 2."""
+        sessie_id = await _sessie(db_session)
+        mm = FakeMattermost()
+        raw = {**VRAAGT, "tekst": f"Voorzitter. {self.EERSTE} {self.ANDERE}"}
+        await _judge(
+            db_session,
+            raw,
+            antwoord(
+                vraag(self.EERSTE, samenvatting="Wanneer hoort de Kamer de uitkomst?"),
+                vraag(self.ANDERE, samenvatting="Wat kost het gesprek?"),
+            ),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        return sessie_id, mm
+
+    async def _interruption(self, db_session, sessie_id, mm, answer):
+        _, _, _, post_id, _ = await _judge(
+            db_session, TURNS[24], answer, sessie_id=sessie_id, mm=mm
+        )
+        return f"post:{post_id}"
+
+    async def _answer(self, db_session, sessie_id, mm, sleutel, **extra):
+        await _judge(
+            db_session,
+            ZEGT_TOE,
+            toegezegd(
+                toezegging(
+                    T_ZOMER,
+                    samenvatting="Meldt vóór de zomer de uitkomst van het gesprek.",
+                    **extra,
+                )
+            ),
+            sessie_id=sessie_id,
+            mm=mm,
+            voorafgaand="Kamerlid A (X)",
+            voorafgaand_tekst=TURNS[24]["tekst"],
+            voorafgaand_sleutel=sleutel,
+        )
+        return (await _rows(db_session, sessie_id))[-1]
+
+    async def test_a_question_asked_again_in_the_interruption_is_the_link(
+        self, db_session
+    ):
+        """The member comes back to a question of the first term, which is
+        stored as a vermelding on it. The model names the other question of
+        that member; where the toezegging stands says which it is."""
+        sessie_id, mm = await self._first_term(db_session)
+        sleutel = await self._interruption(
+            db_session,
+            sessie_id,
+            mm,
+            antwoord(vraag("Kan hij dat toezeggen?", hoort_bij=1)),
+        )
+        row = await self._answer(db_session, sessie_id, mm, sleutel, bij_vraag=2)
+        assert (row.bij_volgnummer, row.gericht_aan) == (1, "Kamerlid A (X)")
+        assert "aan Kamerlid A (X) · bij vraag 1 · " in mm.replies[-1][2]
+        assert (VERMELDING_ANTWOORD, 1, T_ZOMER, MINISTER) in await _vermeldingen(
+            db_session, sessie_id
+        )
+
+    async def test_a_question_asked_in_the_interruption_is_the_link(self, db_session):
+        sessie_id, mm = await self._first_term(db_session)
+        nieuw = "Als hij ook toezegt dat de Kamer vóór de zomer de uitkomst hoort"
+        sleutel = await self._interruption(
+            db_session,
+            sessie_id,
+            mm,
+            antwoord(
+                vraag(
+                    f"{nieuw}, dan scheelt dat mij een motie. Kan hij dat toezeggen?",
+                    samenvatting="Hoort de Kamer vóór de zomer de uitkomst?",
+                )
+            ),
+        )
+        # No number from the model at all.
+        row = await self._answer(db_session, sessie_id, mm, sleutel)
+        assert (row.bij_volgnummer, row.gericht_aan) == (3, "Kamerlid A (X)")
+
+    async def test_without_a_question_marked_in_it_only_the_member_is_named(
+        self, db_session
+    ):
+        sessie_id, mm = await self._first_term(db_session)
+        sleutel = await self._interruption(db_session, sessie_id, mm, antwoord())
+        row = await self._answer(db_session, sessie_id, mm, sleutel)
+        assert (row.bij_volgnummer, row.gericht_aan) == (None, "Kamerlid A (X)")
+        assert "bij vraag" not in mm.replies[-1][2]
+
+    async def test_the_interruption_is_not_known_by_its_key(self, db_session):
+        """A caller that does not say which turn the interruption was."""
+        sessie_id, mm = await self._first_term(db_session)
+        await self._interruption(
+            db_session,
+            sessie_id,
+            mm,
+            antwoord(vraag("Kan hij dat toezeggen?", hoort_bij=1)),
+        )
+        row = await self._answer(db_session, sessie_id, mm, None)
+        assert (row.bij_volgnummer, row.gericht_aan) == (None, "Kamerlid A (X)")
+
+    async def test_a_motie_in_the_interruption_is_no_question(self, db_session):
+        sessie_id, mm = await self._first_term(db_session)
+        raw = {**TURNS[24], "tekst": "Daar dien ik een motie over in. Kan hij dat?"}
+        _, _, _, post_id, _ = await _judge(
+            db_session, raw, antwoord(), sessie_id=sessie_id, mm=mm
+        )
+        assert [r.soort for r in await _rows(db_session, sessie_id)][-1] == "motie"
+        service = DebatVraagService(db_session, mm, FakeLLM())
+        assert await service._vragen_in(sessie_id, f"post:{post_id}") == ()
+
+
 class TestAanWie:
     async def test_the_member_who_interrupted_right_before(self, db_session):
         sessie_id, mm, llm, _, _ = await _judge(
@@ -1590,7 +1966,7 @@ class TestAanWie:
 
     async def test_not_when_it_comes_far_into_the_answer(self, db_session):
         opvulling = "Het budget is dit jaar gelijk gebleven. " * 20
-        assert len(opvulling) > AAN_INTERRUPTIE_BINNEN
+        assert len(opvulling) > AT_START
         raw = {**ZEGT_TOE, "tekst": f"{opvulling}{T_ZOMER}"}
         sessie_id, _, _, _, _ = await _judge(
             db_session,
@@ -2210,21 +2586,31 @@ class TestEenLangAntwoord:
 
     async def test_the_link_of_a_window_is_written_once(self, db_session):
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
-        vraag_citaat = "Kan de minister de bezetting van de beugels in beeld brengen?"
+        vraag_citaat = (
+            "Kan de minister zorgen dat de Kamer het overzicht vóór de"
+            " begrotingsbehandeling krijgt?"
+        )
         await _judge(
             db_session,
             {
                 **VRAAGT,
                 "tekst": f"Voorzitter, dank u wel voor het woord. {vraag_citaat}",
             },
-            antwoord(vraag(vraag_citaat, samenvatting="Bezetting van de beugels?")),
+            antwoord(
+                vraag(
+                    vraag_citaat,
+                    samenvatting="Overzicht vóór de begrotingsbehandeling?",
+                )
+            ),
             sessie_id=sessie_id,
             mm=mm,
         )
         post_id = mm.turn()
         beloofd = toegezegd(
             toezegging(
-                T_BRIEF, samenvatting="Stuurt de bezetting van de beugels.", bij_vraag=1
+                T_BRIEF,
+                samenvatting="Stuurt het overzicht vóór de begrotingsbehandeling.",
+                bij_vraag=1,
             )
         )
         llm = FakeLLM(beloofd, beloofd)
@@ -2415,8 +2801,13 @@ class TestDeWerker:
         # the chairman's words in between.
         assert by_row[m2.id].voorafgaand == "Kamerlid B (Y)"
         assert by_row[m2.id].voorafgaand_tekst == self.VRAAG
+        # And which turn that interruption was: the questions marked in it
+        # are what the answer is to.
+        assert by_row[m2.id].voorafgaand_sleutel == by_row[b.id].sleutel
+        assert by_row[m1.id].voorafgaand_sleutel is None
         # A member gets none of that.
         assert by_row[b.id].voorafgaand is None
+        assert by_row[b.id].voorafgaand_sleutel is None
         # Three calls: the answer without a commitment cost none.
         assert len(llm.prompts) == 3
         assert _is_toezeggingen_prompt(llm.prompts[2])

@@ -34,7 +34,7 @@ import logging
 import re
 import unicodedata
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
@@ -75,9 +75,13 @@ from bouwmeester.services.debat_statusregel import (
     statusregel,
 )
 from bouwmeester.services.debat_toezegging import (
+    AT_START,
+    SAID_BEFORE,
+    Interruption,
     commitment_passages,
     deadline_is_said,
     has_commitment_form,
+    link_to_question,
     may_hold_commitment,
     shares_a_subject,
 )
@@ -160,11 +164,6 @@ MIN_STAART = 600
 # at twelve windows, twice that with the second try an unreadable reply
 # gets.
 MAX_ANTWOORD = 48000
-# A toezegging counts as made to the member who interrupted right before
-# the turn when it starts this early in the turn: about the first
-# half-minute of speech. Further on, the bewindspersoon has usually moved on
-# to someone else's question, and nobody is named rather than the wrong one.
-AAN_INTERRUPTIE_BINNEN = 600
 # What is left of a rejected markering in the channel: one line.
 MAX_VERWORPEN = 120
 # A Mattermost username is at most 64 characters.
@@ -197,6 +196,12 @@ _AAN_BEWINDSPERSOON = (
     "bewindsperso",
     "premier",
 )
+
+
+def turn_sleutel(spreekbeurt_id: uuid.UUID) -> str:
+    """What identifies the turn of a row in `debat_spreekbeurt`. See
+    `Beurt.sleutel`."""
+    return f"beurt:{spreekbeurt_id}"
 
 
 @dataclass(frozen=True)
@@ -234,6 +239,10 @@ class Beurt:
     # interruption of a member.
     voorafgaand: str | None = None
     voorafgaand_tekst: str = ""
+    # What identifies that interruption (its `sleutel`): the questions that
+    # were marked in it are what the answer is to. ``None`` when not known;
+    # the answer is then still to that member, without a question.
+    voorafgaand_sleutel: str | None = None
     # For an answer of the bewindspersoon: how many characters of `tekst`
     # were read and stored by earlier calls (see `answer_window`). The
     # caller keeps it between calls; `Beoordeling.gelezen_tot` is what to
@@ -248,7 +257,7 @@ class Beurt:
     def sleutel(self) -> str:
         """What makes this turn this turn, for "was it judged already"."""
         if self.spreekbeurt_id is not None:
-            return f"beurt:{self.spreekbeurt_id}"
+            return turn_sleutel(self.spreekbeurt_id)
         if self.post_id:
             return f"post:{self.post_id}"
         return f"tijd:{self.start.astimezone(UTC).isoformat()}|{self.spreker}"[:255]
@@ -997,9 +1006,12 @@ def _geen_vraag(
 def lees_toezeggingen(
     toezeggingen: Sequence[DebatToezegging],
     tekst: str,
-    vragen: dict[int, str],
+    vragen: Mapping[int, str],
     eerdere: dict[int, str],
     onderwerp: str = "",
+    *,
+    vragenstellers: Mapping[int, str] | None = None,
+    interruptie: Interruption | None = None,
 ) -> tuple[list[_Nieuw], list[_Herhaling], int]:
     """Sort what the model found in an answer into new, repeated and dropped.
 
@@ -1015,12 +1027,15 @@ def lees_toezeggingen(
     a subject by their words (`shares_a_subject`). A moment that is named
     with the herhaling goes along, for the first one if it had none.
 
-    A `bij_vraag` is kept as the question it answers when it is one of
-    `vragen`, the open questions by number with what
-    each asks, and the two are about the same thing by their words
-    (`shares_a_subject`). Any other number is one the model made up or a
-    question that is only near it, and is left out. A `termijn` the quote
-    does not name is left out too: it is shown as what was said.
+    Which question a toezegging answers and who it was promised to is
+    decided by `link_to_question`: by where the toezegging stands first,
+    with the model's `bij_vraag` as confirmation. `vragen` are the open
+    questions by number with what each asks, `vragenstellers` who asked
+    each, `interruptie` the turn of a member right before this answer. A
+    number the model made up, or a question that is only near it, is left
+    out, and then nobody is named either unless the answer is to an
+    interruption. A `termijn` the quote does not name is left out too: it
+    is shown as what was said.
     """
     nieuw: list[_Nieuw] = []
     herhaald: list[_Herhaling] = []
@@ -1060,25 +1075,34 @@ def lees_toezeggingen(
                     _Herhaling(toezegging.hoort_bij, citaat, termijn=termijn or None)
                 )
             continue
-        bij = toezegging.bij_vraag
-        if bij is not None and not (
-            bij in vragen
-            and shares_a_subject(f"{samenvatting} {citaat}", vragen[bij], onderwerp)
-        ):
-            logger.info("Toezegging hoort niet aantoonbaar bij vraag %s", bij)
-            bij = None
+        link = link_to_question(
+            quote=citaat,
+            said_before=tekst[max(0, plek - SAID_BEFORE) : plek],
+            summary=samenvatting,
+            named=toezegging.bij_vraag,
+            questions=vragen,
+            askers=vragenstellers or {},
+            onderwerp=onderwerp,
+            interruption=interruptie,
+            at_start=plek < AT_START,
+        )
+        if toezegging.bij_vraag is not None and link.vraag != toezegging.bij_vraag:
+            logger.info(
+                "Toezegging hoort niet aantoonbaar bij vraag %s, wel bij %s",
+                toezegging.bij_vraag,
+                link.vraag,
+            )
         nieuw.append(
             _Nieuw(
                 citaat=citaat,
-                # Who it was promised to is not the model's to say; see
-                # `DebatVraagService._aan_wie`.
-                gericht_aan="",
+                # Who it was promised to is not the model's to say.
+                gericht_aan=_kort(link.aan, MAX_GERICHT_AAN),
                 samenvatting=samenvatting,
                 stuk=None,
                 plek=plek,
                 soort=SOORT_TOEZEGGING,
                 termijn=termijn or None,
-                bij_volgnummer=bij,
+                bij_volgnummer=link.vraag,
             )
         )
     return nieuw, herhaald, afgevallen
@@ -1493,12 +1517,23 @@ class DebatVraagService:
                 meer=meer,
             )
 
+        interruptie = None
+        if beurt.voorafgaand:
+            interruptie = Interruption(
+                spreker=_kort(beurt.voorafgaand, MAX_GERICHT_AAN),
+                tekst=beurt.voorafgaand_tekst,
+                vragen=await self._vragen_in(
+                    beurt.sessie_id, beurt.voorafgaand_sleutel
+                ),
+            )
         nieuw, herhaald, afgevallen = lees_toezeggingen(
             result.toezeggingen,
             beurt.tekst,
             {nummer: waarover for nummer, _, _, _, waarover in vragen},
             {nummer: waarover for nummer, _, _, waarover in eerdere},
             context.onderwerp,
+            vragenstellers={nummer: wie for nummer, wie, _, _, _ in vragen},
+            interruptie=interruptie,
         )
         if not nieuw and not herhaald:
             return Beoordeling(
@@ -1508,11 +1543,7 @@ class DebatVraagService:
                 gelezen_tot=tot,
                 meer=meer,
             )
-        vragensteller = {nummer: wie for nummer, wie, _, _, _ in vragen}
-        nieuw = [
-            replace(n, gericht_aan=_aan_wie(n, beurt, vragensteller))
-            for n in sorted(nieuw, key=lambda n: n.plek)
-        ]
+        nieuw = sorted(nieuw, key=lambda n: n.plek)
         # On the question a toezegging answers, a vermelding that says so.
         # Where the question stands is not touched: whether a promise is an
         # answer is for the people who follow the debate to say.
@@ -1581,13 +1612,62 @@ class DebatVraagService:
         return [
             (
                 r[0],
-                _kort(r[1], 80),
+                _kort(r[1], MAX_GERICHT_AAN),
                 _kort(r[2] or r[3], MAX_SAMENVATTING),
                 r[4],
                 f"{r[2]} {r[3]}",
             )
             for r in sorted(aan_deze[:MAX_VRAGEN_BIJ_ANTWOORD], key=lambda r: r[0])
         ]
+
+    async def _vragen_in(
+        self, sessie_id: uuid.UUID, sleutel: str | None
+    ) -> tuple[int, ...]:
+        """The numbers of the questions that were marked in one turn: asked
+        in it, or asked again in it.
+
+        For the interruption right before an answer. A member who
+        interrupts mostly comes back to a question from their first term,
+        and that is stored as a vermelding on the question that is there:
+        in the gold set the one interruption with a link was that in every
+        run. Whether a question is still open, and put to this
+        bewindspersoon, is for whoever uses the numbers.
+        """
+        if not sleutel:
+            return ()
+        asked = (
+            (
+                await self.session.execute(
+                    select(DebatMarkering.volgnummer).where(
+                        DebatMarkering.sessie_id == sessie_id,
+                        DebatMarkering.beurt_sleutel == sleutel,
+                        DebatMarkering.soort == SOORT_VRAAG,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        again = (
+            (
+                await self.session.execute(
+                    select(DebatMarkering.volgnummer)
+                    .join(
+                        DebatMarkeringVermelding,
+                        DebatMarkeringVermelding.markering_id == DebatMarkering.id,
+                    )
+                    .where(
+                        DebatMarkeringVermelding.sessie_id == sessie_id,
+                        DebatMarkeringVermelding.beurt_sleutel == sleutel,
+                        DebatMarkeringVermelding.soort == VERMELDING_HERHALING,
+                        DebatMarkering.soort == SOORT_VRAAG,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return tuple(sorted({*asked, *again}))
 
     async def _toezeggingen_van(
         self, sessie_id: uuid.UUID, spreker: str
@@ -2175,27 +2255,6 @@ def _vraag_moment(beurt: Beurt, plek: int) -> datetime | None:
     """
     found = moment_of_position(beurt.lines, beurt.tekst, plek)
     return max(found, beurt.start) if found is not None else None
-
-
-def _aan_wie(nieuw: _Nieuw, beurt: Beurt, vragensteller: dict[int, str]) -> str:
-    """Who a toezegging was made to, or an empty string when nobody is sure.
-
-    Two things say it, and nothing else does:
-
-    * the question it answers: whoever asked that one;
-    * the interruption right before this turn, when the toezegging comes
-      at the start of the answer to it (`AAN_INTERRUPTIE_BINNEN`).
-
-    In a long answer to a whole term of questions the bewindspersoon goes
-    from member to member without naming them in a way the transcript
-    keeps. Nobody is named then: an empty place is read as "not known", a
-    wrong name as a fact.
-    """
-    if nieuw.bij_volgnummer is not None:
-        return vragensteller.get(nieuw.bij_volgnummer, "")
-    if beurt.voorafgaand and nieuw.plek < AAN_INTERRUPTIE_BINNEN:
-        return _kort(beurt.voorafgaand, MAX_GERICHT_AAN)
-    return ""
 
 
 # The bewindspersoon in the words of a transcript, also the ways it gets
