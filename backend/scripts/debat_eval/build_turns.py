@@ -120,20 +120,36 @@ def sprekers_from(actors: dict, day: date) -> dict[str, dd.Spreker]:
 
 
 def build_turns(
-    debat: dd.DdDebat, sprekers: dict[str, dd.Spreker], cues: list[Cue]
+    debat: dd.DdDebat,
+    sprekers: dict[str, dd.Spreker],
+    cues: list[Cue],
+    *,
+    with_lines: bool = False,
 ) -> list[dict]:
     """Every event that gives someone the floor, with what was said in it.
 
     An interruption remembers who had the floor: the last `speaker` event
     before it, as the worker does. Turns without text are left out.
+
+    With `with_lines` every turn also carries the subtitle lines its text
+    is made of, each with its moments (`regels`): what replaying a debate
+    in time needs, to know when which words were said.
     """
     events = [e for e in debat.events if e.type in TURN_KINDS]
     placed = place_cues(
         cues, [(i, e.start) for i, e in enumerate(events)], debat.stream_offset
     )
     texts: dict[int, str] = {}
+    lines: dict[int, list[dict]] = {}
     for index, cue in placed:
         texts[index] = append_text(texts.get(index), cue.text)
+        lines.setdefault(index, []).append(
+            {
+                "start": cue.start.isoformat(),
+                "einde": cue.end.isoformat(),
+                "tekst": cue.text,
+            }
+        )
 
     turns: list[dict] = []
     floor: dd.Spreker | None = None
@@ -165,9 +181,30 @@ def build_turns(
                     onderbroken and is_bewindspersoon(onderbroken)
                 ),
                 "tekst": text,
+                **({"regels": lines.get(index, [])} if with_lines else {}),
             }
         )
     return turns
+
+
+def add_lines(gold: dict, turns: list[dict]) -> int:
+    """Put the lines of freshly built turns into a gold file that has none.
+
+    A gold file made before lines were kept is labelled already, and its
+    labels point at turns by number. The turns are built again from the
+    same recording and matched by number; a turn whose text is not the
+    same text is left without lines, and how many got them comes back.
+    """
+    built = {turn["nr"]: turn for turn in turns}
+    given = 0
+    for turn in gold["beurten"]:
+        fresh = built.get(turn["nr"])
+        if fresh is None or fresh["tekst"] != turn["tekst"]:
+            turn.pop("regels", None)
+            continue
+        turn["regels"] = fresh["regels"]
+        given += 1
+    return given
 
 
 def main() -> int:
@@ -179,6 +216,17 @@ def main() -> int:
     parser.add_argument("--cues-jsonl", type=Path)
     parser.add_argument("--cache", type=Path, help="where fetched JSON is kept")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--regels",
+        action="store_true",
+        help="keep the subtitle lines of every turn, for a replay in time",
+    )
+    parser.add_argument(
+        "--regels-bij",
+        type=Path,
+        help="a labelled gold file of this recording: written to --out with"
+        " the lines of every turn added, labels untouched",
+    )
     args = parser.parse_args()
 
     if args.debate_json:
@@ -219,7 +267,18 @@ def main() -> int:
     for earlier, later in zip(cues, cues[1:], strict=False):
         if later.start - earlier.end > timedelta(minutes=3):
             print(f"no lines from {earlier.end:%H:%M:%S} to {later.start:%H:%M:%S} UTC")
-    turns = build_turns(debat, sprekers, cues)
+    turns = build_turns(
+        debat, sprekers, cues, with_lines=args.regels or bool(args.regels_bij)
+    )
+    if args.regels_bij:
+        labelled = json.loads(args.regels_bij.read_text(encoding="utf-8"))
+        given = add_lines(labelled, turns)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(
+            json.dumps(labelled, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
+        )
+        print(f"{args.out.name}: lines for {given} of {len(labelled['beurten'])} turns")
+        return 0
 
     aan_tafel = []
     # Who is expected at the table, and whoever spoke without being expected.
