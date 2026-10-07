@@ -289,14 +289,12 @@ class TestMotionTextInAQuestion:
     @pytest.mark.parametrize(
         "quote",
         [
-            f"{DICTUM}.",
-            "en gaat over tot de orde van de dag",
-            "De Kamer, gehoord de beraadslaging",
-            "constaterende dat 140 stations geen stalling hebben",
-            "overwegende dat reizigers hun fiets kwijtraken",
+            f"{DICTUM}, {CLOSE}",
+            f"overwegende dat reizigers hun fiets kwijtraken, {DICTUM}",
+            "De Kamer, gehoord de beraadslaging, constaterende dat het kan",
         ],
     )
-    def test_a_part_of_the_formula_is_motion_text(self, quote):
+    def test_two_parts_of_the_formula_are_motion_text(self, quote):
         assert is_motion_text(quote)
 
     @pytest.mark.parametrize(
@@ -307,10 +305,104 @@ class TestMotionTextInAQuestion:
             "Ik verzoek de minister om daarop terug te komen.",
             "Hoe gaat de minister de motie uitvoeren?",
             "Wat is de orde van grootte van dat bedrag per dag?",
+            # One word of the formula is a word people use.
+            "Agressie is aan de orde van de dag. Wat gaat de minister daaraan doen?",
+            "De motie verzoekt de regering om een plan te maken. Wanneer komt dat"
+            " plan, minister?",
+            "Alles overwegende vraag ik de minister of hij dit wil heroverwegen.",
+            "Overwegende dat het kan: wanneer begint de minister?",
+            f"{DICTUM}.",
         ],
     )
-    def test_a_question_is_not(self, quote):
+    def test_a_question_or_a_single_part_is_not(self, quote):
         assert not is_motion_text(quote)
+
+
+FILL = "Dat is wat wij ervan vinden en daar blijven wij bij. " * 40
+
+
+class TestThePartsStandCloseTogether:
+    """Every part of the formula is also something people just say."""
+
+    def test_a_figure_of_speech_and_a_motie_of_earlier_are_no_motie(self):
+        text = (
+            "Alles overwegende is dit een slecht plan. Kan de minister toezeggen"
+            f" dat hij de Kamer informeert? {FILL}de motie van vorig jaar verzoekt"
+            " de regering hiermee te stoppen."
+        )
+        assert find_moties(text) == []
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "die motie verzoekt de regering om een plan te maken en agressie is"
+            " aan de orde van de dag",
+            "mijn fractie spreekt uit haar hart en dit is aan de orde van de dag",
+            "overwegende dat het kan zeg ik: mijn motie verzoekt de regering om"
+            " haast te maken",
+            "Alles overwegende verzoekt de regering dit zelf ook, zegt zij.",
+            "Ik verzoek de regering om daarop terug te komen, overwegende dat het kan.",
+        ],
+    )
+    def test_ordinary_speech_with_words_of_the_formula(self, text):
+        assert find_moties(text) == []
+
+    def test_a_considerans_far_before_a_dictum_is_not_its_considerans(self):
+        text = f"overwegende dat het kan, ga ik door. {FILL}{DICTUM}."
+        assert find_moties(text) == []
+
+    def test_a_close_far_behind_a_dictum_is_not_its_close(self):
+        text = (
+            f"overwegende dat het kan, {DICTUM}. Kan de minister zeggen wanneer?"
+            f" {FILL}En zo gaat de Kamer over tot de orde van de dag."
+        )
+        motie = _one(text)
+        assert motie.citaat == f"{DICTUM}."
+        assert len(text[motie.start : motie.end]) < 200
+
+    def test_a_dictum_without_its_close_ends_with_its_sentence(self):
+        """What follows is the rest of the turn, questions and all."""
+        vraag = "Kan de minister zeggen wanneer dat klaar is?"
+        text = f"overwegende dat het kan, {DICTUM}. {vraag} {FILL}"
+        motie = _one(text)
+        assert motie.citaat == f"{DICTUM}."
+        assert text.index(vraag) >= motie.end
+
+    def test_a_dropped_t_is_still_a_dictum(self):
+        text = (
+            "overwegende dat het kan, verzoek de regering een plan te maken, en"
+            " gaat over tot de orde van de dag"
+        )
+        assert _one(text).citaat.startswith("verzoek de regering een plan")
+
+    def test_a_long_text_is_read_in_a_blink(self):
+        import time
+
+        text = "ik dien een motie in " * 8000
+        start = time.perf_counter()
+        find_moties(text)
+        assert time.perf_counter() - start < 2
+
+
+class TestTheSpeakerSubmits:
+    @pytest.mark.parametrize(
+        "zin",
+        [
+            "wij zullen de motie die de collega gaat indienen steunen",
+            "ik vind die motie overbodig indien de minister dit toezegt",
+            "we dienen die motie gewoon uit te voeren",
+            "dan zie ik af van de motie die ik wilde indienen",
+            "wij dienen die motie in te trekken",
+        ],
+    )
+    def test_what_only_looks_like_an_announcement(self, zin):
+        assert find_moties(zin) == []
+        assert find_moties(f"Voorzitter. {zin[0].upper()}{zin[1:]}. Dank.") == []
+
+    def test_coming_with_a_motie_is_an_announcement(self):
+        assert _one("Ik kom in de tweede termijn met een motie.").vorm == (
+            VORM_AANGEKONDIGD
+        )
 
 
 class TestOnTheMadeUpDebate:

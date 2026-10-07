@@ -451,7 +451,8 @@ class TestVariants:
     def test_the_text_of_a_motion_is_recognised(self):
         motions = [i["citaat"] for i in FIXTURE["items"] if i["soort"] == "motie"]
         assert any(is_motion_text(quote) for quote in motions)
-        assert is_motion_text("constaterende dat 140 stations geen stalling hebben")
+        # One word of the formula is not enough: people use those words.
+        assert not is_motion_text("Agressie is aan de orde van de dag.")
         questions = [i["citaat"] for i in FIXTURE["items"] if i["soort"] == "vraag"]
         assert not any(is_motion_text(quote) for quote in questions)
         kept, stopped = apply_check(

@@ -499,8 +499,10 @@ class TestMotieMarkeren:
     async def test_the_bewindspersoon_who_repeats_a_dictum_submits_nothing(
         self, db_session
     ):
-        assert find_moties(OORDEEL["tekst"]), "the formula is in the turn"
-        sessie_id, mm, llm, _, _, _, result = await self._judge(db_session, OORDEEL)
+        # Read out word for word, as when an oordeel is given on it.
+        raw = {**OORDEEL, "tekst": TURNS[28]["tekst"]}
+        assert find_moties(raw["tekst"]), "the formula is in the turn"
+        sessie_id, mm, llm, _, _, _, result = await self._judge(db_session, raw)
 
         assert (result.uitkomst, result.reden) == (
             UITKOMST_OVERGESLAGEN,
@@ -561,24 +563,117 @@ class TestMotieMarkeren:
             SOORT_MOTIE
         ] * 2
 
-    async def test_an_unreachable_model_stores_nothing_so_the_turn_is_read_again(
+    async def test_an_unreachable_model_loses_no_motie_and_no_question(
         self, db_session
     ):
-        """Stored now, the turn would count as judged and lose its questions."""
-        sessie_id, mm, _, svc, post_id, _, result = await self._judge(
+        """The moties are stored at once; the turn is still read again."""
+        sessie_id, mm, _, svc, post_id, body, result = await self._judge(
             db_session, VRAAG_EN_MOTIES, RuntimeError("weg")
         )
 
         assert result.uitkomst == UITKOMST_LLM_ONBEREIKBAAR
         assert result.opnieuw_proberen is True
-        assert await _rows(db_session, sessie_id) == []
-        assert mm.replies == []
+        assert result.moties == 2
+        rows = await _rows(db_session, sessie_id)
+        assert [r.soort for r in rows] == [SOORT_MOTIE] * 2
+        assert len(mm.replies) == 2
+        assert mm.messages[post_id] == f"{body}\n\n---\n📜 2 moties · open"
 
+        # The model stays away: nothing is stored twice.
+        svc.llm.answers.append(RuntimeError("nog weg"))
+        again = await svc.beoordeel_beurt(
+            _beurt(sessie_id, VRAAG_EN_MOTIES, post_id), CONTEXT
+        )
+        assert (again.uitkomst, again.moties) == (UITKOMST_LLM_ONBEREIKBAAR, 0)
+        assert len(await _rows(db_session, sessie_id)) == 2
+        assert len(mm.replies) == 2
+
+        # And when it is back, the question is added to the moties.
         svc.llm.answers.append(antwoord(vraag(Q_TELLING)))
         later = await svc.beoordeel_beurt(
             _beurt(sessie_id, VRAAG_EN_MOTIES, post_id), CONTEXT
         )
-        assert (len(later.markering_ids), later.moties) == (3, 2)
+        assert later.uitkomst == UITKOMST_GEMARKEERD
+        assert (len(later.markering_ids), later.moties) == (3, 0)
+        rows = await _rows(db_session, sessie_id)
+        assert [r.soort for r in rows] == [SOORT_MOTIE, SOORT_MOTIE, SOORT_VRAAG]
+        assert len(mm.replies) == 3
+        assert mm.messages[post_id].endswith("❓ 1 vraag · open\n📜 2 moties · open")
+
+        # Read by the model now: a fourth call asks nothing.
+        calls = len(svc.llm.prompts)
+        done = await svc.beoordeel_beurt(
+            _beurt(sessie_id, VRAAG_EN_MOTIES, post_id), CONTEXT
+        )
+        assert done.uitkomst == UITKOMST_AL_BEOORDEELD
+        assert len(done.markering_ids) == 3
+        assert len(svc.llm.prompts) == calls
+
+    async def test_a_turn_with_only_moties_read_twice_stores_them_once(
+        self, db_session
+    ):
+        sessie_id, mm, llm, svc, post_id, _, _ = await self._judge(
+            db_session, TURNS[28]
+        )
+        again = await svc.beoordeel_beurt(
+            _beurt(sessie_id, TURNS[28], post_id), CONTEXT
+        )
+        assert again.moties == 0
+        assert len(await _rows(db_session, sessie_id)) == 1
+        assert len(mm.replies) == 1
+
+    async def test_a_question_about_an_earlier_motie_is_a_question(self, db_session):
+        """One word of the formula in the quote does not make it a motie."""
+        tekst = (
+            "Voorzitter. De motie verzoekt de regering om een plan te maken."
+            " Wanneer komt dat plan, minister? En agressie is aan de orde van de"
+            " dag. Wat gaat de minister daaraan doen?"
+        )
+        raw = {**EERDER, "tekst": tekst}
+        een = (
+            "De motie verzoekt de regering om een plan te maken. Wanneer komt dat"
+            " plan, minister?"
+        )
+        twee = (
+            "En agressie is aan de orde van de dag. Wat gaat de minister daaraan doen?"
+        )
+        sessie_id, _, _, _, _, _, result = await self._judge(
+            db_session, raw, antwoord(vraag(een), vraag(twee))
+        )
+        assert result.afgevallen == 0
+        rows = await _rows(db_session, sessie_id)
+        assert [(r.soort, r.citaat) for r in rows] == [
+            (SOORT_VRAAG, een),
+            (SOORT_VRAAG, twee),
+        ]
+
+    async def test_a_question_far_from_a_dictum_is_not_swallowed(self, db_session):
+        vulling = "Dat is wat wij ervan vinden en daar blijven wij bij. " * 40
+        q = "Kan de minister toezeggen dat hij de Kamer informeert?"
+        tekst = (
+            f"Alles overwegende is dit een slecht plan. {q} {vulling}de motie van"
+            " vorig jaar verzoekt de regering hiermee te stoppen."
+        )
+        raw = {**EERDER, "tekst": tekst}
+        sessie_id, _, _, _, _, _, _ = await self._judge(
+            db_session, raw, antwoord(vraag(q))
+        )
+        rows = await _rows(db_session, sessie_id)
+        assert [(r.soort, r.citaat) for r in rows] == [(SOORT_VRAAG, q)]
+
+    async def test_a_question_that_ends_where_a_motie_begins_is_kept(self, db_session):
+        q = "Kan de minister zeggen wanneer de telling klaar is? De Kamer, gehoord"
+        tekst = (
+            "Kan de minister zeggen wanneer de telling klaar is? De Kamer, gehoord"
+            " de beraadslaging, overwegende dat het kan, verzoekt de regering een"
+            " plan te maken, en gaat over tot de orde van de dag."
+        )
+        raw = {**EERDER, "tekst": tekst}
+        sessie_id, _, _, _, _, _, _ = await self._judge(
+            db_session, raw, antwoord(vraag(q))
+        )
+        rows = await _rows(db_session, sessie_id)
+        assert [r.soort for r in rows] == [SOORT_VRAAG, SOORT_MOTIE]
 
     async def test_a_motie_is_not_an_open_question_of_the_speaker(self, db_session):
         """The model is asked "is this the same question" about questions only."""

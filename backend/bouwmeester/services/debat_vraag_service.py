@@ -35,7 +35,7 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 from sqlalchemy import exists, func, literal, select, update
@@ -248,7 +248,8 @@ class Beoordeling:
     # Answers of the model that were dropped: a quote that is not in the
     # turn, that holds no question, or that is the text of a motie.
     afgevallen: int = 0
-    # How many of the markeringen are moties. Those are found by rule.
+    # How many moties this call stored. Those are found by rule, and are
+    # stored whether or not the model could be asked.
     moties: int = 0
 
     @property
@@ -816,8 +817,11 @@ def _geen_vraag(
 ) -> str:
     """Why a quote that stands in the turn is no question, or an empty string."""
     eind = plek + len(citaat)
+    # Inside a motie that was found in this turn: at least half of the
+    # quote. A question that ends where a motie begins is still a question.
     if is_motion_text(citaat) or any(
-        motie.vorm == VORM_INGEDIEND and plek < motie.end and eind > motie.start
+        motie.vorm == VORM_INGEDIEND
+        and 2 * (min(eind, motie.end) - max(plek, motie.start)) >= len(citaat)
         for motie in moties
     ):
         return "tekst van een motie"
@@ -944,10 +948,16 @@ class DebatVraagService:
         if reden and not moties:
             return Beoordeling(UITKOMST_OVERGESLAGEN, reden=reden, threads=threads)
 
-        eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
-        if eerder is not None:
+        # Was this turn read before? For a turn the model is asked about,
+        # that is when the model's answer was stored: its moties alone say
+        # nothing, they are also stored when the model could not be asked.
+        gelezen = await self._eerder_beoordeeld(
+            beurt.sessie_id, beurt.sleutel, door_model=not reden
+        )
+        if gelezen is not None:
+            alles = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
             return Beoordeling(
-                UITKOMST_AL_BEOORDEELD, markering_ids=eerder, threads=threads
+                UITKOMST_AL_BEOORDEELD, markering_ids=alles or (), threads=threads
             )
 
         gevonden = [
@@ -988,16 +998,21 @@ class DebatVraagService:
             ],
             spreker_is_initiatiefnemer=van_initiatiefnemer,
         )
-        if result.fout and result.fout != DEBAT_VRAGEN_ONBEREIKBAAR and gevonden:
-            # The model answered with something unreadable, and asking again
-            # gives the same. The moties of this turn do not depend on it.
+        if result.fout and gevonden:
+            # The moties of this turn are a rule and do not wait for the
+            # model. Stored now, a model that stays away loses none; the
+            # turn still counts as not read, so its questions are asked
+            # for again, and a motie that is there is not stored twice.
             logger.warning(
                 "Spreekbeurt van %s in sessie %s: model %s, alleen de moties",
                 _hhmm(beurt.start),
                 beurt.sessie_id,
                 result.fout,
             )
-            return await self._markeer(beurt, gevonden, [], {}, threads, 0)
+            opgeslagen = await self._markeer(beurt, gevonden, [], {}, threads, 0)
+            if result.fout == DEBAT_VRAGEN_ONBEREIKBAAR:
+                return replace(opgeslagen, uitkomst=UITKOMST_LLM_ONBEREIKBAAR)
+            return opgeslagen
         if result.fout:
             logger.warning(
                 "Spreekbeurt van %s in sessie %s niet beoordeeld: model %s",
@@ -1045,23 +1060,23 @@ class DebatVraagService:
         afgevallen: int,
     ) -> Beoordeling:
         """Store what was found in a turn and put it in the channel."""
-        ids = await self._leg_vast(beurt, nieuw, herhaald, open_ids)
-        if ids is None:
+        opgeslagen = await self._leg_vast(beurt, nieuw, herhaald, open_ids)
+        if opgeslagen is None:
             # Someone else stored this turn while the model was reading.
             eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
             return Beoordeling(
                 UITKOMST_AL_BEOORDEELD, markering_ids=eerder or (), threads=threads
             )
 
+        ids, vragen, moties = opgeslagen
         for markering_id in ids:
             if await self._post_thread(markering_id):
                 threads += 1
         await self._werk_statusregels_bij(beurt.sessie_id)
-        moties = sum(n.soort == SOORT_MOTIE for n in nieuw)
         logger.info(
             "Spreekbeurt van %s: %d vragen, %d moties, %d herhaald",
             _hhmm(beurt.start),
-            len(ids) - moties,
+            vragen,
             moties,
             len(herhaald),
         )
@@ -1098,24 +1113,26 @@ class DebatVraagService:
         return ""
 
     async def _eerder_beoordeeld(
-        self, sessie_id: uuid.UUID, sleutel: str
+        self, sessie_id: uuid.UUID, sleutel: str, *, door_model: bool = False
     ) -> tuple[uuid.UUID, ...] | None:
         """The markeringen of a turn that was stored before, or ``None``.
 
         A turn that held nothing is not stored, so it is ``None`` here and
         is read again. That costs a call and changes nothing.
+
+        With `door_model` only what an answer of the model left behind
+        counts: a question, or a question asked again. A turn of which only
+        the moties are stored was not read by the model yet, or held no
+        question when it was; either way it is ``None`` and is read again.
         """
+        stmt = select(DebatMarkering.id).where(
+            DebatMarkering.sessie_id == sessie_id,
+            DebatMarkering.beurt_sleutel == sleutel,
+        )
+        if door_model:
+            stmt = stmt.where(DebatMarkering.soort != SOORT_MOTIE)
         ids = (
-            (
-                await self.session.execute(
-                    select(DebatMarkering.id)
-                    .where(
-                        DebatMarkering.sessie_id == sessie_id,
-                        DebatMarkering.beurt_sleutel == sleutel,
-                    )
-                    .order_by(DebatMarkering.volgnummer)
-                )
-            )
+            (await self.session.execute(stmt.order_by(DebatMarkering.volgnummer)))
             .scalars()
             .all()
         )
@@ -1181,13 +1198,19 @@ class DebatVraagService:
         nieuw: list[_Nieuw],
         herhaald: list[_Herhaling],
         open_ids: dict[int, uuid.UUID],
-    ) -> tuple[uuid.UUID, ...] | None:
-        """Store what the model found in this turn, in one commit.
+    ) -> tuple[tuple[uuid.UUID, ...], int, int] | None:
+        """Store what was found in this turn, in one commit.
 
-        ``None`` if the turn was stored in the meantime, or the debate is
-        gone. The lock on the sessie makes two calls for the same debate
-        take turns here: the second sees what the first stored, and the
-        numbers are handed out once.
+        ``None`` if the answer of the model for this turn was stored in the
+        meantime, or the debate is gone. The lock on the sessie makes two
+        calls for the same debate take turns here: the second sees what the
+        first stored, and the numbers are handed out once.
+
+        A motie of this turn that is there already is not stored again: the
+        moties of a turn can be stored before its questions, when the model
+        could not be asked. Returns the markeringen of the turn that are
+        new or were moties already, and how many questions and moties were
+        added.
         """
         locked = (
             await self.session.execute(
@@ -1199,9 +1222,27 @@ class DebatVraagService:
         if locked is None:
             await self.session.commit()
             return None
-        if await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel) is not None:
+        gelezen = await self._eerder_beoordeeld(
+            beurt.sessie_id, beurt.sleutel, door_model=True
+        )
+        if gelezen is not None:
             await self.session.commit()
             return None
+        er_al = {
+            citaat: id_
+            for id_, citaat in (
+                await self.session.execute(
+                    select(DebatMarkering.id, DebatMarkering.citaat)
+                    .where(
+                        DebatMarkering.sessie_id == beurt.sessie_id,
+                        DebatMarkering.beurt_sleutel == beurt.sleutel,
+                        DebatMarkering.soort == SOORT_MOTIE,
+                    )
+                    .order_by(DebatMarkering.volgnummer)
+                )
+            ).all()
+        }
+        nieuw = [n for n in nieuw if not (n.soort == SOORT_MOTIE and n.citaat in er_al)]
 
         hoogste = (
             await self.session.execute(
@@ -1257,7 +1298,8 @@ class DebatVraagService:
                 )
             )
         await self.session.commit()
-        return tuple(ids)
+        moties = sum(n.soort == SOORT_MOTIE for n in nieuw)
+        return (*er_al.values(), *ids), len(nieuw) - moties, moties
 
     async def _post_thread(self, markering_id: uuid.UUID) -> bool:
         """Post the thread of one markering, if it has none yet.
@@ -1445,9 +1487,21 @@ def _vraag_moment(beurt: Beurt, plek: int) -> datetime | None:
     return max(found, beurt.start) if found is not None else None
 
 
+# The bewindspersoon in the words of a transcript, also the ways it gets
+# them wrong: one s in "staatsecretaris", "minster", "bewindsman".
+_BEWINDSPERSOON_GEZEGD = re.compile(
+    r"mini?ster|staats*ecreta|kabinet|regering|bewinds|premier"
+)
+
+
 def _noemt_bewindspersoon(tekst: str) -> bool:
-    laag = tekst.lower()
-    return any(woord in laag for woord in _AAN_BEWINDSPERSOON)
+    """Whether a text names a bewindspersoon, misheard or not.
+
+    By title only. "Kan hij dat toezeggen" names nobody, and in a turn of
+    an initiatiefnemer or an interruption of a colleague "hij" is as often
+    someone else.
+    """
+    return bool(_BEWINDSPERSOON_GEZEGD.search(tekst.lower()))
 
 
 def _is_initiatiefnemer(beurt: Beurt, context: DebatContext) -> bool:
