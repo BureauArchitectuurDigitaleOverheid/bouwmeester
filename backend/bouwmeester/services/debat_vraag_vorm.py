@@ -72,8 +72,36 @@ _NOT_A_VERB = frozenset(
     "als dat omdat terwijl toen voordat nadat zodat of hoewel indien doordat"
     " sinds totdat zolang zodra nu aan van bij met voor door over naar tegen"
     " richting volgens namens tussen zonder ook juist zelfs alleen dan dus en"
-    " maar want ik dank".split()
+    " maar want ik dank verzoekt".split()
 )
+# A word that ends like a verb and is none, in front of "de" or "het".
+_NOT_A_VERB_EITHER = frozenset(
+    "niet het wat net echt eerst laat laten tot met tussen binnen buiten tegen"
+    " boven beneden omtrent gezien gegeven even misschien bovendien sindsdien"
+    " intussen ondertussen morgen gisteren mensen leden allen velen sommigen"
+    " eigen recht slecht".split()
+)
+# What a clause that opens with its verb goes on with when the subject is
+# not who is asked: "krijgen de gemeenten", "betekent dit dat".
+_DETERMINERS = frozenset("de het dit dat deze die er een".split())
+# A preposition in front of a question word: "op welke termijn", "per
+# wanneer", "met welke partijen".
+_PREPOSITIONS = frozenset(
+    "op per met in voor tot van aan uit over naar bij binnen onder door tegen"
+    " sinds vanaf om".split()
+)
+# A clause that opens with one of these comes first, and the question
+# behind it without a comma in the transcript: "als dat zo is trekt de
+# minister het voorstel dan in".
+_CONDITIONS = frozenset("als indien nu stel".split())
+# With one of these in front of who is asked it is a call, not a question:
+# "dan moet de minister".
+_OBLIGATION = frozenset("moet moeten hoort horen dient dienen behoort".split())
+# Who is spoken to, in front of the question: "minister wanneer komt".
+# The bewindspersoon as "he" or "she" behind the verb. Not "wij": "als
+# dat zo is zijn wij tevreden" asks nothing.
+_SPOKEN_OF = frozenset("hij zij u".split())
+_VOCATIVES = frozenset("minister staatssecretaris".split())
 # "Hoe meer stallingen, hoe minder fietsen op straat" compares and asks
 # nothing.
 _COMPARATIVES = frozenset(
@@ -94,6 +122,22 @@ _REQUEST = re.compile(
     r" ?(?:dan |daar |ook |wel )?graag\b"
     r"|\bgraag (?:\w+ ){0,3}(?:horen|weten|vernemen|ontvangen)\b"
     r"|\bgraag (?:hoor|verneem|ontvang|weet) (?:ik|wij|we)\b"
+    # "daar hoor ik de minister graag over"
+    r"|\bhoor (?:ik|wij|we) (?:\w+ ){0,4}graag\b"
+    # "ik wil weten of", "ik zou de minister willen vragen om"
+    r"|\b(?:wil|wou|zou|willen|zouden) (?:\w+ ){0,6}"
+    r"(?:vragen|weten|horen|verzoeken)\b"
+    # "daar wil ik een reactie op", "een reactie van de minister graag"
+    r"|\b(?:wil|graag|krijg|hoor|vraag)(?: \w+){0,6} reactie\b"
+    r"|\breactie(?: \w+){0,5} graag\b"
+    r"|\b(?:wil|graag|vraag|verwacht)(?: \w+){0,5} toezegging\b"
+    # "ik roep de minister op om met een plan te komen". A call by the
+    # codebook, and left to the model: it asks for something by name.
+    rf"|\b(?:roep|roepen) (?:\w+ ){{0,2}}{_WHO} (?:\w+ ){{0,2}}op\b"
+    # "misschien kan de minister daar iets over zeggen": the verb in front
+    # of who is asked, wherever in the clause.
+    r"|\b(?:kan|kunnen|wil|willen|zou|zouden|zal|zullen)"
+    rf" (?:de|het|deze|dit) {_WHO}\b"
     r"|\bbenieuwd\b"
     r"|\btoe ?(?:te )?zeggen\b|\btoezeggen\b"
     # "kan de minister dit nader toelichten", with the start of the clause
@@ -107,6 +151,8 @@ _REQUEST = re.compile(
     rf"|\b{_WHO} het (?:\w+ ){{0,3}}eens\b"
 )
 _CLAUSE_END = re.compile(r"\.\.\.|[.!?…:;,]")
+# Not the three dots: those are a subtitle line that runs on.
+_SENTENCE_END = re.compile(r"(?<!\.)[.!?](?!\.)|…")
 # Words a sentence starts with before it gets to the point.
 _LEAD_IN = frozenset("en maar dus want of nou ja nee voorzitter kijk".split())
 
@@ -116,6 +162,15 @@ def words(text: str) -> list[str]:
     flat = unicodedata.normalize("NFKD", text.lower())
     flat = "".join(c for c in flat if not unicodedata.combining(c))
     return re.findall(r"[a-z0-9]+", flat)
+
+
+def _clauses(quote: str) -> list[tuple[str, bool]]:
+    """The clauses of a quote, each with whether a sentence begins there."""
+    found: list[tuple[str, bool]] = []
+    for sentence in _SENTENCE_END.split(quote):
+        for i, clause in enumerate(_CLAUSE_END.split(sentence)):
+            found.append((clause, i == 0))
+    return found
 
 
 def _is_asked(tokens: list[str], at: int) -> bool:
@@ -154,21 +209,37 @@ def has_question_form(quote: str) -> bool:
         return True
     if _REQUEST.search(" ".join(words(quote))):
         return True
-    for clause in _CLAUSE_END.split(quote):
+    for clause, first in _clauses(quote):
         tokens = words(clause)
         while tokens and tokens[0] in _LEAD_IN:
             tokens = tokens[1:]
         # "aan de minister: wil hij ..." names who is asked first.
         if tokens[:1] == ["aan"] and tuple(tokens[1:3]) in _ADDRESSED:
             tokens = tokens[3:]
+        while tokens and tokens[0] in _VOCATIVES:
+            tokens = tokens[1:]
         if not tokens:
             continue
         if tokens[0] in _QUESTION_WORDS and not _is_statement_opening(tokens):
+            return True
+        if (
+            tokens[0] in _PREPOSITIONS
+            and tokens[1:2]
+            and (
+                tokens[1] in _QUESTION_WORDS and tokens[1] not in ("wat", "waar", "hoe")
+            )
+        ):
+            return True
+        # Only where a sentence begins. Behind a comma the verb comes
+        # first in a statement too: "omdat het kabinet niets deed, zitten
+        # de gemeenten met de kosten".
+        if first and (_opens_with_a_verb(tokens) or _asks_behind_a_condition(tokens)):
             return True
         if tokens[0] in _OPENING_VERBS:
             return True
         if (
             tokens[0] not in _NOT_A_VERB
+            and tokens[0] not in _NOT_A_VERB_EITHER
             and tokens[0] not in _QUESTION_WORDS
             and tokens[0] not in _RELATIVE_WORDS
             and _is_asked(tokens, 1)
@@ -200,3 +271,37 @@ def _is_statement_opening(tokens: list[str]) -> bool:
         # "Wat voor ons de inzet is", against "Wat voor maatregelen neemt".
         return tokens[2] in _AFTER_VOOR
     return tokens[1] in _SUBJECT_STARTS
+
+
+def _opens_with_a_verb(tokens: list[str]) -> bool:
+    """Whether a clause opens with a verb and then a subject nobody listed.
+
+    "Krijgen de gemeenten daar geld voor", "betekent dit dat de regeling
+    stopt". A Dutch statement does not open with its verb, so the order is
+    the question. What a verb is, is guessed from how the word ends; a
+    wrong guess lets a statement through, which the model had marked.
+    """
+    if len(tokens) < 3 or tokens[1] not in _DETERMINERS:
+        return False
+    first = tokens[0]
+    if first in _NOT_A_VERB or first in _NOT_A_VERB_EITHER or first in _OBLIGATION:
+        return False
+    if first in _QUESTION_WORDS or first in _RELATIVE_WORDS:
+        return False
+    return len(first) > 3 and first.endswith(("t", "en"))
+
+
+def _asks_behind_a_condition(tokens: list[str]) -> bool:
+    """Whether a clause that opens with a condition goes on to ask.
+
+    "Als dat zo is trekt de minister het voorstel dan in": the transcript
+    has no comma where the question begins.
+    """
+    if tokens[0] not in _CONDITIONS:
+        return False
+    return any(
+        (tuple(tokens[i + 1 : i + 3]) in _ADDRESSED or tokens[i + 1] in _SPOKEN_OF)
+        and tokens[i] not in _NOT_A_VERB
+        and tokens[i] not in _OBLIGATION
+        for i in range(2, len(tokens) - 1)
+    )

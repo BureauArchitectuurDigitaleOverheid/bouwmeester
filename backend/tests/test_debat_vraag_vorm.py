@@ -92,6 +92,64 @@ class TestAQuestion:
         assert has_question_form("HOE GAAT DE MINISTER DAT BETALEN")
 
 
+class TestWithoutAQuestionMark:
+    """Forms a first version of the check dropped when the mark was missing."""
+
+    @pytest.mark.parametrize(
+        "quote",
+        [
+            # A preposition in front of the question word.
+            "op welke termijn kunnen wij dat verwachten",
+            "per wanneer gaat dat in",
+            "met welke partijen heeft de minister gesproken",
+            # Indirect.
+            "ik wil weten of de minister bereid is",
+            "ik wil de minister vragen of hij dat herkent",
+            "ik zou de minister willen vragen om daarop in te gaan",
+            "daar wil ik een reactie op",
+            "een reactie van de minister graag",
+            "daar hoor ik de minister graag over",
+            # A request.
+            "ik roep de minister op om met een plan te komen",
+            "ik wil een toezegging van de minister",
+            # A condition first, and no comma where the question begins.
+            "als dat zo is trekt de minister het voorstel dan in",
+            # Who is spoken to first.
+            "minister wanneer komt die brief",
+            "voorzitter staatssecretaris hoe gaat dat verder",
+            # A verb and a subject that is nobody at the table.
+            "krijgen de gemeenten daar geld voor",
+            "betekent dit dat de regeling stopt",
+            "misschien kan de minister daar iets over zeggen",
+        ],
+    )
+    def test_these_are_questions(self, quote):
+        assert has_question_form(quote)
+
+    @pytest.mark.parametrize(
+        "quote",
+        [
+            # Behind a comma the verb comes first in a statement too.
+            "Omdat het kabinet niets deed, zitten de gemeenten nu met de kosten.",
+            "Toen dat bleek, kregen de gemeenten de rekening.",
+            # A condition and then a conclusion or a call, not a question.
+            "Als de minister dat doet zijn wij tevreden.",
+            "Als dat zo is moet de minister het voorstel intrekken.",
+            # Words that end like a verb in front of "de".
+            "Tussen de regels door lees ik twijfel.",
+            "Niet de minister maar de Kamer beslist.",
+            "Binnen het kabinet is daar geen steun voor.",
+            # A dictum is not a question to the cabinet.
+            "verzoekt de regering om een plan te maken",
+            "De motie verzoekt de regering om een plan te maken.",
+            # The reaction of someone, as a fact.
+            "De reactie van het kabinet was teleurstellend.",
+        ],
+    )
+    def test_these_are_still_statements(self, quote):
+        assert not has_question_form(quote)
+
+
 class TestAStatement:
     @pytest.mark.parametrize(
         "quote",
