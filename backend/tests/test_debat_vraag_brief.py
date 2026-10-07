@@ -49,6 +49,7 @@ from bouwmeester.services.debat_vraag_service import (
     MAX_TOEGEZEGD,
     UITKOMST_GEMARKEERD,
     DebatVraagService,
+    _Herhaling,
     format_thread,
     format_vraag_thread,
     lees_antwoord,
@@ -360,6 +361,20 @@ class TestLeesAntwoord:
         (een,), _, afgevallen = lees_antwoord([_vraag(citaat)], citaat, [], set())
         assert (een.vraagt_om, afgevallen) == (PRODUCT_BRIEF, 0)
 
+    def test_a_question_asked_again_carries_what_it_asks_for_now(self):
+        _, (again,), _ = lees_antwoord(
+            [_vraag(Q_OVERZICHT, hoort_bij=4)], Q_OVERZICHT, [], {4}
+        )
+        assert (again.volgnummer, again.vraagt_om, again.termijn) == (
+            4,
+            PRODUCT_OVERZICHT,
+            "voor de begrotingsbehandeling",
+        )
+        _, (plain,), _ = lees_antwoord(
+            [_vraag(Q_GEWOON, hoort_bij=4)], Q_GEWOON, [], {4}
+        )
+        assert (plain.vraagt_om, plain.termijn) == (None, None)
+
     def test_a_statement_about_a_letter_is_still_dropped(self):
         citaat = "In de brief van vorige week staat dat de proef is verlengd."
         assert lees_antwoord([_vraag(citaat)], citaat, [], set()) == ([], [], 1)
@@ -622,6 +637,98 @@ class TestOpDeRijEnInDeDraad:
         )
         await h._ronde(db_session, mm)
         assert mm.messages[request.thread_post_id] == open_tekst
+
+
+class TestOpnieuwGevraagdEnNuOpPapier:
+    AGAIN = (
+        "Ik heb daar geen antwoord op gekregen. Kan de minister dat overzicht dan"
+        " vóór het kerstreces naar de Kamer sturen?"
+    )
+
+    async def _asked_again(self, db_session, mm, first: str, again: str):
+        sessie_id, _, _ = await _asked(db_session, mm, first)
+        raw = {**VRAAGT, "tekst": f"Voorzitter. {again}"}
+        _, result = await _judge(
+            db_session,
+            mm,
+            sessie_id,
+            raw,
+            antwoord(vraag(again, hoort_bij=1)),
+        )
+        return sessie_id, result
+
+    async def test_the_question_asks_for_it_from_then_on(self, db_session):
+        h = status_helpers
+        mm = h.FakeMattermost()
+        plain = "Kan de minister zeggen hoe de bezetting per provincie is?"
+        sessie_id, result = await self._asked_again(db_session, mm, plain, self.AGAIN)
+
+        assert result.herhaald == (1,)
+        (question,) = await _rows(db_session, sessie_id)
+        assert (question.vraagt_om, question.termijn) == (
+            PRODUCT_OVERZICHT,
+            "voor het kerstreces",
+        )
+        assert question.status == STATUS_OPEN
+        assert "✉️" not in mm.messages[question.thread_post_id]
+
+        await h._ronde(db_session, mm)
+        assert _meta(mm.messages[question.thread_post_id]).startswith(
+            "Vraag 1 · ✉️ een overzicht voor het kerstreces · aan de minister · "
+        )
+
+    async def test_what_it_asked_for_first_stays(self, db_session):
+        mm = status_helpers.FakeMattermost()
+        sessie_id, _ = await self._asked_again(
+            db_session, mm, Q_OVERZICHT, "Kan de minister daar een brief over sturen?"
+        )
+        (question,) = await _rows(db_session, sessie_id)
+        assert (question.vraagt_om, question.termijn) == (
+            PRODUCT_OVERZICHT,
+            "voor de begrotingsbehandeling",
+        )
+        assert question.reacties_gewijzigd_at is None
+
+    async def test_asked_again_without_paper_changes_nothing(self, db_session):
+        mm = status_helpers.FakeMattermost()
+        plain = "Kan de minister zeggen hoe de bezetting per provincie is?"
+        sessie_id, result = await self._asked_again(
+            db_session, mm, plain, "Kan de minister daar alsnog op ingaan?"
+        )
+        assert result.herhaald == (1,)
+        (question,) = await _rows(db_session, sessie_id)
+        assert (question.vraagt_om, question.termijn) == (None, None)
+        assert question.reacties_gewijzigd_at is None
+
+    async def test_a_toezegging_keeps_its_own_moment(self, db_session):
+        # The same column holds by when a toezegging was promised; a
+        # question asked again never writes there.
+        h = status_helpers
+        mm = h.FakeMattermost()
+        sessie_id = await h._sessie(db_session)
+        promise = await h._markering(
+            db_session,
+            mm,
+            sessie_id,
+            1,
+            soort=SOORT_TOEZEGGING,
+            citaat=T_BRIEF,
+            termijn="in mei",
+        )
+        service = DebatVraagService(db_session, mm, FakeLLM())
+        beurt = _beurt(sessie_id, VRAAGT, mm.post("post", h.TURN))
+        await service._leg_vast(
+            beurt,
+            [],
+            [
+                _Herhaling(
+                    1, self.AGAIN, termijn="voor de zomer", vraagt_om=PRODUCT_BRIEF
+                )
+            ],
+            {1: promise.id},
+        )
+        row = await h._lees(db_session, promise.id)
+        assert (row.vraagt_om, row.termijn) == (None, "in mei")
 
 
 class TestEenVerzoekDatWordtToegezegd:

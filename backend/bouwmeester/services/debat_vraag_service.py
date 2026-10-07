@@ -992,6 +992,9 @@ class _Herhaling:
     # Of a toezegging read out by the chairman: who it was promised to, if
     # the chairman said so.
     aan: str | None = None
+    # Of a question asked again: what it asks for on paper this time, if
+    # anything. `termijn` is then by when.
+    vraagt_om: str | None = None
 
 
 def _woorden(tekst: str) -> list[str]:
@@ -1056,7 +1059,11 @@ def lees_antwoord(
 
     A question that is kept is looked at once more, by rule: whether it
     asks for something on paper, and by when (`paper_request`). That adds
-    a property to the question and never drops or adds one.
+    a property to the question and never drops or adds one. A question
+    that is asked again carries it too: "dan wil ik daar een brief over"
+    is how a member comes back to a question that got no answer, and the
+    model files that under the question that is open. In the first run on
+    the gold set that was one of the two requests that were missed.
     """
     nieuw: list[_Nieuw] = []
     herhaald: list[_Herhaling] = []
@@ -1087,16 +1094,26 @@ def lees_antwoord(
             afgevallen += 1
             logger.info("Citaat valt af als vraag, %s: %s", waarom, citaat[:120])
             continue
+        op_papier = paper_request(citaat)
+        vraagt_om = op_papier.product if op_papier else None
+        termijn = (
+            _kort(op_papier.moment, MAX_TERMIJN)
+            if op_papier and op_papier.moment
+            else None
+        )
         if vraag.hoort_bij is not None and vraag.hoort_bij in openstaand:
             if all(h.volgnummer != vraag.hoort_bij for h in herhaald):
-                herhaald.append(_Herhaling(vraag.hoort_bij, citaat))
+                herhaald.append(
+                    _Herhaling(
+                        vraag.hoort_bij, citaat, termijn=termijn, vraagt_om=vraagt_om
+                    )
+                )
             continue
         stuk = None
         if vraag.stuk is not None and 1 <= vraag.stuk <= len(stukken):
             titel = stukken[vraag.stuk - 1]
             if stuk_blijkt_uit_citaat(citaat, titel, onderwerp):
                 stuk = titel
-        op_papier = paper_request(citaat)
         nieuw.append(
             _Nieuw(
                 citaat=citaat,
@@ -1104,12 +1121,8 @@ def lees_antwoord(
                 samenvatting=_kort(vraag.samenvatting, MAX_SAMENVATTING),
                 stuk=stuk,
                 plek=plek,
-                vraagt_om=op_papier.product if op_papier else None,
-                termijn=(
-                    _kort(op_papier.moment, MAX_TERMIJN)
-                    if op_papier and op_papier.moment
-                    else None
-                ),
+                vraagt_om=vraagt_om,
+                termijn=termijn,
             )
         )
     return nieuw, herhaald, afgevallen
@@ -2411,6 +2424,25 @@ class DebatVraagService:
                     moment_url=beurt.moment_url,
                 )
             )
+            if herhaling.vraagt_om and herhaling.soort == VERMELDING_HERHALING:
+                # A question that is asked again, now for something on
+                # paper: the question asks for it from here on. Only when
+                # it asked for nothing before; what it asked for first
+                # stays. Marked the way a reaction marks it, so that the
+                # round of the reactions writes its reply again.
+                await self.session.execute(
+                    update(DebatMarkering)
+                    .where(
+                        DebatMarkering.id == open_ids[herhaling.volgnummer],
+                        DebatMarkering.soort == SOORT_VRAAG,
+                        DebatMarkering.vraagt_om.is_(None),
+                    )
+                    .values(
+                        vraagt_om=herhaling.vraagt_om,
+                        termijn=herhaling.termijn,
+                        reacties_gewijzigd_at=datetime.now(UTC),
+                    )
+                )
             if herhaling.termijn and herhaling.soort == VERMELDING_HERHALING:
                 # A toezegging that is made more precise: the first time
                 # without a moment, now with one. The row gets it, and is

@@ -43,6 +43,7 @@ from bouwmeester.services.debat_slotlijst import (
     Spoken,
     find_closing_list,
 )
+from bouwmeester.services.debat_vraag_brief import paper_request
 from bouwmeester.services.debat_vraag_service import (
     SOORT_CHAIRMAN,
     Beurt,
@@ -526,10 +527,21 @@ async def run_debate(
                 ).all()
             ]
             marked += [
-                {"soort": row[0], "citaat": row[1], "herhaling": True}
+                {
+                    "soort": row[0],
+                    "citaat": row[1],
+                    "herhaling": True,
+                    # A question asked again, this time for something on
+                    # paper: the question carries it because of this turn.
+                    "vraagt_om": row[2] if paper_request(row[1]) else None,
+                }
                 for row in (
                     await session.execute(
-                        select(DebatMarkering.soort, DebatMarkeringVermelding.citaat)
+                        select(
+                            DebatMarkering.soort,
+                            DebatMarkeringVermelding.citaat,
+                            DebatMarkering.vraagt_om,
+                        )
                         .join(
                             DebatMarkering,
                             DebatMarkering.id == DebatMarkeringVermelding.markering_id,

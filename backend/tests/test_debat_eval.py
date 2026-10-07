@@ -267,13 +267,17 @@ class TestScore:
         )["verzoek_om_brief"]
         assert (result.marked, result.found) == (0, 0)
 
-    def test_a_question_asked_again_is_no_request(self):
-        # A vermelding carries no property: it is the same question again.
-        result = score(
+    def test_a_question_asked_again_is_a_request_when_it_asks_for_paper(self):
+        again = score(
             [marking(self.LETTER, herhaling=True)],
             [item(self.LETTER, soort="verzoek_om_brief")],
         )["verzoek_om_brief"]
-        assert (result.marked, result.found) == (0, 0)
+        assert (again.marked, again.found) == (0, 0)
+        on_paper = score(
+            [marking(self.LETTER, herhaling=True, vraagt_om="een brief")],
+            [item(self.LETTER, soort="verzoek_om_brief")],
+        )["verzoek_om_brief"]
+        assert (on_paper.marked, on_paper.found, on_paper.right) == (1, 1, 1)
 
     def test_why_a_question_was_missed(self):
         run = {
