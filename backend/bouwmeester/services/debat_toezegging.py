@@ -197,7 +197,6 @@ _STRONG_CUES: tuple[re.Pattern[str], ...] = tuple(
         rf"\b{_KAMER} (?:wordt|worden) {_LONG_GAP}(?:geinformeerd|bericht|ingelicht)\b",
         rf"\b(?:wordt|worden) {_KAMER} {_LONG_GAP}(?:geinformeerd|bericht|ingelicht)\b",
         rf"\b(?:er (?:komt|volgt)|(?:komt|volgt) er) (?:\w+ ){{0,3}}{_BROUGHT}\b",
-        rf"\btoezegging (?:doe|doen) {_I}\b",
     )
 )
 # Every way a commitment is worded.

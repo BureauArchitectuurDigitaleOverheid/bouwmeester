@@ -384,6 +384,16 @@ class TestDeVormVanEenToezegging:
     def test_a_wording_does_not_reach_over_a_full_stop(self):
         assert not has_commitment_form("Daar kom ik vandaan. Terug naar het geld.")
         assert not has_commitment_form("Zo doen. We zijn er bijna.")
+        assert has_commitment_form("Ik neem dat mee naar het overleg.")
+        assert not has_commitment_form("Ik neem dat aan. Mee naar het overleg hoeft.")
+
+    def test_a_refusal_behind_maar_is_not_of_the_wording_in_front_of_it(self):
+        assert has_commitment_form(
+            "ik stuur de kamer een brief maar meer kan ik niet doen"
+        )
+
+    def test_the_dots_of_a_line_that_runs_on_do_not_end_a_clause(self):
+        assert not has_commitment_form("Ik stuur de Kamer... daarover geen brief.")
 
     def test_a_negation_in_the_next_sentence_refuses_nothing(self):
         assert has_commitment_form(
@@ -1846,6 +1856,21 @@ class TestVensters:
             # No last window of a sentence or two.
             assert len(vensters) == 1 or min(nieuw) >= service_mod.MIN_STAART
 
+    def test_a_long_sentence_in_front_is_not_a_reason_to_go_far_back(self):
+        lang = "dat is zo " * 70 + "en niet anders. "
+        assert len(lang) > service_mod.MAX_OVERLAP
+        tekst = f"{vul(3)}{lang}{T_BRIEF} {vul(20)}"
+        vanaf = tekst.index(T_BRIEF)
+        assert answer_window(tekst, vanaf)[0] == vanaf
+
+    def test_a_tail_of_a_few_sentences_goes_into_the_window_before_it(self):
+        tekst = vul(68).strip()
+        assert service_mod.ANTWOORD_VENSTER < len(tekst)
+        assert len(tekst) < service_mod.ANTWOORD_VENSTER + service_mod.MIN_STAART
+        assert answer_window(tekst, 0) == (0, len(tekst))
+        langer = vul(80).strip()
+        assert answer_window(langer, 0)[1] < len(langer)
+
     def test_the_same_text_gives_the_same_windows(self):
         assert _windows(LANG_MET_GAT) == _windows(LANG_MET_GAT)
 
@@ -1882,6 +1907,9 @@ class TestVensters:
         assert skip_window(LANG, 0) == eerste[2]
         assert skip_window(LANG, eerste[2]) == len(LANG)
         assert skip_window(LANG, len(LANG)) == len(LANG)
+
+
+BELOOFD_UITZOEKEN = "Laat de besteding uitzoeken en meldt dat in het voorjaar."
 
 
 class TestEenLangAntwoord:
@@ -1971,6 +1999,64 @@ class TestEenLangAntwoord:
         assert len(llm.prompts) == 2
         assert (second.meer, second.gelezen_tot) == (False, len(LANG_MET_GAT))
         assert len(await _rows(db_session, sessie_id)) == 2
+
+    async def test_with_nothing_left_to_ask_the_answer_is_read_to_its_end(
+        self, db_session
+    ):
+        tekst = f"{T_BRIEF} {vul(150)}".strip()
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        only = await self._call(
+            db_session,
+            sessie_id,
+            mm,
+            mm.turn(),
+            tekst,
+            FakeLLM(toegezegd(toezegging(T_BRIEF))),
+        )
+        assert (only.meer, only.gelezen_tot) == (False, len(tekst))
+
+    @pytest.mark.parametrize(
+        "opnieuw",
+        [
+            toezegging(T_UITZOEKEN, samenvatting=BELOOFD_UITZOEKEN, hoort_bij=2),
+            toezegging(T_UITZOEKEN, samenvatting=BELOOFD_UITZOEKEN, bij_vraag=1),
+        ],
+    )
+    async def test_what_two_windows_share_is_not_said_again_and_not_linked_again(
+        self, db_session, opnieuw
+    ):
+        """The second window sees a sentence of the first once more. What
+        the model then says about it changes nothing."""
+        tekst = f"{vul(61)}{T_UITZOEKEN} {VULZIN}{vul(40)}{T_BRIEF}".strip()
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        vraag_citaat = "Kan de minister de besteding laten uitzoeken?"
+        await _judge(
+            db_session,
+            {
+                **VRAAGT,
+                "tekst": f"Voorzitter, dank u wel voor het woord. {vraag_citaat}",
+            },
+            antwoord(vraag(vraag_citaat, samenvatting="Besteding uitzoeken?")),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        post_id = mm.turn()
+        beloofd = BELOOFD_UITZOEKEN
+        llm = FakeLLM(
+            toegezegd(toezegging(T_UITZOEKEN, samenvatting=beloofd)),
+            toegezegd(opnieuw),
+        )
+        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        assert T_UITZOEKEN in tekst[: first.gelezen_tot]
+        await self._call(
+            db_session, sessie_id, mm, post_id, tekst, llm, first.gelezen_tot
+        )
+
+        assert T_UITZOEKEN in llm.prompts[1].split("<spreekbeurt>")[1]
+        rows = await _rows(db_session, sessie_id)
+        assert [r.soort for r in rows] == [SOORT_VRAAG, SOORT_TOEZEGGING]
+        assert rows[1].bij_volgnummer is None
+        assert await _vermeldingen(db_session, sessie_id) == []
 
     async def test_a_window_that_fails_keeps_the_windows_before_it(self, db_session):
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
@@ -2809,6 +2895,26 @@ class TestEenTraagOfLangAntwoord:
         # The rest follows in the rounds after, oldest first.
         await w._tick(db_session, mm, llm, 715)
         assert len(llm.asked) == len(answers)
+
+    async def test_an_answer_that_fails_does_not_stop_the_answer_after_it(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+        mm = w.Chat()
+        llm = PerKind(RuntimeError("weg"), toegezegd(toezegging(self.KORT)))
+        s = await w._running(db_session)
+        een = await w._row(db_session, s, "speaker", 60, "m", tekst=self.KORT)
+        twee = await w._row(db_session, s, "speaker", 90, "m", tekst=self.KORT)
+        await w._row(db_session, s, "debate_end", 200)
+        w._in_channel(mm, een, twee)
+
+        result = await w._tick(db_session, mm, llm)
+
+        assert (result.fouten, result.beoordeeld, result.toezeggingen) == (1, 1, 1)
+        assert await w._at(db_session, een) is None
+        assert await w._at(db_session, twee) is not None
 
     async def test_one_long_answer_does_not_take_more_than_the_limit_either(
         self, db_session, monkeypatch, handed
