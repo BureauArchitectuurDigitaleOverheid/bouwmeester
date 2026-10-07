@@ -1020,7 +1020,8 @@ class TestTranscript:
         await _play(db_session, mm, feed, 6, start=5.2)
 
         assert mm.messages[end.post_id].endswith(
-            "\nVoorzitter: Ik sluit de vergadering.\n\n---\n🤝 1 toezegging · **open**"
+            "\nVoorzitter: Ik sluit de vergadering.\n\n---\n"
+            "🤝 1 toezegging · 🔴 **open**"
         )
 
     async def test_what_a_member_said_last_is_not_the_chairmans(

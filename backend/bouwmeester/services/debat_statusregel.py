@@ -77,16 +77,11 @@ _STATUS_LABEL: dict[str, str] = {
     STATUS_BEANTWOORD: "beantwoord",
     STATUS_VERVALT: "hoeft geen antwoord",
 }
-# The sign in front of a status, the one of the reaction that sets it, so
-# that the block and the replies under it read the same. An open one has
-# none: it is shown bold instead, because open is what someone scrolling
-# through the channel is looking for.
-_STATUS_ICOON: dict[str, str] = {
-    STATUS_TOEGEWEZEN: "👀",
-    STATUS_ANTWOORD_KLAAR: "📝",
-    STATUS_BEANTWOORD: "✅",
-    STATUS_VERVALT: "🚫",
-}
+# In front of what is still open, and of nothing else. Someone scrolling
+# through the channel looks for what is open; a sign on every status made
+# the done ones as loud as the open ones, and coloured emoji are louder
+# than bold.
+ICOON_OPEN = "🔴"
 # The words of a status that differ for a soort. A motie is not answered:
 # it gets an oordeel. A toezegging is not answered either: it is kept.
 _STATUS_LABEL_PER_SOORT: dict[str, dict[str, str]] = {
@@ -145,15 +140,15 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
 
     Each item is (soort, status). One line per soort:
 
-        ❓ 1 vraag · **open**
-        ❓ 3 vragen · **2 open** · ✅ 1 beantwoord
-        ❓ 2 vragen · 👀 1 opgepakt · ✅ 1 beantwoord
-        📜 1 motie · ✅ oordeel gegeven
-        🤝 1 toezegging · **open**
+        ❓ 1 vraag · 🔴 **open**
+        ❓ 3 vragen · 🔴 **2 open** · 1 beantwoord
+        ❓ 2 vragen · 1 opgepakt · 1 beantwoord
+        📜 1 motie · oordeel gegeven
+        🤝 1 toezegging · 🔴 **open**
 
-    Made to be read while scrolling: what is still open is bold, and
-    everything else carries the sign of the reaction that made it so. A
-    line without bold needs nobody.
+    Made to be read while scrolling: what is still open has a red dot and
+    is bold, everything else is plain words. A line without a dot needs
+    nobody.
 
     Short, because it stands under every message with a question in it. A
     block in the channel that still has the words of before is written
@@ -193,6 +188,5 @@ def _stand(status: str, woord: str, aantal: int | None) -> str:
     markering of the soort has this status."""
     tekst = woord if aantal is None else f"{aantal} {woord}"
     if status == STATUS_OPEN:
-        return f"**{tekst}**"
-    icoon = _STATUS_ICOON.get(status)
-    return f"{icoon} {tekst}" if icoon else tekst
+        return f"{ICOON_OPEN} **{tekst}**"
+    return tekst
