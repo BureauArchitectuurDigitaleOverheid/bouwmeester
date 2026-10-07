@@ -8,14 +8,16 @@ records, creates suggested edges, and sends notifications.
 import logging
 import uuid
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
 from bouwmeester.models.corpus_node import CorpusNode
+from bouwmeester.models.import_watermerk import ImportWatermerk
 from bouwmeester.models.nieuwsbron import Nieuwsbron
 from bouwmeester.models.parlementair_item import ParlementairItem, SuggestedEdge
 from bouwmeester.models.person import Person
@@ -35,6 +37,8 @@ from bouwmeester.repositories.signaalcontext import (
 )
 from bouwmeester.repositories.tag import TagRepository
 from bouwmeester.schema.tag import TagCreate
+from bouwmeester.services.import_strategies import nieuws as nieuws_strategie
+from bouwmeester.services.import_strategies import tkconv as tkconv_strategie
 from bouwmeester.services.import_strategies.base import FetchedItem, ImportStrategy
 from bouwmeester.services.import_strategies.nieuws import NieuwsStrategy
 from bouwmeester.services.import_strategies.registry import get_strategy
@@ -45,6 +49,20 @@ from bouwmeester.services.tk_api_client import EersteKamerClient, TweedeKamerCli
 from bouwmeester.services.zoekterm_passage import knip_rond_termen
 
 logger = logging.getLogger(__name__)
+
+
+# How far back a strategy goes on after a restart at most. The search
+# feed of tkconv carries about a week.
+MAX_ACHTERSTAND = timedelta(days=7)
+
+
+def _watermerk_module(strategy: ImportStrategy):  # type: ignore[no-untyped-def]
+    """The module that holds the watermark of this strategy, if it has one."""
+    if isinstance(strategy, TkconvSearchStrategy):
+        return tkconv_strategie
+    if isinstance(strategy, NieuwsStrategy):
+        return nieuws_strategie
+    return None
 
 
 def _draagt_treffers(strategy: ImportStrategy) -> bool:
@@ -137,10 +155,75 @@ class ParlementairImportService:
                     logger.info("Geen actieve nieuwsbronnen, nieuws overgeslagen")
                     continue
 
+            await self._herstel_watermerk(strategy)
             count = await self._import_type(strategy)
+            await self._bewaar_watermerk(strategy)
             imported_count += count
 
         return imported_count
+
+    async def _herstel_watermerk(self, strategy: ImportStrategy) -> None:
+        """Let a strategy that follows a feed go on where it had got to.
+
+        After a restart the strategy has no watermark and would start at
+        "now": what appeared between the last round and the restart was
+        then never imported. Not further back than `MAX_ACHTERSTAND`: a
+        worker that was off for a month must not open with a month of
+        alerts. Nothing kept, or no database: the strategy starts at
+        "now", as it did.
+        """
+        module = _watermerk_module(strategy)
+        if module is None or module.huidig_watermerk() is not None:
+            return
+        try:
+            bewaard = await self.session.scalar(
+                select(ImportWatermerk.tijdstip).where(
+                    ImportWatermerk.bron == strategy.item_type
+                )
+            )
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Watermerk van %s niet te lezen", strategy.item_type)
+            return
+        if bewaard is None:
+            return
+        grens = datetime.now(UTC) - MAX_ACHTERSTAND
+        module.herstel_watermerk(max(bewaard, grens))
+        logger.info(
+            "%s gaat verder vanaf %s", strategy.item_type, module.huidig_watermerk()
+        )
+
+    async def _bewaar_watermerk(self, strategy: ImportStrategy) -> None:
+        """Keep where a strategy has got to, after its items were handled.
+
+        After, not before: a worker that dies halfway a round then starts
+        the round again, and what it had imported is recognised by its
+        document number. A failure to write costs nothing now; the next
+        round writes again.
+        """
+        module = _watermerk_module(strategy)
+        if module is None:
+            return
+        tijdstip = module.huidig_watermerk()
+        if tijdstip is None:
+            return
+        try:
+            stmt = insert(ImportWatermerk).values(
+                bron=strategy.item_type, tijdstip=tijdstip
+            )
+            await self.session.execute(
+                stmt.on_conflict_do_update(
+                    index_elements=[ImportWatermerk.bron],
+                    set_={"tijdstip": tijdstip, "updated_at": func.now()},
+                    # Never back: two workers during a deploy, the older
+                    # one writing last.
+                    where=ImportWatermerk.tijdstip < tijdstip,
+                )
+            )
+            await self.session.commit()
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Watermerk van %s niet bewaard", strategy.item_type)
 
     async def _actieve_nieuwsbronnen(self) -> list[Nieuwsbron]:
         """De feeds die nu gevolgd worden.

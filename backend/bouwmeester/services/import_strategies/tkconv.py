@@ -54,12 +54,12 @@ EERSTE_RONDE_IMPORTEERT = False
 # het moment waarop de ronde draait. De feature importeerde daardoor
 # structureel nul stukken.
 #
-# Procesgeheugen is hier de juiste levensduur. Na een herstart is het
-# watermerk weer "nu", dus een stuk dat precies tijdens die herstart
-# verscheen kan wegvallen. Dat is een bewuste afweging: de dedup op
-# documentnummer zit in de database, dus het alternatief (watermerk in de
-# database) koopt alleen dat ene randgeval af, en kost een schrijfactie per
-# ronde plus een migratie.
+# Het proces houdt het vast, en de import-service bewaart het na elke
+# ronde in de database (`herstel_watermerk`, `huidig_watermerk`). Alleen in
+# het geheugen was het na een herstart weer "nu", en viel weg wat tussen
+# de laatste ronde en de herstart verscheen. Dat gold als randgeval, tot
+# er op 6 en 7 oktober 2026 een keer of vijftien gedeployd werd, grotendeels
+# in kantooruren: toen miste de import stukken waar mensen op wachtten.
 _WATERMERK: datetime | None = None
 
 
@@ -67,6 +67,22 @@ def reset_watermerk() -> None:
     """Zet het watermerk terug. Voor tests, zodat die elkaar niet raken."""
     global _WATERMERK  # noqa: PLW0603
     _WATERMERK = None
+
+
+def huidig_watermerk() -> datetime | None:
+    """Where this process has got to, for whoever keeps it across restarts."""
+    return _WATERMERK
+
+
+def herstel_watermerk(tijdstip: datetime | None) -> None:
+    """Go on from where the process before this one had got to.
+
+    Only when this process has no watermark of its own yet: one that is
+    there is at least as new as what was kept.
+    """
+    global _WATERMERK  # noqa: PLW0603
+    if _WATERMERK is None and tijdstip is not None:
+        _WATERMERK = tijdstip
 
 
 class TkconvSearchStrategy(ImportStrategy):
