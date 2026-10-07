@@ -12,6 +12,7 @@ import copy
 import json
 import re
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,12 @@ from debat_eval.apply_labels import (  # noqa: E402
     cut_quote,
     parse_label,
 )
-from debat_eval.harness import OracleLLM, run_debate  # noqa: E402
+from debat_eval.harness import (  # noqa: E402
+    OracleLLM,
+    beurt_from,
+    interruption_before,
+    run_debate,
+)
 from debat_eval.report import (  # noqa: E402
     apply_check,
     build_report,
@@ -35,6 +41,7 @@ from debat_eval.report import (  # noqa: E402
 )
 from debat_eval.scoring import (  # noqa: E402
     REASON_DROPPED,
+    REASON_NOT_AN_ANSWER,
     REASON_NOT_FOUND,
     REASON_NOT_RUN,
     UNLABELLED,
@@ -470,8 +477,92 @@ class TestVariants:
         assert apply_check(markings, None) == (markings, [])
 
 
+class TestTheInterruptionBeforeAnAnswer:
+    """What the harness hands the service as the turn before, as the worker does."""
+
+    TURNS = FIXTURE["beurten"]
+
+    def _before(self, number: int) -> dict | None:
+        index = next(i for i, t in enumerate(self.TURNS) if t["nr"] == number)
+        return interruption_before(self.TURNS, index)
+
+    def test_the_interruption_of_a_member_right_before(self):
+        assert self._before(25)["nr"] == 24
+
+    def test_the_chairman_in_between_is_passed_over(self):
+        turns = [
+            {"soort": "interrupter", "fractie": "X", "nr": 1},
+            {"soort": "chairman", "fractie": None, "nr": 2},
+            {"soort": "speaker", "fractie": None, "nr": 3},
+        ]
+        assert interruption_before(turns, 2)["nr"] == 1
+
+    def test_a_term_before_is_no_interruption(self):
+        assert self._before(18) is None
+        assert self._before(1) is None
+
+    def test_only_an_answer_of_the_bewindspersoon_gets_it(self):
+        sessie_id = uuid.uuid4()
+        answer = beurt_from(self.TURNS[24], sessie_id, self.TURNS[23])
+        assert answer.is_bewindspersoon
+        assert answer.voorafgaand == "Kamerlid A (X)"
+        assert answer.voorafgaand_tekst == self.TURNS[23]["tekst"]
+        member = beurt_from(self.TURNS[23], sessie_id, self.TURNS[21])
+        assert (member.voorafgaand, member.voorafgaand_tekst) == (None, "")
+
+
 class TestTheProductionPathOnTheFixture:
     """`DebatVraagService` over the made-up debate, the model an oracle."""
+
+    async def test_a_toezegging_that_answers_a_question_is_not_a_second_question(
+        self, db_session
+    ):
+        """The link leaves a vermelding on the question. The harness keeps
+        it as a link, and does not count it as the question marked again."""
+        gevraagd = "Wie betaalt de rekening als een gemeente het geld niet heeft?"
+        assert gevraagd in FIXTURE["beurten"][1]["tekst"]
+
+        class Linking(OracleLLM):
+            async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
+                if gevraagd in prompt and '{"vragen"' in prompt:
+                    return json.dumps(
+                        {
+                            "vragen": [
+                                {
+                                    "citaat": gevraagd,
+                                    "gericht_aan": "de minister",
+                                    "samenvatting": "Rekening van een gemeente?",
+                                }
+                            ]
+                        }
+                    )
+                listed = re.search(r"(\d+)\. Kamerlid A \(X\): Rekening", prompt)
+                if listed and "laten uitzoeken" in prompt:
+                    return json.dumps(
+                        {
+                            "toezeggingen": [
+                                {
+                                    "citaat": "Ik zal dat laten uitzoeken en kom"
+                                    " daar in het voorjaar schriftelijk op terug.",
+                                    "samenvatting": "Zoekt uit wie de rekening van"
+                                    " een gemeente betaalt.",
+                                    "bij_vraag": int(listed.group(1)),
+                                }
+                            ]
+                        }
+                    )
+                return await super()._complete(prompt, max_tokens)
+
+        block = await run_debate(
+            db_session, Linking(FIXTURE), FIXTURE, "synthetisch", max_turns=18
+        )
+        outcomes = {turn["nr"]: turn for turn in block["beurten"]}
+        (vraag,) = outcomes[2]["gemarkeerd"]
+        (toezegging,) = outcomes[18]["gemarkeerd"]
+        assert (toezegging["soort"], toezegging["herhaling"]) == ("toezegging", False)
+        assert toezegging["bij_volgnummer"] == vraag["volgnummer"]
+        assert toezegging["gericht_aan"] == "Kamerlid A (X)"
+        assert outcomes[18]["ruw"][0]["bij_vraag"] == vraag["volgnummer"]
 
     async def test_the_code_marks_what_the_oracle_says_and_cleans_up(self, db_session):
         block = await run_debate(db_session, OracleLLM(FIXTURE), FIXTURE, "synthetisch")
@@ -481,10 +572,9 @@ class TestTheProductionPathOnTheFixture:
 
         outcomes = {turn["nr"]: turn for turn in block["beurten"]}
         assert len(outcomes) == len(FIXTURE["beurten"])
-        # The chairman, the minister, and a member who interrupts a member
-        # without naming a bewindspersoon are never shown to the model.
+        # The chairman, and a member who interrupts a member without naming
+        # a bewindspersoon, are never shown to the model.
         assert outcomes[1]["reden"] == "voorzitter"
-        assert outcomes[18]["reden"] == "bewindspersoon"
         assert outcomes[4]["reden"] == "interruptie van een ander"
         assert outcomes[4]["aanroepen"] == 0
         # An interruption of a member that names the minister is shown.
@@ -512,7 +602,9 @@ class TestTheProductionPathOnTheFixture:
         assert outcomes[30]["reden"] == ""
         assert outcomes[30]["aanroepen"] == 0
         assert [m["soort"] for m in outcomes[30]["gemarkeerd"]] == ["motie"]
+        # That turn holds no words of a commitment either, so it costs no call.
         assert outcomes[31]["reden"] == "bewindspersoon"
+        assert outcomes[31]["aanroepen"] == 0
         assert outcomes[32]["gemarkeerd"] == []
         # A question and two moties in one turn: each once.
         assert [m["soort"] for m in outcomes[29]["gemarkeerd"]] == [
@@ -521,9 +613,39 @@ class TestTheProductionPathOnTheFixture:
             "motie",
         ]
 
+        # The answers of the minister are read for toezeggingen, and for
+        # nothing else: one call each, with the prompt of its own.
+        assert outcomes[18]["bewindspersoon"] is True
+        assert outcomes[18]["aanroepen"] == 1
+        assert [m["soort"] for m in outcomes[18]["gemarkeerd"]] == [
+            "toezegging",
+            "toezegging",
+        ]
+        assert {r["soort"] for r in outcomes[18]["ruw"]} == {"toezegging"}
+        toezegging = scores["toezegging"]
+        assert toezegging.false_positives == []
+        # Six the labeller is sure of. Five are in a turn of the minister
+        # and are found; the sixth stands in the turn of the member who
+        # interrupted, where nothing looks for a toezegging.
+        assert (toezegging.required, toezegging.found) == (6, 5)
+        assert [(m.item.beurt, m.reason) for m in toezegging.misses] == [
+            (22, REASON_NOT_AN_ANSWER)
+        ]
+        # Of the optional ones the effort is found; the two the chairman
+        # reads out at the end are not, his turn is skipped.
+        assert (toezegging.optional, toezegging.optional_found) == (3, 1)
+        # The refusal and the condition in the last answer are not marked,
+        # the toezegging behind them is.
+        assert [m["citaat"][:14] for m in outcomes[36]["gemarkeerd"]] == [
+            "Wel stuur ik d"
+        ]
+        # A member who asks for a toezegging is asked about questions.
+        assert outcomes[35]["bewindspersoon"] is False
+        assert all(m["soort"] != "toezegging" for m in outcomes[35]["gemarkeerd"])
+
         report = build_report(run, golds)
         assert "Run orakel" in report
-        assert "toezegging" in not_marked(run, golds)
+        assert "toezegging" not in not_marked(run, golds)
 
         left = (
             await db_session.execute(

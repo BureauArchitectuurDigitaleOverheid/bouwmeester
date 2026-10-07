@@ -5,9 +5,10 @@ Dit voorstel volgt uit de eerste meting met de harness in deze map (zie
 komen uit die set; er staan geen citaten uit echte debatten in dit stuk. De
 voorbeelden zijn verzonnen en komen uit de fixture.
 
-Stand: de stappen 1 tot en met 3 van de volgorde onderaan zijn gebouwd. Wat
+Stand: de stappen 1 tot en met 4 van de volgorde onderaan zijn gebouwd. Wat
 dat opleverde, gemeten met één debat apart gehouden, staat in `README.md`
-onder "What was built from the proposal".
+onder "What was built from the proposal" en "Toezeggingen". Van stap 4 is de
+lijst van de voorzitter niet gebouwd: zijn slotbeurt wordt nog overgeslagen.
 
 ## Waarop gemeten is
 

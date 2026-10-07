@@ -18,6 +18,7 @@ from . import gold as gold_file
 from .scoring import (
     KindScore,
     Marking,
+    answer_turns,
     format_comparison,
     format_report,
     gold_items,
@@ -53,7 +54,11 @@ def apply_check(
 
 # The kinds the production code marks today. A kind that is added there is
 # added here, and its gold items start to count.
-MARKED_KINDS: tuple[str, ...] = (gold_file.KIND_VRAAG, gold_file.KIND_MOTIE)
+MARKED_KINDS: tuple[str, ...] = (
+    gold_file.KIND_VRAAG,
+    gold_file.KIND_MOTIE,
+    gold_file.KIND_TOEZEGGING,
+)
 
 
 def score_run(
@@ -69,7 +74,12 @@ def score_run(
     # `--max-turns` says nothing about the turns it did not reach.
     reasons = miss_reasons(run)
     items = [i for i in items if (i.debat, i.beurt) in reasons]
-    return score(markings, items, negatives, reasons, kinds=kinds), stopped
+    return (
+        score(
+            markings, items, negatives, reasons, kinds=kinds, answers=answer_turns(run)
+        ),
+        stopped,
+    )
 
 
 def not_marked(run: dict, golds: dict[str, dict]) -> str:

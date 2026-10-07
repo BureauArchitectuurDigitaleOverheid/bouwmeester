@@ -41,6 +41,7 @@ from collections.abc import Sequence
 
 from bouwmeester.models.debat_markering import (
     SOORT_MOTIE,
+    SOORT_TOEZEGGING,
     SOORT_VRAAG,
     STATUS_ANTWOORD_KLAAR,
     STATUS_BEANTWOORD,
@@ -54,16 +55,19 @@ SCHEIDING = "---"
 
 ICOON_VRAAG = "❓"
 ICOON_MOTIE = "📜"
+ICOON_TOEZEGGING = "🤝"
 
 # (singular, plural) per soort, in the order the lines are shown. A soort
 # that is not in here is not shown.
 _SOORT_LABEL: dict[str, tuple[str, str]] = {
     SOORT_VRAAG: ("vraag", "vragen"),
     SOORT_MOTIE: ("motie", "moties"),
+    SOORT_TOEZEGGING: ("toezegging", "toezeggingen"),
 }
 _SOORT_ICOON: dict[str, str] = {
     SOORT_VRAAG: ICOON_VRAAG,
     SOORT_MOTIE: ICOON_MOTIE,
+    SOORT_TOEZEGGING: ICOON_TOEZEGGING,
 }
 # One word per status, in the order they are shown.
 _STATUS_LABEL: dict[str, str] = {
@@ -74,12 +78,18 @@ _STATUS_LABEL: dict[str, str] = {
     STATUS_VERVALT: "hoeft geen antwoord",
 }
 # The words of a status that differ for a soort. A motie is not answered:
-# it gets an oordeel.
+# it gets an oordeel. A toezegging is not answered either: it is kept.
 _STATUS_LABEL_PER_SOORT: dict[str, dict[str, str]] = {
     SOORT_MOTIE: {
         STATUS_ANTWOORD_KLAAR: "oordeel klaar",
         STATUS_BEANTWOORD: "oordeel gegeven",
         STATUS_VERVALT: "hoeft geen oordeel",
+    },
+    SOORT_TOEZEGGING: {
+        STATUS_TOEGEWEZEN: "wordt opgepakt",
+        STATUS_ANTWOORD_KLAAR: "klaar",
+        STATUS_BEANTWOORD: "nagekomen",
+        STATUS_VERVALT: "hoeft niet",
     },
 }
 
@@ -129,6 +139,7 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
         ❓ 3 vragen · open
         ❓ 3 vragen · 2 open · 1 beantwoord
         📜 1 motie · open
+        🤝 1 toezegging · open
 
     Short, because it stands under every message with a question in it. A
     block in the channel that still has the longer words of before is

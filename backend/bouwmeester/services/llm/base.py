@@ -107,6 +107,19 @@ class DebatVraag(BaseModel):
     stuk: int | None = None
 
 
+class DebatToezegging(BaseModel):
+    """One toezegging of the bewindspersoon, as the model takes it from a turn."""
+
+    citaat: str
+    samenvatting: str
+    # When, in the words of the speaker ("voor het kerstreces"), if said.
+    termijn: str | None = None
+    # The number of the open question this is the answer to.
+    bij_vraag: int | None = None
+    # The number of an earlier toezegging that is said again here.
+    hoort_bij: int | None = None
+
+
 DEBAT_VRAGEN_ONBEREIKBAAR = "onbereikbaar"
 DEBAT_VRAGEN_ONBRUIKBAAR = "onbruikbaar"
 
@@ -125,6 +138,17 @@ class DebatVragenResult(BaseModel):
     * ``onbruikbaar``: het model antwoordde twee keer met iets dat niet te
       lezen was. Nog een keer proberen levert waarschijnlijk hetzelfde op.
     """
+
+
+class DebatToezeggingenResult(BaseModel):
+    """What the model made of a turn of the bewindspersoon.
+
+    `fout` means what it means in `DebatVragenResult`: an empty list
+    without it is "read, nothing promised", and that is not "not read".
+    """
+
+    toezeggingen: list[DebatToezegging] = []
+    fout: str | None = None
 
 
 class LegeLLMResponsError(ValueError):
@@ -522,6 +546,73 @@ class BaseLLMService(ABC):
                 )
         return DebatVragenResult(fout=DEBAT_VRAGEN_ONBRUIKBAAR)
 
+    async def markeer_debat_toezeggingen(
+        self,
+        *,
+        onderwerp: str,
+        soort_vergadering: str | None,
+        bewindspersonen: list[str],
+        spreker: str,
+        tekst: str,
+        vragen: list[tuple[int, str, str]],
+        eerdere: list[tuple[int, str]],
+        voorafgaand: str | None = None,
+        voorafgaand_tekst: str = "",
+        passages: list[str] | None = None,
+    ) -> DebatToezeggingenResult:
+        """Take the toezeggingen from one turn of the bewindspersoon.
+
+        `vragen` are the open questions put to this bewindspersoon, as
+        (number, who asked, summary); the model may say of a toezegging
+        which one it answers. `eerdere` are the toezeggingen this
+        bewindspersoon made before in the debate, as (number, summary), so
+        that one said again is not marked twice. `voorafgaand` is the
+        member whose interruption came right before this turn, with what
+        they said: "dat zeg ik toe" cannot be summarised without it.
+        `passages` are sentences of the turn to look at in any case.
+
+        The same two tries as for the questions, and for the same reason.
+
+        PUBLIC: a debate is public and broadcast.
+        """
+        from bouwmeester.services.llm.prompts import (
+            build_debat_toezeggingen_prompt,
+        )
+
+        prompt = build_debat_toezeggingen_prompt(
+            onderwerp=onderwerp,
+            soort_vergadering=soort_vergadering,
+            bewindspersonen=bewindspersonen,
+            spreker=spreker,
+            tekst=tekst,
+            vragen=vragen,
+            eerdere=eerdere,
+            voorafgaand=voorafgaand,
+            voorafgaand_tekst=voorafgaand_tekst,
+            passages=passages,
+        )
+        # Room for a window in which nearly every sentence promises
+        # something: a reply that is cut off is not JSON, and the second
+        # try would be cut off at the same place.
+        for poging in (1, 2):
+            try:
+                text = await self._complete(prompt, max_tokens=4096)
+            except Exception:
+                logger.exception("LLM onbereikbaar bij het markeren van toezeggingen")
+                return DebatToezeggingenResult(fout=DEBAT_VRAGEN_ONBEREIKBAAR)
+            try:
+                return DebatToezeggingenResult(
+                    toezeggingen=_lees_debat_toezeggingen(self, text)
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Onbruikbaar LLM-antwoord bij toezeggingen (poging %d, %s: %s)",
+                    poging,
+                    type(exc).__name__,
+                    str(exc)[:200],
+                )
+        return DebatToezeggingenResult(fout=DEBAT_VRAGEN_ONBRUIKBAAR)
+
     async def is_mattermost_noise(self, message: str) -> bool:
         """True als het bericht ruis is (ack/emoji/no-content)."""
         from bouwmeester.services.llm.prompts import build_is_noise_prompt
@@ -667,3 +758,36 @@ def _lees_debat_vragen(service: BaseLLMService, text: str) -> list[DebatVraag]:
             )
         )
     return vragen
+
+
+def _lees_debat_toezeggingen(
+    service: BaseLLMService, text: str
+) -> list[DebatToezegging]:
+    """Read the answer to the toezeggingen prompt.
+
+    Raises when the answer as a whole cannot be read. One item that is no
+    good (no quote) is left out without taking the rest along.
+    """
+    result = service._parse_json(text)
+    if not isinstance(result, dict) or not isinstance(result.get("toezeggingen"), list):
+        raise ValueError("antwoord draagt geen lijst `toezeggingen`")
+    toezeggingen: list[DebatToezegging] = []
+    for item in result["toezeggingen"]:
+        if not isinstance(item, dict):
+            continue
+        citaat = item.get("citaat")
+        if not isinstance(citaat, str) or not citaat.strip():
+            continue
+        termijn = item.get("termijn")
+        toezeggingen.append(
+            DebatToezegging(
+                citaat=citaat.strip(),
+                samenvatting=str(item.get("samenvatting") or "").strip(),
+                termijn=termijn.strip()
+                if isinstance(termijn, str) and termijn.strip()
+                else None,
+                bij_vraag=_heel_getal(item.get("bij_vraag")),
+                hoort_bij=_heel_getal(item.get("hoort_bij")),
+            )
+        )
+    return toezeggingen

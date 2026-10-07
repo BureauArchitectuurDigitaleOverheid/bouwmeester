@@ -322,7 +322,7 @@ class TestStatusregel:
         assert statusregel([]) == ""
 
     def test_a_kind_that_is_not_built_yet_is_not_shown(self):
-        assert statusregel([("toezegging", STATUS_OPEN)]) == ""
+        assert statusregel([("feitelijke_claim", STATUS_OPEN)]) == ""
 
     def test_a_message_is_body_rule_status(self):
         bericht = voeg_samen("**Kamerlid A** · 10:02\nDank u wel.", "❓ Vraag")
@@ -1143,10 +1143,18 @@ class TestWhatIsNotSentToTheModel:
         assert reden == "voorzitter"
         assert llm.prompts == []
 
+    # An answer in which nothing is promised. What the service does with
+    # one that holds a toezegging is in `test_debat_toezegging`.
+    ANTWOORD = {
+        **KAMERLID_A,
+        "tekst": "Dank u wel, voorzitter. Het budget is dit jaar 54 miljoen euro, "
+        "evenveel als vorig jaar. Wat vindt de Kamer daar zelf van?",
+    }
+
     async def test_the_bewindspersoon(self, db_session):
         reden, llm = await self._skipped(
             db_session,
-            KAMERLID_A,
+            self.ANTWOORD,
             # Not someone the agenda knows, so only the flag can tell.
             spreker="Iemand Anders (staatssecretaris van Voorbeelden)",
             fractie=None,
@@ -1158,7 +1166,7 @@ class TestWhatIsNotSentToTheModel:
     async def test_the_bewindspersoon_by_surname_when_not_flagged(self, db_session):
         reden, llm = await self._skipped(
             db_session,
-            KAMERLID_A,
+            self.ANTWOORD,
             spreker="Bob Bewindspersoon (minister van Voorbeelden)",
             fractie=None,
         )
