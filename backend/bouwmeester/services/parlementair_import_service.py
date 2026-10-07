@@ -56,6 +56,12 @@ logger = logging.getLogger(__name__)
 MAX_ACHTERSTAND = timedelta(days=7)
 
 
+# How many documents that wait for the model one round tries again, and for
+# how long after they came in. A week is what the search feed carries.
+WACHTENDEN_PER_RONDE = 5
+WACHTENDEN_OPNIEUW_TOT = timedelta(days=7)
+
+
 def _watermerk_module(strategy: ImportStrategy):  # type: ignore[no-untyped-def]
     """The module that holds the watermark of this strategy, if it has one."""
     if isinstance(strategy, TkconvSearchStrategy):
@@ -92,6 +98,9 @@ class ParlementairImportService:
     10. Create review task
     """
 
+    # Also for an instance made without `__init__`, as some tests do.
+    _opnieuw: set[str] | frozenset[str] = frozenset()
+
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.settings = get_settings()
@@ -111,6 +120,12 @@ class ParlementairImportService:
         # Wat er deze ronde al een los bericht kreeg. De dedup-poort vlak
         # voor het posten leest dit; zie `_post_inhaalslag`.
         self._gepost_deze_ronde: set[uuid.UUID] = set()
+        # The documents this round tries again because the model could not
+        # judge them before, and when each first came in: that moment
+        # stays with the row, so a document the model keeps failing on
+        # stops being tried after `WACHTENDEN_OPNIEUW_TOT`.
+        self._opnieuw: set[str] = set()
+        self._eerst_gezien: dict[str, datetime] = {}
 
     async def poll_and_import(
         self,
@@ -225,6 +240,95 @@ class ParlementairImportService:
             await self.session.rollback()
             logger.exception("Watermerk van %s niet bewaard", strategy.item_type)
 
+    async def _wachtenden(
+        self, strategy: ImportStrategy, al_opgehaald: set[str]
+    ) -> list[FetchedItem]:
+        """The documents of a search term that still wait for the model.
+
+        A document whose judging by the model failed is stored as
+        `pending`, without a summary and without an alert, to be done
+        later. Nothing did it later: the row made every next round skip
+        the document as already imported, so it waited for good and
+        nobody was told. A model that is slow or refuses for a minute,
+        which happens more often since debates are followed with the same
+        model, then cost an alert each time.
+
+        Each round takes a few of them along again. Only what a search
+        term brought in, and only for as long as the feed of the source
+        carries it: a document the model keeps failing on is not asked
+        for every two minutes for ever.
+        """
+        self._opnieuw = set()
+        if not isinstance(strategy, TkconvSearchStrategy):
+            return []
+        try:
+            rijen = (
+                (
+                    await self.session.execute(
+                        select(ParlementairItem)
+                        .where(
+                            ParlementairItem.type == strategy.item_type,
+                            ParlementairItem.status == "pending",
+                            ParlementairItem.created_at
+                            > datetime.now(UTC) - WACHTENDEN_OPNIEUW_TOT,
+                        )
+                        .order_by(ParlementairItem.created_at)
+                        .limit(WACHTENDEN_PER_RONDE)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        except Exception:
+            await self.session.rollback()
+            logger.exception("Wachtende kamerstukken niet op te halen")
+            return []
+
+        per_query: dict[str, list] = {}
+        for abonnement in strategy.abonnementen:
+            per_query.setdefault(abonnement.zoekopdracht(), []).append(abonnement.id)
+
+        items: list[FetchedItem] = []
+        for rij in rijen:
+            if rij.zaak_id in al_opgehaald:
+                # The feed brought it along again: that copy is processed.
+                self._opnieuw.add(rij.zaak_id)
+                continue
+            extra = rij.extra_data or {}
+            ids: list = []
+            for query in extra.get("matched_terms") or []:
+                for abonnement_id in per_query.get(query, []):
+                    if abonnement_id not in ids:
+                        ids.append(abonnement_id)
+            if not ids:
+                # The term it came in on is no longer followed.
+                continue
+            strategy.treffers[rij.zaak_id] = ids
+            self._opnieuw.add(rij.zaak_id)
+            items.append(
+                FetchedItem(
+                    zaak_id=rij.zaak_id,
+                    zaak_nummer=rij.zaak_nummer,
+                    titel=rij.titel,
+                    onderwerp=rij.onderwerp,
+                    datum=rij.datum,
+                    indieners=list(rij.indieners or []),
+                    document_tekst=rij.document_tekst,
+                    document_url=rij.document_url,
+                    bron=rij.bron,
+                    deadline=rij.deadline,
+                    ministerie=rij.ministerie,
+                    extra_data=extra,
+                )
+            )
+        if items:
+            logger.info(
+                "%d wachtende kamerstukken opnieuw: %s",
+                len(items),
+                ", ".join(i.zaak_nummer for i in items),
+            )
+        return items
+
     async def _actieve_nieuwsbronnen(self) -> list[Nieuwsbron]:
         """De feeds die nu gevolgd worden.
 
@@ -297,7 +401,10 @@ class ParlementairImportService:
                 )
                 ek_items = []
 
-        all_items = _hoofdstuk_voor_bijlage(tk_items + ek_items)
+        # What an earlier round could not judge, before what is new: it
+        # has waited longest.
+        wachtend = await self._wachtenden(strategy, {i.zaak_id for i in tk_items})
+        all_items = _hoofdstuk_voor_bijlage(wachtend + tk_items + ek_items)
 
         self._inhaalslag = {}
         self._gepost_deze_ronde = set()
@@ -662,6 +769,16 @@ class ParlementairImportService:
         """
         # Step 1: Idempotency check
         existing = await self.import_repo.get_by_zaak_id(item.zaak_id)
+        if existing and existing.status == "pending" and item.zaak_id in self._opnieuw:
+            # The model could not be reached when this document came in,
+            # so it was put aside without a summary, a node or an alert.
+            # It is tried again as if it came in now. The row goes first:
+            # the steps below make it anew, as imported when the model
+            # answers and as waiting once more when it does not.
+            self._eerst_gezien[item.zaak_id] = existing.created_at
+            await self.session.delete(existing)
+            await self.session.flush()
+            existing = None
         if existing:
             # Het stuk staat er al, maar de zoekterm die het nú aandroeg
             # misschien nog niet. Twee termen vinden vaak hetzelfde
@@ -727,6 +844,11 @@ class ParlementairImportService:
                     deadline=item.deadline,
                     ministerie=item.ministerie,
                     extra_data=item.extra_data,
+                    **(
+                        {"created_at": self._eerst_gezien[item.zaak_id]}
+                        if item.zaak_id in self._eerst_gezien
+                        else {}
+                    ),
                 )
                 logger.warning(
                     "%s %s queued as pending: LLM extraction failed",
