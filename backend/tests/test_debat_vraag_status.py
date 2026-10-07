@@ -407,7 +407,7 @@ class TestDeStatusregel:
         ]
         verwacht = (
             "❓ 5 vragen · 🔴 **1 open** · 1 opgepakt · 1 beantwoord"
-            " · 🚫 2 hoeft geen antwoord"
+            " · 2 hoeft geen antwoord"
         )
         assert statusregel([(SOORT_VRAAG, s) for s in statussen]) == verwacht
         # Whatever order the questions were asked in.
