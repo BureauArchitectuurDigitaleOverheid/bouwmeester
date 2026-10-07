@@ -110,6 +110,15 @@ class DebatMarkering(Base):
             "reacties_gewijzigd_at",
             postgresql_where=text("reacties_gewijzigd_at IS NOT NULL"),
         ),
+        # The few rows whose count under their message is out of date:
+        # every round of the timeline asks for them.
+        Index(
+            "ix_debat_markering_statusregel_open",
+            "beurt_post_id",
+            postgresql_where=text(
+                "statusregel_at IS NULL AND thread_post_id IS NOT NULL"
+            ),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -182,6 +191,13 @@ class DebatMarkering(Base):
     # markering as it is now. NULL means it still has to be written, also
     # after a change of status.
     statusregel_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # How often writing that message failed since the count went out of
+    # date, and from when it is tried again. NULL when it was never tried.
+    # After a number of tries the count is left as it is.
+    statusregel_pogingen: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    statusregel_niet_voor: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

@@ -716,23 +716,35 @@ more is said. The count ("1 toezegging") stands under that same message.
 A question and a motie hang under the first message, as they did.
 
 **One writer of a message.** The marking used to put the count under a
-message itself: read the message, replace the block, write it back. On a
-turn that goes on, the transcription can write the next lines in between,
-and the message written back was those lines short until the turn grew
-again, or for good. So the marking no longer writes the message of a turn
-at all, for a turn that goes on or one that is over, from the question
-worker, the chairman's list or the round of the reactions
-(`schrijf_statusregel` returns ``None`` for such a message). It stores
-what it found and leaves the row without `statusregel_at`. Every round of
-the timeline writes the messages with such a row again, text and count
-from the rows, by the code that writes the text
-(`DebatTranscript.write_counts`), and only that one message of a long
-turn. Also for a debate the timeline no longer follows, where most
-questions are ticked off. A change of status shows after one round of the
+message itself, from its own loop: read the message, replace the block,
+write it back. On a turn that goes on, the transcription can write the
+next lines in between, and the message written back was those lines short
+until the turn grew again, or for good. So the marking no longer writes
+the message of a turn at all, for a turn that goes on or one that is over,
+from the question worker, the chairman's list or the round of the
+reactions (`schrijf_statusregel` returns ``None`` for such a message). It
+stores what it found and leaves the row without `statusregel_at`.
+
+Every round of the timeline, after its own work, takes the rows that are
+out of date (`DebatTranscript.write_counts`). The timeline is the process
+that writes the text of a turn, so there reading a message and writing it
+back with another block is safe: nothing writes it in between. That is
+all it does: the text of the message stays as it stands in the channel
+and is never made anew from the rows, no other message is touched, none
+is posted and none is taken away. A debate of last week was written by
+the code of last week, and a reaction of today changes the count under
+one message of it. A change of status shows after one round of the
 marking and one of the timeline: 25 seconds at most with the intervals as
-they are (15 and 10), where it was 15. Only a message the transcription
-never writes (the end of a debate without words of the chairman) still
-gets its count from the marking.
+they are (15 and 10), where it was 15.
+
+What a round may spend on it: 10 messages, two requests each, and 5
+seconds. A message that cannot be written is tried again after 30
+seconds, then 1, 2, 4, 8 and 15 minutes: nine tries in about an hour, then
+one line in the log and the count stays as it is until someone reacts
+again. The rows that are out of date have an index of their own, and the
+migration that adds it marks every row older than an hour as written, so
+that the first round after a deploy does not start on all that was ever
+left behind.
 
 **What it measured.** The four debates played on a clock (`--replay`),
 with the subtitles 40 seconds behind, a round every 15 seconds and 6

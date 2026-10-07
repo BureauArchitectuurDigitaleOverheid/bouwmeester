@@ -44,7 +44,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.config import get_settings
@@ -1084,10 +1084,23 @@ class DebatVraagWorker:
                     .values(stem_klaar=True)
                 )
             await self.session.commit()
+            # Every one of them, not only the lines of the turn itself: a
+            # line of another turn that waited too long and that the voices
+            # are putting into this one right now is held by them, was
+            # passed over, and lands in the middle of what is about to be
+            # read when they commit.
+            left = await self.session.scalar(
+                select(func.count())
+                .select_from(DebatOndertitel)
+                .where(
+                    DebatOndertitel.id.in_(final.settle),
+                    DebatOndertitel.stem_klaar.is_(False),
+                )
+            )
+            if left:
+                return False
         head = (await self._turn_lines(final.turn))[: len(final.lines)]
-        return [line.id for line in head] == [line.id for line in final.lines] and all(
-            line.klaar for line in head
-        )
+        return [line.id for line in head] == [line.id for line in final.lines]
 
     async def _open_lines(
         self, sessie_id: uuid.UUID, parts: list[str], now: datetime

@@ -19,10 +19,10 @@ move to the turn before or after. Then both messages are written anew.
 from __future__ import annotations
 
 import logging
+import time
 import uuid
-from collections.abc import Collection
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import case, func, literal, or_, select, update
@@ -48,7 +48,10 @@ from bouwmeester.services.debat_transcript import (
     split_text,
     text_key,
 )
-from bouwmeester.services.debat_vraag_service import statusblok_voor_post
+from bouwmeester.services.debat_vraag_service import (
+    statusblok_voor_post,
+    vervang_statusblok,
+)
 from bouwmeester.services.mattermost_service import (
     MattermostService,
     PostNotFoundError,
@@ -81,6 +84,25 @@ MESSAGE_MAX = 16000
 # whatever its text. No digest is this word, so the turn counts as not
 # written until it has been.
 WRITE_AGAIN = "opnieuw"
+# What is counted under a message changed, and the message is written again
+# for it (`DebatTranscript.write_counts`). Messages per round of the
+# timeline: a round is ten seconds and each message is two requests at
+# most, so a round spends twenty requests on this at worst. People tick
+# questions off one at a time; more than this waits a round.
+COUNTS_PER_ROUND = 10
+# And seconds per round, looked at before each message: the round has the
+# debates of today to get back to. A request that hangs takes what the
+# client allows, so a round can overrun this by one message.
+COUNTS_BUDGET = 5.0
+# The clock that budget is counted on.
+_clock = time.monotonic
+# A message that could not be written is tried again after this long, twice
+# as long after every failure and a quarter of an hour at most: after 30
+# seconds, 1, 2, 4, 8, 15 and 15 minutes, and 15 more. That is nine tries in
+# an hour; then its count is left as it is until someone reacts again.
+COUNT_RETRY_FIRST = timedelta(seconds=30)
+COUNT_RETRY_MAX = timedelta(minutes=15)
+COUNT_ATTEMPTS = 9
 
 
 @dataclass
@@ -329,30 +351,18 @@ class DebatTranscript:
         channel_id: str,
         debate_id: str,
         result,  # type: ignore[no-untyped-def]
-        again: Collection[str] = (),
-    ) -> set[str]:
+    ) -> None:
         """Make the messages of one part say what the rows say.
 
-        The one place a message of a turn is put together: first line,
-        text, and what was marked counted under it. Whoever changes a
-        first line changes the row and leaves the message to this, and
-        whoever changes what is counted under a message leaves it to this
-        as well (`write_counts`).
-
-        `again` are messages to write once more although their text is
-        in the channel: what is counted under them changed. Which of
-        those were written comes back.
+        The one place the text of a turn is put into its messages: first
+        line, text, and what was marked counted under it. Whoever changes
+        a first line changes the row and leaves the message to this. What
+        is counted under a message that does not change otherwise is
+        written by `write_counts`, one message at a time.
         """
-        written: set[str] = set()
         turns = await load_turns(self.session, sessie_id, debate_id)
-        again = {
-            post_id
-            for turn in turns
-            for post_id in (turn.post_id, *turn.vervolg)
-            if post_id in again
-        }
-        if not again and all(turn.is_written(turn.text) for turn in turns):
-            return written
+        if all(turn.is_written(turn.text) for turn in turns):
+            return
         # The last thing the timeline put in the channel, of any part and
         # any kind. Only the turn that is that can continue below itself.
         newest = (
@@ -368,9 +378,7 @@ class DebatTranscript:
         ).scalar_one_or_none()
         for turn in turns:
             text = turn.text
-            forced = again.intersection((turn.post_id, *turn.vervolg))
-            up_to_date = turn.is_written(text)
-            if up_to_date and not forced:
+            if turn.is_written(text):
                 continue
             placed = {
                 "tekst_geplaatst": len(text),
@@ -389,7 +397,6 @@ class DebatTranscript:
                     closing = voeg_samen(closing[:room], blok)
                 if await self._rewrite(turn.post_id, closing):
                     await self._keep(turn.row_id, **placed)
-                    written.add(turn.post_id)
                 else:
                     logger.warning(
                         "Woorden van de voorzitter bij %s niet geplaatst", turn.row_id
@@ -408,14 +415,10 @@ class DebatTranscript:
             first = len(turn.vervolg) if grown else 0
             vervolg = list(turn.vervolg)
             done = True
-            for number in range(0 if forced else first, len(pieces)):
+            for number in range(first, len(pieces)):
                 message = render(turn.kop, pieces[number], vervolg=number > 0)
                 if number <= len(vervolg):
                     target = turn.post_id if number == 0 else vervolg[number - 1]
-                    if target not in forced and (up_to_date or number < first):
-                        # Its text is in the channel and nothing counted
-                        # under it changed.
-                        continue
                     # A message is also where what was marked in it is
                     # counted: the questions of the turn under the first,
                     # a toezegging under the message that holds its quote.
@@ -430,8 +433,6 @@ class DebatTranscript:
                         message = message[:room]
                     message = voeg_samen(message, blok)
                     ok = await self._rewrite(target, message)
-                    if ok:
-                        written.add(target)
                 else:
                     post_id = await self.mattermost.send_channel_message(
                         channel_id, message
@@ -467,86 +468,128 @@ class DebatTranscript:
                 await self._keep(turn.row_id, **placed)
             # A turn that could not be written does not hold up the ones
             # after it: it is tried again on a later round.
-        return written
 
-    async def write_counts(self, result, active: Collection[uuid.UUID] = ()) -> None:  # type: ignore[no-untyped-def]
-        """Write the messages under which what is counted changed.
+    async def write_counts(
+        self,
+        result,  # type: ignore[no-untyped-def]
+        now: datetime | None = None,
+    ) -> None:
+        """Put what is counted under a message under it, where that changed.
 
-        A message of a turn has one writer, and it is this class. The
-        marking used to put the count under a message itself: it read the
-        message, replaced the block and wrote it back. For a turn that was
-        over that went well. Since an answer is read while it goes on, the
-        message it wrote back could be a few lines behind what the
-        transcription had written in the meantime, and those lines were
-        gone from the channel until the turn grew again, or for good.
+        The marking used to do this itself, from its own loop: read the
+        message, replace the block, write it back. Since an answer is read
+        while it goes on, the transcription can write the next lines of
+        that message in between, and what was written back was those
+        lines short until the turn grew again, or for good. So the
+        marking leaves a message of a turn alone and its row without
+        `statusregel_at`, and every round of the timeline comes here,
+        after its own work.
 
-        So the marking only stores what it found, and leaves the row
-        without `statusregel_at`: the count under its message is out of
-        date. Here every such message is written again from the rows,
-        text and count alike, by the same code and in the same round as
-        the text. Also for a debate that is over, where people still tick
-        questions off: every round of the timeline looks, so a change
-        shows within one round of the marking and one of the timeline,
-        25 seconds with the intervals as they are.
+        That makes this process the one writer of a message: it writes
+        the text of a turn (`write`) and then, here, the counts, one
+        after the other. So reading a message and writing it back with
+        another block is safe here where it was not there: nothing writes
+        it in between.
+
+        And that is all that is done. One message per row that is out of
+        date; its text is taken as it stands in the channel and is never
+        made anew from the rows, no other message of the turn or the part
+        is touched, none is posted and none is taken away. A debate of
+        last week was written by the code of last week, and a reaction of
+        today changes the count under one message of it and nothing else.
 
         Which rows were out of date, and where each stood, is read before
         the message is written, and only a row that still stands there is
-        marked as done: a count that changes while a message is being
-        written is written on the next round.
-        `active` are the debates the timeline follows. A message of any
-        other debate that cannot be written is given up on at once: its
-        channel may be archived, and nothing else would ever stop trying.
+        marked as done: a count that changes while its message is being
+        written is written again on a later round.
+
+        Bounded three ways. At most `COUNTS_PER_ROUND` messages a round
+        and `COUNTS_BUDGET` seconds. A message that cannot be written is
+        tried again later and later, `COUNT_ATTEMPTS` times in about an
+        hour, and then left as it is with one line in the log.
         """
+        now = now or datetime.now(UTC)
+        started = _clock()
         rows = (
             await self.session.execute(
                 select(
                     DebatMarkering.id,
-                    DebatMarkering.sessie_id,
-                    DebatMarkering.channel_id,
                     DebatMarkering.beurt_post_id,
                     DebatMarkering.status,
-                ).where(
+                    DebatMarkering.statusregel_pogingen,
+                )
+                .where(
                     DebatMarkering.thread_post_id.is_not(None),
                     DebatMarkering.statusregel_at.is_(None),
                     DebatMarkering.beurt_post_id.is_not(None),
+                    or_(
+                        DebatMarkering.statusregel_niet_voor.is_(None),
+                        DebatMarkering.statusregel_niet_voor <= now,
+                    ),
                 )
+                # What was never tried first, then what waited longest.
+                .order_by(
+                    DebatMarkering.statusregel_niet_voor.asc().nulls_first(),
+                    DebatMarkering.created_at,
+                )
+                # More rows than messages: a turn can hold a dozen.
+                .limit(COUNTS_PER_ROUND * 20)
             )
         ).all()
-        stale: dict[str, list[tuple[uuid.UUID, str]]] = {}
-        where: dict[str, tuple[uuid.UUID, str]] = {}
-        for markering_id, sessie_id, channel_id, post_id, status in rows:
-            stale.setdefault(post_id, []).append((markering_id, status))
-            where[post_id] = (sessie_id, channel_id)
-        parts: dict[tuple[uuid.UUID, str, str], set[str]] = {}
-        for post_id, (sessie_id, channel_id) in where.items():
-            part = await part_of_message(self.session, post_id)
-            if part is None:
-                # Not a message this class writes. The marking put the
-                # count under it itself, or will.
+        stale: dict[str, list[tuple[uuid.UUID, str, int]]] = {}
+        for markering_id, post_id, status, attempts in rows:
+            if post_id not in stale and len(stale) >= COUNTS_PER_ROUND:
                 continue
-            parts.setdefault((sessie_id, channel_id, part), set()).add(post_id)
-        for (sessie_id, channel_id, part), post_ids in parts.items():
-            written = await self.write(sessie_id, channel_id, part, result, post_ids)
-            for post_id in post_ids:
-                if post_id not in written and sessie_id in active:
-                    continue
-                if post_id not in written:
-                    logger.warning(
-                        "Telling onder bericht %s niet geschreven; debat wordt"
-                        " niet meer gevolgd",
-                        post_id,
+            stale.setdefault(post_id, []).append((markering_id, status, attempts or 0))
+        for post_id, found in stale.items():
+            if _clock() - started > COUNTS_BUDGET:
+                break
+            try:
+                written = await vervang_statusblok(
+                    self.session, self.mattermost, post_id
+                )
+            except Exception as exc:
+                await self.session.rollback()
+                # What kind of error, not its trace: this is tried again.
+                logger.warning(
+                    "Telling onder bericht %s niet geschreven (%s)",
+                    post_id,
+                    type(exc).__name__,
+                )
+                written = False
+            attempts = max(row[2] for row in found) + 1
+            given_up = not written and attempts >= COUNT_ATTEMPTS
+            if given_up:
+                result.fouten += 1
+                logger.warning(
+                    "Telling onder bericht %s na %d pogingen opgegeven",
+                    post_id,
+                    attempts,
+                )
+            for markering_id, status, _ in found:
+                if written or given_up:
+                    values = {
+                        "statusregel_at": now,
+                        "statusregel_pogingen": None,
+                        "statusregel_niet_voor": None,
+                    }
+                else:
+                    values = {
+                        "statusregel_pogingen": attempts,
+                        "statusregel_niet_voor": now
+                        + min(COUNT_RETRY_FIRST * 2 ** (attempts - 1), COUNT_RETRY_MAX),
+                    }
+                await self.session.execute(
+                    update(DebatMarkering)
+                    # Not a row that changed since: its count is out of
+                    # date again, and it starts anew.
+                    .where(
+                        DebatMarkering.id == markering_id,
+                        DebatMarkering.status == status,
+                        DebatMarkering.statusregel_at.is_(None),
                     )
-                for markering_id, status in stale[post_id]:
-                    await self.session.execute(
-                        update(DebatMarkering)
-                        # Not a row that changed since: its count is
-                        # out of date again.
-                        .where(
-                            DebatMarkering.id == markering_id,
-                            DebatMarkering.status == status,
-                        )
-                        .values(statusregel_at=func.now())
-                    )
+                    .values(**values)
+                )
             await self.session.commit()
 
     async def _rewrite(self, post_id: str, message: str) -> bool:
@@ -583,32 +626,32 @@ class DebatTranscript:
         await self.session.commit()
 
 
-async def part_of_message(session: AsyncSession, post_id: str) -> str | None:
-    """The part of a debate whose transcript a message belongs to, or
-    ``None`` for a message the transcription does not write.
+async def turn_of_message(
+    session: AsyncSession, post_id: str, sessie_id: uuid.UUID | None = None
+) -> Turn | None:
+    """The turn a message is a message of, or ``None`` for a message the
+    transcription does not write.
 
     The transcription writes the messages of the turns `load_turns`
     names: the first message of a turn, the ones it continues in, and a
     suspension or the end with the chairman's words. Every other message
-    of the timeline is posted once and never written again.
+    of the timeline is posted once and never written again. With
+    `sessie_id` only the rows of that debate are looked through.
     """
-    row = (
-        await session.execute(
-            select(DebatSpreekbeurt.sessie_id, DebatSpreekbeurt.debat_direct_id)
-            .where(
-                or_(
-                    DebatSpreekbeurt.post_id == post_id,
-                    DebatSpreekbeurt.vervolg_post_ids.contains([post_id]),
-                )
-            )
-            .limit(1)
+    stmt = select(DebatSpreekbeurt.sessie_id, DebatSpreekbeurt.debat_direct_id).where(
+        or_(
+            DebatSpreekbeurt.post_id == post_id,
+            DebatSpreekbeurt.vervolg_post_ids.contains([post_id]),
         )
-    ).first()
+    )
+    if sessie_id is not None:
+        stmt = stmt.where(DebatSpreekbeurt.sessie_id == sessie_id)
+    row = (await session.execute(stmt.limit(1))).first()
     if row is None:
         return None
     for turn in await load_turns(session, row[0], row[1]):
         if post_id == turn.post_id or post_id in turn.vervolg:
-            return row[1]
+            return turn
     return None
 
 

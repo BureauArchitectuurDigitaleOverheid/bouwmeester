@@ -28,6 +28,7 @@ from bouwmeester.models.debat_sessie import (
 )
 from bouwmeester.services import debat_stem as stem
 from bouwmeester.services import debat_stemmen_service as stemmen
+from bouwmeester.services import debat_transcript_service as tr
 from bouwmeester.services import debat_vraag_service as service_mod
 from bouwmeester.services import debat_vraag_worker as mod
 from bouwmeester.services.debat_stemmen_service import Budget, DebatStemmen, as_turns
@@ -512,7 +513,7 @@ EEN_OPEN = "🤝 1 toezegging · 🔴 **open**"
 async def _counts(session, mm, sessie) -> None:
     """The round of the timeline that writes what is counted under a
     message: the one writer of the message of a turn."""
-    await DebatTranscript(session, mm).write_counts(TickResult(), [sessie.id])
+    await DebatTranscript(session, mm).write_counts(TickResult())
 
 
 @pytest.mark.asyncio
@@ -1486,6 +1487,41 @@ class TestTheVoicesAndTheMarkingAtTheSameMoment:
         worker, final = await self._final(marking, s, m)
         assert await worker._settle(final) is True
 
+    async def test_a_late_line_the_voices_are_putting_into_the_turn_holds_it(
+        self, real, monkeypatch
+    ):
+        """A line of the interruption that waited longer than the worker
+        waits, and that the voices are giving to the answer at this very
+        moment. It is none of the lines of the answer, so the answer still
+        begins as it did; when the voices commit, it lands in the middle
+        of what was read. Not read this round."""
+        _listening(monkeypatch)
+        new_session, _ = real
+        s, b, m = await self._debate(real)
+        setup = new_session()
+        await _say(setup, s, b, [(58, "Dat wil ik graag weten.")])
+        await setup.commit()
+        marking, timeline = new_session(), new_session()
+        late = 70 + NEVER_MOVES_AFTER.total_seconds() + 1
+        worker, final = await self._final(marking, s, m, late)
+        line = await self._voice_line(timeline, "Dat wil ik graag weten.")
+        assert line.id in final.settle
+        assert line.id not in [own.id for own in final.lines]
+        await marking.commit()
+        await timeline.commit()
+
+        voices = DebatStemmen(timeline, None, Budget.share(1))
+        assert await voices._assign(line, m.id) is True
+
+        assert await asyncio.wait_for(worker._settle(final), 2) is False
+        await marking.commit()
+        await timeline.commit()
+
+        # Next round the line is the first of the answer, and is read.
+        worker, final = await self._final(marking, s, m, late + 15)
+        assert [own.tekst for own in final.lines][0] == "Dat wil ik graag weten."
+        assert await worker._settle(final) is True
+
     async def test_a_line_that_comes_in_meanwhile_lands_behind_what_is_read(
         self, real, monkeypatch
     ):
@@ -1656,7 +1692,9 @@ class TestOneWriterOfAMessage:
         await self._timeline(timeline, mm, s)
         assert mm.messages[m.post_id].endswith(EEN_OPEN)
 
-        async def react(*args, **kwargs):
+        read = mm.get_post
+
+        async def react(post_id):
             # Lands between the count being read and the row being marked.
             await marking.execute(
                 update(DebatMarkering)
@@ -1664,7 +1702,7 @@ class TestOneWriterOfAMessage:
                 .values(status="beantwoord", statusregel_at=None)
             )
             await marking.commit()
-            return True
+            return await read(post_id)
 
         await marking.execute(
             update(DebatMarkering)
@@ -1673,7 +1711,7 @@ class TestOneWriterOfAMessage:
         )
         await marking.commit()
         with monkeypatch.context() as during:
-            during.setattr(mm, "update_post", react)
+            during.setattr(mm, "get_post", react)
             await _counts(timeline, mm, s)
         await timeline.commit()
         await self._timeline(timeline, mm, s)
@@ -1684,39 +1722,19 @@ class TestOneWriterOfAMessage:
         self, db_session, monkeypatch
     ):
         """People tick questions off after the debate. The timeline no
-        longer follows it, and its round still writes what changed."""
+        longer follows it, and its round still puts the count there."""
         from bouwmeester.models.debat_sessie import TIJDLIJN_AFGELOPEN
         from bouwmeester.services.debat_tijdlijn_service import DebatTijdlijnService
 
         mm = w.Chat()
         s = await w._running(db_session, tijdlijn_status=TIJDLIJN_AFGELOPEN)
         a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
-        mm.messages[a.post_id] = w.KOP
+        mm.messages[a.post_id] = f"{w.KOP}\n{w.OPENING}"
         await w._marked(db_session, s, a)
 
         await DebatTijdlijnService(db_session, mm).tick(_now(90000))
 
         assert mm.messages[a.post_id] == f"{w.KOP}\n{w.OPENING}\n\n---\n{w.STATUS_EEN}"
-
-    async def test_a_message_that_cannot_be_written_is_given_up_when_nobody_follows(
-        self, db_session, monkeypatch
-    ):
-        from bouwmeester.models.debat_sessie import TIJDLIJN_AFGELOPEN
-
-        mm = w.Chat()
-        s = await w._running(db_session, tijdlijn_status=TIJDLIJN_AFGELOPEN)
-        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
-        mm.messages[a.post_id] = w.KOP
-        await w._marked(db_session, s, a)
-
-        async def refused(post_id, message, props=None):
-            return False
-
-        monkeypatch.setattr(mm, "update_post", refused)
-        # Followed: tried again next round. Not followed: once.
-        await DebatTranscript(db_session, mm).write_counts(TickResult(), [s.id])
-        assert await self._stale(db_session, s) == 1
-        await DebatTranscript(db_session, mm).write_counts(TickResult(), [])
         assert await self._stale(db_session, s) == 0
 
     async def _stale(self, session, s) -> int:
@@ -1819,6 +1837,7 @@ class TestWhoElseLeavesTheMessageToTheTranscription:
         )
         end = await w._row(db_session, s, "debate_end", 300, kop="⏹️ **Afgelopen**")
         mm.messages[end.post_id] = "⏹️ **Afgelopen**"
+        await w._transcribe(db_session, mm, s)
         await w._marked(db_session, s, end)
 
         await _counts(db_session, mm, s)
@@ -1828,3 +1847,301 @@ class TestWhoElseLeavesTheMessageToTheTranscription:
         assert mm.messages[end.post_id].endswith(f"\n\n---\n{w.STATUS_EEN}")
         assert "Ik sluit af." in mm.messages[end.post_id]
         assert len(mm.updates) == writes
+
+
+async def _pending(session, sessie) -> list[tuple]:
+    rows = await session.execute(
+        select(
+            DebatMarkering.statusregel_at,
+            DebatMarkering.statusregel_pogingen,
+            DebatMarkering.statusregel_niet_voor,
+        )
+        .where(DebatMarkering.sessie_id == sessie.id)
+        .order_by(DebatMarkering.volgnummer)
+    )
+    return [tuple(row) for row in rows.all()]
+
+
+@pytest.mark.asyncio
+class TestOnlyTheOneMessage:
+    """What is counted under one message changed. That message is written,
+    and nothing else in the channel is touched."""
+
+    ZIN = "Dit is een zin van precies zoveel woorden als nodig is."
+
+    async def _old_part(self, db_session, mm, **sessie):
+        """A part with a long turn in two messages and a short one, both
+        in the channel, and the rows of the long one saying something else
+        by now: written by the code of another day."""
+        s = await w._running(db_session, **sessie)
+        long_ = await w._row(
+            db_session, s, "speaker", 10, "b", tekst=" ".join([self.ZIN] * 60)
+        )
+        mm.messages[long_.post_id] = w.KOP
+        await w._transcribe(db_session, mm, s)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        mm.messages[a.post_id] = w.KOP
+        await w._transcribe(db_session, mm, s)
+        turn = (await load_turns(db_session, s.id, PART))[0]
+        assert len(turn.vervolg) >= 1
+        # The rows changed since: the long turn is two sentences now, and
+        # would fit one message.
+        await db_session.execute(
+            update(DebatSpreekbeurt)
+            .where(DebatSpreekbeurt.id == long_.id)
+            .values(tekst=f"{self.ZIN} {self.ZIN}")
+        )
+        return s, long_, a, list(turn.vervolg)
+
+    async def test_a_reaction_on_an_old_debate_touches_one_message_and_not_its_text(
+        self, db_session
+    ):
+        from bouwmeester.models.debat_sessie import TIJDLIJN_AFGELOPEN
+        from bouwmeester.services.debat_tijdlijn_service import DebatTijdlijnService
+
+        mm = w.Chat()
+        s, long_, a, vervolg = await self._old_part(
+            db_session, mm, tijdlijn_status=TIJDLIJN_AFGELOPEN
+        )
+        # What is in the channel is not what the rows would make of it.
+        mm.messages[a.post_id] = "**Kamerlid A (X)** · 10:01\nZoals het er toen stond."
+        before = dict(mm.messages)
+        posted, updates = len(mm.order), len(mm.updates)
+        await w._marked(db_session, s, a)
+
+        await DebatTijdlijnService(db_session, mm).tick(_now(90000))
+
+        assert mm.updates[updates:] == [
+            (a.post_id, f"{before[a.post_id]}\n\n---\n{w.STATUS_EEN}")
+        ]
+        assert len(mm.order) == posted and mm.removed == []
+        for post_id in (long_.post_id, *vervolg):
+            assert mm.messages[post_id] == before[post_id]
+
+    async def test_in_a_debate_that_is_followed_no_other_turn_is_written_either(
+        self, db_session
+    ):
+        mm = w.Chat()
+        s, long_, a, vervolg = await self._old_part(db_session, mm)
+        before = dict(mm.messages)
+        posted, updates = len(mm.order), len(mm.updates)
+        await w._marked(db_session, s, a)
+
+        await _counts(db_session, mm, s)
+
+        assert mm.updates[updates:] == [
+            (a.post_id, f"{before[a.post_id]}\n\n---\n{w.STATUS_EEN}")
+        ]
+        assert len(mm.order) == posted and mm.removed == []
+        for post_id in (long_.post_id, *vervolg):
+            assert mm.messages[post_id] == before[post_id]
+
+    async def test_a_message_that_is_no_turn_keeps_its_text(self, db_session):
+        """The end of a debate without words of the chairman: posted once,
+        never written by the transcription."""
+        mm = w.Chat()
+        s = await w._running(db_session)
+        end = await w._row(db_session, s, "debate_end", 300, kop="⏹️ **Afgelopen**")
+        mm.messages[end.post_id] = "⏹️ **Het debat is afgelopen** · 12:00"
+        await w._marked(db_session, s, end)
+
+        await _counts(db_session, mm, s)
+        await _counts(db_session, mm, s)
+
+        assert mm.updates == [
+            (
+                end.post_id,
+                f"⏹️ **Het debat is afgelopen** · 12:00\n\n---\n{w.STATUS_EEN}",
+            )
+        ]
+        assert (await _pending(db_session, s))[0][0] is not None
+
+
+@pytest.mark.asyncio
+class TestACountThatCannotBeWritten:
+    async def _one(self, db_session, mm, **sessie):
+        s = await w._running(db_session, **sessie)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        mm.messages[a.post_id] = w.KOP
+        await w._transcribe(db_session, mm, s)
+        await w._marked(db_session, s, a)
+        return s, a
+
+    async def _round(self, db_session, mm, s, seconds: float) -> None:
+        await DebatTranscript(db_session, mm).write_counts(TickResult(), _now(seconds))
+
+    async def test_it_is_tried_again_later_and_later(self, db_session):
+        """One refusal of Mattermost is not the end of it."""
+        mm = w.Chat()
+        s, a = await self._one(db_session, mm)
+        mm.broken.add(a.post_id)
+        updates = len(mm.updates)
+
+        await self._round(db_session, mm, s, 0)
+        assert await _pending(db_session, s) == [
+            (None, 1, _now(0) + tr.COUNT_RETRY_FIRST)
+        ]
+        # Not before its time.
+        await self._round(db_session, mm, s, 10)
+        assert (await _pending(db_session, s))[0][1] == 1
+        await self._round(db_session, mm, s, 30)
+        assert await _pending(db_session, s) == [
+            (None, 2, _now(30) + 2 * tr.COUNT_RETRY_FIRST)
+        ]
+
+        mm.broken.clear()
+        await self._round(db_session, mm, s, 90)
+        (row,) = await _pending(db_session, s)
+        assert row == (_now(90), None, None)
+        assert mm.messages[a.post_id].endswith(w.STATUS_EEN)
+        assert len(mm.updates) == updates + 1
+
+    async def test_after_an_hour_it_is_given_up_and_said_once(self, db_session, caplog):
+        mm = w.Chat()
+        s, a = await self._one(db_session, mm)
+        mm.broken.add(a.post_id)
+        seconds = 0.0
+        result = TickResult()
+        with caplog.at_level("WARNING"):
+            for _attempt in range(tr.COUNT_ATTEMPTS):
+                await DebatTranscript(db_session, mm).write_counts(
+                    result, _now(seconds)
+                )
+                seconds += tr.COUNT_RETRY_MAX.total_seconds()
+
+        (row,) = await _pending(db_session, s)
+        assert row[0] is not None and row[1:] == (None, None)
+        waits = [
+            min(tr.COUNT_RETRY_FIRST * 2**n, tr.COUNT_RETRY_MAX)
+            for n in range(tr.COUNT_ATTEMPTS - 1)
+        ]
+        assert timedelta(minutes=45) <= sum(waits, timedelta()) <= timedelta(minutes=75)
+        said = [r.getMessage() for r in caplog.records if "opgegeven" in r.getMessage()]
+        assert said == [
+            f"Telling onder bericht {a.post_id} na {tr.COUNT_ATTEMPTS} pogingen"
+            " opgegeven"
+        ]
+        assert not any(r.exc_info for r in caplog.records)
+        assert result.fouten == 1
+        # And nothing is asked of Mattermost for it any more.
+        reads = len(mm.updates)
+        await DebatTranscript(db_session, mm).write_counts(result, _now(seconds + 3600))
+        assert len(mm.updates) == reads
+
+    async def test_something_that_breaks_is_one_line_and_tried_again(
+        self, db_session, monkeypatch, caplog
+    ):
+        mm = w.Chat()
+        s, a = await self._one(db_session, mm)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+
+        async def boom(post_id, message, props=None):
+            raise RuntimeError("stuk")
+
+        monkeypatch.setattr(mm, "update_post", boom)
+        with caplog.at_level("WARNING"):
+            await self._round(db_session, mm, s, 0)
+
+        assert (await _pending(db_session, s))[0][:2] == (None, 1)
+        assert not any(r.exc_info for r in caplog.records)
+
+    async def test_a_new_reaction_starts_the_count_of_tries_anew(self, db_session):
+        from tests import test_debat_vraag_status as st
+
+        mm = st.FakeMattermost()
+        s = await w._running(db_session)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        mm.messages[a.post_id] = f"{w.KOP}\n{w.OPENING}"
+        await w._marked(db_session, s, a)
+        thread = await db_session.scalar(
+            select(DebatMarkering.thread_post_id).where(
+                DebatMarkering.sessie_id == s.id
+            )
+        )
+        mm.messages[thread] = "oud"
+        await db_session.execute(
+            update(DebatMarkering)
+            .where(DebatMarkering.sessie_id == s.id)
+            .values(
+                statusregel_pogingen=5,
+                statusregel_niet_voor=_now(9999),
+                reacties_gewijzigd_at=datetime.now(UTC),
+            )
+        )
+
+        await st._reageer(db_session, mm, thread, st.PERSOON_A, st.REACTIE_BEANTWOORD)
+        await st._ronde(db_session, mm)
+
+        assert await _pending(db_session, s) == [(None, None, None)]
+
+
+@pytest.mark.asyncio
+class TestWhatARoundOfCountsMayCost:
+    async def _many(self, db_session, mm, count: int):
+        s = await w._running(db_session)
+        rows = []
+        for i in range(count):
+            row = await w._row(
+                db_session, s, "speaker", 60 + i, "ab"[i % 2], tekst="Ja."
+            )
+            mm.messages[row.post_id] = w.KOP
+            rows.append(row)
+        await w._transcribe(db_session, mm, s)
+        for i, row in enumerate(rows):
+            await w._marked(db_session, s, row, i + 1)
+        return s, rows
+
+    async def test_no_more_messages_than_a_round_may_write(self, db_session):
+        mm = w.Chat()
+        s, rows = await self._many(db_session, mm, tr.COUNTS_PER_ROUND + 2)
+        updates = len(mm.updates)
+
+        await _counts(db_session, mm, s)
+        assert len(mm.updates) - updates == tr.COUNTS_PER_ROUND
+
+        await _counts(db_session, mm, s)
+        assert len(mm.updates) - updates == tr.COUNTS_PER_ROUND + 2
+        assert all(row[0] is not None for row in await _pending(db_session, s))
+
+    async def test_what_failed_does_not_stand_in_front_of_what_was_never_tried(
+        self, db_session
+    ):
+        mm = w.Chat()
+        s, rows = await self._many(db_session, mm, tr.COUNTS_PER_ROUND + 2)
+        mm.broken.update(row.post_id for row in rows[: tr.COUNTS_PER_ROUND])
+
+        await _counts(db_session, mm, s)
+        await _counts(db_session, mm, s)
+
+        for row in rows[tr.COUNTS_PER_ROUND :]:
+            assert mm.messages[row.post_id].endswith("open**")
+
+    async def test_and_no_longer_than_its_budget(self, db_session, monkeypatch):
+        mm = w.Chat()
+        s, rows = await self._many(db_session, mm, 3)
+        updates = len(mm.updates)
+        ticks = iter([0.0, 1.0, tr.COUNTS_BUDGET + 1.5, 99.0, 99.0])
+        monkeypatch.setattr(tr, "_clock", lambda: next(ticks))
+
+        await _counts(db_session, mm, s)
+
+        assert len(mm.updates) - updates == 1
+
+    async def test_the_debates_of_today_come_first(self, db_session, monkeypatch):
+        from bouwmeester.services.debat_tijdlijn_service import DebatTijdlijnService
+
+        mm = w.Chat()
+        await w._running(db_session)
+        seen: list[str] = []
+
+        async def advance(self, sessie_id, client, now, result):
+            seen.append("debat")
+
+        async def counts(self, result, now=None):
+            seen.append("tellingen")
+
+        monkeypatch.setattr(DebatTijdlijnService, "_advance", advance)
+        monkeypatch.setattr(DebatTranscript, "write_counts", counts)
+        await DebatTijdlijnService(db_session, mm).tick(_now(100))
+
+        assert seen == ["debat", "tellingen"]

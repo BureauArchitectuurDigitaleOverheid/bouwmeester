@@ -1726,7 +1726,10 @@ async def later_op_papier(
 
 
 async def schrijf_statusregel(
-    session: AsyncSession, mattermost: MattermostService, post_id: str
+    session: AsyncSession,
+    mattermost: MattermostService,
+    post_id: str,
+    sessie_id: uuid.UUID | None = None,
 ) -> bool | None:
     """Put the status block under a message that nobody else writes.
 
@@ -1744,18 +1747,38 @@ async def schrijf_statusregel(
     should be, or never will be because the message is gone.
     """
     # Imported here: the transcription imports this module.
-    from bouwmeester.services.debat_transcript_service import part_of_message
+    from bouwmeester.services.debat_transcript_service import turn_of_message
 
-    if await part_of_message(session, post_id) is not None:
+    if await turn_of_message(session, post_id, sessie_id) is not None:
         return None
+    return await vervang_statusblok(session, mattermost, post_id)
+
+
+async def vervang_statusblok(
+    session: AsyncSession, mattermost: MattermostService, post_id: str
+) -> bool:
+    """Replace the status block of a message and leave its text as it is.
+
+    Read, and written back with another block. ``True`` when the line is
+    as it should be, or never will be because the message is gone. Only
+    for whoever is sure nothing writes the message in between: the
+    timeline for any message (`DebatTranscript.write_counts`), the
+    marking for a message that is not a turn's (`schrijf_statusregel`).
+    """
     blok = await statusblok_voor_post(session, post_id)
     try:
         post = await mattermost.get_post(post_id)
     except PostNotFoundError:
         logger.info("Bericht %s is weg; geen statusregel", post_id)
         return True
-    except Exception:
-        logger.exception("Bericht %s niet te lezen voor de statusregel", post_id)
+    except Exception as exc:
+        # One line and what kind of error: this is tried again, by a round
+        # that comes every few seconds.
+        logger.warning(
+            "Bericht %s niet te lezen voor de statusregel (%s)",
+            post_id,
+            type(exc).__name__,
+        )
         return False
     if not post:
         return False
@@ -1769,8 +1792,12 @@ async def schrijf_statusregel(
         return bool(
             await mattermost.update_post(post_id, nieuw, post.get("props") or None)
         )
-    except Exception:
-        logger.exception("Statusregel op bericht %s niet geschreven", post_id)
+    except Exception as exc:
+        logger.warning(
+            "Statusregel op bericht %s niet geschreven (%s)",
+            post_id,
+            type(exc).__name__,
+        )
         return False
 
 
@@ -3079,7 +3106,7 @@ class DebatVraagService:
         for post_id in post_ids:
             # Only `True`: a message of the transcription stays out of
             # date here, and the transcription writes it.
-            if post_id and await self._schrijf_statusregel(post_id) is True:
+            if post_id and await self._schrijf_statusregel(post_id, sessie_id) is True:
                 await self.session.execute(
                     update(DebatMarkering)
                     .where(
@@ -3090,8 +3117,12 @@ class DebatVraagService:
                 )
                 await self.session.commit()
 
-    async def _schrijf_statusregel(self, post_id: str) -> bool | None:
-        return await schrijf_statusregel(self.session, self.mattermost, post_id)
+    async def _schrijf_statusregel(
+        self, post_id: str, sessie_id: uuid.UUID | None = None
+    ) -> bool | None:
+        return await schrijf_statusregel(
+            self.session, self.mattermost, post_id, sessie_id
+        )
 
 
 def _vraag_moment(beurt: Beurt, plek: int) -> datetime | None:

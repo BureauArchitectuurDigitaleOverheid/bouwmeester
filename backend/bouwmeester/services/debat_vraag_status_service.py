@@ -206,6 +206,7 @@ class DebatVraagStatusService:
             return True, False
         thread_post_id = markering.thread_post_id
         beurt_post_id = markering.beurt_post_id
+        sessie_id = markering.sessie_id
 
         try:
             reacties = await self.mattermost.get_post_reactions(thread_post_id)
@@ -280,6 +281,8 @@ class DebatVraagStatusService:
                     status_door_person_id=gebruiker[0] if gebruiker else None,
                     # The status block under the turn counts per status.
                     statusregel_at=None,
+                    statusregel_pogingen=None,
+                    statusregel_niet_voor=None,
                 )
             )
             logger.info(
@@ -305,7 +308,7 @@ class DebatVraagStatusService:
         klaar = await self._schrijf_thread(thread_post_id, tekst)
         if beurt_post_id:
             geschreven = await schrijf_statusregel(
-                self.session, self.mattermost, beurt_post_id
+                self.session, self.mattermost, beurt_post_id, sessie_id
             )
             if geschreven is None:
                 # A message of the transcription: the row says its count
@@ -315,7 +318,11 @@ class DebatVraagStatusService:
                 await self.session.execute(
                     update(DebatMarkering)
                     .where(DebatMarkering.id == markering_id)
-                    .values(statusregel_at=None)
+                    .values(
+                        statusregel_at=None,
+                        statusregel_pogingen=None,
+                        statusregel_niet_voor=None,
+                    )
                 )
                 await self.session.commit()
             elif geschreven:
