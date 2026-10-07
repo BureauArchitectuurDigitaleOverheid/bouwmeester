@@ -92,7 +92,8 @@ class TestNaEenHerstart:
         )
 
         achter = datetime.now(UTC) - tkconv_strategie.huidig_watermerk()
-        assert MAX_ACHTERSTAND - timedelta(seconds=5) < achter <= MAX_ACHTERSTAND
+        # The clock moves on between the two readings of it.
+        assert abs(achter - MAX_ACHTERSTAND) < timedelta(seconds=5)
         assert timedelta(days=7) == MAX_ACHTERSTAND
 
     async def test_a_process_that_is_running_keeps_its_own(self, db_session):
