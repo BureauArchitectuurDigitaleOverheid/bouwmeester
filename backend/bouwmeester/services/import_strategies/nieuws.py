@@ -52,6 +52,22 @@ def reset_watermerk() -> None:
     """Voor tests: zet het procesgeheugen terug."""
     global _WATERMERK
     _WATERMERK = None
+
+
+def huidig_watermerk() -> datetime | None:
+    """Where this process has got to, for whoever keeps it across restarts."""
+    return _WATERMERK
+
+
+def herstel_watermerk(tijdstip: datetime | None) -> None:
+    """Go on from where the process before this one had got to.
+
+    Only when this process has no watermark of its own yet: one that is
+    there is at least as new as what was kept.
+    """
+    global _WATERMERK  # noqa: PLW0603
+    if _WATERMERK is None and tijdstip is not None:
+        _WATERMERK = tijdstip
     _ETAGS.clear()
 
 

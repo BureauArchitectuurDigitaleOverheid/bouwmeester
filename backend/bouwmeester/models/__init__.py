@@ -31,6 +31,7 @@ from bouwmeester.models.effect import Effect  # noqa: F401
 from bouwmeester.models.fcc_sync_log import FccSyncLog  # noqa: F401
 from bouwmeester.models.github_link import GitHubLink  # noqa: F401
 from bouwmeester.models.http_session import HttpSession  # noqa: F401
+from bouwmeester.models.import_watermerk import ImportWatermerk  # noqa: F401
 from bouwmeester.models.initiatief import Initiatief  # noqa: F401
 from bouwmeester.models.initiatief_update import InitiatiefUpdatePost  # noqa: F401
 from bouwmeester.models.instrument import Instrument  # noqa: F401
@@ -174,4 +175,5 @@ __all__ = [
     "WebAuthnCredential",
     "WhitelistEmail",
     "WorkerHeartbeat",
+    "ImportWatermerk",
 ]
