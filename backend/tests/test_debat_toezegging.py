@@ -1394,7 +1394,7 @@ class TestWoordenVanEenToezegging:
 
     def test_the_status_block_has_a_line_of_its_own(self):
         assert statusregel([(SOORT_TOEZEGGING, STATUS_OPEN)]) == (
-            "🤝 1 toezegging · open"
+            "🤝 1 toezegging · **open**"
         )
         assert statusregel(
             [
@@ -1402,14 +1402,14 @@ class TestWoordenVanEenToezegging:
                 (SOORT_TOEZEGGING, STATUS_BEANTWOORD),
                 (SOORT_VRAAG, STATUS_OPEN),
             ]
-        ) == ("❓ 1 vraag · open\n🤝 2 toezeggingen · 1 open · 1 nagekomen")
+        ) == ("❓ 1 vraag · **open**\n🤝 2 toezeggingen · **1 open** · ✅ 1 nagekomen")
 
     def test_the_states_in_its_own_words(self):
         assert statusregel([(SOORT_TOEZEGGING, STATUS_TOEGEWEZEN)]) == (
-            "🤝 1 toezegging · wordt opgepakt"
+            "🤝 1 toezegging · 👀 wordt opgepakt"
         )
         assert statusregel([(SOORT_TOEZEGGING, STATUS_VERVALT)]) == (
-            "🤝 1 toezegging · hoeft niet"
+            "🤝 1 toezegging · 🚫 hoeft niet"
         )
         assert statusregel([(SOORT_TOEZEGGING, STATUS_VERWORPEN)]) == ""
 
@@ -1488,7 +1488,7 @@ class TestToezeggingMarkeren:
             "\n"
             f"{NOOT}"
         )
-        assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · open"
+        assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · **open**"
 
     async def test_the_model_is_asked_for_toezeggingen_only(self, db_session):
         _, _, llm, _, _ = await _judge(
@@ -1513,7 +1513,7 @@ class TestToezeggingMarkeren:
             (2, T_UITZOEKEN),
         ]
         assert result.toezeggingen == 2
-        assert splits(mm.messages[post_id])[1] == "🤝 2 toezeggingen · open"
+        assert splits(mm.messages[post_id])[1] == "🤝 2 toezeggingen · **open**"
         # The note about the transcript once, under the first reply.
         assert [NOOT in reply[2] for reply in mm.replies] == [True, False]
 
@@ -1658,7 +1658,7 @@ class TestToezeggingMarkeren:
             _beurt(sessie_id, TURNS[31], mm.turn()), CONTEXT
         )
         assert later.threads == 1
-        assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · open"
+        assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · **open**"
 
     async def test_what_the_model_wrote_is_escaped_in_the_channel(self, db_session):
         _, mm, _, _, _ = await _judge(
@@ -1690,7 +1690,7 @@ class TestWieNietWordtGelezenVoorToezeggingen:
         (row,) = await _rows(db_session, sessie_id)
         assert (row.soort, row.citaat) == (SOORT_VRAAG, citaat)
         assert result.toezeggingen == 0
-        assert splits(mm.messages[post_id])[1] == "❓ 1 vraag · open"
+        assert splits(mm.messages[post_id])[1] == "❓ 1 vraag · **open**"
 
     async def test_a_member_who_recalls_one_is_not_asked_about_it(self, db_session):
         # "Ik hoor de minister nu iets toezeggen": the model for questions
@@ -1777,7 +1777,9 @@ class TestBijWelkeVraag:
         # The question stays where it stood: people say when it is answered.
         assert vraag_row.status == STATUS_OPEN
         assert vraag_row.status_at is None
-        assert splits(mm.messages[vraag_row.beurt_post_id])[1] == "❓ 1 vraag · open"
+        assert (
+            splits(mm.messages[vraag_row.beurt_post_id])[1] == "❓ 1 vraag · **open**"
+        )
         # A link is no herhaling.
         assert result.herhaald == ()
 
@@ -2431,7 +2433,7 @@ class TestEenLangAntwoord:
             T_BRIEF,
             T_UITZOEKEN,
         ]
-        assert splits(mm.messages[post_id])[1] == "🤝 2 toezeggingen · open"
+        assert splits(mm.messages[post_id])[1] == "🤝 2 toezeggingen · **open**"
 
     async def test_an_answer_that_was_read_to_the_end_is_not_asked_about_again(
         self, db_session
@@ -2719,20 +2721,20 @@ class TestEenReactieOpEenToezegging:
                 REACTIE_BEANTWOORD,
                 STATUS_BEANTWOORD,
                 "✅ **Stuurt een brief.**\nToezegging 1 · nagekomen · ",
-                "🤝 1 toezegging · nagekomen",
+                "🤝 1 toezegging · ✅ nagekomen",
             ),
             (
                 REACTIE_OPGEPAKT,
                 STATUS_TOEGEWEZEN,
                 "👀 **Stuurt een brief.**\nToezegging 1 · wordt opgepakt door"
                 " persoon.a · ",
-                "🤝 1 toezegging · wordt opgepakt",
+                "🤝 1 toezegging · 👀 wordt opgepakt",
             ),
             (
                 REACTIE_VERVALT,
                 STATUS_VERVALT,
                 "🚫 **Stuurt een brief.**\nToezegging 1 · hoeft niet · ",
-                "🤝 1 toezegging · hoeft niet",
+                "🤝 1 toezegging · 🚫 hoeft niet",
             ),
             (
                 REACTIE_GEEN_VRAAG,
@@ -2791,7 +2793,7 @@ class TestEenReactieOpEenToezegging:
         await h._haal_weg(db_session, mm, markering.thread_post_id, h.PERSOON_A, emoji)
         await h._ronde(db_session, mm)
         assert mm.messages[row.thread_post_id] == open_tekst
-        assert splits(mm.messages[row.beurt_post_id])[1] == "🤝 1 toezegging · open"
+        assert splits(mm.messages[row.beurt_post_id])[1] == "🤝 1 toezegging · **open**"
 
 
 class TestVerworpenToezeggingen:

@@ -364,24 +364,38 @@ class TestDeThread:
 class TestDeStatusregel:
     def test_needs_no_answer_is_still_a_question_and_not_open(self):
         assert statusregel([(SOORT_VRAAG, STATUS_VERVALT)]) == (
-            "❓ 1 vraag · hoeft geen antwoord"
+            "❓ 1 vraag · 🚫 hoeft geen antwoord"
         )
         assert statusregel(
             [(SOORT_VRAAG, STATUS_VERVALT), (SOORT_VRAAG, STATUS_VERVALT)]
-        ) == ("❓ 2 vragen · hoeft geen antwoord")
+        ) == ("❓ 2 vragen · 🚫 hoeft geen antwoord")
 
     @pytest.mark.parametrize(
         ("status", "woord"),
         [
-            (STATUS_OPEN, "open"),
-            (STATUS_TOEGEWEZEN, "opgepakt"),
-            (STATUS_BEANTWOORD, "beantwoord"),
-            (STATUS_VERVALT, "hoeft geen antwoord"),
+            (STATUS_OPEN, "**open**"),
+            (STATUS_TOEGEWEZEN, "👀 opgepakt"),
+            (STATUS_BEANTWOORD, "✅ beantwoord"),
+            (STATUS_VERVALT, "🚫 hoeft geen antwoord"),
         ],
     )
     def test_one_state_is_one_word_without_a_count(self, status, woord):
         assert statusregel([(SOORT_VRAAG, status)]) == f"❓ 1 vraag · {woord}"
         assert statusregel([(SOORT_VRAAG, status)] * 3) == f"❓ 3 vragen · {woord}"
+
+    def test_only_what_is_open_is_bold(self):
+        """Someone scrolling through the channel looks for what is open: a
+        line without bold needs nobody."""
+        klaar = statusregel(
+            [(SOORT_VRAAG, STATUS_TOEGEWEZEN), (SOORT_VRAAG, STATUS_BEANTWOORD)]
+        )
+        assert klaar == "❓ 2 vragen · 👀 1 opgepakt · ✅ 1 beantwoord"
+        assert "**" not in klaar
+        deels = statusregel(
+            [(SOORT_VRAAG, STATUS_OPEN), (SOORT_VRAAG, STATUS_BEANTWOORD)]
+        )
+        assert deels == "❓ 2 vragen · **1 open** · ✅ 1 beantwoord"
+        assert deels.count("**") == 2
 
     def test_every_state_is_counted_in_a_fixed_order(self):
         statussen = [
@@ -393,7 +407,8 @@ class TestDeStatusregel:
             STATUS_VERVALT,
         ]
         verwacht = (
-            "❓ 5 vragen · 1 open · 1 opgepakt · 1 beantwoord · 2 hoeft geen antwoord"
+            "❓ 5 vragen · **1 open** · 👀 1 opgepakt · ✅ 1 beantwoord"
+            " · 🚫 2 hoeft geen antwoord"
         )
         assert statusregel([(SOORT_VRAAG, s) for s in statussen]) == verwacht
         # Whatever order the questions were asked in.
@@ -402,7 +417,7 @@ class TestDeStatusregel:
     def test_a_rejected_one_next_to_one_state_leaves_that_state_alone(self):
         assert statusregel(
             [(SOORT_VRAAG, STATUS_VERWORPEN), (SOORT_VRAAG, STATUS_VERVALT)]
-        ) == ("❓ 1 vraag · hoeft geen antwoord")
+        ) == ("❓ 1 vraag · 🚫 hoeft geen antwoord")
 
     def test_a_turn_of_rejected_questions_only_shows_nothing(self):
         assert (
@@ -740,21 +755,21 @@ class TestEenReactieWordtEenStatus:
                 STATUS_BEANTWOORD,
                 "✅ **Wanneer brief 1 komt.**\n"
                 "Vraag 1 · beantwoord · aan de minister · 10:02",
-                "❓ 1 vraag · beantwoord",
+                "❓ 1 vraag · ✅ beantwoord",
             ),
             (
                 REACTIE_OPGEPAKT,
                 STATUS_TOEGEWEZEN,
                 "👀 **Wanneer brief 1 komt.**\n"
                 "Vraag 1 · opgepakt door persoon.a · aan de minister · 10:02",
-                "❓ 1 vraag · opgepakt",
+                "❓ 1 vraag · 👀 opgepakt",
             ),
             (
                 REACTIE_VERVALT,
                 STATUS_VERVALT,
                 "🚫 **Wanneer brief 1 komt.**\n"
                 "Vraag 1 · hoeft geen antwoord · aan de minister · 10:02",
-                "❓ 1 vraag · hoeft geen antwoord",
+                "❓ 1 vraag · 🚫 hoeft geen antwoord",
             ),
             (
                 REACTIE_GEEN_VRAAG,
@@ -798,21 +813,21 @@ class TestEenReactieWordtEenStatus:
                 STATUS_BEANTWOORD,
                 "✅ **Verzoekt de regering een plan te maken**\n"
                 "Motie 1 · oordeel gegeven · ingediend · 10:02",
-                "📜 1 motie · oordeel gegeven",
+                "📜 1 motie · ✅ oordeel gegeven",
             ),
             (
                 REACTIE_OPGEPAKT,
                 STATUS_TOEGEWEZEN,
                 "👀 **Verzoekt de regering een plan te maken**\n"
                 "Motie 1 · opgepakt door persoon.a · ingediend · 10:02",
-                "📜 1 motie · opgepakt",
+                "📜 1 motie · 👀 opgepakt",
             ),
             (
                 REACTIE_VERVALT,
                 STATUS_VERVALT,
                 "🚫 **Verzoekt de regering een plan te maken**\n"
                 "Motie 1 · hoeft geen oordeel · ingediend · 10:02",
-                "📜 1 motie · hoeft geen oordeel",
+                "📜 1 motie · 🚫 hoeft geen oordeel",
             ),
             (
                 REACTIE_GEEN_VRAAG,
@@ -861,7 +876,7 @@ class TestEenReactieWordtEenStatus:
         assert mm.messages[row.thread_post_id].startswith(
             "📜 **Verzoekt de regering een plan te maken**\nMotie 1 · ingediend · "
         )
-        assert splits(mm.messages[row.beurt_post_id])[1] == "📜 1 motie · open"
+        assert splits(mm.messages[row.beurt_post_id])[1] == "📜 1 motie · **open**"
 
     async def test_the_reply_keeps_what_it_said(self, db_session):
         mm = FakeMattermost()
@@ -1098,7 +1113,7 @@ class TestEenReactieWeghalen:
         assert row.status_at >= voor
         # The whole reply is back, quote and all: nothing was lost.
         assert mm.messages[reply] == was
-        assert splits(mm.messages[row.beurt_post_id])[1] == ("❓ 1 vraag · open")
+        assert splits(mm.messages[row.beurt_post_id])[1] == ("❓ 1 vraag · **open**")
 
     async def test_someone_elses_same_reaction_keeps_the_status(self, db_session):
         mm = FakeMattermost()
@@ -1165,7 +1180,7 @@ class TestHetStatusblok:
         beurt = een.beurt_post_id
         twee = await _markering(db_session, mm, sessie_id, 2, beurt_post_id=beurt)
         drie = await _markering(db_session, mm, sessie_id, 3, beurt_post_id=beurt)
-        assert splits(mm.messages[beurt])[1] == "❓ 3 vragen · open"
+        assert splits(mm.messages[beurt])[1] == "❓ 3 vragen · **open**"
 
         await _reageer(
             db_session, mm, twee.thread_post_id, PERSOON_A, REACTIE_BEANTWOORD
@@ -1177,7 +1192,7 @@ class TestHetStatusblok:
 
         assert splits(mm.messages[beurt]) == (
             TURN,
-            "❓ 2 vragen · 1 open · 1 beantwoord",
+            "❓ 2 vragen · **1 open** · ✅ 1 beantwoord",
         )
 
     async def test_is_gone_when_every_question_of_the_turn_was_rejected(
@@ -1210,7 +1225,7 @@ class TestHetStatusblok:
         await _haal_weg(db_session, mm, reply, PERSOON_A, REACTIE_GEEN_VRAAG)
         await _ronde(db_session, mm)
 
-        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · open"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · **open**"
 
     async def test_keeps_a_transcript_that_grew_meanwhile(self, db_session):
         mm = FakeMattermost()
@@ -1228,7 +1243,7 @@ class TestHetStatusblok:
 
         body, blok = splits(mm.messages[beurt])
         assert body.endswith("En nog een zin.")
-        assert blok == "❓ 1 vraag · beantwoord"
+        assert blok == "❓ 1 vraag · ✅ beantwoord"
 
 
 class TestBegrensd:
@@ -1415,7 +1430,7 @@ class TestMattermostFaalt:
 
         assert (ronde.bijgewerkt, ronde.gewijzigd, ronde.mislukt) == (1, 0, 0)
         assert _stand(mm.messages[reply]) == "✅ beantwoord"
-        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · beantwoord"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · ✅ beantwoord"
         row = await _lees(db_session, markering.id)
         assert row.reacties_gewijzigd_at is None
         assert row.statusregel_at is not None
@@ -1515,7 +1530,7 @@ class TestMattermostFaalt:
         row = await _lees(db_session, markering.id)
         assert row.reacties_gewijzigd_at is None
         # The turn still says what became of its question.
-        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · beantwoord"
+        assert splits(mm.messages[beurt])[1] == "❓ 1 vraag · ✅ beantwoord"
 
     async def test_a_turn_that_was_deleted_does_not_keep_the_reply_waiting(
         self, db_session

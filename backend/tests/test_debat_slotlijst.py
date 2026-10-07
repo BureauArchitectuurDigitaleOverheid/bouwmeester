@@ -1250,7 +1250,7 @@ class TestDeLijstLezen:
             "\n"
             f"{NOOT}"
         )
-        assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · open"
+        assert splits(mm.messages[post_id])[1] == "🤝 1 toezegging · **open**"
 
     async def test_without_a_message_of_the_end_it_is_a_message_of_its_own(
         self, db_session

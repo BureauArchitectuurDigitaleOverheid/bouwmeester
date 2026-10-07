@@ -85,7 +85,7 @@ SPREKERS = {
     "m": dd.Spreker("Bewindspersoon A", None, "Minister van Voorbeelden"),
 }
 MINISTER = "Bewindspersoon A (Minister van Voorbeelden)"
-STATUS_EEN = "❓ 1 vraag · open"
+STATUS_EEN = "❓ 1 vraag · **open**"
 
 Q_WANNEER = "Kan de minister zeggen wanneer het wetsvoorstel naar de Kamer komt?"
 Q_BUDGET = "Is de minister bereid het budget voor dit jaar te verhogen?"
@@ -1648,7 +1648,7 @@ class TestOneMessageTwoWriters:
         await _status(db_session, mm, s)
 
         assert mm.messages[a.post_id] == (
-            f"{KOP}\n{OPENING} {Q_WANNEER} {Q_BUDGET}\n\n---\n❓ 2 vragen · open"
+            f"{KOP}\n{OPENING} {Q_WANNEER} {Q_BUDGET}\n\n---\n❓ 2 vragen · **open**"
         )
 
     async def test_the_transcription_restores_a_line_that_is_in_the_table(
