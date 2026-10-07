@@ -311,7 +311,7 @@
    "start": "2030-01-14T10:54:00+01:00",
    "onderbroken": null,
    "onderbroken_is_bewindspersoon": false,
-   "tekst": "Voorzitter. Ik heb nog geen antwoord gekregen op mijn vraag wie de rekening betaalt als een gemeente het geld niet heeft. Kan de minister daar alsnog op ingaan?"
+   "tekst": "Voorzitter. Ik heb nog geen antwoord gekregen op mijn vraag wie de rekening betaalt als een gemeente het geld niet heeft. Kan de minister daar alsnog op ingaan? In de brief van vorige week schrijft de minister dat de telling van de stallingen loopt. Kan de minister zeggen wat daar tot nu toe uit komt? Ik zal zelf een brief sturen aan de vervoerders om hun cijfers op te vragen. En kan de minister de Kamer schriftelijk laten weten hoeveel beugels er dit jaar zijn bijgekomen?"
   },
   {
    "nr": 28,
@@ -456,7 +456,9 @@
    "citaat": "Ik zou graag vóór de begrotingsbehandeling een brief van de minister ontvangen met een overzicht van de bezetting van alle bewaakte stallingen per provincie.",
    "gericht_aan": "minister",
    "onzeker": false,
-   "herhaling": false
+   "herhaling": false,
+   "vraagt_om": "een brief",
+   "termijn": "voor de begrotingsbehandeling"
   },
   {
    "beurt": 9,
@@ -647,6 +649,26 @@
    "notitie": "the same question as in the first term"
   },
   {
+   "beurt": 27,
+   "soort": "vraag",
+   "citaat": "In de brief van vorige week schrijft de minister dat de telling van de stallingen loopt. Kan de minister zeggen wat daar tot nu toe uit komt?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "about a letter that exists: it asks for no letter"
+  },
+  {
+   "beurt": 27,
+   "soort": "verzoek_om_brief",
+   "citaat": "En kan de minister de Kamer schriftelijk laten weten hoeveel beugels er dit jaar zijn bijgekomen?",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "no product named, the form is: in writing",
+   "vraagt_om": "een schriftelijk antwoord",
+   "termijn": null
+  },
+  {
    "beurt": 28,
    "soort": "motie",
    "citaat": "verzoekt de regering om samen met de vervoerders een plan te maken voor een bewaakte stalling bij elk station en de Kamer daarover vóór 1 maart te informeren, en gaat over tot de orde van de dag",
@@ -724,7 +746,9 @@
    "gericht_aan": "minister",
    "onzeker": false,
    "herhaling": false,
-   "notitie": "a member asks for a toezegging: a request, not a toezegging"
+   "notitie": "a member asks for a toezegging: a request, not a toezegging",
+   "vraagt_om": "een overzicht",
+   "termijn": "voor het kerstreces"
   },
   {
    "beurt": 36,
@@ -871,6 +895,12 @@
    "notitie": "a motion that does not come"
   },
   {
+   "beurt": 27,
+   "type": "eigen_brief",
+   "citaat": "Ik zal zelf een brief sturen aan de vervoerders om hun cijfers op te vragen.",
+   "notitie": "a member announces a letter of their own: nothing is asked"
+  },
+  {
    "beurt": 28,
    "type": "oproep",
    "citaat": "Ik hoop dat de minister deze motie ziet als steun in de rug."
@@ -905,6 +935,12 @@
    "citaat": "Als de minister kort antwoordt, kunnen we dan elk nog één interruptie krijgen?"
   },
   {
+   "beurt": 34,
+   "type": "toezegging_aan",
+   "citaat": "Dat is een toezegging aan Kamerlid C.",
+   "notitie": "who the item before it was promised to; no item of its own"
+  },
+  {
    "beurt": 36,
    "type": "weigering",
    "citaat": "Nee, dat kan ik niet toezeggen",
@@ -915,12 +951,6 @@
    "type": "voorwaardelijk",
    "citaat": "Als zij ze willen delen, zou ik kunnen overwegen ze door te sturen.",
    "notitie": "a condition and a maybe, nothing to hold anyone to"
-  },
-  {
-   "beurt": 34,
-   "type": "toezegging_aan",
-   "citaat": "Dat is een toezegging aan Kamerlid C.",
-   "notitie": "who the item before it was promised to; no item of its own"
   },
   {
    "beurt": 37,

@@ -22,6 +22,14 @@ Counting, per kind:
   and is a question as the code understands it today.
 * Every other marking is a false positive, named after the hard negative
   it matches, the other kind it matches, or `ongelabeld`.
+* A request for a letter is not a kind the code stores: it is a question
+  with `vraagt_om` set. So for `verzoek_om_brief` the markings that count
+  are the questions that carry that property. A gold request is found when
+  such a question matches it. A gold request that was marked as a plain
+  question is a miss of the request, with a reason of its own: found as a
+  question, missed as a request. A question that carries the property and
+  matches no gold request is a false positive of the request, and still
+  counts for `vraag` as it did.
 
 Precision is right / (right + false positives), recall is required found /
 required.
@@ -61,6 +69,9 @@ REASON_FAILED = "model gaf geen bruikbaar antwoord"
 # code reads only turns of the bewindspersoon for toezeggingen, so nothing
 # could have found it.
 REASON_NOT_AN_ANSWER = "staat niet in een beurt van de bewindspersoon"
+# A request for a letter the code marked as a question that asks for
+# nothing on paper.
+REASON_PLAIN_QUESTION = "wel als vraag gemarkeerd, niet als verzoek om een brief"
 
 
 def words(text: str) -> list[str]:
@@ -98,6 +109,14 @@ class Marking:
     gericht_aan: str = ""
     samenvatting: str = ""
     herhaling: bool = False
+    # Of a question: what it asks for on paper, if the code said so.
+    vraagt_om: str = ""
+
+    def is_of(self, kind: str) -> bool:
+        """Whether this marking counts for a kind of the gold set."""
+        if kind == KIND_VERZOEK_OM_BRIEF:
+            return self.soort == KIND_VRAAG and bool(self.vraagt_om)
+        return self.soort == kind
 
 
 @dataclass(frozen=True)
@@ -203,6 +222,7 @@ def run_markings(run: dict) -> list[Marking]:
                         gericht_aan=raw.get("gericht_aan") or "",
                         samenvatting=raw.get("samenvatting") or "",
                         herhaling=bool(raw.get("herhaling")),
+                        vraagt_om=raw.get("vraagt_om") or "",
                     )
                 )
     return found
@@ -276,11 +296,9 @@ def score(
         by_turn_negatives.setdefault((negative.debat, negative.beurt), []).append(
             negative
         )
-    by_turn_markings: dict[tuple[str, int, str], list[Marking]] = {}
+    by_turn_markings: dict[tuple[str, int], list[Marking]] = {}
     for marking in markings:
-        by_turn_markings.setdefault(
-            (marking.debat, marking.beurt, marking.soort), []
-        ).append(marking)
+        by_turn_markings.setdefault((marking.debat, marking.beurt), []).append(marking)
 
     scores: dict[str, KindScore] = {}
     for kind in kinds:
@@ -288,7 +306,8 @@ def score(
         accepted = ALSO_ACCEPTED.get(kind, frozenset())
 
         for item in (i for i in items if i.soort == kind):
-            marked = by_turn_markings.get((item.debat, item.beurt, kind), [])
+            in_turn = by_turn_markings.get((item.debat, item.beurt), [])
+            marked = [m for m in in_turn if m.is_of(kind)]
             hit = any(same_passage(m.citaat, item.citaat) for m in marked)
             if item.required:
                 result.required += 1
@@ -311,9 +330,14 @@ def score(
                     and not reason.startswith(REASON_SKIPPED)
                 ):
                     reason = REASON_NOT_AN_ANSWER
+                if kind == KIND_VERZOEK_OM_BRIEF and any(
+                    m.soort == KIND_VRAAG and same_passage(m.citaat, item.citaat)
+                    for m in in_turn
+                ):
+                    reason = REASON_PLAIN_QUESTION
                 result.misses.append(Miss(item, reason))
 
-        for marking in (m for m in markings if m.soort == kind):
+        for marking in (m for m in markings if m.is_of(kind)):
             result.marked += 1
             here = by_turn_items.get((marking.debat, marking.beurt), [])
             if any(

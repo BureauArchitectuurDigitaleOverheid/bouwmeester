@@ -33,6 +33,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_markering import (
+    SOORT_TOEZEGGING,
     SOORT_VRAAG,
     STATUS_TOEGEWEZEN,
     STATUS_VERWORPEN,
@@ -49,6 +50,7 @@ from bouwmeester.services.debat_vraag_service import (
     is_bevestigd,
     komt_uit_slotlijst,
     schrijf_statusregel,
+    toezeggingen_bij,
 )
 from bouwmeester.services.mattermost_service import (
     MattermostService,
@@ -240,7 +242,25 @@ class DebatVraagStatusService:
             bij_volgnummer=markering.bij_volgnummer,
             bevestigd=await is_bevestigd(self.session, markering_id),
             uit_lijst=komt_uit_slotlijst(markering.beurt_sleutel),
+            vraagt_om=markering.vraagt_om,
+            toegezegd=(
+                await toezeggingen_bij(
+                    self.session, markering.sessie_id, markering.volgnummer
+                )
+                if markering.soort == SOORT_VRAAG
+                else ()
+            ),
         )
+        # A toezegging that is rejected, or taken back in, changes what the
+        # reply of its question says: that one is written again as well.
+        vraag_bij = (
+            markering.bij_volgnummer
+            if markering.soort == SOORT_TOEZEGGING
+            and STATUS_VERWORPEN in (stand.status, markering.status)
+            and stand.status != markering.status
+            else None
+        )
+        sessie_id = markering.sessie_id
         if gewijzigd:
             await self.session.execute(
                 update(DebatMarkering)
@@ -259,6 +279,17 @@ class DebatVraagStatusService:
                 markering_id,
                 stand.status,
                 stand.mattermost_user_id or "niemand",
+            )
+        if vraag_bij is not None:
+            await self.session.execute(
+                update(DebatMarkering)
+                .where(
+                    DebatMarkering.sessie_id == sessie_id,
+                    DebatMarkering.volgnummer == vraag_bij,
+                    DebatMarkering.soort == SOORT_VRAAG,
+                    DebatMarkering.thread_post_id.is_not(None),
+                )
+                .values(reacties_gewijzigd_at=now)
             )
         # Committed before the channel is touched: what the channel shows
         # is derived from the row, by this round or by a later one.

@@ -58,6 +58,9 @@ MARKED_KINDS: tuple[str, ...] = (
     gold_file.KIND_VRAAG,
     gold_file.KIND_MOTIE,
     gold_file.KIND_TOEZEGGING,
+    # Not a kind the code stores: a question with `vraagt_om` set. See
+    # `scoring` for how that is counted.
+    gold_file.KIND_VERZOEK_OM_BRIEF,
 )
 
 
