@@ -249,8 +249,8 @@ def match_listed(
     else shares at most one word with any toezegging of the debate, in
     every run. Of the two items that repeat one, one shares two words with
     it in every run and the other in 2 of 12: that one is matched when
-    the model's number or the summaries bear it out, which was so in 2 of
-    the 3 runs that read the list. Asking for three words would match
+    the model's number or the summaries bear it out, which was so in 4 of
+    the 6 runs that read the list. Asking for three words would match
     neither without the model.
     """
     if (
