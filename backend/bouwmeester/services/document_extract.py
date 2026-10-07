@@ -81,9 +81,46 @@ def _extract_docx(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | Non
     from docx import Document
 
     doc = Document(str(path))
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-    text = "\n".join(paragraphs)
+    text = "\n".join(_docx_lines(doc))
     return _truncate(text, max_chars)
+
+
+def _docx_lines(container) -> list[str]:  # type: ignore[no-untyped-def]
+    """The text of a Word document in reading order, tables included.
+
+    `doc.paragraphs` gives the loose paragraphs only and leaves out
+    everything that stands in a table. A "Lijst van vragen" of the Tweede
+    Kamer is a table from the first question to the last: of one such
+    document of October 2026 this gave 1,407 characters, the cover page,
+    where the search of the source had found six followed terms in the
+    questions. The model then judged a cover page, scored it 5 out of
+    100, and the document was never alerted.
+
+    A row becomes one line, its cells apart with " | ". A cell that is
+    merged over several columns comes by once. A table in a cell is read
+    the same way.
+    """
+    from docx.table import Table
+
+    lines: list[str] = []
+    for block in container.iter_inner_content():
+        if isinstance(block, Table):
+            for row in block.rows:
+                cells: list[str] = []
+                seen: set[int] = set()
+                for cell in row.cells:
+                    # A merged cell is given once per column it spans.
+                    if id(cell._tc) in seen:
+                        continue
+                    seen.add(id(cell._tc))
+                    text = " ".join(_docx_lines(cell))
+                    if text:
+                        cells.append(text)
+                if cells:
+                    lines.append(" | ".join(cells))
+        elif block.text.strip():
+            lines.append(block.text.strip())
+    return lines
 
 
 def _extract_odt(path: Path, max_chars: int = MAX_EXTRACTED_CHARS) -> str | None:
