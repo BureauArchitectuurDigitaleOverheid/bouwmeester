@@ -31,8 +31,13 @@ from bouwmeester.services import debat_stemmen_service as stemmen
 from bouwmeester.services import debat_vraag_service as service_mod
 from bouwmeester.services import debat_vraag_worker as mod
 from bouwmeester.services.debat_stemmen_service import Budget, DebatStemmen, as_turns
+from bouwmeester.services.debat_tijdlijn_service import TickResult
 from bouwmeester.services.debat_transcript import MESSAGE_LIMIT, split_text
-from bouwmeester.services.debat_transcript_service import derive_text, load_turns
+from bouwmeester.services.debat_transcript_service import (
+    DebatTranscript,
+    derive_text,
+    load_turns,
+)
 from bouwmeester.services.debat_vraag_service import (
     ANTWOORD_VENSTER,
     MEELEES_VENSTER,
@@ -499,6 +504,13 @@ def _listening(monkeypatch) -> None:
 
 
 ANSWER = [(62, INTRO), (66, T_BRIEF), (70, VERDER), (74, HALF)]
+EEN_OPEN = "🤝 1 toezegging · 🔴 **open**"
+
+
+async def _counts(session, mm, sessie) -> None:
+    """The round of the timeline that writes what is counted under a
+    message: the one writer of the message of a turn."""
+    await DebatTranscript(session, mm).write_counts(TickResult(), [sessie.id])
 
 
 @pytest.mark.asyncio
@@ -1139,8 +1151,11 @@ class TestTheMessageOfAToezegging:
 
         assert await _toezeggingen(db_session, s) == [(T_BRIEF, second)]
         assert [root for root, _ in mm.threads] == [second]
-        # And that message counts it, not the first.
-        assert mm.messages[second].endswith("\n\n---\n🤝 1 toezegging · open")
+        # And that message counts it, not the first, once the timeline
+        # has written it.
+        assert "---" not in mm.messages[second]
+        await _counts(db_session, mm, s)
+        assert mm.messages[second].endswith(f"\n\n---\n{EEN_OPEN}")
         assert "---" not in mm.messages[m.post_id]
 
     async def test_the_text_that_grows_keeps_the_count_under_that_message(
@@ -1153,11 +1168,12 @@ class TestTheMessageOfAToezegging:
         llm = PerKind(toegezegd(toezegging(T_BRIEF)))
         s, m, second = await self._long(db_session, monkeypatch, mm)
         await w._tick(db_session, mm, llm, 400)
+        await _counts(db_session, mm, s)
 
         await _say(db_session, s, m, [(300, NOG)])
         await w._transcribe(db_session, mm, s)
 
-        assert mm.messages[second].endswith(f"{NOG}\n\n---\n🤝 1 toezegging · open")
+        assert mm.messages[second].endswith(f"{NOG}\n\n---\n{EEN_OPEN}")
         assert "---" not in mm.messages[m.post_id]
 
     async def test_a_change_of_its_status_is_written_under_that_message(
@@ -1168,17 +1184,25 @@ class TestTheMessageOfAToezegging:
         llm = PerKind(toegezegd(toezegging(T_BRIEF)))
         s, m, second = await self._long(db_session, monkeypatch, mm)
         await w._tick(db_session, mm, llm, 400)
+        await _counts(db_session, mm, s)
         before = mm.messages[m.post_id]
+        updates = len(mm.updates)
 
+        # As the round of the reactions leaves it: the row changed, and
+        # the count under its message is out of date.
         await db_session.execute(
             update(DebatMarkering)
             .where(DebatMarkering.sessie_id == s.id)
-            .values(status="beantwoord")
+            .values(status="beantwoord", statusregel_at=None)
         )
-        assert await service_mod.schrijf_statusregel(db_session, mm, second)
+        assert await service_mod.schrijf_statusregel(db_session, mm, second) is None
+        assert len(mm.updates) == updates
+        await _counts(db_session, mm, s)
 
         assert mm.messages[second].endswith("\n\n---\n🤝 1 toezegging · nagekomen")
         assert mm.messages[m.post_id] == before
+        # One message was written: the one that counts it.
+        assert [post_id for post_id, _ in mm.updates[updates:]] == [second]
 
     async def test_a_question_of_a_member_still_hangs_under_the_first_message(
         self, db_session, monkeypatch
@@ -1377,3 +1401,206 @@ class TestTheVoicesAndTheMarkingAtTheSameMoment:
         check = new_session()
         assert len(await _toezeggingen(check, s)) == 1
         assert len(mm.threads) == 1
+
+
+class Channel(w.Chat):
+    """Also remembers who wrote which message, in the order it happened."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.who = ""
+        self.written: list[tuple[str, str, str]] = []
+
+    async def update_post(self, post_id, message, props=None):
+        self.written.append((self.who, post_id, message))
+        return await super().update_post(post_id, message, props)
+
+
+@pytest.mark.asyncio
+class TestOneWriterOfAMessage:
+    """The message of a turn that goes on is written by the transcription,
+    line after line. The marking used to read it, put the count under it
+    and write it back; whatever the transcription wrote in between was
+    gone from the channel. Now the marking writes no message of a turn at
+    all. Two connections, as the two loops of the worker have them."""
+
+    async def _debate(self, real, mm):
+        new_session, remember = real
+        setup = new_session()
+        s = await w._running(setup)
+        remember(s.id)
+        m = await w._row(setup, s, "speaker", 60, "m")
+        await _say(setup, s, m, [(62, INTRO), (66, T_BRIEF), (70, VERDER)])
+        mm.messages[m.post_id] = w.KOP
+        await setup.commit()
+        return s, m
+
+    async def _timeline(self, session, mm, s, counts: bool = True) -> None:
+        mm.who = "tijdlijn"
+        await w._transcribe(session, mm, s)
+        if counts:
+            await _counts(session, mm, s)
+        await session.commit()
+
+    async def _marking(self, session, mm, llm, seconds: float) -> None:
+        mm.who = "markering"
+        await DebatVraagWorker(session, mm, llm).tick(_now(seconds))
+        await session.commit()
+
+    async def test_the_marking_writes_no_message_of_a_turn(self, real, monkeypatch):
+        w.Outside(monkeypatch)
+        new_session, _ = real
+        mm = Channel()
+        s, m = await self._debate(real, mm)
+        timeline, marking = new_session(), new_session()
+        llm = PerKind(toegezegd(toezegging(T_BRIEF)))
+        await self._timeline(timeline, mm, s)
+
+        # The marking finds a toezegging and posts its reply; meanwhile
+        # the answer goes on and the transcription writes the next line.
+        await self._marking(marking, mm, llm, 120)
+        assert len(mm.threads) == 1
+        await _say(timeline, s, m, [(74, NOG)])
+        await timeline.commit()
+        await self._timeline(timeline, mm, s, counts=False)
+        # The round of the reactions comes by with what it read earlier.
+        mm.who = "markering"
+        assert await service_mod.schrijf_statusregel(marking, mm, m.post_id) is None
+        await marking.commit()
+        await self._timeline(timeline, mm, s)
+
+        assert {who for who, post_id, _ in mm.written if post_id == m.post_id} == {
+            "tijdlijn"
+        }
+        assert mm.messages[m.post_id] == (
+            f"{w.KOP}\n{INTRO} {T_BRIEF} {VERDER} {NOG}\n\n---\n{EEN_OPEN}"
+        )
+        # No message that was written ever said less than the one before.
+        bodies = [
+            text.split("\n\n---")[0] for _, p, text in mm.written if p == m.post_id
+        ]
+        assert all(b.startswith(a) for a, b in zip(bodies, bodies[1:], strict=False))
+
+    async def test_both_at_the_same_moment_lose_no_line_and_no_count(
+        self, real, monkeypatch
+    ):
+        w.Outside(monkeypatch)
+        new_session, _ = real
+        mm = Channel()
+        s, m = await self._debate(real, mm)
+        timeline, marking = new_session(), new_session()
+        llm = PerKind(toegezegd(toezegging(T_BRIEF)))
+        await self._timeline(timeline, mm, s)
+        await _say(timeline, s, m, [(74, NOG)])
+        await timeline.commit()
+
+        async def mark() -> None:
+            await DebatVraagWorker(marking, mm, llm).tick(_now(120))
+            await marking.commit()
+
+        async def write() -> None:
+            await w._transcribe(timeline, mm, s)
+            await _counts(timeline, mm, s)
+            await timeline.commit()
+
+        await asyncio.gather(mark(), write())
+        # Whatever the order was, the next round of the timeline has it.
+        await write()
+
+        assert mm.messages[m.post_id] == (
+            f"{w.KOP}\n{INTRO} {T_BRIEF} {VERDER} {NOG}\n\n---\n{EEN_OPEN}"
+        )
+        stale = await new_session().scalar(
+            select(DebatMarkering.statusregel_at).where(
+                DebatMarkering.sessie_id == s.id
+            )
+        )
+        assert stale is not None
+
+    async def test_a_count_that_changes_while_its_message_is_written_is_not_lost(
+        self, real, monkeypatch
+    ):
+        """Which rows were out of date is read before the message is
+        written. A reaction that lands during the write leaves its row out
+        of date, and the next round writes it."""
+        w.Outside(monkeypatch)
+        new_session, _ = real
+        mm = Channel()
+        s, m = await self._debate(real, mm)
+        timeline, marking = new_session(), new_session()
+        await self._timeline(timeline, mm, s)
+        await self._marking(marking, mm, PerKind(toegezegd(toezegging(T_BRIEF))), 120)
+        await self._timeline(timeline, mm, s)
+        assert mm.messages[m.post_id].endswith(EEN_OPEN)
+
+        async def react(*args, **kwargs):
+            # Lands between the count being read and the row being marked.
+            await marking.execute(
+                update(DebatMarkering)
+                .where(DebatMarkering.sessie_id == s.id)
+                .values(status="beantwoord", statusregel_at=None)
+            )
+            await marking.commit()
+            return True
+
+        await marking.execute(
+            update(DebatMarkering)
+            .where(DebatMarkering.sessie_id == s.id)
+            .values(statusregel_at=None)
+        )
+        await marking.commit()
+        with monkeypatch.context() as during:
+            during.setattr(mm, "update_post", react)
+            await _counts(timeline, mm, s)
+        await timeline.commit()
+        await self._timeline(timeline, mm, s)
+
+        assert mm.messages[m.post_id].endswith("🤝 1 toezegging · nagekomen")
+
+    async def test_a_debate_that_is_over_still_gets_its_counts(
+        self, db_session, monkeypatch
+    ):
+        """People tick questions off after the debate. The timeline no
+        longer follows it, and its round still writes what changed."""
+        from bouwmeester.models.debat_sessie import TIJDLIJN_AFGELOPEN
+        from bouwmeester.services.debat_tijdlijn_service import DebatTijdlijnService
+
+        mm = w.Chat()
+        s = await w._running(db_session, tijdlijn_status=TIJDLIJN_AFGELOPEN)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        mm.messages[a.post_id] = w.KOP
+        await w._marked(db_session, s, a)
+
+        await DebatTijdlijnService(db_session, mm).tick(_now(90000))
+
+        assert mm.messages[a.post_id] == f"{w.KOP}\n{w.OPENING}\n\n---\n{w.STATUS_EEN}"
+
+    async def test_a_message_that_cannot_be_written_is_given_up_when_nobody_follows(
+        self, db_session, monkeypatch
+    ):
+        from bouwmeester.models.debat_sessie import TIJDLIJN_AFGELOPEN
+
+        mm = w.Chat()
+        s = await w._running(db_session, tijdlijn_status=TIJDLIJN_AFGELOPEN)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=w.OPENING)
+        mm.messages[a.post_id] = w.KOP
+        await w._marked(db_session, s, a)
+
+        async def refused(post_id, message, props=None):
+            return False
+
+        monkeypatch.setattr(mm, "update_post", refused)
+        # Followed: tried again next round. Not followed: once.
+        await DebatTranscript(db_session, mm).write_counts(TickResult(), [s.id])
+        assert await self._stale(db_session, s) == 1
+        await DebatTranscript(db_session, mm).write_counts(TickResult(), [])
+        assert await self._stale(db_session, s) == 0
+
+    async def _stale(self, session, s) -> int:
+        rows = await session.execute(
+            select(DebatMarkering.id).where(
+                DebatMarkering.sessie_id == s.id,
+                DebatMarkering.statusregel_at.is_(None),
+            )
+        )
+        return len(rows.all())

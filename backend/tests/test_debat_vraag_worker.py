@@ -1589,7 +1589,11 @@ async def _transcribe(db_session, mm, sessie) -> None:
 
 
 async def _status(db_session, mm, sessie) -> None:
+    """What is counted under a message changed. The marking leaves the
+    message alone and the transcription writes it, in the next round of
+    the timeline."""
     await DebatVraagService(db_session, mm, FakeLLM())._werk_statusregels_bij(sessie.id)
+    await DebatTranscript(db_session, mm).write_counts(TickResult(), [sessie.id])
 
 
 @pytest.mark.asyncio

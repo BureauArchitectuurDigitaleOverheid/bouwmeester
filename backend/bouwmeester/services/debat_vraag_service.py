@@ -1533,13 +1533,27 @@ async def is_bevestigd(session: AsyncSession, markering_id: uuid.UUID) -> bool:
 
 async def schrijf_statusregel(
     session: AsyncSession, mattermost: MattermostService, post_id: str
-) -> bool:
-    """Put the status block under the message of a turn.
+) -> bool | None:
+    """Put the status block under a message that nobody else writes.
 
-    Reads the message first and replaces only the status block, so the
-    transcript that is in it stays. ``True`` when the line is as it
+    ``None`` for a message the transcription writes: the message of a
+    turn, or one it continues in. That has one writer, and this is not
+    it: a message read here and written back a moment later can be lines
+    behind what the transcription put there in between. Whoever calls
+    leaves the row without `statusregel_at`, and the transcription
+    writes the message again, with the count
+    (`DebatTranscript.write_counts`).
+
+    For any other message (the end of a debate without words of the
+    chairman, a message that is not in the table): reads it first and
+    replaces only the status block. ``True`` when the line is as it
     should be, or never will be because the message is gone.
     """
+    # Imported here: the transcription imports this module.
+    from bouwmeester.services.debat_transcript_service import part_of_message
+
+    if await part_of_message(session, post_id) is not None:
+        return None
     blok = await statusblok_voor_post(session, post_id)
     try:
         post = await mattermost.get_post(post_id)
@@ -2812,7 +2826,9 @@ class DebatVraagService:
             .all()
         )
         for post_id in post_ids:
-            if post_id and await self._schrijf_statusregel(post_id):
+            # Only `True`: a message of the transcription stays out of
+            # date here, and the transcription writes it.
+            if post_id and await self._schrijf_statusregel(post_id) is True:
                 await self.session.execute(
                     update(DebatMarkering)
                     .where(
@@ -2823,7 +2839,7 @@ class DebatVraagService:
                 )
                 await self.session.commit()
 
-    async def _schrijf_statusregel(self, post_id: str) -> bool:
+    async def _schrijf_statusregel(self, post_id: str) -> bool | None:
         return await schrijf_statusregel(self.session, self.mattermost, post_id)
 
 

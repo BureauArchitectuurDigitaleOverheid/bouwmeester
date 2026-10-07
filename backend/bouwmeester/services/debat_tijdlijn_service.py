@@ -302,9 +302,19 @@ class DebatTijdlijnService:
         stem.VOICES.keep_only(sessie_ids)
         stem.VOICES.expire(now)
         self._sessies = len(sessie_ids)
-        if not sessie_ids:
-            return result
         if not await self.mattermost.is_enabled():
+            return result
+        try:
+            # Also with no debate on today: people tick questions off in
+            # the channel of a debate that is over.
+            await DebatTranscript(self.session, self.mattermost).write_counts(
+                result, sessie_ids
+            )
+        except Exception:
+            await self.session.rollback()
+            result.fouten += 1
+            logger.exception("Tellingen onder berichten niet bijgewerkt")
+        if not sessie_ids:
             return result
 
         async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:

@@ -266,7 +266,14 @@ class DebatVraagStatusService:
 
         klaar = await self._schrijf_thread(thread_post_id, tekst)
         if beurt_post_id:
-            if await schrijf_statusregel(self.session, self.mattermost, beurt_post_id):
+            geschreven = await schrijf_statusregel(
+                self.session, self.mattermost, beurt_post_id
+            )
+            if geschreven is None:
+                # A message of the transcription: the row says its count
+                # is out of date, and the transcription writes it.
+                pass
+            elif geschreven:
                 await self.session.execute(
                     update(DebatMarkering)
                     .where(
