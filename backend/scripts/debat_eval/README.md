@@ -93,12 +93,21 @@ before reading the numbers as production numbers.
 
 ### What a run costs
 
-The service skips the chairman, the bewindspersoon, turns under five words and
-interruptions of a member that name no bewindspersoon. On the first gold set
-(328 turns, 5.8 hours of speech) that left 135 turns for the model, 136 calls
-with one retry. With four debates in parallel the run took 7 minutes through
-the CLI. Run it in the background and read the progress lines; each
-turn prints one.
+The service skips the chairman, turns under five words and interruptions of
+a member that name no bewindspersoon. On the first gold set (328 turns, 5.8
+hours of speech) that left 135 turns of members for the model, 136 calls with
+one retry. With four debates in parallel the run took 7 minutes through the
+CLI. Run it in the background and read the progress lines; each turn prints
+one.
+
+A turn of the bewindspersoon is read for toezeggingen, with a prompt of its
+own, and only when the words of a commitment stand in it somewhere
+(`debat_toezegging.may_hold_commitment`). The set has 38 such turns in two
+debates; 37 are five words or longer and 21 of those hold such words. So a
+run costs 21 calls more, 156 in each of the three runs: 3.6 more per hour of speech over the
+whole set, 4.7 per hour in the two debates in which a bewindspersoon
+answers, on top of the 23 per hour the questions cost. An answer over 12,000
+characters would go in parts, a call each; the longest in the set is 11,248.
 
 ## How a run is scored
 
@@ -254,6 +263,143 @@ that. Those cases are tested on made-up sentences only.
 - In a turn of an initiatiefnemer a question counts when its quote names the
   bewindspersoon by title, misheard titles included. "Kan hij dat toezeggen"
   with nothing but "hij" is dropped there.
+
+## Toezeggingen
+
+Step 4 of the proposal. A turn of the bewindspersoon, which the code used to
+skip, is read for toezeggingen and for nothing else.
+
+### What is code and what is the model
+
+| | Who decides |
+|---|---|
+| Which turns are read: those of a bewindspersoon, of five words or more, in which the words of a commitment stand somewhere | Code (`may_hold_commitment`) |
+| Which sentences the model is pointed at | Code (`commitment_passages`) |
+| Whether a sentence commits to anything, the summary, the moment that was named, which earlier toezegging it repeats, which open question it answers | Model |
+| The quote stands literally in the turn | Code (`locate_citaat`) |
+| The quote has the form of a commitment; a refusal, "daar kom ik zo op terug" and coming back without a moment or anything to deliver are dropped | Code (`has_commitment_form`) |
+| The moment is shown only when its words are in the quote | Code (`deadline_is_said`) |
+| The question it is linked to is open, was put to this bewindspersoon, and shares two words of substance with the toezegging | Code (`_vragen_aan`, `shares_a_subject`) |
+| Who it was promised to: whoever asked the linked question, or the member who interrupted right before a toezegging at the start of the answer; otherwise nobody | Code (`_aan_wie`) |
+
+### Which debate was kept apart
+
+The plenary debate that was kept apart for the questions has no turn of a
+bewindspersoon, so it says nothing about toezeggingen. Two debates have
+answers: the notaoverleg (6 turns of the bewindspersoon, 8 toezeggingen the
+labeller is sure of) and the wetgevingsoverleg (32 turns, 4 sure). The
+rules, the prompt and the check on a link were made on the notaoverleg and
+on made-up sentences. Of the wetgevingsoverleg only counts were looked at,
+of one earlier run, until the three runs below were in.
+
+### What it measured
+
+Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs, 156
+calls each. The mean, and the lowest and highest run. "In an answer" is how
+many of the sure ones stand in a turn of the bewindspersoon; the others no
+run can find (see below).
+
+| Toezeggingen | Sure | In an answer | Found | Unsure or repeated, found | Marked | Wrong | Precision | Recall |
+|---|---|---|---|---|---|---|---|---|
+| Notaoverleg, the rules were made on it | 8 | 6 | 4 to 5 | 1 to 2 of 7 | 5 to 7 | 0 | 100% | 54% (50 to 62) |
+| Wetgevingsoverleg, kept apart | 4 | 3 | 1 to 2 | 1 to 2 of 7 | 4 to 5 | 1 | 77% (75 to 80) | 42% (25 to 50) |
+| Both | 12 | 9 | 5 to 7 | 2 to 4 of 14 | 9 to 12 | 1 | 90% (89 to 92) | 50% (42 to 58) |
+
+Counted as for the questions: an unsure or repeated item that is found is
+right, one that is not found is no miss.
+
+What that says, and what it cannot:
+
+- Twelve sure toezeggingen, four of them in the debate kept apart, is too
+  few for a percentage to mean much: one toezegging more or less is 8
+  points of recall on both and 25 on the debate kept apart. What the
+  numbers do show is the shape. Nearly everything that is marked is a
+  toezegging, and about half of the toezeggingen are marked.
+- One wrong marking per run, the same kind each time and always in the
+  debate kept apart: the bewindspersoon says what is being looked at
+  anyway, in the words of a deed (a verb like "meenemen" with "we").
+- Of the 12 sure ones, 3 cannot be found by any run. Two stand in the turn
+  of the member who interrupted, where the time put them; one is only in
+  the list the chairman reads at the end. Of the 9 that can be found the
+  runs found 5 to 7.
+- The 21 misses of the three runs together: 6 in the turn of a member, 3 in
+  the chairman's list, 5 the model did not name, 3 in an answer that was
+  never sent to the model, 1 the model named and the form check dropped.
+- The last two kinds are the code's, both in the debate kept apart, and
+  both are wordings the rules do not have. A letter the cabinet is
+  preparing, with what was asked taken up in it, said in the passive:
+  nothing in that turn has the form of a commitment, so the turn costs no
+  call and is missed in every run. And an intention with an adverb
+  between "ik" and its verb. They were read after the three runs
+  and are left as they are: a rule made for them now would be made on the
+  debate that was kept apart, and would have to be measured on a new one.
+- The 5 the model did not name are two toezeggingen of the notaoverleg, in
+  every run or nearly: a promise to do "something" with it, and one worded
+  as a wish. Neither names a moment or anything to deliver, and neither is
+  among the sentences the code points the model at. The second is said
+  again later in the same answer with a sum of money, and that sentence
+  was marked in every run: the labeller calls it a repetition, so it counts
+  as right and not as found.
+- The check before the call saves 16 of 37 calls and costs one sure
+  toezegging (the letter in preparation).
+
+### The link to a question
+
+The gold set does not say which question a toezegging answers, so this was
+read by hand, by one reader. Over the three runs the model named an open
+question for 22 of the 25 toezeggingen that were stored. The code kept 11 of
+those links (`shares_a_subject`) and all 11 are the question that was
+answered, 7 in the notaoverleg and 4 in the debate kept apart. Of the 11 it
+dropped, 3 were right, 3 were plainly a question about something else, and
+5 were a question near it: the same subject, not what was asked.
+
+So the link is shown, for nearly half of the toezeggingen. It is not enough
+to tick a question off by: 3 to 4 links per run on 134 questions, and a
+toezegging to come back to something in writing is the opposite of an
+answer. Who a toezegging was promised to follows the link or the
+interruption before it; that was not checked against anything.
+
+### Questions and moties, with the answers read as well
+
+Nothing on the path of a question or a motie changed: a turn of the
+bewindspersoon was skipped for both and still is. The same three runs:
+
+| Questions | Marked | Wrong | Precision | Recall |
+|---|---|---|---|---|
+| Three debates the rules were made on | 110 to 123 | 11 to 16 | 88% (87 to 90) | 92% (91 to 93) |
+| The debate kept apart | 36 to 38 | 7 to 9 | 78% (75 to 80) | 92% (90 to 93) |
+| All four | 147 to 159 | 20 to 23 | 85% (85 to 86) | 92% (91 to 93) |
+
+Against "after the review" above: 89% and 91%, 80% and 91%, 87% and 91%.
+One or two points of precision lower and one of recall higher, with ranges
+that overlap; three runs of the same code do not tell that apart from
+chance. The moties are the same in every run: 11 of 11 sure ones, 13
+marked, none wrong.
+
+### What is still open
+
+- The list of toezeggingen the chairman reads at the end of a commissiedebat
+  is not read: a turn of the chairman is skipped, as before. The list is
+  what the griffie registers, and it would confirm or correct what was
+  marked. Matching a line of it to a toezegging of two hours earlier takes
+  a model; word overlap was not tried, because the one debate with a list
+  has three lines.
+- A sentence of the bewindspersoon that the time put in the turn of the
+  member who interrupted is not found: such a turn is read for questions
+  and moties only. In production the voices move most of those lines before
+  the turn is read; how many are left is not measured.
+- A toezegging does not change where a question stands. The link is shown
+  in the reply ("bij vraag 12") and kept as a vermelding of the kind
+  `antwoord` on the question; ticking the question off stays with people.
+- The form of a toezegging (a letter, a debate, an inquiry) is not stored.
+  The quote and the summary say it, and a rule that reads it from them was
+  not measured.
+- The reply of a toezegging hangs under the first message of the turn, also
+  when the answer is long and cut into several messages
+  (`MESSAGE_LIMIT`): the messages that follow are posts of their own in the
+  channel, and the status line is under the first. The time in the reply
+  links to the moment the toezegging was said.
+- The page with the debates that were followed counts questions only.
 
 ## Making a gold file
 

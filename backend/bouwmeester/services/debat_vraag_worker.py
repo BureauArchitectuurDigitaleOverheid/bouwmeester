@@ -143,8 +143,9 @@ class _Waiting:
     first: datetime
     # How much later than the events the sound of its part is.
     offset: timedelta = timedelta(0)
-    # The turn right before it, the chairman's words in between left out:
-    # an answer of the bewindspersoon is to whoever interrupted there.
+    # The turn right before it: an answer of the bewindspersoon is to
+    # whoever interrupted there. The chairman giving the floor in between
+    # is no turn: his words have no message of their own in the channel.
     before: Turn | None = None
 
 
@@ -485,8 +486,7 @@ class DebatVraagWorker:
                     )
                 if turn.key[0] == dd.EVENT_SPEAKER:
                     floor = turn
-                if turn.key[0] != dd.EVENT_CHAIRMAN:
-                    before = turn
+                before = turn
         # In the order they were spoken: a question asked again has to
         # find the first time it was asked. A turn that waits for a line
         # does not hold up the ones after it, which can be minutes; a

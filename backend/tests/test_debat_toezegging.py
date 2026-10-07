@@ -1744,6 +1744,27 @@ class TestDeWerker:
         for row in (m1, m2):
             assert await w._at(db_session, row) is not None
 
+    async def test_a_member_who_carries_on_after_an_interruption_gets_none_of_it(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        s = await w._running(db_session)
+        b = await w._row(
+            db_session, s, "interrupter", 60, "b", tekst=f"{w.OPENING} {w.Q_BUDGET}"
+        )
+        a = await w._row(
+            db_session, s, "speaker", 120, "a", tekst=f"{w.OPENING} {w.Q_WANNEER}"
+        )
+        await w._row(db_session, s, "debate_end", 180)
+        w._in_channel(mm, b, a)
+
+        await w._tick(db_session, mm, FakeLLM())
+
+        by_row = {beurt.spreekbeurt_id: beurt for beurt, _ in handed}
+        assert (by_row[a.id].voorafgaand, by_row[a.id].voorafgaand_tekst) == (None, "")
+
     async def test_an_interruption_by_someone_without_a_party_names_nobody(
         self, db_session, monkeypatch, handed
     ):

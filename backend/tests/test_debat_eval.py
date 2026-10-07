@@ -12,6 +12,7 @@ import copy
 import json
 import re
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -26,7 +27,12 @@ from debat_eval.apply_labels import (  # noqa: E402
     cut_quote,
     parse_label,
 )
-from debat_eval.harness import OracleLLM, run_debate  # noqa: E402
+from debat_eval.harness import (  # noqa: E402
+    OracleLLM,
+    beurt_from,
+    interruption_before,
+    run_debate,
+)
 from debat_eval.report import (  # noqa: E402
     apply_check,
     build_report,
@@ -469,6 +475,40 @@ class TestVariants:
         assert [m.soort for m in kept] == ["motie"]
         assert [m.soort for m in stopped] == ["vraag"]
         assert apply_check(markings, None) == (markings, [])
+
+
+class TestTheInterruptionBeforeAnAnswer:
+    """What the harness hands the service as the turn before, as the worker does."""
+
+    TURNS = FIXTURE["beurten"]
+
+    def _before(self, number: int) -> dict | None:
+        index = next(i for i, t in enumerate(self.TURNS) if t["nr"] == number)
+        return interruption_before(self.TURNS, index)
+
+    def test_the_interruption_of_a_member_right_before(self):
+        assert self._before(25)["nr"] == 24
+
+    def test_the_chairman_in_between_is_passed_over(self):
+        turns = [
+            {"soort": "interrupter", "fractie": "X", "nr": 1},
+            {"soort": "chairman", "fractie": None, "nr": 2},
+            {"soort": "speaker", "fractie": None, "nr": 3},
+        ]
+        assert interruption_before(turns, 2)["nr"] == 1
+
+    def test_a_term_before_is_no_interruption(self):
+        assert self._before(18) is None
+        assert self._before(1) is None
+
+    def test_only_an_answer_of_the_bewindspersoon_gets_it(self):
+        sessie_id = uuid.uuid4()
+        answer = beurt_from(self.TURNS[24], sessie_id, self.TURNS[23])
+        assert answer.is_bewindspersoon
+        assert answer.voorafgaand == "Kamerlid A (X)"
+        assert answer.voorafgaand_tekst == self.TURNS[23]["tekst"]
+        member = beurt_from(self.TURNS[23], sessie_id, self.TURNS[21])
+        assert (member.voorafgaand, member.voorafgaand_tekst) == (None, "")
 
 
 class TestTheProductionPathOnTheFixture:
