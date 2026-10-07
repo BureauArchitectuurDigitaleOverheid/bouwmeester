@@ -1817,9 +1817,13 @@ class DebatVraagService:
         """The toezeggingen that were marked in this debate, as (number, who
         promised, summary, id, summary and quote together).
 
-        Of every bewindspersoon, and whatever became of them as long as
-        they were not rejected. Not the ones that came from a list
-        themselves: a list confirms what was said in the debate.
+        Of every bewindspersoon, and whatever became of them. Also the
+        ones a reader rejected: when the chairman reads one out it was a
+        toezegging, and the rejection was of its wording or of the
+        marking. It is matched, so that the item is not posted next to it
+        as a new one; where it stands is left to who rejected it. Not the
+        ones that came from a list themselves: a list confirms what was
+        said in the debate.
         """
         rows = (
             await self.session.execute(
@@ -1833,7 +1837,6 @@ class DebatVraagService:
                 .where(
                     DebatMarkering.sessie_id == sessie_id,
                     DebatMarkering.soort == SOORT_TOEZEGGING,
-                    DebatMarkering.status != STATUS_VERWORPEN,
                     DebatMarkering.beurt_sleutel.not_like(f"{SLEUTEL_SLOTLIJST}%"),
                 )
                 .order_by(DebatMarkering.volgnummer.desc())

@@ -15,9 +15,9 @@ them:
 * near the end of the debate (`LIST_WITHIN`), and after a bewindspersoon
   answered. A list read at the start is of what was promised in an
   earlier debate;
-* it is the plural, "toezeggingen", with a word of reading out or noting
-  down close by. "Er zijn zeven moties ingediend" is another list, and
-  "dank voor de toezegging" is no list.
+* it is the plural, "toezeggingen", in a sentence that reads them out or
+  notes them down. "Er zijn zeven moties ingediend" is another list, and
+  "ik dank de minister voor de toezeggingen" is no list.
 
 The list is what the chairman says from the formula on, to the end of the
 debate. A member who corrects an item, or the bewindspersoon who adds a
@@ -56,40 +56,72 @@ CHAIRMAN = "chairman"
 MEMBER = "member"
 BEWINDSPERSOON = "bewindspersoon"
 
-# How long before the end of the debate the list can begin. In the one
-# debate of the gold set with a list it begins 75 seconds before the last
-# words; one debate is no measure. A quarter of an hour leaves room for a
-# long list, a discussion about an item and the announcement of a
-# tweeminutendebat, and is short of the second term of the cabinet, where
-# "de toezeggingen" are spoken of without being read out.
-LIST_WITHIN = timedelta(minutes=15)
+# How long before the end of the debate the list can begin, counted from
+# the turn of the chairman that holds the formula. The list is by its
+# nature the last thing of a debate: behind it come a correction of an
+# item, the announcement of a tweeminutendebat and the closing words. In
+# the one debate of the gold set with a list it begins 75 seconds before
+# the last words; one debate is no measure. Half an hour, because the start
+# of a turn can be minutes before the formula in it, and a list that is not
+# read is lost for good: the end of the debate is looked at once. It is
+# still short of the second term of the cabinet, and what the formula lets
+# through there the model and the checks on its answer still have to pass.
+LIST_WITHIN = timedelta(minutes=30)
 # No more of the chairman's words than this goes to the model. A list of
 # ten items is about 2,500 characters.
 MAX_LIST = 8000
 
-# The words that make "toezeggingen" a list that is read out: reading,
-# noting, going through, counting.
-_READ_OUT = (
-    r"(?:lees|leest|lezen|voorlezen|voorgelezen|voor te lezen|genoteerd|noteer"
-    r"|noteren|genotuleerd|opgeschreven|doornemen|doorlopen|doorloop|langs"
-    r"|opsommen|oplezen|geregistreerd|volgende|gaan we naar|komen we bij"
-    r"|kom ik bij|er zijn|zijn er|heb ik|ik heb|we hebben|hebben we)"
-)
-# The plural, and the list words within a few words in front of or behind it.
-_FORMULA = (
-    re.compile(rf"\b{_READ_OUT} (?:\w+ ){{0,6}}toezeggingen\b"),
-    re.compile(rf"\btoezeggingen (?:\w+ ){{0,6}}{_READ_OUT}\b"),
+# The plural, as speech recognition writes it: also "toe zeggingen",
+# "toezegging en", and "de toezeggingslijst".
+_TZ = r"(?:toe ?zeggingen|toe ?zegging en|toe ?zeggingslijst|toe ?zeggingenlijst)"
+_NOTED = r"(?:genoteerd|genotuleerd|opgeschreven|geregistreerd|vastgelegd)"
+# The formula of reading the list out. Not the bare word with any verb next
+# to it: "ik dank de minister voor de toezeggingen die we hebben gekregen"
+# and "we hebben vandaag veel toezeggingen gehoord" open no list, and what
+# opens one sends everything the chairman says after it to the model.
+_FORMULA = tuple(
+    re.compile(pattern)
+    for pattern in (
+        # "ik lees de toezeggingen voor", "ik lees ze zo voor, de toezeggingen"
+        rf"\b(?:lees|leest|lezen) (?:\w+ ){{0,5}}{_TZ}(?: \w+){{0,4}} voor\b",
+        rf"\b(?:voorlezen|voor te lezen|oplezen|opsommen|doornemen|doorlopen"
+        rf"|noteren|noteer)(?: \w+){{0,6}} {_TZ}\b",
+        rf"\b{_TZ}(?: \w+){{0,6}} (?:voorlezen|voor te lezen|oplezen|opsommen"
+        rf"|doornemen|doorlopen|{_NOTED})\b",
+        # "ik heb de volgende toezeggingen genoteerd", "genoteerd zijn de
+        # toezeggingen"
+        rf"\b{_NOTED}(?: \w+){{0,6}} {_TZ}\b",
+        rf"\bvolgende {_TZ}\b",
+        # "dan loop ik de toezeggingen met u langs", "ik neem de
+        # toezeggingslijst door"
+        rf"\b(?:loop|lopen|neem|nemen) (?:\w+ ){{0,4}}{_TZ}(?: \w+){{0,4}}"
+        r" (?:door|langs|na)\b",
+        # "dan komen we bij de toezeggingen", "dan de toezeggingen"
+        rf"\b(?:gaan we naar|komen we bij|komen we tot|kom ik bij|kom ik tot|dan)"
+        rf" de {_TZ}\b",
+        # Counted or announced, and then summed up: "er zijn twee
+        # toezeggingen gedaan. De eerste ...", "een aantal toezeggingen,
+        # namelijk ...".
+        rf"\b{_TZ}(?: \w+){{0,25}} (?:namelijk|de eerste|ten eerste"
+        r"|eerste toezegging|toezegging een|zegt toe|toegezegd)\b",
+    )
 )
 # What was promised in an earlier debate, or is still to be kept: a list
 # the chairman can read at the start, and no list of this debate.
 _EARLIER = re.compile(
     r"\b(?:openstaande|eerdere|vorige|vorig|oude|nagekomen|afgedane|afgedaan)"
-    r"(?: \w+){0,3} toezeggingen\b"
-    r"|\btoezeggingen (?:\w+ ){0,4}(?:vorige|vorig|eerdere|eerder|openstaan"
+    rf"(?: \w+){{0,3}} {_TZ}\b"
+    rf"|\b{_TZ} (?:\w+ ){{0,4}}(?:vorige|vorig|eerdere|eerder|openstaan"
     r"|open staan|open|nagekomen|afgedaan)\b"
 )
 # "Er zijn geen toezeggingen gedaan": nothing to read.
-_NONE = re.compile(r"\bgeen toezeggingen\b")
+_NONE = re.compile(r"\bgeen toe ?zegging")
+# How far around the formula a word takes it back, in words. No further:
+# "heb ik geen toezeggingen gemist" or "eerder vandaag" elsewhere in what
+# the chairman says is about something else, and a transcript does not
+# always say where a sentence ends.
+_VETO_REACH = 10
+_SENTENCE = re.compile(r"(?<=[.?!])\s+")
 
 
 @dataclass(frozen=True)
@@ -125,16 +157,55 @@ def _flat(text: str) -> str:
     return " ".join(words(text))
 
 
+def _formula_at(text: str) -> int | None:
+    """Where in a text, as its words with one space between them, the
+    chairman begins to read out the toezeggingen; ``None`` when nowhere.
+
+    The formula of reading out or noting down (`_FORMULA`), not taken
+    back: "geen toezeggingen", or the toezeggingen of an earlier debate.
+    Only the sentence it is in can take it back, and only within
+    `_VETO_REACH` words of it.
+    """
+    if "zegging" not in _flat(text):
+        return None
+
+    def first(flat: str, crossing: tuple[int, ...] | None = None) -> int | None:
+        for pattern in _FORMULA:
+            for found in pattern.finditer(flat):
+                if crossing is not None and not any(
+                    found.start() < edge < found.end() for edge in crossing
+                ):
+                    continue
+                before = flat[: found.start()].split()[-_VETO_REACH:]
+                after = flat[found.end() :].split()[:_VETO_REACH]
+                around = " ".join((*before, found.group(), *after))
+                if not (_NONE.search(around) or _EARLIER.search(around)):
+                    return found.start()
+        return None
+
+    offset = 0
+    edges: list[int] = []
+    for sentence in _SENTENCE.split(text):
+        flat = _flat(sentence)
+        if not flat:
+            continue
+        found = first(flat)
+        if found is not None:
+            return offset + found
+        offset += len(flat) + 1
+        edges.append(offset)
+    # A formula can run over the end of a sentence the transcript made up:
+    # "ik lees de. Toezeggingen voor".
+    return first(_flat(text), tuple(edges[:-1]))
+
+
 def opens_closing_list(text: str) -> bool:
     """Whether the chairman begins to read out the toezeggingen here.
 
-    By the words alone: speech recognition gives no punctuation to go by.
-    Where in the debate it is said is for `find_closing_list`.
+    By the words alone (`_formula_at`). Where in the debate it is said is
+    for `find_closing_list`.
     """
-    flat = _flat(text)
-    if "toezeggingen" not in flat or _NONE.search(flat) or _EARLIER.search(flat):
-        return False
-    return any(pattern.search(flat) for pattern in _FORMULA)
+    return _formula_at(text) is not None
 
 
 def find_closing_list(
@@ -149,6 +220,10 @@ def find_closing_list(
     `LIST_WITHIN` of the end, with an answer of a bewindspersoon somewhere
     before it. From there on every turn of the chairman belongs to the
     list; nobody else's does.
+
+    The feed can cut the chairman's words in two in the middle of the
+    formula. Two turns of the chairman that follow each other are
+    therefore also read together, and the list then begins at the first.
     """
     if not spoken:
         return None
@@ -159,12 +234,14 @@ def find_closing_list(
         if turn.wie == BEWINDSPERSOON:
             answered = True
             continue
-        if (
-            turn.wie == CHAIRMAN
-            and answered
-            and end - turn.start <= LIST_WITHIN
-            and opens_closing_list(turn.tekst)
-        ):
+        if turn.wie != CHAIRMAN or not answered or end - turn.start > LIST_WITHIN:
+            continue
+        opens = opens_closing_list(turn.tekst)
+        if not opens and index + 1 < len(spoken) and spoken[index + 1].wie == CHAIRMAN:
+            # Begun in this turn and finished in the next.
+            begins = _formula_at(f"{turn.tekst} {spoken[index + 1].tekst}")
+            opens = begins is not None and begins < len(_flat(turn.tekst))
+        if opens:
             first = index
             break
     if first is None:

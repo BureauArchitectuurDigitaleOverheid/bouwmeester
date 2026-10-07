@@ -57,7 +57,6 @@ from bouwmeester.services.debat_slotlijst import (
     MEMBER,
     Spoken,
     find_closing_list,
-    opens_closing_list,
 )
 from bouwmeester.services.debat_stemmen_service import (
     AFTER,
@@ -69,7 +68,6 @@ from bouwmeester.services.debat_tijdlijn_service import (
     GIVE_UP_AFTER,
     LOOKAHEAD,
 )
-from bouwmeester.services.debat_transcript import append_text
 from bouwmeester.services.debat_transcript_service import (
     _CLOSING,
     _SPEAKING,
@@ -83,6 +81,7 @@ from bouwmeester.services.debat_vraag_moment import Line
 from bouwmeester.services.debat_vraag_service import (
     SOORT_CHAIRMAN,
     UITKOMST_GEMARKEERD,
+    UITKOMST_LLM_ONBRUIKBAAR,
     VOORZITTER,
     Beurt,
     DebatContext,
@@ -186,7 +185,6 @@ class _Ended:
     first: datetime
     offset: timedelta
     # Who spoke in the part, in order, as (kind, who, start, text, rows).
-    # Rows of the chairman that follow each other are one.
     spoken: tuple[tuple[str, str, datetime, str, tuple[uuid.UUID, ...]], ...]
 
 
@@ -305,9 +303,15 @@ class _Pause:
     a row, so a model that is down costs a few calls and not four a minute.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self, first: timedelta | None = None, maximum: timedelta | None = None
+    ) -> None:
         self._until: dict[uuid.UUID, datetime] = {}
         self._failures: dict[uuid.UUID, int] = {}
+        # How long the first wait is and how long a wait gets at most;
+        # `PAUSE_FIRST` and `PAUSE_MAX` when not said.
+        self._first = first
+        self._maximum = maximum
 
     def waiting(self, sessie_id: uuid.UUID, now: datetime) -> bool:
         until = self._until.get(sessie_id)
@@ -316,7 +320,10 @@ class _Pause:
     def failed(self, sessie_id: uuid.UUID, now: datetime) -> None:
         count = self._failures.get(sessie_id, 0) + 1
         self._failures[sessie_id] = count
-        self._until[sessie_id] = now + min(PAUSE_FIRST * 2 ** (count - 1), PAUSE_MAX)
+        first = self._first or PAUSE_FIRST
+        self._until[sessie_id] = now + min(
+            first * 2 ** (count - 1), self._maximum or PAUSE_MAX
+        )
 
     def succeeded(self, sessie_id: uuid.UUID) -> None:
         self._until.pop(sessie_id, None)
@@ -366,6 +373,26 @@ PAUSE_MAX = timedelta(minutes=5)
 # have to be there. A turn that is still not read by then never will be,
 # and the list is read without it.
 LIST_WAITS_FOR_TURNS = timedelta(minutes=15)
+# The list is one call for a whole debate, and the debate is over: nothing
+# waits behind it. So a model that is away is not asked again a quarter of
+# a minute later, three times in a row: five tries with 2, 4, 8 and 8
+# minutes between them, 22 minutes in all. A reply that cannot be read gets
+# one more try; a third would give the same. The list of speakers that
+# cannot be fetched waits the same way, without a count: without it nobody
+# can say whether a bewindspersoon answered before the list.
+LIST_ATTEMPTS = 5
+LIST_UNUSABLE_ATTEMPTS = 2
+LIST_PAUSE_FIRST = timedelta(minutes=2)
+LIST_PAUSE_MAX = timedelta(minutes=8)
+# A list is not read later than this after the end of its debate: by then
+# the waiting and the tries above are used up, and a reply that turns up
+# under the end of a debate of hours ago is read by nobody. It also keeps a
+# worker that was away for a while from reading the lists of everything
+# that ended meanwhile. (The debates that had ended before this was built
+# were marked as looked at by a migration.)
+LIST_NOT_AFTER = timedelta(hours=1)
+# Keyed by the row of the end of the part.
+_list_pause = _Pause(LIST_PAUSE_FIRST, LIST_PAUSE_MAX)
 
 
 class DebatVraagWorker:
@@ -419,6 +446,11 @@ class DebatVraagWorker:
                     # The list of the chairman only when no turn waits: it
                     # is matched to what the turns held.
                     ended = [] if waiting else await self._ended(sessie_id, now)
+                    ended = [
+                        part
+                        for part in ended
+                        if not _list_pause.waiting(part.row_id, now)
+                    ]
                     if not waiting and not ended:
                         continue
                     if vragen is None:
@@ -848,9 +880,10 @@ class DebatVraagWorker:
         held. Whether the row of the end was read (`beoordeeld_at`) is how
         "looked at" is kept, so that the list is read once.
 
-        Only parts in which the chairman says the words that open such a
-        list come back. Any other part is done here and now: it needs no
-        list of speakers and no model, and most debates have no list.
+        Only parts in which the chairman speaks of toezeggingen at all
+        come back. Any other part is done here and now: it needs no list
+        of speakers and no model, and most debates have no list. So is a
+        part that ended longer ago than `LIST_NOT_AFTER`.
         """
         # Nearly every round of a debate that is running: nothing ended.
         if not await self.session.scalar(
@@ -898,6 +931,9 @@ class DebatVraagWorker:
             if not ends or ends[-1][9] is not None:
                 continue
             end = ends[-1]
+            if now - end[5] > LIST_NOT_AFTER:
+                await self._mark(end[0], now)
+                continue
             entry = dict(ondertitels.get(debate_id) or {})
             if not text_is_complete(entry, None, end[5], now):
                 continue
@@ -925,19 +961,10 @@ class DebatVraagWorker:
                 elif kind in _CLOSING:
                     # What is said after the end is no part of the debate.
                     continue
-                elif spoken and spoken[-1][0] == SOORT_CHAIRMAN:
-                    _, _, begun, said, ids = spoken[-1]
-                    spoken[-1] = (
-                        SOORT_CHAIRMAN,
-                        "",
-                        begun,
-                        append_text(said, tekst or ""),
-                        (*ids, row_id),
-                    )
                 else:
                     spoken.append((SOORT_CHAIRMAN, "", start, tekst or "", (row_id,)))
             if not any(
-                kind == SOORT_CHAIRMAN and opens_closing_list(tekst)
+                kind == SOORT_CHAIRMAN and "zegging" in tekst.lower()
                 for kind, _, _, tekst, _ in spoken
             ):
                 await self._mark(end[0], now)
@@ -975,8 +1002,10 @@ class DebatVraagWorker:
         sprekers = await self._sprekers_for(client, part.first)
         if sprekers is None:
             # Without the list of speakers nobody can tell whether a
-            # bewindspersoon answered before the chairman's words.
+            # bewindspersoon answered before the chairman's words. Asked
+            # again later, and later each time.
             result.fouten += 1
+            _list_pause.failed(part.row_id, now)
             return
         said: list[Spoken] = []
         for kind, who, start, tekst, _ in part.spoken:
@@ -1023,20 +1052,27 @@ class DebatVraagWorker:
             outcome = await asyncio.wait_for(
                 vragen.beoordeel_beurt(beurt, context), JUDGE_TIMEOUT
             )
-            failed = outcome.opnieuw_proberen
+            unusable = outcome.uitkomst == UITKOMST_LLM_ONBRUIKBAAR
+            failed = outcome.opnieuw_proberen or unusable
         except Exception:
             logger.exception("Slotlijst bij %s niet gelezen", part.row_id)
             await self.session.rollback()
             outcome = None
+            unusable = False
             failed = True
         if failed:
             result.fouten += 1
-            # The debate is over: nothing waits behind this, so the next
-            # round simply tries again, a few times.
-            if await self._count_attempt(part.row_id) >= WINDOW_ATTEMPTS:
-                logger.warning("Slotlijst bij %s opgegeven", part.row_id)
+            attempts = await self._count_attempt(part.row_id)
+            if attempts >= (LIST_UNUSABLE_ATTEMPTS if unusable else LIST_ATTEMPTS):
+                logger.warning(
+                    "Slotlijst bij %s na %d pogingen opgegeven", part.row_id, attempts
+                )
+                _list_pause.succeeded(part.row_id)
                 await self._mark(part.row_id, now)
+            else:
+                _list_pause.failed(part.row_id, now)
             return
+        _list_pause.succeeded(part.row_id)
         assert outcome is not None
         if outcome.uitkomst == UITKOMST_GEMARKEERD:
             result.toezeggingen += outcome.toezeggingen

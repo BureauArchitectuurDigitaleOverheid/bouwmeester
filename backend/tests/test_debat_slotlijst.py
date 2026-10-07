@@ -95,6 +95,15 @@ from tests.test_debat_vragen import (
 handed = worker_helpers.handed
 _no_pause_left_over = worker_helpers._no_pause_left_over
 
+
+@pytest.fixture(autouse=True)
+def _no_list_pause_left_over():
+    """The wait after a list that could not be read lives in the process."""
+    worker_mod._list_pause.reset()
+    yield
+    worker_mod._list_pause.reset()
+
+
 SLOT = TURNS[37]
 # The three items of the list in the fixture: two that repeat what the
 # minister said in his first answer, one that stands nowhere else.
@@ -136,8 +145,21 @@ class TestDeFormule:
             "Ik lees eerst de toezeggingen voor.",
             "Ik heb de volgende toezeggingen genoteerd.",
             "Dan komen we bij de toezeggingen; het zijn er twee.",
-            "Er zijn twee toezeggingen gedaan.",
+            # Counted, and then summed up.
+            "Er zijn twee toezeggingen gedaan. De eerste is aan Kamerlid A.",
+            "Er zijn twee toezeggingen. De minister zegt toe een brief te sturen.",
+            "Ik hoorde een aantal toezeggingen, namelijk een brief en een overzicht.",
             "Dan kom ik bij de toezeggingen.",
+            "Dan de toezeggingen.",
+            # As speech recognition writes the word.
+            "Ik lees de toe zeggingen voor.",
+            "Ik lees de toezegging en voor.",
+            "Ik loop de toezeggingslijst met u door.",
+            # What takes a formula back counts in its own sentence only.
+            "Ik hoop dat ik geen toezeggingen mis. Ik lees de toezeggingen voor.",
+            "Eerder vandaag spraken wij erover. Dan lees ik de toezeggingen voor.",
+            "ik lees de toezeggingen voor de minister zegt toe een brief te sturen en"
+            " daarmee is dan ook de vraag van eerder vandaag beantwoord",
             "dan loop ik de toezeggingen even met u langs",
             # No punctuation, no capitals: speech recognition.
             "dank dan heb ik de volgende toezeggingen genoteerd de minister zegt toe",
@@ -156,6 +178,10 @@ class TestDeFormule:
             SLOT["tekst"],
             # One toezegging is no list, and neither is speaking of them.
             "Dank voor de toezegging.",
+            "Ik dank de minister voor de toezeggingen die we hebben gekregen.",
+            "We hebben vandaag veel toezeggingen gehoord.",
+            "Er zijn vandaag toezeggingen gedaan, dank daarvoor aan de minister.",
+            "Ik heb goed geluisterd naar de toezeggingen.",
             "De minister heeft vandaag veel toezeggingen gedaan, dank daarvoor.",
             "Dat waren de toezeggingen.",
             # Nothing to read.
@@ -229,7 +255,7 @@ class TestDeLijstVinden:
         spoken = [
             *debat(
                 (BEWINDSPERSOON, 10, "Dat zeg ik toe."),
-                (CHAIRMAN, 20, "Ik lees zo de toezeggingen voor, eerst de moties."),
+                (CHAIRMAN, 5, "Ik lees zo de toezeggingen voor, eerst de moties."),
             ),
             *self._debat()[3:],
         ]
@@ -249,6 +275,35 @@ class TestDeLijstVinden:
         found = find_closing_list(spoken)
         assert found.start == at(50)
         assert [index for index, _ in found.delen] == [1, 3]
+
+    def test_the_window_counts_from_the_turn_with_the_formula(self):
+        """Not from where the chairman began to speak before it."""
+        minutes = LIST_WITHIN.total_seconds() / 60
+        spoken = debat(
+            (BEWINDSPERSOON, 10, "Dat zeg ik toe."),
+            (CHAIRMAN, 20, "Dank. Dan gaan wij naar de afronding van dit debat."),
+            (CHAIRMAN, 20 + minutes, f"Ik lees de toezeggingen voor. {I_BRIEF}"),
+            (CHAIRMAN, 40 + minutes, "Ik sluit de vergadering."),
+        )
+        found = find_closing_list(spoken)
+        assert found.start == at(20 + minutes)
+        assert [index for index, _ in found.delen] == [2, 3]
+
+    def test_a_formula_cut_in_two_by_the_feed(self):
+        spoken = debat(
+            (BEWINDSPERSOON, 10, "Dat zeg ik toe."),
+            (CHAIRMAN, 50, "Dank. Ik lees de"),
+            (CHAIRMAN, 51, f"toezeggingen voor. {I_BRIEF}"),
+        )
+        found = find_closing_list(spoken)
+        assert found.start == at(50)
+        assert found.tekst == f"Dank. Ik lees de toezeggingen voor. {I_BRIEF}"
+        # Not over the words of someone else: what the chairman said
+        # before the member is then no part of the list.
+        apart = [spoken[0], spoken[1], Spoken(MEMBER, at(50.5), "Ja."), spoken[2]]
+        assert find_closing_list(apart).start == at(51)
+        half = [spoken[0], spoken[1], Spoken(CHAIRMAN, at(51), "voor de zomer.")]
+        assert find_closing_list(half) is None
 
     def test_a_list_of_moties_is_no_list(self):
         spoken = debat(
@@ -1251,16 +1306,27 @@ class TestDeLijstLezen:
         assert [r.citaat for r in rows[2:]] == [I_KELDERS, I_KELDERS]
         assert await _vermeldingen(db_session, sessie_id) == []
 
-    async def test_a_rejected_toezegging_is_not_confirmed(self, db_session):
+    async def test_a_rejected_toezegging_the_chairman_reads_is_not_posted_again(
+        self, db_session
+    ):
+        """A reader said it was no toezegging; the chairman reads it out.
+        It is matched, so the item does not come back as a new one, and
+        where it stands is left to the reader."""
         sessie_id, mm, _, _, _ = await _first_answer(db_session)
         brief = (await _rows(db_session, sessie_id))[0]
         brief.status = STATUS_VERWORPEN
         await db_session.commit()
+        replies = len(mm.replies)
         result, _, llm = await _read_list(
             db_session, sessie_id, mm, toegezegd(toezegging(I_BRIEF, hoort_bij=1))
         )
-        assert S_BRIEF not in llm.prompts[0]
-        assert (result.bevestigd, result.toezeggingen) == ((), 1)
+        assert f"1. {MINISTER}: {S_BRIEF}\n" in llm.prompts[0]
+        assert (result.bevestigd, result.toezeggingen) == ((1,), 0)
+        rows = await _rows(db_session, sessie_id)
+        assert len(rows) == 2
+        assert rows[0].status == STATUS_VERWORPEN
+        assert await is_bevestigd(db_session, rows[0].id)
+        assert len(mm.replies) == replies
 
     async def test_nothing_was_marked_in_the_debate(self, db_session):
         sessie_id, mm, _, _, _ = await _judge(db_session, ANTWOORD, toegezegd())
@@ -1578,7 +1644,7 @@ class TestDeWerker:
             s,
             "chairman",
             240,
-            tekst=f"{I_KELDERS} {self.SLUIT}",
+            tekst=f"{I_KELDERS} {self.SLUIT}" if lijst else "Ik sluit de vergadering.",
             post=False,
         )
         einde = await w._row(
@@ -1915,18 +1981,132 @@ class TestDeWerker:
         w = worker_helpers
         w.Outside(monkeypatch)
         mm = w.Chat()
-        llm = self._llm(*[RuntimeError("weg")] * worker_mod.WINDOW_ATTEMPTS)
+        llm = self._llm(*[RuntimeError("weg")] * worker_mod.LIST_ATTEMPTS)
         s, _, _, _, einde = await self._debat(db_session, mm)
         await w._tick(db_session, mm, llm)
-        for attempt in range(worker_mod.WINDOW_ATTEMPTS):
+        # Tried, and then left alone for 2, 4, 8 and 8 minutes.
+        now = 700
+        for wait in (120, 240, 480, 480, None):
             assert await w._at(db_session, einde) is None
-            result = await w._tick(db_session, mm, llm, now_seconds=700 + attempt)
+            asked = len(llm.prompts)
+            result = await w._tick(db_session, mm, llm, now_seconds=now)
             assert result.fouten == 1
-        # Given up on: the list is not asked for a fourth time.
+            assert len(llm.prompts) == asked + 1
+            if wait is None:
+                break
+            # Not a quarter of a minute later, and not just before the wait
+            # is over.
+            for early in (15, wait - 1):
+                quiet = await w._tick(db_session, mm, llm, now_seconds=now + early)
+                assert quiet.fouten == 0
+                assert len(llm.prompts) == asked + 1
+            now += wait
+        # Given up on: the list is not asked for a sixth time.
+        assert now - 300 < worker_mod.LIST_NOT_AFTER.total_seconds()
         assert await w._at(db_session, einde) is not None
         asked = len(llm.prompts)
-        await w._tick(db_session, mm, llm, now_seconds=800)
+        await w._tick(db_session, mm, llm, now_seconds=now + 600)
         assert len(llm.prompts) == asked
+
+    async def test_a_list_read_after_the_model_came_back(self, db_session, monkeypatch):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = self._llm(RuntimeError("weg"), toegezegd(toezegging(I_KELDERS)))
+        s, _, _, _, einde = await self._debat(db_session, mm)
+        await w._tick(db_session, mm, llm)
+        await w._tick(db_session, mm, llm, now_seconds=700)
+        assert await w._at(db_session, einde) is None
+        result = await w._tick(db_session, mm, llm, now_seconds=700 + 120)
+        assert (result.toezeggingen, result.fouten) == (1, 0)
+        assert await w._at(db_session, einde) is not None
+
+    async def test_a_reply_that_cannot_be_read_gets_one_more_try(
+        self, db_session, monkeypatch
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        # The provider asks twice within a call; two calls are four replies.
+        llm = self._llm(*["geen json"] * 4)
+        s, _, _, _, einde = await self._debat(db_session, mm)
+        await w._tick(db_session, mm, llm)
+        result = await w._tick(db_session, mm, llm, now_seconds=700)
+        assert result.fouten == 1
+        assert await w._at(db_session, einde) is None
+        result = await w._tick(db_session, mm, llm, now_seconds=700 + 120)
+        assert result.fouten == 1
+        assert await w._at(db_session, einde) is not None
+        asked = len(llm.prompts)
+        await w._tick(db_session, mm, llm, now_seconds=700 + 600)
+        assert len(llm.prompts) == asked
+
+    async def test_a_debate_that_ended_long_ago_is_not_read_any_more(
+        self, db_session, monkeypatch, handed
+    ):
+        """A worker that was away, or a deploy: no replies under the end
+        of a debate of hours ago."""
+        w = worker_helpers
+        outside = w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = FakeLLM(toegezegd(toezegging(I_KELDERS)))
+        s, _, _, _, einde = await self._debat(db_session, mm)
+        await db_session.execute(
+            update(DebatSpreekbeurt)
+            .where(
+                DebatSpreekbeurt.sessie_id == s.id,
+                DebatSpreekbeurt.event_type.in_(("speaker", "interrupter")),
+            )
+            .values(beoordeeld_at=datetime.now(UTC))
+        )
+        late = 300 + worker_mod.LIST_NOT_AFTER.total_seconds() + 1
+        result = await w._tick(db_session, mm, llm, now_seconds=late)
+        assert (result.beoordeeld, result.toezeggingen) == (0, 0)
+        assert await w._at(db_session, einde) is not None
+        assert handed == []
+        assert (llm.prompts, outside.sprekers_calls) == ([], 0)
+
+    async def test_the_list_is_not_read_while_turns_still_wait(
+        self, db_session, monkeypatch, handed
+    ):
+        """A backlog after the model was away: more turns than a round
+        reads, and the end long enough ago that the list no longer waits
+        for unread turns by itself."""
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        s = await w._running(db_session, read_until=2000)
+        rows = [
+            await w._row(db_session, s, "speaker", 60, "m", tekst=self.ANTWOORD),
+        ]
+        for n in range(worker_mod.MAX_TURNS + 2):
+            rows.append(
+                await w._row(
+                    db_session, s, "speaker", 100 + n, "a", tekst=f"{self.VRAAG} ({n})"
+                )
+            )
+        await w._row(
+            db_session,
+            s,
+            "chairman",
+            200,
+            tekst=f"{self.OPENT} {I_KELDERS}",
+            post=False,
+        )
+        einde = await w._row(db_session, s, "debate_end", 300)
+        w._in_channel(mm, *rows)
+        llm = FakeLLM()
+        now = 300 + worker_mod.LIST_WAITS_FOR_TURNS.total_seconds() + 60
+        await w._tick(db_session, mm, llm, now_seconds=now)
+        assert await w._at(db_session, einde) is None
+        assert all(not beurt.slotlijst for beurt, _ in handed)
+        assert len([b for b, _ in handed if not b.is_bewindspersoon]) == (
+            worker_mod.MAX_TURNS
+        )
+        await w._tick(db_session, mm, llm, now_seconds=now + 15)
+        assert all(not beurt.slotlijst for beurt, _ in handed)
+        await w._tick(db_session, mm, llm, now_seconds=now + 30)
+        assert [beurt.slotlijst for beurt, _ in handed][-1] is True
 
     async def test_without_the_list_of_speakers_it_waits(self, db_session, monkeypatch):
         w = worker_helpers
@@ -1936,8 +2116,69 @@ class TestDeWerker:
         s, _, _, _, einde = await self._debat(db_session, mm)
         await w._tick(db_session, mm, llm)
         outside.sprekers_error = True
-        result = await worker_mod.DebatVraagWorker(db_session, mm, llm).tick(
-            (worker_helpers.START + timedelta(seconds=710)).astimezone(UTC)
-        )
+        result = await w._tick(db_session, mm, llm, now_seconds=710)
         assert result.fouten == 1
         assert await w._at(db_session, einde) is None
+        # And is not asked for again every round: later, and later each time.
+        calls = outside.sprekers_calls
+        quiet = await w._tick(db_session, mm, llm, now_seconds=725)
+        assert (quiet.fouten, outside.sprekers_calls) == (0, calls)
+        again = await w._tick(db_session, mm, llm, now_seconds=710 + 120)
+        assert (again.fouten, outside.sprekers_calls) == (1, calls + 1)
+        await w._tick(db_session, mm, llm, now_seconds=710 + 120 + 239)
+        assert outside.sprekers_calls == calls + 1
+        outside.sprekers_error = False
+        result = await w._tick(db_session, mm, llm, now_seconds=710 + 120 + 240)
+        assert result.toezeggingen == 1
+        assert await w._at(db_session, einde) is not None
+
+
+# --- the migration --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestNietMetTerugwerkendeKracht:
+    """Rows of the end that were there before the list was read count as
+    looked at, so a deploy reads no list of a debate that is over."""
+
+    def _statement(self) -> str:
+        import importlib.util
+        from pathlib import Path
+
+        path = next(
+            (Path(worker_mod.__file__).parents[1] / "migrations" / "versions").glob(
+                "b6e8f0a25c79_*.py"
+            )
+        )
+        spec = importlib.util.spec_from_file_location("slotlijst_migratie", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.down_revision == "a5d7e9f14b68"
+        return module.MARK_ENDED_AS_LOOKED_AT
+
+    async def test_an_end_that_is_there_counts_as_looked_at(
+        self, db_session, monkeypatch, handed
+    ):
+        from sqlalchemy import text
+
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        s, a, m, _, einde = await TestDeWerker()._debat(db_session, mm)
+        eerder = datetime(2030, 1, 1, tzinfo=UTC)
+        al_gelezen = await w._row(db_session, s, "debate_end", 400, part="deel-0")
+        al_gelezen.beoordeeld_at = eerder
+        await db_session.flush()
+
+        await db_session.execute(text(self._statement()))
+
+        assert await w._at(db_session, einde) is not None
+        # A turn that was not read is still to be read, and a row that was
+        # looked at keeps when.
+        assert await w._at(db_session, a) is None
+        assert await w._at(db_session, al_gelezen) == eerder
+        llm = TestDeWerker()._llm(toegezegd(toezegging(I_KELDERS)))
+        await w._tick(db_session, mm, llm)
+        await w._tick(db_session, mm, llm)
+        assert all(not beurt.slotlijst for beurt, _ in handed)
+        assert len(llm.prompts) == 2
