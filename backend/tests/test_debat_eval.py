@@ -606,6 +606,15 @@ class TestTheProductionPathOnTheFixture:
             " miljoen euro wordt verlaagd?"
         )
         assert gevraagd in FIXTURE["beurten"][1]["tekst"]
+        # A toezegging is linked to a question when its own words name what
+        # the question is about. In the fixture the minister says "die
+        # brief"; here he says which.
+        said = "de Kamer krijgt die brief vóór de begrotingsbehandeling."
+        named = (
+            "de Kamer krijgt die brief over het budget vóór de begrotingsbehandeling."
+        )
+        gold = json.loads(json.dumps(FIXTURE, ensure_ascii=False).replace(said, named))
+        assert gold != FIXTURE
 
         class Linking(OracleLLM):
             async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
@@ -630,8 +639,7 @@ class TestTheProductionPathOnTheFixture:
                                     # The answer speaks of the budget right
                                     # before it: that is what the link is
                                     # kept on.
-                                    "citaat": "Dat zeg ik toe: de Kamer krijgt die"
-                                    " brief vóór de begrotingsbehandeling.",
+                                    "citaat": f"Dat zeg ik toe: {named}",
                                     "samenvatting": "Stuurt een brief over het budget.",
                                     "bij_vraag": int(listed.group(1)),
                                 }
@@ -641,7 +649,7 @@ class TestTheProductionPathOnTheFixture:
                 return await super()._complete(prompt, max_tokens)
 
         block = await run_debate(
-            db_session, Linking(FIXTURE), FIXTURE, "synthetisch", max_turns=18
+            db_session, Linking(gold), gold, "synthetisch", max_turns=18
         )
         outcomes = {turn["nr"]: turn for turn in block["beurten"]}
         (vraag,) = outcomes[2]["gemarkeerd"]

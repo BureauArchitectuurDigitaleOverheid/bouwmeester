@@ -237,6 +237,19 @@ class TestDeLijstVinden:
         assert found.start == at(50)
         assert "eerst de moties" not in found.tekst
 
+    def test_the_first_of_two_formulas_near_the_end_opens_it(self):
+        """The chairman says "de toezeggingen" again when going on with the
+        list after a member corrected an item."""
+        spoken = debat(
+            (BEWINDSPERSOON, 10, "Dat zeg ik toe."),
+            (CHAIRMAN, 50, f"Ik lees de toezeggingen voor. {I_BRIEF}"),
+            (MEMBER, 51, "Dat klopt niet helemaal."),
+            (CHAIRMAN, 52, f"Ik lees de toezeggingen verder voor. {I_GELD}"),
+        )
+        found = find_closing_list(spoken)
+        assert found.start == at(50)
+        assert [index for index, _ in found.delen] == [1, 3]
+
     def test_a_list_of_moties_is_no_list(self):
         spoken = debat(
             (BEWINDSPERSOON, 10, "Dat zeg ik toe."),
@@ -364,6 +377,20 @@ class TestWelkeToezeggingHetIs:
         assert "proef" in self.EERDERE[9]
         assert self._match(item) is None
         assert self._match(item, 9) is None
+
+    def test_coming_back_to_it_is_what_every_item_does(self):
+        """An item and a toezegging about something else both "komen
+        terug"; that and one word more makes them no pair."""
+        item = (
+            "De minister zegt toe vóór de zomer terug te komen op de verlichting;"
+            " hij zal daarop terugkomen."
+        )
+        eerdere = {
+            3: "Zal terugkomen op de camera's bij de verlichting. Ik kom daar"
+            " schriftelijk op terug, terugkomen doe ik."
+        }
+        assert match_listed(item, None, eerdere) is None
+        assert match_listed(item, 3, eerdere) is None
 
     def test_two_that_share_as_much_are_neither(self):
         eerdere = {**self.EERDERE, 6: self.EERDERE[4]}
@@ -544,6 +571,10 @@ class TestLeesSlotlijst:
         nieuw, _, afgevallen = self._lees(_t(I_KELDERS), _t(I_KELDERS))
         assert (len(nieuw), afgevallen) == (1, 1)
         # Also when it is cut differently the second time.
+        korter = I_KELDERS[: I_KELDERS.index(" over de verlichting")]
+        assert is_listed_commitment(korter)
+        nieuw, _, afgevallen = self._lees(_t(I_KELDERS), _t(korter))
+        assert ([n.citaat for n in nieuw], afgevallen) == ([I_KELDERS], 1)
         nieuw, _, afgevallen = self._lees(
             _t(I_KELDERS), _t(I_KELDERS[len("De minister zegt toe ") :])
         )
@@ -825,13 +856,19 @@ class TestDeLijstLezen:
         sessie_id, mm, _, _, _ = await _first_answer(db_session)
         (brief, geld) = await _rows(db_session, sessie_id)
         geld.gericht_aan = "Kamerlid B (Y)"
+        geld.termijn = "vóór de zomer"
         await db_session.commit()
-        tekst = f"Ik lees de toezeggingen voor. {I_GELD} Een toezegging aan Kamerlid A."
+        # Kamerlid C asked something in this debate, so the name is known.
         await _judge(
-            db_session, TURNS[2], antwoord(), sessie_id=sessie_id, mm=mm
-        )  # nothing marked: Kamerlid A is nobody the service knows
+            db_session,
+            TURNS[35],
+            antwoord(vraag(TURNS[35]["tekst"].split(". ", 1)[1])),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        tekst = f"Ik lees de toezeggingen voor. {I_GELD} Een toezegging aan Kamerlid C."
 
-        await _read_list(
+        result, _, _ = await _read_list(
             db_session,
             sessie_id,
             mm,
@@ -840,8 +877,10 @@ class TestDeLijstLezen:
             ),
             tekst=tekst,
         )
-        (brief, geld) = await _rows(db_session, sessie_id)
-        assert (geld.termijn, geld.gericht_aan) == ("in het voorjaar", "Kamerlid B (Y)")
+        assert result.bevestigd == (2,)
+        geld = (await _rows(db_session, sessie_id))[1]
+        # What the bewindspersoon said stays; the list fills in, no more.
+        assert (geld.termijn, geld.gericht_aan) == ("vóór de zomer", "Kamerlid B (Y)")
         assert geld.reacties_gewijzigd_at is not None
 
     async def test_who_it_was_promised_to_fills_in_an_empty_place(self, db_session):
@@ -867,6 +906,71 @@ class TestDeLijstLezen:
         )
         brief = (await _rows(db_session, sessie_id))[0]
         assert brief.gericht_aan == "Kamerlid C (Z)"
+
+    async def test_only_members_can_be_who_it_was_promised_to(self, db_session):
+        """The bewindspersoon has rows of their own, and is nobody a
+        toezegging is made to."""
+        sessie_id, mm, _, _, _ = await _first_answer(db_session)
+        await _judge(
+            db_session,
+            TURNS[35],
+            antwoord(vraag(TURNS[35]["tekst"].split(". ", 1)[1])),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        service = DebatVraagService(db_session, mm, FakeLLM())
+        assert await service._leden(sessie_id) == ["Kamerlid C (Z)"]
+
+    async def test_the_subject_of_the_debate_is_no_reason_to_confirm(self, db_session):
+        """Every toezegging of a debate is about what the debate is about."""
+        sessie_id, mm, _, _, _ = await _judge(
+            db_session,
+            ANTWOORD,
+            toegezegd(
+                toezegging(
+                    T_BRIEF, samenvatting="Telt de fietsenstallingen bij de stations."
+                )
+            ),
+        )
+        item = (
+            "De minister zegt toe de fietsenstallingen bij de stations op te knappen."
+        )
+        result, _, _ = await _read_list(
+            db_session,
+            sessie_id,
+            mm,
+            toegezegd(toezegging(item, samenvatting="Knapt ze op.", hoort_bij=1)),
+            tekst=f"Ik lees de toezeggingen voor. {item}",
+        )
+        assert (result.bevestigd, result.toezeggingen) == ((), 1)
+
+    async def test_said_again_is_not_read_out_by_the_chairman(self, db_session):
+        """A toezegging the bewindspersoon repeated has a vermelding too."""
+        sessie_id, mm, _, _, _ = await _first_answer(db_session)
+        await _judge(
+            db_session,
+            TURNS[25],
+            toegezegd(toezegging(TURNS[25]["tekst"], hoort_bij=2)),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        brief, geld = (await _rows(db_session, sessie_id))[:2]
+        # Whether it was filed as a repeat or not: nothing was confirmed.
+        assert not await is_bevestigd(db_session, brief.id)
+        assert not await is_bevestigd(db_session, geld.id)
+        db_session.add(
+            DebatMarkeringVermelding(
+                markering_id=geld.id,
+                sessie_id=sessie_id,
+                beurt_sleutel="post:later",
+                soort="herhaling",
+                spreker=MINISTER,
+                citaat=T_UITZOEKEN,
+                moment=geld.moment,
+            )
+        )
+        await db_session.flush()
+        assert not await is_bevestigd(db_session, geld.id)
 
     async def test_an_item_that_was_not_marked_becomes_a_toezegging(self, db_session):
         sessie_id, mm, _, _, _ = await _first_answer(db_session)
@@ -1298,7 +1402,9 @@ class TestDeWerker:
     OPENT = "Dank. Ik lees de toezeggingen voor."
     SLUIT = "Dat waren de toezeggingen. Ik sluit de vergadering."
 
-    async def _debat(self, db_session, mm, *, lijst: bool = True, **sessie):
+    async def _debat(
+        self, db_session, mm, *, lijst: bool = True, einde_op: float = 300, **sessie
+    ):
         w = worker_helpers
         s = await w._running(db_session, **sessie)
         a = await w._row(db_session, s, "speaker", 60, "a", tekst=self.VRAAG)
@@ -1324,8 +1430,10 @@ class TestDeWerker:
             db_session,
             s,
             "debate_end",
-            300,
+            einde_op,
             kop="⏹️ **Het debat is afgelopen** · [10:05](https://debat.example/d?event=end5)",
+            # What is heard after the end is nobody's, and no part of a list.
+            tekst="Tot ziens allemaal.",
         )
         w._in_channel(mm, a, m, b)
         mm.messages[einde.post_id] = einde.kop
@@ -1520,15 +1628,82 @@ class TestDeWerker:
         w = worker_helpers
         w.Outside(monkeypatch)
         mm = w.Chat()
-        llm = self._llm(toegezegd(toezegging(I_KELDERS)))
-        s, a, m, _, einde = await self._debat(db_session, mm, read_until=290)
-        for row in (a, m):
-            row.beoordeeld_at = datetime.now(UTC)
-        await db_session.flush()
+        llm = FakeLLM(toegezegd(toezegging(I_KELDERS)))
+        s, _, _, _, einde = await self._debat(db_session, mm, read_until=290)
+        await db_session.execute(
+            update(DebatSpreekbeurt)
+            .where(
+                DebatSpreekbeurt.sessie_id == s.id,
+                DebatSpreekbeurt.event_type.in_(("speaker", "interrupter")),
+            )
+            .values(beoordeeld_at=datetime.now(UTC))
+        )
         # Not read up to the end, and the end is not long enough ago.
         await w._tick(db_session, mm, llm, now_seconds=310)
         assert await w._at(db_session, einde) is None
         assert handed == []
+        # Read past the end: now it is.
+        s.ondertitels = {
+            worker_helpers.PART: {
+                **s.ondertitels[worker_helpers.PART],
+                "positie": (worker_helpers.START + timedelta(seconds=320)).isoformat(),
+            }
+        }
+        await db_session.flush()
+        result = await w._tick(db_session, mm, llm, now_seconds=330)
+        assert await w._at(db_session, einde) is not None
+        assert [beurt.slotlijst for beurt, _ in handed] == [True]
+        assert result.toezeggingen == 1
+
+    async def test_words_of_the_chairman_over_two_events_are_one(
+        self, db_session, monkeypatch, handed
+    ):
+        """The feed can cut the chairman's words in two in the middle of
+        the formula."""
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = self._llm(toegezegd(toezegging(I_KELDERS)))
+        s = await w._running(db_session)
+        a = await w._row(db_session, s, "speaker", 60, "a", tekst=self.VRAAG)
+        m = await w._row(db_session, s, "speaker", 120, "m", tekst=self.ANTWOORD)
+        v1 = await w._row(
+            db_session, s, "chairman", 190, tekst="Dank. Ik lees de", post=False
+        )
+        await w._row(
+            db_session,
+            s,
+            "chairman_change",
+            200,
+            tekst=f"toezeggingen voor. {I_KELDERS}",
+            post=False,
+        )
+        await w._row(db_session, s, "debate_end", 300)
+        w._in_channel(mm, a, m)
+        await w._tick(db_session, mm, llm)
+        await w._tick(db_session, mm, llm)
+        (lijst,) = [beurt for beurt, _ in handed if beurt.slotlijst]
+        assert lijst.tekst == f"Dank. Ik lees de toezeggingen voor. {I_KELDERS}"
+        assert lijst.start == v1.event_start
+
+    async def test_a_list_long_before_the_end_is_not_the_closing_list(
+        self, db_session, monkeypatch, handed
+    ):
+        """Measured from the end of the debate, not from the last words."""
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = self._llm(toegezegd(toezegging(I_KELDERS)))
+        ver = 240 + LIST_WITHIN.total_seconds() + 60
+        s, _, _, _, einde = await self._debat(
+            db_session, mm, einde_op=ver, read_until=ver + 100
+        )
+        await w._tick(db_session, mm, llm, now_seconds=ver + 200)
+        result = await w._tick(db_session, mm, llm, now_seconds=ver + 210)
+        assert (result.beoordeeld, result.toezeggingen) == (0, 0)
+        assert await w._at(db_session, einde) is not None
+        assert all(not beurt.slotlijst for beurt, _ in handed)
+        assert len(llm.prompts) == 2
 
     async def test_the_list_waits_for_a_turn_that_is_not_read(
         self, db_session, monkeypatch, handed

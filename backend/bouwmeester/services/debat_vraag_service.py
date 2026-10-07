@@ -1187,7 +1187,6 @@ def lees_slotlijst(
     it, when that is one of `leden` (`promised_to`).
     """
     afgevallen = 0
-    gezien: set[str] = set()
     items: list[tuple[int, str, DebatToezegging]] = []
     for toezegging in toezeggingen:
         gevonden = locate_citaat(tekst, toezegging.citaat)
@@ -1199,11 +1198,6 @@ def lees_slotlijst(
             )
             continue
         citaat, plek = gevonden
-        sleutel = _plat(citaat)[0]
-        if sleutel in gezien:
-            afgevallen += 1
-            continue
-        gezien.add(sleutel)
         if not is_listed_commitment(citaat):
             afgevallen += 1
             logger.info("Citaat uit de slotlijst is geen toezegging: %s", citaat[:120])
@@ -1215,14 +1209,13 @@ def lees_slotlijst(
     bevestigd: list[_Herhaling] = []
     vergeven: set[int] = set()
     einde_vorige = 0
-    for index, (plek, citaat, toezegging) in enumerate(items):
+    for plek, citaat, toezegging in items:
         if plek < einde_vorige:
-            # The same item twice, cut differently.
+            # The same item twice, whether or not it is cut the same way.
             afgevallen += 1
             continue
         einde_vorige = plek + len(citaat)
-        volgende = items[index + 1][0] if index + 1 < len(items) else len(tekst)
-        aan = promised_to(tekst[einde_vorige : max(einde_vorige, volgende)], leden)
+        aan = promised_to(tekst[einde_vorige:], leden)
         termijn = _kort(toezegging.termijn or "", MAX_TERMIJN)
         termijn = termijn if termijn and deadline_is_said(termijn, citaat) else ""
         samenvatting = _kort(toezegging.samenvatting, MAX_SAMENVATTING)

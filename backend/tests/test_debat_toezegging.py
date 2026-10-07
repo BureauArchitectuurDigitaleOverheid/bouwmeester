@@ -613,6 +613,18 @@ class TestHetzelfdeOnderwerp:
             "Wil de minister de bezuiniging op het gemeentefonds terugdraaien?",
         )
 
+    def test_coming_back_to_it_is_no_subject(self):
+        """Every other toezegging comes back to something."""
+        assert not shares_a_subject(
+            "De minister zegt toe op de kelders terug te komen; hij komt terug.",
+            "Zal terugkomen op de daken. Ik kom op de daken terug, terugkomend dus.",
+        )
+        # With what it comes back to, it is one.
+        assert shares_a_subject(
+            "De minister zegt toe op de verlichting in de kelders terug te komen.",
+            "Zal terugkomen op de verlichting. Ik kom op de kelders terug.",
+        )
+
     def test_one_word_is_not_enough(self):
         assert not shares_a_subject(
             "Neemt de uitvoering mee in de rapportage over handhaving.",
@@ -772,6 +784,12 @@ class TestBijWelkeVraagRegel:
         assert self._link(**long_answer, named=3, quote=quote) == Link(3, self.A)
         # One word is a subject, not a question.
         assert self._link(**long_answer, named=3) == Link()
+        # And one of the words has to be in the quote itself: a toezegging
+        # without a word of its own is not tied to what was said before it.
+        bare = "Dat zeg ik toe, daar doen we een evaluatie naar."
+        assert (
+            self._link(**long_answer, named=3, said_before=said, quote=bare) == Link()
+        )
         # No number, no link.
         assert self._link(**long_answer, said_before=said) == Link()
         # A number that is no open question.
@@ -845,8 +863,8 @@ def _t(citaat: str, **extra) -> DebatToezegging:
 class TestLeesToezeggingen:
     TEKST = ANTWOORD["tekst"]
     VRAAG = (
-        "Overzicht van de bezetting? Kan de minister een overzicht geven van de"
-        " bezetting van de stallingen?"
+        "Overzicht van de bezetting? Kan de minister vóór de begrotingsbehandeling"
+        " een overzicht geven van de bezetting van de stallingen?"
     )
     BELOOFD = "Stuurt de Kamer een overzicht van de bezetting van de beugels."
     # What was promised before, in words both toezeggingen of the turn share.
@@ -1007,7 +1025,7 @@ class TestLeesToezeggingen:
     def test_what_the_bewindspersoon_said_before_the_quote_counts(self):
         """The quote itself shares one word with the question; the sentence
         in front of it, where the question is repeated, has the others."""
-        citaat = "Ik zal dat laten uitzoeken en kom daar schriftelijk op terug."
+        citaat = "Ik zal de verlichting laten nakijken en meld de Kamer hoe het staat."
         tekst = (
             "Kamerlid A vroeg naar de verlichting in de kelders van de"
             f" stallingen. {citaat}"
@@ -1022,6 +1040,17 @@ class TestLeesToezeggingen:
             toezeggingen, tekst, {7: vraag_tekst}, set(), CONTEXT.onderwerp
         )
         assert nieuw[0].bij_volgnummer == 7
+        # A quote without a word of the question is no answer to it,
+        # whatever was said in front of it.
+        leeg = "Ik zal dat laten uitzoeken en meld de Kamer hoe het staat."
+        nieuw, _, _ = lees_toezeggingen(
+            [_t(leeg, samenvatting="Zoekt de verlichting uit.", bij_vraag=7)],
+            tekst.replace(citaat, leeg),
+            {7: vraag_tekst},
+            set(),
+            CONTEXT.onderwerp,
+        )
+        assert nieuw[0].bij_volgnummer is None
         # Further away than what counts as said with it, it does not.
         ver = tekst.replace(citaat, "Dat is een ander onderwerp. " * 20 + citaat)
         assert ver.index(citaat) - ver.index("kelders") > SAID_BEFORE
@@ -1696,7 +1725,10 @@ class TestBijWelkeVraag:
         """A member asks; the question is open as number 1."""
         sessie_id = await _sessie(db_session)
         mm = FakeMattermost()
-        citaat = "Kan de minister een overzicht geven van de bezetting per provincie?"
+        citaat = (
+            "Kan de minister vóór de begrotingsbehandeling een overzicht geven van"
+            " de bezetting per provincie?"
+        )
         raw = {**VRAAGT, "tekst": f"Voorzitter, dank u wel voor het woord. {citaat}"}
         await _judge(
             db_session,
@@ -1838,14 +1870,15 @@ class TestBijWelkeVraag:
 
     async def test_two_toezeggingen_on_one_question_are_two_links(self, db_session):
         sessie_id, mm = await self._with_question(db_session)
+        ook = "Ik stuur dat overzicht vóór de begrotingsbehandeling ook naar de leden."
         await _judge(
             db_session,
-            ANTWOORD,
+            {**ANTWOORD, "tekst": f"{ANTWOORD['tekst']} {ook}"},
             toegezegd(
                 toezegging(T_BRIEF, samenvatting=self.BELOOFD, bij_vraag=1),
                 toezegging(
-                    T_UITZOEKEN,
-                    samenvatting="Zoekt de bezetting van de beugels uit.",
+                    ook,
+                    samenvatting="Stuurt het overzicht ook naar de leden.",
                     bij_vraag=1,
                 ),
             ),
@@ -1854,7 +1887,7 @@ class TestBijWelkeVraag:
         )
         assert [v[:3] for v in await _vermeldingen(db_session, sessie_id)] == [
             (VERMELDING_ANTWOORD, 1, T_BRIEF),
-            (VERMELDING_ANTWOORD, 1, T_UITZOEKEN),
+            (VERMELDING_ANTWOORD, 1, ook),
         ]
 
 

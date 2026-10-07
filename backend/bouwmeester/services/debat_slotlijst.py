@@ -244,12 +244,14 @@ def match_listed(
     confirms a toezegging the chairman did not read, and is itself lost;
     an item that is not matched is stored a second time.
 
-    Measured on the one list of the gold set, against what six runs had
-    marked: the item that was promised nowhere else shares at most one
-    word with any toezegging of the debate, in every run. The two items
-    that repeat one share two words with it, by their quotes alone, in
-    10 of 12 cases; the model named a number for 4 of 6 in three runs.
-    Asking for three words would match none of them without the model.
+    Measured on the one list of the gold set, against what twelve runs
+    had marked, by the quotes alone: the item that was promised nowhere
+    else shares at most one word with any toezegging of the debate, in
+    every run. Of the two items that repeat one, one shares two words with
+    it in every run and the other in 2 of 12: that one is matched when
+    the model's number or the summaries bear it out, which was so in 2 of
+    the 3 runs that read the list. Asking for three words would match
+    neither without the model.
     """
     if (
         named is not None
