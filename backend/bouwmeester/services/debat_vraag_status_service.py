@@ -96,18 +96,22 @@ async def markeer_reactie(session: AsyncSession, post_id: str) -> bool:
 
 
 async def verworpen_markeringen(
-    session: AsyncSession, *, sessie_id: uuid.UUID | None = None, limit: int = 200
+    session: AsyncSession,
+    *,
+    sessie_id: uuid.UUID | None = None,
+    limit: int = 200,
+    soort: str = SOORT_VRAAG,
 ) -> list[DebatMarkering]:
-    """What was marked as a question and rejected by a reader, newest first.
+    """What was marked and rejected by a reader, newest first.
 
-    This is what the prompt is improved with: what the model took for a
-    question to the bewindspersoon, with the quote, its summary, and who
-    said so when.
+    This is what a prompt is improved with: what the model took for a
+    question to the bewindspersoon, or with `soort` for a toezegging or a
+    motie, with the quote, its summary, and who said so when.
     """
     stmt = (
         select(DebatMarkering)
         .where(
-            DebatMarkering.soort == SOORT_VRAAG,
+            DebatMarkering.soort == soort,
             DebatMarkering.status == STATUS_VERWORPEN,
         )
         .order_by(DebatMarkering.status_at.desc().nulls_last(), DebatMarkering.id)

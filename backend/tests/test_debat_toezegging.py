@@ -63,12 +63,15 @@ from bouwmeester.services.debat_vraag_service import (
     Beurt,
     DebatContext,
     DebatVraagService,
-    answer_parts,
+    answer_window,
     format_thread,
     format_toezegging_thread,
     lees_toezeggingen,
+    next_window,
     rol_van,
+    skip_window,
 )
+from bouwmeester.services.debat_vraag_status_service import verworpen_markeringen
 from bouwmeester.services.llm.base import (
     DEBAT_VRAGEN_ONBEREIKBAAR,
     DEBAT_VRAGEN_ONBRUIKBAAR,
@@ -556,8 +559,8 @@ class TestHetzelfdeOnderwerp:
 
     def test_a_toezegging_and_the_question_it_answers(self):
         assert shares_a_subject(
-            "Stuurt de Kamer een overzicht van de bezetting per provincie.",
-            "Kan de minister de bezetting per provincie in beeld brengen?",
+            "Stuurt de Kamer een overzicht van de bezetting van de beugels.",
+            "Kan de minister de bezetting van de beugels in beeld brengen?",
             self.ONDERWERP,
         )
 
@@ -579,6 +582,21 @@ class TestHetzelfdeOnderwerp:
             "Kan de minister toezeggen dat hij de Kamer daarover informeert?",
         )
 
+    def test_who_every_debate_is_about_does_not_make_a_subject(self):
+        assert not shares_a_subject(
+            "Informeert de Kamer over de gesprekken met gemeenten en provincies",
+            "Wil de minister de bezuiniging op gemeenten en provincies terugdraaien",
+        )
+        assert not shares_a_subject(
+            "Het kabinet stuurt de Kamer een brief over het beleid van de regering.",
+            "Wat vindt het kabinet van het beleid van de regering in Nederland?",
+        )
+        # With what it is about next to it, it does.
+        assert shares_a_subject(
+            "Informeert de Kamer over de bezuiniging op het gemeentefonds.",
+            "Wil de minister de bezuiniging op het gemeentefonds terugdraaien?",
+        )
+
     def test_one_word_is_not_enough(self):
         assert not shares_a_subject(
             "Neemt de uitvoering mee in de rapportage over handhaving.",
@@ -595,8 +613,15 @@ def _t(citaat: str, **extra) -> DebatToezegging:
 
 class TestLeesToezeggingen:
     TEKST = ANTWOORD["tekst"]
-    VRAAG = "Bezetting per provincie? Kan de minister de bezetting per provincie geven?"
-    BELOOFD = "Stuurt de Kamer een overzicht van de bezetting per provincie."
+    VRAAG = (
+        "Bezetting van de beugels? Kan de minister de bezetting van de beugels geven?"
+    )
+    BELOOFD = "Stuurt de Kamer een overzicht van de bezetting van de beugels."
+    # What was promised before, in words both toezeggingen of the turn share.
+    EERDER = (
+        "Krijgt een brief vóór de begrotingsbehandeling; laat het uitzoeken in het"
+        " voorjaar."
+    )
 
     def test_a_new_toezegging(self):
         nieuw, herhaald, afgevallen = lees_toezeggingen(
@@ -647,7 +672,7 @@ class TestLeesToezeggingen:
 
     def test_one_said_again_is_a_herhaling(self):
         nieuw, herhaald, _ = lees_toezeggingen(
-            [_t(T_BRIEF, hoort_bij=4)], self.TEKST, {}, {4}
+            [_t(T_BRIEF, hoort_bij=4)], self.TEKST, {}, {4: self.EERDER}
         )
         assert nieuw == []
         assert [(h.volgnummer, h.citaat, h.soort) for h in herhaald] == [
@@ -659,15 +684,47 @@ class TestLeesToezeggingen:
             [_t(T_BRIEF, hoort_bij=4), _t(T_UITZOEKEN, hoort_bij=4)],
             self.TEKST,
             {},
-            {4},
+            {4: self.EERDER},
         )
         assert nieuw == []
         assert [(h.volgnummer, h.citaat) for h in herhaald] == [(4, T_BRIEF)]
 
+    def test_another_promise_the_model_calls_a_repeat_is_new(self):
+        """A herhaling leaves nothing in the channel, so it is not taken on
+        the model's word alone."""
+        nieuw, herhaald, _ = lees_toezeggingen(
+            [_t(T_BRIEF, hoort_bij=4)],
+            self.TEKST,
+            {},
+            {4: "Gaat in gesprek met de vervoerders over de camera's."},
+        )
+        assert herhaald == []
+        assert [n.citaat for n in nieuw] == [T_BRIEF]
+
+    def test_a_moment_named_with_a_repeat_goes_along(self):
+        _, herhaald, _ = lees_toezeggingen(
+            [_t(T_BRIEF, hoort_bij=4, termijn="vóór de begrotingsbehandeling")],
+            self.TEKST,
+            {},
+            {4: self.EERDER},
+        )
+        assert [h.termijn for h in herhaald] == ["vóór de begrotingsbehandeling"]
+        # Not one the quote does not name.
+        _, herhaald, _ = lees_toezeggingen(
+            [_t(T_BRIEF, hoort_bij=4, termijn="voor de zomer")],
+            self.TEKST,
+            {},
+            {4: self.EERDER},
+        )
+        assert [h.termijn for h in herhaald] == [None]
+
     def test_a_number_that_is_no_earlier_toezegging_makes_it_new(self):
         # 7 is a question, not a toezegging of this bewindspersoon.
         nieuw, herhaald, _ = lees_toezeggingen(
-            [_t(T_BRIEF, hoort_bij=7)], self.TEKST, {7: self.VRAAG}, {4}
+            [_t(T_BRIEF, hoort_bij=7)],
+            self.TEKST,
+            {7: self.VRAAG},
+            {4: self.EERDER},
         )
         assert (len(nieuw), herhaald) == (1, [])
 
@@ -851,6 +908,18 @@ class TestProvider:
         result = await _ask(FakeLLM(onzin, onzin))
         assert result.fout == DEBAT_VRAGEN_ONBRUIKBAAR
 
+    async def test_a_dense_window_gets_room_to_answer(self):
+        """A reply that is cut off is no JSON, the second time either."""
+        asked: list[int] = []
+
+        class Counting(FakeLLM):
+            async def _complete(self, prompt: str, max_tokens: int = 1024) -> str:
+                asked.append(max_tokens)
+                return await super()._complete(prompt, max_tokens)
+
+        await _ask(Counting(toegezegd()))
+        assert asked == [4096]
+
     async def test_one_bad_item_does_not_take_the_rest_along(self):
         raw = json.dumps(
             {
@@ -1017,6 +1086,19 @@ class TestWoordenVanEenToezegging:
             assert woorden in LEGENDA
         assert "\n" not in LEGENDA
 
+    def test_the_pinned_message_reads_per_kind(self):
+        """Three kinds: each its own sentence, the one meaning they share
+        said once."""
+        assert LEGENDA.startswith("Reageer op een markering met ✅, 👀, 🚫 of ❌.")
+        assert LEGENDA.count("ik pak dit op") == 1
+        for soort, woorden in (
+            ("vraag", "✅ beantwoord · 🚫 hoeft geen antwoord · ❌ geen vraag"),
+            ("motie", "✅ oordeel gegeven · 🚫 hoeft geen oordeel · ❌ geen motie"),
+            ("toezegging", "✅ nagekomen · 🚫 hoeft niet · ❌ geen toezegging"),
+        ):
+            assert f"Bij een {soort}: {woorden}. " in LEGENDA
+        assert "gemarkeerde vraag" not in LEGENDA
+
 
 # --- the service -------------------------------------------------------
 
@@ -1044,7 +1126,7 @@ class TestToezeggingMarkeren:
             toegezegd(
                 toezegging(
                     T_BRIEF,
-                    samenvatting="Stuurt de Kamer de bezetting per provincie.",
+                    samenvatting="Stuurt de Kamer de bezetting van de beugels.",
                     termijn="vóór de begrotingsbehandeling",
                 )
             ),
@@ -1060,7 +1142,7 @@ class TestToezeggingMarkeren:
             1,
         )
         assert row.citaat == T_BRIEF
-        assert row.samenvatting == "Stuurt de Kamer de bezetting per provincie."
+        assert row.samenvatting == "Stuurt de Kamer de bezetting van de beugels."
         assert row.termijn == "vóór de begrotingsbehandeling"
         # In a long answer nobody says who it is promised to.
         assert (row.gericht_aan, row.bij_volgnummer, row.stuk) == ("", None, None)
@@ -1070,7 +1152,7 @@ class TestToezeggingMarkeren:
         (reply,) = mm.replies
         assert reply[1] == post_id
         assert reply[2] == (
-            "🤝 **Stuurt de Kamer de bezetting per provincie.**\n"
+            "🤝 **Stuurt de Kamer de bezetting van de beugels.**\n"
             "Toezegging 1 · vóór de begrotingsbehandeling ·"
             f" [10:36]({MOMENT_URL}) (begin van de spreekbeurt)\n"
             f"> {T_BRIEF}\n"
@@ -1314,18 +1396,18 @@ class TestWieNietWordtGelezenVoorToezeggingen:
 
 
 class TestBijWelkeVraag:
-    BELOOFD = "Stuurt de Kamer de bezetting per provincie."
+    BELOOFD = "Stuurt de Kamer de bezetting van de beugels."
 
     async def _with_question(self, db_session, **extra):
         """A member asks; the question is open as number 1."""
         sessie_id = await _sessie(db_session)
         mm = FakeMattermost()
-        citaat = "Kan de minister de bezetting per provincie in beeld brengen?"
+        citaat = "Kan de minister de bezetting van de beugels in beeld brengen?"
         raw = {**VRAAGT, "tekst": f"Voorzitter, dank u wel voor het woord. {citaat}"}
         await _judge(
             db_session,
             raw,
-            antwoord(vraag(citaat, samenvatting="Bezetting per provincie?", **extra)),
+            antwoord(vraag(citaat, samenvatting="Bezetting van de beugels?", **extra)),
             sessie_id=sessie_id,
             mm=mm,
         )
@@ -1336,7 +1418,7 @@ class TestBijWelkeVraag:
         _, _, llm, _, _ = await _judge(
             db_session, ANTWOORD, toegezegd(), sessie_id=sessie_id, mm=mm
         )
-        assert "1. Kamerlid A (X): Bezetting per provincie?" in llm.prompts[0]
+        assert "1. Kamerlid A (X): Bezetting van de beugels?" in llm.prompts[0]
 
     async def test_a_toezegging_that_answers_a_question_is_linked_to_it(
         self, db_session
@@ -1399,6 +1481,22 @@ class TestBijWelkeVraag:
         assert await _vermeldingen(db_session, sessie_id) == []
         assert "bij vraag" not in mm.replies[-1][2]
 
+    async def test_a_question_from_after_the_answer_is_not_offered(self, db_session):
+        """The turns of members are read first in a round, so a question
+        can be stored before the answer that came before it is read."""
+        sessie_id, mm = await self._with_question(db_session)
+        eerder = datetime.fromisoformat(VRAAGT["start"]) - timedelta(minutes=5)
+        _, _, llm, _, _ = await _judge(
+            db_session,
+            ANTWOORD,
+            toegezegd(toezegging(T_BRIEF, samenvatting=self.BELOOFD, bij_vraag=1)),
+            sessie_id=sessie_id,
+            mm=mm,
+            start=eerder,
+        )
+        assert "nog openstaan\n(geen)" in llm.prompts[0]
+        assert (await _rows(db_session, sessie_id))[1].bij_volgnummer is None
+
     async def test_a_question_someone_ticked_off_is_no_longer_offered(self, db_session):
         sessie_id, mm = await self._with_question(db_session)
         (vraag_row,) = await _rows(db_session, sessie_id)
@@ -1451,7 +1549,7 @@ class TestBijWelkeVraag:
                 toezegging(T_BRIEF, samenvatting=self.BELOOFD, bij_vraag=1),
                 toezegging(
                     T_UITZOEKEN,
-                    samenvatting="Zoekt de bezetting per provincie uit.",
+                    samenvatting="Zoekt de bezetting van de beugels uit.",
                     bij_vraag=1,
                 ),
             ),
@@ -1508,7 +1606,11 @@ class TestHerhaald:
         return await _judge(
             db_session,
             ANTWOORD,
-            toegezegd(toezegging(T_BRIEF, samenvatting="Stuurt de brief.")),
+            toegezegd(
+                toezegging(
+                    T_BRIEF, samenvatting="Meldt vóór de zomer hoe het verlopen is."
+                )
+            ),
         )
 
     async def test_the_next_answer_gets_what_was_promised_before(self, db_session):
@@ -1516,7 +1618,7 @@ class TestHerhaald:
         _, _, llm, _, _ = await _judge(
             db_session, ZEGT_TOE, toegezegd(), sessie_id=sessie_id, mm=mm
         )
-        assert "al deed\n1. Stuurt de brief." in llm.prompts[0]
+        assert "al deed\n1. Meldt vóór de zomer hoe het verlopen is." in llm.prompts[0]
 
     async def test_another_bewindspersoon_does_not_get_them(self, db_session):
         sessie_id, mm, _, _, _ = await self._first(db_session)
@@ -1571,6 +1673,80 @@ class TestHerhaald:
         ]
         assert splits(mm.messages[post_id])[1] == ""
 
+    async def test_another_promise_filed_as_a_repeat_gets_a_thread_of_its_own(
+        self, db_session
+    ):
+        sessie_id, mm, _, _, _ = await self._first(db_session)
+        _, _, _, _, result = await _judge(
+            db_session,
+            WEIGERT,
+            toegezegd(toezegging(T_EVALUATIE, hoort_bij=1)),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        assert (result.toezeggingen, result.herhaald) == (1, ())
+        assert [r.citaat for r in await _rows(db_session, sessie_id)] == [
+            T_BRIEF,
+            T_EVALUATIE,
+        ]
+        assert len(mm.replies) == 2
+        assert await _vermeldingen(db_session, sessie_id) == []
+
+    async def test_a_repeat_with_a_moment_gives_the_first_one_its_moment(
+        self, db_session
+    ):
+        """Said without a moment first, and with one when asked again."""
+        sessie_id, mm, _, _, _ = await self._first(db_session)
+        (row,) = await _rows(db_session, sessie_id)
+        assert (row.termijn, row.reacties_gewijzigd_at) == (None, None)
+
+        await _judge(
+            db_session,
+            ZEGT_TOE,
+            toegezegd(toezegging(T_ZOMER, hoort_bij=1, termijn="vóór de zomer")),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+
+        (row,) = await _rows(db_session, sessie_id)
+        assert row.termijn == "vóór de zomer"
+        # Marked for the round that writes a reply again from its row.
+        assert row.reacties_gewijzigd_at is not None
+        assert "· vóór de zomer ·" in format_thread(
+            row.soort,
+            volgnummer=row.volgnummer,
+            gericht_aan=row.gericht_aan,
+            citaat=row.citaat,
+            samenvatting=row.samenvatting,
+            stuk=row.stuk,
+            moment=row.moment,
+            moment_url=row.moment_url,
+            termijn=row.termijn,
+        )
+
+    async def test_a_repeat_does_not_change_a_moment_that_was_named(self, db_session):
+        sessie_id, mm, _, _, _ = await _judge(
+            db_session,
+            ANTWOORD,
+            toegezegd(
+                toezegging(
+                    T_UITZOEKEN,
+                    samenvatting="Meldt hoe het verlopen is, zomer of voorjaar.",
+                    termijn="in het voorjaar",
+                )
+            ),
+        )
+        await _judge(
+            db_session,
+            ZEGT_TOE,
+            toegezegd(toezegging(T_ZOMER, hoort_bij=1, termijn="vóór de zomer")),
+            sessie_id=sessie_id,
+            mm=mm,
+        )
+        (row,) = await _rows(db_session, sessie_id)
+        assert row.termijn == "in het voorjaar"
+        assert row.reacties_gewijzigd_at is None
+
     async def test_a_rejected_one_is_not_offered_again(self, db_session):
         sessie_id, mm, _, _, _ = await self._first(db_session)
         (row,) = await _rows(db_session, sessie_id)
@@ -1587,74 +1763,178 @@ class TestHerhaald:
         assert len(await _rows(db_session, sessie_id)) == 2
 
 
+VULZIN = "Het budget is dit jaar gelijk gebleven aan dat van vorig jaar. "
+
+
+def vul(zinnen: int) -> str:
+    """Sentences of an answer in which nothing is promised."""
+    return VULZIN * zinnen
+
+
+# Two windows: a toezegging at the start, one in the second window.
+LANG = f"{T_BRIEF} {vul(70)}{T_UITZOEKEN} {vul(30)}".strip()
+# Three windows, and nothing that looks like a commitment in the middle one.
+LANG_MET_GAT = f"{T_BRIEF} {vul(150)}{T_UITZOEKEN} {vul(30)}".strip()
+# A toezegging of two sentences, with the end of the first window between
+# them: 63 sentences of 63 characters and one of 25 are 3,994 characters,
+# and the second sentence does not fit in 4,000 any more.
+T_HALF = "Ja, dat kan ik toezeggen."
+OP_DE_GRENS = f"{vul(63)}{T_ZOMER} {vul(30)}".strip()
+
+
+def _windows(tekst: str) -> list[tuple[int, int, int]]:
+    """Every window of a text, as (read up to, begin, end)."""
+    found, vanaf = [], 0
+    while (venster := answer_window(tekst, vanaf)) is not None:
+        found.append((vanaf, *venster))
+        vanaf = venster[1]
+    return found
+
+
+class TestVensters:
+    def test_an_ordinary_answer_is_one_window(self):
+        tekst = ANTWOORD["tekst"]
+        assert answer_window(tekst, 0) == (0, len(tekst))
+        assert answer_window(tekst, len(tekst)) is None
+        assert next_window(tekst, 0) == (0, 0, len(tekst))
+
+    def test_an_answer_without_the_words_needs_no_window(self):
+        assert next_window(TURNS[31]["tekst"], 0) is None
+        assert next_window("", 0) is None
+
+    def test_a_long_answer_is_cut_where_a_sentence_ends(self):
+        vensters = _windows(LANG)
+        assert len(vensters) == 2
+        (_, begin1, einde1), (vanaf2, begin2, einde2) = vensters
+        assert (begin1, vanaf2, einde2) == (0, einde1, len(LANG))
+        assert einde1 <= service_mod.ANTWOORD_VENSTER
+        assert einde1 >= service_mod.ANTWOORD_VENSTER // 2
+        assert LANG[:einde1].endswith("vorig jaar.")
+        assert T_BRIEF in LANG[begin1:einde1]
+        assert T_UITZOEKEN in LANG[begin2:einde2]
+
+    def test_a_window_begins_two_sentences_before_where_the_last_one_ended(self):
+        _, (vanaf, begin, _) = _windows(LANG)
+        assert LANG[begin:vanaf].strip() == vul(2).strip()
+
+    def test_a_sentence_without_an_end_is_not_carried_along(self):
+        zonder = "dat is zo " * 500
+        tekst = f"{zonder}. {T_BRIEF} {vul(20)}"
+        vanaf = len(zonder) + 1
+        assert answer_window(tekst, vanaf)[0] == vanaf
+
+    def test_the_dots_of_a_line_that_runs_on_are_no_end_of_a_sentence(self):
+        tekst = f"{vul(5)}Ik stuur de Kamer... voor de zomer een brief. {vul(3)}"
+        vanaf = tekst.index("Het budget", tekst.index("een brief."))
+        begin, _ = answer_window(tekst, vanaf)
+        assert tekst[begin:vanaf].startswith(VULZIN.strip())
+        assert "Ik stuur de Kamer... voor de zomer een brief." in tekst[begin:vanaf]
+
+    def test_the_windows_cover_the_text_and_never_go_back(self):
+        for tekst in (LANG, LANG_MET_GAT, OP_DE_GRENS, vul(400)):
+            vensters = _windows(tekst)
+            assert vensters[0][0] == 0
+            assert vensters[-1][2] == len(tekst)
+            for (_, _, einde), (vanaf, begin, verder) in zip(
+                vensters, vensters[1:], strict=False
+            ):
+                assert vanaf == einde
+                assert vanaf - service_mod.MAX_OVERLAP <= begin <= vanaf < verder
+            nieuw = [einde - vanaf for vanaf, _, einde in vensters]
+            limiet = service_mod.ANTWOORD_VENSTER + service_mod.MIN_STAART
+            assert max(nieuw) <= limiet
+            # No last window of a sentence or two.
+            assert len(vensters) == 1 or min(nieuw) >= service_mod.MIN_STAART
+
+    def test_the_same_text_gives_the_same_windows(self):
+        assert _windows(LANG_MET_GAT) == _windows(LANG_MET_GAT)
+
+    def test_no_more_of_an_answer_than_the_limit_is_read(self):
+        tekst = vul(1200)
+        assert len(tekst) > service_mod.MAX_ANTWOORD
+        vensters = _windows(tekst)
+        assert vensters[-1][2] == service_mod.MAX_ANTWOORD
+        assert len(vensters) <= 13
+        assert answer_window(tekst, service_mod.MAX_ANTWOORD) is None
+
+    def test_a_window_without_the_words_is_passed_over(self):
+        assert len(_windows(LANG_MET_GAT)) == 3
+        eerste = next_window(LANG_MET_GAT, 0)
+        tweede = next_window(LANG_MET_GAT, eerste[2])
+        # Read up to the start of the third window without asking.
+        assert tweede[0] > eerste[2] + service_mod.ANTWOORD_VENSTER // 2
+        assert T_UITZOEKEN in LANG_MET_GAT[tweede[0] : tweede[2]]
+        assert next_window(LANG_MET_GAT, tweede[2]) is None
+
+    def test_whether_a_window_goes_to_the_model_is_decided_on_what_is_new_in_it(
+        self,
+    ):
+        # The only wording stands in the two sentences the second window
+        # shares with the first. That is not a reason to ask twice.
+        tekst = f"{vul(61)}{T_BRIEF} {VULZIN}{vul(40)}".strip()
+        eerste = next_window(tekst, 0)
+        assert T_BRIEF in tekst[: eerste[2]]
+        assert T_BRIEF in tekst[answer_window(tekst, eerste[2])[0] : eerste[2] + 200]
+        assert next_window(tekst, eerste[2]) is None
+
+    def test_giving_up_on_a_window_goes_on_behind_it(self):
+        eerste = next_window(LANG, 0)
+        assert skip_window(LANG, 0) == eerste[2]
+        assert skip_window(LANG, eerste[2]) == len(LANG)
+        assert skip_window(LANG, len(LANG)) == len(LANG)
+
+
 class TestEenLangAntwoord:
-    def test_an_ordinary_answer_is_one_part(self):
-        assert answer_parts(ANTWOORD["tekst"]) == [ANTWOORD["tekst"]]
-
-    def test_an_answer_without_the_words_is_no_part(self):
-        assert answer_parts(TURNS[31]["tekst"]) == []
-
-    def _lang(self) -> str:
-        vulling = "Het budget is dit jaar gelijk gebleven aan dat van vorig jaar. "
-        blok = vulling * (service_mod.MAX_ANTWOORD_DEEL // len(vulling) - 3)
-        return f"{T_BRIEF} {blok}{blok}{T_UITZOEKEN}"
-
-    def test_a_long_one_is_cut_and_only_parts_with_the_words_are_asked_about(self):
-        delen = answer_parts(self._lang())
-        assert len(delen) == 2
-        assert all(len(deel) <= service_mod.MAX_ANTWOORD_DEEL for deel in delen)
-        assert T_BRIEF in delen[0]
-        assert T_UITZOEKEN in delen[1]
-
-    def test_no_more_parts_than_the_limit(self):
-        zin = "Ik zal de Kamer daarover vóór de zomer informeren. "
-        delen = service_mod.MAX_ANTWOORD_DELEN + 2
-        tekst = zin * (service_mod.MAX_ANTWOORD_DEEL * delen // len(zin))
-        assert len(answer_parts(tekst)) == service_mod.MAX_ANTWOORD_DELEN
-
     T_OPNIEUW = "Ik stuur die brief over de bezetting dus vóór de begroting."
 
     async def _call(self, db_session, sessie_id, mm, post_id, tekst, llm, gelezen=0):
         return await DebatVraagService(db_session, mm, llm).beoordeel_beurt(
             _beurt(
-                sessie_id, {**ANTWOORD, "tekst": tekst}, post_id, delen_gelezen=gelezen
+                sessie_id, {**ANTWOORD, "tekst": tekst}, post_id, gelezen_tot=gelezen
             ),
             CONTEXT,
         )
 
-    async def test_one_call_reads_one_part_and_stores_it(self, db_session):
-        tekst = self._lang()
+    async def test_one_call_reads_one_window_and_stores_it(self, db_session):
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         post_id = mm.turn()
         llm = FakeLLM(
             toegezegd(toezegging(T_BRIEF, samenvatting="Stuurt de brief.")),
             toegezegd(toezegging(T_UITZOEKEN)),
         )
+        einde = next_window(LANG, 0)[2]
 
-        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        first = await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
 
-        assert (first.uitkomst, first.meer, first.delen_gelezen) == (
+        assert (first.uitkomst, first.meer, first.gelezen_tot) == (
             UITKOMST_GEMARKEERD,
             True,
-            1,
+            einde,
         )
         assert len(llm.prompts) == 1
-        # The start of a long answer is read: the prompt keeps only the end
-        # of a text that is too long for it.
-        assert T_BRIEF in llm.prompts[0]
-        assert T_UITZOEKEN not in llm.prompts[0]
-        # Stored and in the channel before the next part is asked about.
+        # The start of a long answer is read, and only a window of it.
+        gevraagd = llm.prompts[0].split("<spreekbeurt>\n")[1].split("\n</spreek")[0]
+        assert gevraagd == LANG[:einde]
+        # Stored and in the channel before the next window is asked about.
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
         assert len(mm.replies) == 1
 
         second = await self._call(
-            db_session, sessie_id, mm, post_id, tekst, llm, first.delen_gelezen
+            db_session, sessie_id, mm, post_id, LANG, llm, first.gelezen_tot
         )
 
-        assert (second.meer, second.delen_gelezen, second.toezeggingen) == (False, 2, 1)
+        assert (second.meer, second.gelezen_tot, second.toezeggingen) == (
+            False,
+            len(LANG),
+            1,
+        )
         assert len(llm.prompts) == 2
-        assert T_BRIEF not in llm.prompts[1].split("<spreekbeurt>")[1]
-        # What the first part promised is on the list the second part gets.
+        tweede = llm.prompts[1].split("<spreekbeurt>\n")[1].split("\n</spreek")[0]
+        assert T_BRIEF not in tweede
+        # It begins with the two sentences the first window ended with.
+        assert tweede.startswith(vul(2).strip())
+        assert tweede.endswith(LANG[einde:])
+        # What the first window promised is on the list the second gets.
         assert "al deed\n1. Stuurt de brief." in llm.prompts[1]
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [
             T_BRIEF,
@@ -1665,19 +1945,34 @@ class TestEenLangAntwoord:
     async def test_an_answer_that_was_read_to_the_end_is_not_asked_about_again(
         self, db_session
     ):
-        tekst = self._lang()
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         llm = FakeLLM(toegezegd(toezegging(T_BRIEF)))
-        done = await self._call(db_session, sessie_id, mm, mm.turn(), tekst, llm, 2)
-        assert (done.uitkomst, done.meer, done.delen_gelezen) == (
+        done = await self._call(
+            db_session, sessie_id, mm, mm.turn(), LANG, llm, len(LANG)
+        )
+        assert (done.uitkomst, done.meer, done.gelezen_tot) == (
             UITKOMST_AL_BEOORDEELD,
             False,
-            2,
+            len(LANG),
         )
         assert llm.prompts == []
 
-    async def test_a_part_that_fails_keeps_the_parts_before_it(self, db_session):
-        tekst = self._lang()
+    async def test_a_window_without_the_words_costs_no_call(self, db_session):
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM(
+            toegezegd(toezegging(T_BRIEF)), toegezegd(toezegging(T_UITZOEKEN))
+        )
+        first = await self._call(db_session, sessie_id, mm, post_id, LANG_MET_GAT, llm)
+        second = await self._call(
+            db_session, sessie_id, mm, post_id, LANG_MET_GAT, llm, first.gelezen_tot
+        )
+        # Three windows, two calls.
+        assert len(llm.prompts) == 2
+        assert (second.meer, second.gelezen_tot) == (False, len(LANG_MET_GAT))
+        assert len(await _rows(db_session, sessie_id)) == 2
+
+    async def test_a_window_that_fails_keeps_the_windows_before_it(self, db_session):
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         post_id = mm.turn()
         llm = FakeLLM(
@@ -1685,56 +1980,53 @@ class TestEenLangAntwoord:
             RuntimeError("weg"),
             toegezegd(toezegging(T_UITZOEKEN)),
         )
-        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        first = await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
 
         failed = await self._call(
-            db_session, sessie_id, mm, post_id, tekst, llm, first.delen_gelezen
+            db_session, sessie_id, mm, post_id, LANG, llm, first.gelezen_tot
         )
 
         assert failed.uitkomst == UITKOMST_LLM_ONBEREIKBAAR
         assert failed.opnieuw_proberen
-        # Still at the part that failed, not back at the first.
-        assert (failed.delen_gelezen, failed.meer) == (1, True)
+        # Still at the window that failed, not back at the first.
+        assert (failed.gelezen_tot, failed.meer) == (first.gelezen_tot, True)
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
 
         again = await self._call(
-            db_session, sessie_id, mm, post_id, tekst, llm, failed.delen_gelezen
+            db_session, sessie_id, mm, post_id, LANG, llm, failed.gelezen_tot
         )
-        assert (again.delen_gelezen, again.meer) == (2, False)
+        assert (again.gelezen_tot, again.meer) == (len(LANG), False)
         assert len(llm.prompts) == 3
-        # The first part was asked about once.
+        # The first window was asked about once.
         assert sum(T_BRIEF in p.split("<spreekbeurt>")[1] for p in llm.prompts) == 1
         assert len(await _rows(db_session, sessie_id)) == 2
 
-    async def test_an_unreadable_part_counts_as_read_and_the_rest_goes_on(
+    async def test_an_unreadable_window_counts_as_read_and_the_rest_goes_on(
         self, db_session
     ):
-        tekst = self._lang()
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         post_id = mm.turn()
         llm = FakeLLM("geen json", "ook niet", toegezegd(toezegging(T_UITZOEKEN)))
 
-        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
-        assert (first.uitkomst, first.delen_gelezen, first.meer) == (
-            UITKOMST_LLM_ONBRUIKBAAR,
-            1,
-            True,
-        )
+        first = await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
+        assert (first.uitkomst, first.meer) == (UITKOMST_LLM_ONBRUIKBAAR, True)
+        assert first.gelezen_tot == next_window(LANG, 0)[2]
         assert not first.opnieuw_proberen
 
-        second = await self._call(db_session, sessie_id, mm, post_id, tekst, llm, 1)
+        second = await self._call(
+            db_session, sessie_id, mm, post_id, LANG, llm, first.gelezen_tot
+        )
         assert (second.toezeggingen, second.meer) == (1, False)
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_UITZOEKEN]
 
-    async def test_a_part_without_a_toezegging_still_counts_as_read(self, db_session):
-        tekst = self._lang()
+    async def test_a_window_without_a_toezegging_still_counts_as_read(self, db_session):
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         first = await self._call(
-            db_session, sessie_id, mm, mm.turn(), tekst, FakeLLM(toegezegd())
+            db_session, sessie_id, mm, mm.turn(), LANG, FakeLLM(toegezegd())
         )
-        assert (first.uitkomst, first.delen_gelezen, first.meer) == (
+        assert (first.uitkomst, first.gelezen_tot, first.meer) == (
             UITKOMST_GEEN_TOEZEGGING,
-            1,
+            next_window(LANG, 0)[2],
             True,
         )
 
@@ -1746,29 +2038,65 @@ class TestEenLangAntwoord:
             "de Kamer krijgt die brief vóór de begrotingsbehandeling.",
         ],
     )
-    async def test_a_part_that_is_handed_in_twice_is_stored_once(
+    async def test_a_window_that_is_handed_in_twice_is_stored_once(
         self, db_session, opnieuw
     ):
-        """After a restart between storing a part and noting that it was read."""
-        tekst = self._lang()
+        """After a restart between storing a window and noting how far it got."""
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         post_id = mm.turn()
         llm = FakeLLM(
             toegezegd(toezegging(T_BRIEF)),
             toegezegd(toezegging(opnieuw)),
         )
-        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
-        again = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
+        again = await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
 
         assert len(llm.prompts) == 2
-        assert (again.delen_gelezen, again.meer) == (1, True)
+        assert again.meer
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
         assert len(mm.replies) == 1
 
-    async def test_one_said_again_in_a_later_part_is_a_herhaling_on_the_first(
+    @pytest.mark.parametrize(
+        ("eerste", "tweede"),
+        [
+            # Seen in halves by the first window, whole by the second.
+            (toezegging(T_HALF), toezegging(T_ZOMER)),
+            # Not marked by the first, marked whole by the second.
+            (None, toezegging(T_ZOMER)),
+            # Marked by the first, and by the second from the sentences the
+            # two share.
+            (toezegging(T_HALF), toezegging(T_HALF)),
+            # Or called "said again" there, pointing at itself.
+            (toezegging(T_HALF), toezegging(T_HALF, hoort_bij=1)),
+        ],
+    )
+    async def test_a_toezegging_on_the_boundary_of_two_windows_is_stored_once(
+        self, db_session, eerste, tweede
+    ):
+        sessie_id, mm = await _sessie(db_session), FakeMattermost()
+        post_id = mm.turn()
+        llm = FakeLLM(toegezegd(*([eerste] if eerste else [])), toegezegd(tweede))
+        einde = next_window(OP_DE_GRENS, 0)[2]
+        # The end of the first window falls between its two sentences.
+        assert OP_DE_GRENS[:einde].endswith(T_HALF)
+
+        first = await self._call(db_session, sessie_id, mm, post_id, OP_DE_GRENS, llm)
+        await self._call(
+            db_session, sessie_id, mm, post_id, OP_DE_GRENS, llm, first.gelezen_tot
+        )
+
+        # The second window was shown the toezegging whole.
+        assert T_ZOMER in llm.prompts[1].split("<spreekbeurt>")[1]
+        rows = await _rows(db_session, sessie_id)
+        assert len(rows) == 1
+        assert rows[0].citaat in (T_HALF, T_ZOMER)
+        assert len(mm.replies) == 1
+        assert await _vermeldingen(db_session, sessie_id) == []
+
+    async def test_one_said_again_in_a_later_window_is_a_herhaling_on_the_first(
         self, db_session
     ):
-        tekst = f"{self._lang()} {self.T_OPNIEUW}"
+        tekst = f"{LANG} {self.T_OPNIEUW}"
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
         post_id = mm.turn()
         llm = FakeLLM(
@@ -1778,41 +2106,44 @@ class TestEenLangAntwoord:
             toegezegd(toezegging(self.T_OPNIEUW, hoort_bij=1)),
             toegezegd(toezegging(self.T_OPNIEUW, hoort_bij=1)),
         )
-        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
-        second = await self._call(db_session, sessie_id, mm, post_id, tekst, llm, 1)
+        first = await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        second = await self._call(
+            db_session, sessie_id, mm, post_id, tekst, llm, first.gelezen_tot
+        )
 
         assert (second.toezeggingen, second.herhaald) == (0, (1,))
         assert [r.citaat for r in await _rows(db_session, sessie_id)] == [T_BRIEF]
         assert await _vermeldingen(db_session, sessie_id) == [
             (VERMELDING_HERHALING, 1, self.T_OPNIEUW, MINISTER)
         ]
-        # And that part handed in once more writes no second vermelding.
-        await self._call(db_session, sessie_id, mm, post_id, tekst, llm, 1)
+        # And that window handed in once more writes no second vermelding.
+        await self._call(
+            db_session, sessie_id, mm, post_id, tekst, llm, first.gelezen_tot
+        )
         assert len(await _vermeldingen(db_session, sessie_id)) == 1
 
-    async def test_the_link_of_a_part_is_written_once(self, db_session):
-        tekst = self._lang()
+    async def test_the_link_of_a_window_is_written_once(self, db_session):
         sessie_id, mm = await _sessie(db_session), FakeMattermost()
-        vraag_citaat = "Kan de minister de bezetting per provincie in beeld brengen?"
+        vraag_citaat = "Kan de minister de bezetting van de beugels in beeld brengen?"
         await _judge(
             db_session,
             {
                 **VRAAGT,
                 "tekst": f"Voorzitter, dank u wel voor het woord. {vraag_citaat}",
             },
-            antwoord(vraag(vraag_citaat, samenvatting="Bezetting per provincie?")),
+            antwoord(vraag(vraag_citaat, samenvatting="Bezetting van de beugels?")),
             sessie_id=sessie_id,
             mm=mm,
         )
         post_id = mm.turn()
         beloofd = toegezegd(
             toezegging(
-                T_BRIEF, samenvatting="Stuurt de bezetting per provincie.", bij_vraag=1
+                T_BRIEF, samenvatting="Stuurt de bezetting van de beugels.", bij_vraag=1
             )
         )
         llm = FakeLLM(beloofd, beloofd)
-        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
-        await self._call(db_session, sessie_id, mm, post_id, tekst, llm)
+        await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
+        await self._call(db_session, sessie_id, mm, post_id, LANG, llm)
         assert await _vermeldingen(db_session, sessie_id) == [
             (VERMELDING_ANTWOORD, 1, T_BRIEF, MINISTER)
         ]
@@ -1902,6 +2233,37 @@ class TestEenReactieOpEenToezegging:
         await h._ronde(db_session, mm)
         assert mm.messages[row.thread_post_id] == open_tekst
         assert splits(mm.messages[row.beurt_post_id])[1] == "🤝 1 toezegging · open"
+
+
+class TestVerworpenToezeggingen:
+    async def test_rejected_toezeggingen_can_be_asked_for(self, db_session):
+        h = status_helpers
+        mm = h.FakeMattermost()
+        sessie_id = await h._sessie(db_session)
+        vraag_row = await h._markering(
+            db_session, mm, sessie_id, 1, status=STATUS_VERWORPEN
+        )
+        toezegging_row = await h._markering(
+            db_session,
+            mm,
+            sessie_id,
+            2,
+            soort=SOORT_TOEZEGGING,
+            status=STATUS_VERWORPEN,
+            gericht_aan="",
+            citaat=T_BRIEF,
+        )
+        await h._markering(db_session, mm, sessie_id, 3, soort=SOORT_TOEZEGGING)
+
+        async def ids(**extra) -> list:
+            found = await verworpen_markeringen(
+                db_session, sessie_id=sessie_id, **extra
+            )
+            return [m.id for m in found]
+
+        # A question, as before, unless another kind is asked for.
+        assert await ids() == [vraag_row.id]
+        assert await ids(soort=SOORT_TOEZEGGING) == [toezegging_row.id]
 
 
 # --- the worker --------------------------------------------------------
@@ -2008,6 +2370,28 @@ class TestDeWerker:
 
         by_row = {beurt.spreekbeurt_id: beurt for beurt, _ in handed}
         assert (by_row[a.id].voorafgaand, by_row[a.id].voorafgaand_tekst) == (None, "")
+
+    async def test_an_interruption_from_before_a_suspension_is_not_what_is_answered(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        s = await w._running(db_session)
+        b = await w._row(db_session, s, "interrupter", 60, "b", tekst=self.VRAAG)
+        # No message of its own: the chairman said nothing first.
+        await w._row(db_session, s, "suspended", 100, post=False)
+        await w._row(db_session, s, "continued", 130, post=False)
+        m = await w._row(db_session, s, "speaker", 140, "m", tekst=self.ANTWOORD)
+        await w._row(db_session, s, "debate_end", 200)
+        w._in_channel(mm, b, m)
+
+        await w._tick(db_session, mm, PerKind(toegezegd(toezegging(self.ANTWOORD))))
+
+        by_row = {beurt.spreekbeurt_id: beurt for beurt, _ in handed}
+        assert (by_row[m.id].voorafgaand, by_row[m.id].voorafgaand_tekst) == (None, "")
+        rows = [r for r in await _rows(db_session, s.id) if r.soort == SOORT_TOEZEGGING]
+        assert [r.gericht_aan for r in rows] == [""]
 
     async def test_an_interruption_by_someone_without_a_party_names_nobody(
         self, db_session, monkeypatch, handed
@@ -2150,11 +2534,6 @@ class TestEenTraagOfLangAntwoord:
 
     KORT = "Ja, dat zeg ik toe. U krijgt dat overzicht voor de zomer."
 
-    def _lang(self) -> str:
-        vulling = "Het budget is dit jaar gelijk gebleven aan dat van vorig jaar. "
-        blok = vulling * (service_mod.MAX_ANTWOORD_DEEL // len(vulling) - 3)
-        return f"{T_BRIEF} {blok}{blok}{T_UITZOEKEN}"
-
     async def _debat(self, db_session, mm, antwoord_tekst: str, *, leden: int = 2):
         """An answer of the minister, and after it turns of members."""
         w = worker_helpers
@@ -2176,9 +2555,9 @@ class TestEenTraagOfLangAntwoord:
         w._in_channel(mm, *rows)
         return s, m, rows[1:]
 
-    async def _parts(self, db_session, row) -> int:
+    async def _position(self, db_session, row) -> int | None:
         return await db_session.scalar(
-            select(DebatSpreekbeurt.antwoord_delen_gelezen).where(
+            select(DebatSpreekbeurt.antwoord_gelezen_tot).where(
                 DebatSpreekbeurt.id == row.id
             )
         )
@@ -2214,7 +2593,7 @@ class TestEenTraagOfLangAntwoord:
         w = worker_helpers
         w.Outside(monkeypatch)
         monkeypatch.setattr(db_session, "rollback", w._nothing)
-        monkeypatch.setattr(worker_mod, "JUDGE_TIMEOUT", 0.2)
+        monkeypatch.setattr(worker_mod, "WINDOW_TIMEOUT", 0.2)
         mm = w.Chat()
         llm = PerKind(RuntimeError("weg") if wat == "weg" else PerKind.SLOW)
         s, m, leden = await self._debat(db_session, mm, self.KORT)
@@ -2249,6 +2628,9 @@ class TestEenTraagOfLangAntwoord:
         assert (done.beoordeeld, done.toezeggingen) == (1, 1)
         assert await w._at(db_session, m) is not None
 
+    async def test_a_window_has_less_time_than_a_turn_of_a_member(self):
+        assert worker_mod.WINDOW_TIMEOUT < worker_mod.JUDGE_TIMEOUT
+
     async def test_a_member_whose_turn_fails_still_pauses_the_debate(
         self, db_session, monkeypatch, handed
     ):
@@ -2267,22 +2649,24 @@ class TestEenTraagOfLangAntwoord:
         # The answer was not even tried.
         assert [beurt.spreekbeurt_id for beurt, _ in handed] == [leden[0].id]
 
-    async def test_a_long_answer_is_read_a_part_per_round_and_kept_in_between(
+    async def test_a_long_answer_is_read_a_window_per_round_and_kept_in_between(
         self, db_session, monkeypatch, handed
     ):
         w = worker_helpers
         w.Outside(monkeypatch)
+        monkeypatch.setattr(worker_mod, "MAX_ANSWER_WINDOWS_PER_ROUND", 1)
         mm = w.Chat()
         llm = PerKind(
             toegezegd(toezegging(T_BRIEF)), toegezegd(toezegging(T_UITZOEKEN))
         )
-        s, m, _ = await self._debat(db_session, mm, self._lang(), leden=0)
+        s, m, _ = await self._debat(db_session, mm, LANG, leden=0)
+        assert await self._position(db_session, m) is None
 
         first = await w._tick(db_session, mm, llm)
 
         assert len(llm.asked) == 1
         assert (first.beoordeeld, first.toezeggingen, first.fouten) == (0, 1, 0)
-        assert await self._parts(db_session, m) == 1
+        assert await self._position(db_session, m) == next_window(LANG, 0)[2]
         assert await w._at(db_session, m) is None
         assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
 
@@ -2290,7 +2674,7 @@ class TestEenTraagOfLangAntwoord:
 
         assert len(llm.asked) == 2
         assert (second.beoordeeld, second.toezeggingen) == (1, 1)
-        assert await self._parts(db_session, m) == 2
+        assert await self._position(db_session, m) == len(LANG)
         assert await w._at(db_session, m) is not None
         assert [r.citaat for r in await _rows(db_session, s.id)] == [
             T_BRIEF,
@@ -2300,55 +2684,107 @@ class TestEenTraagOfLangAntwoord:
         await w._tick(db_session, mm, llm, 730)
         assert len(llm.asked) == 2
 
-    async def test_a_part_that_fails_is_tried_again_and_not_the_parts_before_it(
+    async def test_a_window_that_fails_is_tried_again_alone_and_counted_alone(
         self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        monkeypatch.setattr(db_session, "rollback", w._nothing)
+        monkeypatch.setattr(worker_mod, "MAX_ANSWER_WINDOWS_PER_ROUND", 1)
+        mm = w.Chat()
+        llm = PerKind(
+            RuntimeError("weg"),
+            toegezegd(toezegging(T_BRIEF)),
+            RuntimeError("weg"),
+            toegezegd(toezegging(T_UITZOEKEN)),
+        )
+        s, m, _ = await self._debat(db_session, mm, LANG, leden=0)
+        pauze = worker_mod.PAUSE_FIRST.total_seconds() + 1
+
+        await w._tick(db_session, mm, llm)
+        assert await self._attempts(db_session, m) == 1
+        await w._tick(db_session, mm, llm, 700 + pauze)
+        # Read further: the tries of the next window start at none.
+        assert await self._attempts(db_session, m) == 0
+        einde = next_window(LANG, 0)[2]
+        assert await self._position(db_session, m) == einde
+
+        failed = await w._tick(db_session, mm, llm, 715 + pauze)
+
+        assert failed.fouten == 1
+        assert await self._attempts(db_session, m) == 1
+        assert await self._position(db_session, m) == einde
+        assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
+
+        await w._tick(db_session, mm, llm, 715 + 2 * pauze)
+
+        assert len(llm.asked) == 4
+        # The first window went to the model twice, once for each try, and
+        # not again when the second window failed.
+        assert sum(T_BRIEF in p.split("<spreekbeurt>")[1] for p in llm.asked) == 2
+        assert await self._position(db_session, m) == len(LANG)
+        assert await w._at(db_session, m) is not None
+        assert len(await _rows(db_session, s.id)) == 2
+
+    async def test_a_window_that_keeps_failing_is_given_up_on_and_the_rest_is_read(
+        self, db_session, monkeypatch, handed, caplog
     ):
         w = worker_helpers
         w.Outside(monkeypatch)
         monkeypatch.setattr(db_session, "rollback", w._nothing)
         mm = w.Chat()
         llm = PerKind(
-            toegezegd(toezegging(T_BRIEF)),
-            RuntimeError("weg"),
+            *[RuntimeError("weg")] * worker_mod.WINDOW_ATTEMPTS,
             toegezegd(toezegging(T_UITZOEKEN)),
         )
-        s, m, _ = await self._debat(db_session, mm, self._lang(), leden=0)
+        s, m, _ = await self._debat(db_session, mm, LANG, leden=0)
 
-        await w._tick(db_session, mm, llm)
-        failed = await w._tick(db_session, mm, llm, 715)
+        at = 700.0
+        for _ in range(worker_mod.WINDOW_ATTEMPTS):
+            await w._tick(db_session, mm, llm, at)
+            at += worker_mod.PAUSE_MAX.total_seconds() + 1
 
-        assert failed.fouten == 1
-        assert await self._parts(db_session, m) == 1
-        assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
+        # The first window is passed, with a line in the log, and the turn
+        # is not written off.
+        assert len(llm.asked) == worker_mod.WINDOW_ATTEMPTS
+        assert await self._position(db_session, m) == next_window(LANG, 0)[2]
+        assert await self._attempts(db_session, m) == 0
+        assert await w._at(db_session, m) is None
+        assert "overgeslagen, verder vanaf" in caplog.text
 
-        after = 715 + worker_mod.PAUSE_FIRST.total_seconds() + 1
-        await w._tick(db_session, mm, llm, after)
+        done = await w._tick(db_session, mm, llm, at)
 
-        assert len(llm.asked) == 3
-        assert sum(T_BRIEF in p.split("<spreekbeurt>")[1] for p in llm.asked) == 1
-        assert await self._parts(db_session, m) == 2
+        assert (done.beoordeeld, done.toezeggingen) == (1, 1)
+        assert [r.citaat for r in await _rows(db_session, s.id)] == [T_UITZOEKEN]
         assert await w._at(db_session, m) is not None
-        assert len(await _rows(db_session, s.id)) == 2
 
-    async def test_an_answer_that_is_given_up_on_keeps_what_was_stored(
+    async def test_giving_up_on_the_last_window_ends_the_turn_and_keeps_the_rest(
         self, db_session, monkeypatch, handed
     ):
         w = worker_helpers
         w.Outside(monkeypatch)
         monkeypatch.setattr(db_session, "rollback", w._nothing)
+        monkeypatch.setattr(worker_mod, "MAX_ANSWER_WINDOWS_PER_ROUND", 1)
         mm = w.Chat()
-        llm = PerKind(toegezegd(toezegging(T_BRIEF)), RuntimeError("weg"))
-        s, m, _ = await self._debat(db_session, mm, self._lang(), leden=0)
-        await w._tick(db_session, mm, llm)
-        m.beoordeel_pogingen = worker_mod.MAX_ATTEMPTS - 1
-        await db_session.flush()
+        llm = PerKind(
+            toegezegd(toezegging(T_BRIEF)),
+            *[RuntimeError("weg")] * worker_mod.WINDOW_ATTEMPTS,
+        )
+        s, m, _ = await self._debat(db_session, mm, LANG, leden=0)
 
-        await w._tick(db_session, mm, llm, 715)
+        at = 700.0
+        for _ in range(1 + worker_mod.WINDOW_ATTEMPTS):
+            await w._tick(db_session, mm, llm, at)
+            at += worker_mod.PAUSE_MAX.total_seconds() + 1
 
         assert await w._at(db_session, m) is not None
+        assert await self._position(db_session, m) == len(LANG)
         assert [r.citaat for r in await _rows(db_session, s.id)] == [T_BRIEF]
+        # Nothing is asked after that.
+        await w._tick(db_session, mm, llm, at)
+        assert len(llm.asked) == 1 + worker_mod.WINDOW_ATTEMPTS
 
-    async def test_no_more_parts_of_answers_in_a_round_than_the_limit(
+    async def test_no_more_windows_of_answers_in_a_round_than_the_limit(
         self, db_session, monkeypatch, handed
     ):
         w = worker_helpers
@@ -2358,7 +2794,7 @@ class TestEenTraagOfLangAntwoord:
         s = await w._running(db_session)
         answers = [
             await w._row(db_session, s, "speaker", 60 + 10 * i, "m", tekst=self.KORT)
-            for i in range(worker_mod.MAX_ANSWER_PARTS_PER_ROUND + 2)
+            for i in range(worker_mod.MAX_ANSWER_WINDOWS_PER_ROUND + 2)
         ]
         lid = await w._row(
             db_session, s, "speaker", 200, "a", tekst=f"{w.OPENING} {w.Q_WANNEER}"
@@ -2368,11 +2804,28 @@ class TestEenTraagOfLangAntwoord:
 
         await w._tick(db_session, mm, llm)
 
-        assert len(llm.asked) == worker_mod.MAX_ANSWER_PARTS_PER_ROUND
+        assert len(llm.asked) == worker_mod.MAX_ANSWER_WINDOWS_PER_ROUND
         assert await w._at(db_session, lid) is not None
         # The rest follows in the rounds after, oldest first.
         await w._tick(db_session, mm, llm, 715)
         assert len(llm.asked) == len(answers)
+
+    async def test_one_long_answer_does_not_take_more_than_the_limit_either(
+        self, db_session, monkeypatch, handed
+    ):
+        w = worker_helpers
+        w.Outside(monkeypatch)
+        mm = w.Chat()
+        llm = PerKind()
+        tekst = f"{LANG} {LANG} {LANG}"
+        s, m, _ = await self._debat(db_session, mm, tekst, leden=0)
+
+        await w._tick(db_session, mm, llm)
+
+        assert len(llm.asked) == 1
+        # One window of one turn per round; the turn comes back next round.
+        await w._tick(db_session, mm, llm, 715)
+        assert len(llm.asked) == 2
 
     async def test_answers_set_aside_do_not_use_up_the_round_of_the_members(
         self, db_session, monkeypatch, handed

@@ -136,21 +136,30 @@ MAX_VRAGEN_BIJ_ANTWOORD = 60
 # How many of their own earlier toezeggingen, newest first: about 2 an hour
 # were made in the gold set.
 MAX_EERDERE_TOEZEGGINGEN = 30
-# An answer longer than this goes to the model in parts, each a call. The
-# prompt keeps only the end of a longer text (`MAX_BEURT_IN_PROMPT`), which
-# is right for a question, asked at the end of an argument, and wrong for
-# an answer: what is promised in the first ten minutes would never be
-# read. The longest answer in the gold set is 11,248 characters, so there
-# every answer is one part. Smaller parts were tried on the debate the
-# rules were made on, to see whether a model that reads less finds more:
-# with parts of 4,000 characters it took 7 calls instead of 5 and found the
-# same 3 or 4 of the 6 toezeggingen it could find, in three runs each.
-MAX_ANTWOORD_DEEL = 12000
-# And no more parts than this: a turn of an hour is a transcript that lost
-# its changes of speaker, not an answer. It is also the most model calls
-# one answer can cost, twice that with the second try an unreadable reply
-# gets: one call of `beoordeel_beurt` reads one part.
-MAX_ANTWOORD_DELEN = 4
+# An answer of the bewindspersoon goes to the model in windows of about
+# this many characters, each a call, cut where a sentence ends. The prompt
+# keeps only the end of a long text (`MAX_BEURT_IN_PROMPT`), which is right
+# for a question, asked at the end of an argument, and wrong for an answer:
+# what is promised in the first ten minutes would never be read. And one
+# call on a whole answer, with up to sixty open questions next to it, is
+# the slowest call there is. In the gold set the 38 turns of a
+# bewindspersoon have a median of 640 characters, a ninth decile of 5,214
+# and a longest of 11,248; 5 are over 4,000 and none over 12,000.
+ANTWOORD_VENSTER = 4000
+# A window begins this many sentences before where the last one ended, so
+# that a toezegging that was cut in two by the end of a window is seen
+# whole. Not more than `MAX_OVERLAP` characters: a sentence without an end
+# is not carried along whole.
+OVERLAP_ZINNEN = 2
+MAX_OVERLAP = 600
+# What is left behind a window when it is less than this goes into that
+# window: a last call on two sentences is a call for nothing.
+MIN_STAART = 600
+# No more of an answer than this is read: a turn of an hour is a transcript
+# that lost its changes of speaker. It bounds the calls one turn can cost
+# at twelve windows, twice that with the second try an unreadable reply
+# gets.
+MAX_ANTWOORD = 48000
 # A toezegging counts as made to the member who interrupted right before
 # the turn when it starts this early in the turn: about the first
 # half-minute of speech. Further on, the bewindspersoon has usually moved on
@@ -225,10 +234,11 @@ class Beurt:
     # interruption of a member.
     voorafgaand: str | None = None
     voorafgaand_tekst: str = ""
-    # For a long answer of the bewindspersoon: how many of its parts were
-    # read and stored by earlier calls (see `answer_parts`). The caller
-    # keeps it between calls; `Beoordeling.delen_gelezen` is what to keep.
-    delen_gelezen: int = 0
+    # For an answer of the bewindspersoon: how many characters of `tekst`
+    # were read and stored by earlier calls (see `answer_window`). The
+    # caller keeps it between calls; `Beoordeling.gelezen_tot` is what to
+    # keep.
+    gelezen_tot: int = 0
     # The subtitle lines `tekst` is made of, in order, each with the moment
     # it was spoken. Empty when they are not known; a question then gets
     # the time of the start of the turn.
@@ -306,10 +316,10 @@ class Beoordeling:
     moties: int = 0
     # How many toezeggingen of the bewindspersoon this call stored.
     toezeggingen: int = 0
-    # For an answer of the bewindspersoon: how many of its parts are read
-    # and stored now, and whether there are more. With `meer` the turn is
-    # not done: the same turn is handed in again, with this count.
-    delen_gelezen: int = 0
+    # For an answer of the bewindspersoon: how many characters of it are
+    # read and stored now, and whether there is more to read. With `meer`
+    # the turn is not done: the same turn is handed in again, with this.
+    gelezen_tot: int = 0
     meer: bool = False
 
     @property
@@ -852,6 +862,8 @@ class _Herhaling:
     citaat: str
     # `herhaling`, or `antwoord` for a toezegging on the question it answers.
     soort: str = VERMELDING_HERHALING
+    # Of a toezegging said again: by when, if it was named this time.
+    termijn: str | None = None
 
 
 def _woorden(tekst: str) -> list[str]:
@@ -998,9 +1010,13 @@ def lees_toezeggingen(
     terug".
 
     A `hoort_bij` that is one of `eerdere`, the toezeggingen this
-    bewindspersoon made before, makes it a herhaling on that one and not a
-    second toezegging. A `bij_vraag` is kept as the question it answers
-    when it is one of `vragen`, the open questions by number with what
+    bewindspersoon made before by number with what each promised, makes it
+    a herhaling on that one and not a second toezegging, when the two share
+    a subject by their words (`shares_a_subject`). A moment that is named
+    with the herhaling goes along, for the first one if it had none.
+
+    A `bij_vraag` is kept as the question it answers when it is one of
+    `vragen`, the open questions by number with what
     each asks, and the two are about the same thing by their words
     (`shares_a_subject`). Any other number is one the model made up or a
     question that is only near it, and is left out. A `termijn` the quote
@@ -1029,12 +1045,21 @@ def lees_toezeggingen(
             afgevallen += 1
             logger.info("Citaat is geen toezegging naar de vorm: %s", citaat[:120])
             continue
-        if toezegging.hoort_bij is not None and toezegging.hoort_bij in eerdere:
-            if all(h.volgnummer != toezegging.hoort_bij for h in herhaald):
-                herhaald.append(_Herhaling(toezegging.hoort_bij, citaat))
-            continue
         termijn = _kort(toezegging.termijn or "", MAX_TERMIJN)
+        termijn = termijn if termijn and deadline_is_said(termijn, citaat) else ""
         samenvatting = _kort(toezegging.samenvatting, MAX_SAMENVATTING)
+        # "Said again" is the model's word, and a herhaling leaves nothing
+        # in the channel. So it is believed only when the two are about
+        # the same thing by their words; another promise the model filed
+        # under an earlier one is stored as new.
+        if toezegging.hoort_bij in eerdere and shares_a_subject(
+            f"{samenvatting} {citaat}", eerdere[toezegging.hoort_bij], onderwerp
+        ):
+            if all(h.volgnummer != toezegging.hoort_bij for h in herhaald):
+                herhaald.append(
+                    _Herhaling(toezegging.hoort_bij, citaat, termijn=termijn or None)
+                )
+            continue
         bij = toezegging.bij_vraag
         if bij is not None and not (
             bij in vragen
@@ -1052,28 +1077,74 @@ def lees_toezeggingen(
                 stuk=None,
                 plek=plek,
                 soort=SOORT_TOEZEGGING,
-                termijn=termijn
-                if termijn and deadline_is_said(termijn, citaat)
-                else None,
+                termijn=termijn or None,
                 bij_volgnummer=bij,
             )
         )
     return nieuw, herhaald, afgevallen
 
 
-def answer_parts(tekst: str) -> list[str]:
-    """An answer of the bewindspersoon as the parts the model is asked about.
+# Where a sentence ends: not at the three dots of a line that runs on.
+_ZIN_EINDE = re.compile(r"(?<!\.\.)[.?!](?=\s)")
 
-    One part for nearly every answer. A longer one is cut where a sentence
-    ends (`split_text`), and only the parts that hold the words of a
-    commitment are returned: the others cost a call and can mark nothing.
+
+def answer_window(tekst: str, vanaf: int) -> tuple[int, int] | None:
+    """The next window of an answer to ask the model about, as (begin, end).
+
+    `vanaf` is how far the answer was read. The window ends where a
+    sentence ends, about `ANTWOORD_VENSTER` further, and begins a sentence
+    or two before `vanaf`: what stands between `begin` and `vanaf` was read
+    before and goes along so that nothing on the boundary is read in
+    halves. ``None`` when nothing is left to read.
+
+    Where a window ends depends only on the text from `vanaf` on, so a
+    text that is the same gives the same windows on every call.
     """
-    delen = (
-        [tekst]
-        if len(tekst) <= MAX_ANTWOORD_DEEL
-        else split_text(tekst, limit=MAX_ANTWOORD_DEEL, minimum=MAX_ANTWOORD_DEEL // 2)
-    )
-    return [deel for deel in delen if may_hold_commitment(deel)][:MAX_ANTWOORD_DELEN]
+    lengte = min(len(tekst), MAX_ANTWOORD)
+    if vanaf < 0 or vanaf >= lengte or not tekst[vanaf:lengte].strip():
+        return None
+    rest = tekst[vanaf:lengte]
+    if len(rest) <= ANTWOORD_VENSTER + MIN_STAART:
+        einde = lengte
+    else:
+        stuk = split_text(rest, limit=ANTWOORD_VENSTER, minimum=ANTWOORD_VENSTER // 2)[
+            0
+        ]
+        einde = vanaf + rest.index(stuk) + len(stuk)
+    begin = vanaf
+    terug = max(0, vanaf - MAX_OVERLAP)
+    ervoor = tekst[terug:vanaf].rstrip()
+    # Where the sentences in front of `vanaf` begin, the last one first.
+    starts = [found.end() for found in _ZIN_EINDE.finditer(ervoor)][::-1]
+    starts = [start for start in starts if ervoor[start:].strip()]
+    if starts:
+        begin = terug + starts[min(OVERLAP_ZINNEN, len(starts)) - 1]
+        while begin < vanaf and tekst[begin].isspace():
+            begin += 1
+    return begin, einde
+
+
+def next_window(tekst: str, vanaf: int) -> tuple[int, int, int] | None:
+    """The next window that is worth a call, as (read up to, begin, end).
+
+    Windows in which the words of a commitment stand nowhere are passed
+    over (`may_hold_commitment`): they cost a call and can mark nothing.
+    That is decided per window, on what is new in it, and it errs to
+    asking. `read up to` is where the passing over stopped: what is in
+    front of it needs no model. ``None`` when no window is left that does.
+    """
+    while (venster := answer_window(tekst, vanaf)) is not None:
+        begin, einde = venster
+        if may_hold_commitment(tekst[vanaf:einde]):
+            return vanaf, begin, einde
+        vanaf = einde
+    return None
+
+
+def skip_window(tekst: str, vanaf: int) -> int:
+    """Where an answer is read up to when the window at `vanaf` is given up on."""
+    venster = next_window(tekst, vanaf)
+    return len(tekst) if venster is None else venster[2]
 
 
 def rol_van(spreker: str) -> str | None:
@@ -1319,41 +1390,58 @@ class DebatVraagService:
 
         Whether a sentence commits to anything is for the model. Before it
         is asked, the code looks whether the words of a commitment are in
-        the turn at all (`may_hold_commitment`): in the two debates of the
-        gold set with an answer that left 21 of the 37 turns of five words
-        or more for the model. After it answered, each quote has to stand
-        in the turn and have the form of a commitment (`lees_toezeggingen`).
+        the window at all (`next_window`). After it answered, each quote
+        has to stand in the turn and have the form of a commitment
+        (`lees_toezeggingen`).
         """
         if len(beurt.tekst.split()) < MIN_WOORDEN:
             return Beoordeling(
                 UITKOMST_OVERGESLAGEN, reden=REDEN_BEWINDSPERSOON, threads=threads
             )
-        delen = answer_parts(beurt.tekst)
-        if not delen:
+        tekst = beurt.tekst
+        gelezen = min(max(0, beurt.gelezen_tot), len(tekst))
+        if gelezen == 0 and not may_hold_commitment(tekst):
             return Beoordeling(
-                UITKOMST_OVERGESLAGEN, reden=REDEN_BEWINDSPERSOON, threads=threads
-            )
-        # One part per call. A long answer is up to four parts, each a
-        # model call of its own on 12,000 characters, and a caller that
-        # waits for all of them waits longer than a turn may take. What a
-        # part holds is stored before the call returns, so a part that was
-        # read is never asked about again, whatever becomes of the next.
-        gelezen = max(0, beurt.delen_gelezen)
-        eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
-        if gelezen >= len(delen) or (
-            len(delen) == 1 and gelezen == 0 and eerder is not None
-        ):
-            return Beoordeling(
-                UITKOMST_AL_BEOORDEELD,
-                markering_ids=eerder or (),
+                UITKOMST_OVERGESLAGEN,
+                reden=REDEN_BEWINDSPERSOON,
                 threads=threads,
-                delen_gelezen=len(delen),
+                gelezen_tot=len(tekst),
             )
-        deel = delen[gelezen]
+        # One window per call. An answer of ten minutes is three windows,
+        # each a model call of its own, and a caller that waits for all of
+        # them waits longer than a turn may take. What a window holds is
+        # stored before the call returns, so a window that was read is
+        # never asked about again, whatever becomes of the next.
+        venster = next_window(tekst, gelezen)
+        if venster is None:
+            return Beoordeling(
+                UITKOMST_AL_BEOORDEELD if gelezen else UITKOMST_GEEN_TOEZEGGING,
+                threads=threads,
+                gelezen_tot=len(tekst),
+            )
+        vanaf, begin, einde = venster
+        heel = gelezen == 0 and begin == 0 and next_window(tekst, einde) is None
+        if heel:
+            # The whole answer is one window: stored once, as a turn of a
+            # member is, and a second call for it asks nothing.
+            eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
+            if eerder is not None:
+                return Beoordeling(
+                    UITKOMST_AL_BEOORDEELD,
+                    markering_ids=eerder,
+                    threads=threads,
+                    gelezen_tot=len(tekst),
+                )
+        deel = tekst[begin:einde]
+        volgende = next_window(tekst, einde)
+        meer = volgende is not None
+        # With no window behind this one that needs the model, the answer
+        # is read to its end.
+        tot = einde if meer else len(tekst)
 
         vragen = await self._vragen_aan(beurt.sessie_id, beurt.spreker, beurt.start)
-        # With what earlier parts of this same answer promised: those are
-        # rows by now, so one said again further on is a herhaling on it.
+        # With what earlier windows of this same answer promised: those
+        # are rows by now, so one said again further on is a herhaling.
         eerdere = await self._toezeggingen_van(beurt.sessie_id, beurt.spreker)
         result = await self.llm.markeer_debat_toezeggingen(
             onderwerp=context.onderwerp,
@@ -1368,39 +1456,40 @@ class DebatVraagService:
             eerdere=[(nummer, wat) for nummer, wat, _, _ in eerdere],
             voorafgaand=beurt.voorafgaand,
             voorafgaand_tekst=beurt.voorafgaand_tekst,
-            passages=commitment_passages(deel),
+            # Of what is new in the window: the sentences in front of it
+            # were pointed at the last time.
+            passages=commitment_passages(tekst[vanaf:einde]),
         )
-        meer = gelezen + 1 < len(delen)
         if result.fout == DEBAT_VRAGEN_ONBEREIKBAAR:
-            # Not read: the same part is asked about again later. What
-            # earlier parts held stays stored.
+            # Not read: the same window is asked about again later. What
+            # earlier windows held stays stored.
             logger.warning(
-                "Antwoord van %s in sessie %s, deel %d: model onbereikbaar",
+                "Antwoord van %s in sessie %s, vanaf teken %d: model onbereikbaar",
                 _hhmm(beurt.start),
                 beurt.sessie_id,
-                gelezen + 1,
+                vanaf,
             )
             return Beoordeling(
                 UITKOMST_LLM_ONBEREIKBAAR,
                 threads=threads,
-                delen_gelezen=gelezen,
+                gelezen_tot=vanaf,
                 meer=True,
             )
         if result.fout:
             # The model answered twice with something unreadable. Asking a
-            # third time gives the same; this part counts as read, and the
-            # parts after it are still read.
+            # third time gives the same; this window counts as read, and
+            # the windows after it are still read.
             logger.warning(
-                "Antwoord van %s in sessie %s, deel %d: model %s",
+                "Antwoord van %s in sessie %s, vanaf teken %d: model %s",
                 _hhmm(beurt.start),
                 beurt.sessie_id,
-                gelezen + 1,
+                vanaf,
                 result.fout,
             )
             return Beoordeling(
                 UITKOMST_LLM_ONBRUIKBAAR,
                 threads=threads,
-                delen_gelezen=gelezen + 1,
+                gelezen_tot=tot,
                 meer=meer,
             )
 
@@ -1416,7 +1505,7 @@ class DebatVraagService:
                 UITKOMST_GEEN_TOEZEGGING,
                 threads=threads,
                 afgevallen=afgevallen,
-                delen_gelezen=gelezen + 1,
+                gelezen_tot=tot,
                 meer=meer,
             )
         vragensteller = {nummer: wie for nummer, wie, _, _, _ in vragen}
@@ -1442,11 +1531,10 @@ class DebatVraagService:
             },
             threads,
             afgevallen,
-            # A single part is the whole turn, and is stored once. Of a
-            # longer answer every part adds to what is there.
-            aanvullen=len(delen) > 1,
+            # Of a longer answer every window adds to what is there.
+            aanvullen=not heel,
         )
-        return replace(stored, delen_gelezen=gelezen + 1, meer=meer)
+        return replace(stored, gelezen_tot=tot, meer=meer)
 
     async def _vragen_aan(
         self, sessie_id: uuid.UUID, spreker: str, voor: datetime
@@ -1710,10 +1798,11 @@ class DebatVraagService:
         each by its number in `open_ids`: a question asked again, a
         toezegging said again, or the question a toezegging answers.
 
-        With `aanvullen` the turn is a long answer that is stored part by
-        part: what is there stays, and only what is not there yet is added.
-        A part that is handed in twice, after a restart between storing it
-        and noting that it was read, then leaves nothing a second time: a
+        With `aanvullen` the turn is a long answer that is stored window
+        by window: what is there stays, and only what is not there yet is
+        added. Two windows share a sentence or two, and a window can be
+        handed in twice, after a restart between storing it and noting how
+        far the answer was read. Neither leaves anything a second time: a
         toezegging whose quote overlaps one of this turn is the same one,
         and a vermelding is written once per markering and kind.
         """
@@ -1808,6 +1897,23 @@ class DebatVraagService:
                     moment_url=beurt.moment_url,
                 )
             )
+            if herhaling.termijn and herhaling.soort == VERMELDING_HERHALING:
+                # A toezegging that is made more precise: the first time
+                # without a moment, now with one. The row gets it, and is
+                # marked the way a reaction marks it, so that the round of
+                # the reactions writes its reply again from the row.
+                await self.session.execute(
+                    update(DebatMarkering)
+                    .where(
+                        DebatMarkering.id == open_ids[herhaling.volgnummer],
+                        DebatMarkering.soort == SOORT_TOEZEGGING,
+                        DebatMarkering.termijn.is_(None),
+                    )
+                    .values(
+                        termijn=herhaling.termijn,
+                        reacties_gewijzigd_at=datetime.now(UTC),
+                    )
+                )
         await self.session.commit()
         aantal: dict[str, int] = {}
         for n in nieuw:
@@ -1821,7 +1927,7 @@ class DebatVraagService:
         herhaald: list[_Herhaling],
         open_ids: dict[int, uuid.UUID],
     ) -> tuple[list[_Nieuw], list[_Herhaling]]:
-        """What of a part of a long answer is not stored for its turn yet."""
+        """What of a window of a long answer is not stored for its turn yet."""
         spans: list[tuple[int, int]] = []
         for (citaat,) in (
             await self.session.execute(
@@ -1856,14 +1962,29 @@ class DebatVraagService:
                 for a, b in spans
             )
 
+        def stored(citaat: str) -> bool:
+            found = locate_citaat(beurt.tekst, citaat)
+            return found is not None and overlaps(
+                _Nieuw(
+                    citaat=found[0],
+                    gericht_aan="",
+                    samenvatting="",
+                    stuk=None,
+                    plek=found[1],
+                )
+            )
+
         over = [n for n in nieuw if not overlaps(n)]
-        # The link of a toezegging that is there already was written with it.
+        # The link of a toezegging that is there already was written with
+        # it. And a toezegging in the sentences two windows share is not
+        # "said again": the model saw the same sentence twice.
         citaten = {n.citaat for n in over}
         return over, [
             h
             for h in herhaald
             if (open_ids[h.volgnummer], h.soort) not in vermeld
             and (h.soort != VERMELDING_ANTWOORD or h.citaat in citaten)
+            and (h.soort != VERMELDING_HERHALING or not stored(h.citaat))
         ]
 
     async def _post_thread(self, markering_id: uuid.UUID) -> bool:

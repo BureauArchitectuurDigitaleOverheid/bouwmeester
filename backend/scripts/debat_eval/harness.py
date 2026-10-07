@@ -277,10 +277,10 @@ async def run_debate(
             outcome = await asyncio.wait_for(
                 service.beoordeel_beurt(beurt, context), TURN_TIMEOUT
             )
-            # A long answer is read a part per call, as the worker does it
-            # over several rounds.
+            # A long answer is read a window per call, as the worker does
+            # it over several rounds.
             while outcome.meer and not outcome.opnieuw_proberen:
-                beurt = replace(beurt, delen_gelezen=outcome.delen_gelezen)
+                beurt = replace(beurt, gelezen_tot=outcome.gelezen_tot)
                 outcome = await asyncio.wait_for(
                     service.beoordeel_beurt(beurt, context), TURN_TIMEOUT
                 )

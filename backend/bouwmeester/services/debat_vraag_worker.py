@@ -71,6 +71,8 @@ from bouwmeester.services.debat_vraag_service import (
     DebatContext,
     DebatVraagService,
     is_bewindspersoon,
+    next_window,
+    skip_window,
 )
 from bouwmeester.services.debat_vraag_status_service import DebatVraagStatusService
 from bouwmeester.services.llm.base import BaseLLMService
@@ -100,7 +102,7 @@ NEVER_MOVES_AFTER = timedelta(minutes=3)
 # this is for after the model was away, so that catching up does not hold
 # up the other debates or keep the heartbeat silent for minutes. The answers
 # of the bewindspersoon have a bound of their own
-# (`MAX_ANSWER_PARTS_PER_ROUND`).
+# (`MAX_ANSWER_WINDOWS_PER_ROUND`).
 MAX_TURNS = 10
 
 # How long a debate on an initiatief is kept without the names of its
@@ -289,19 +291,31 @@ class _Pause:
 
 
 _pause = _Pause()
-# The same for one answer of the bewindspersoon that could not be read: that
-# turn is left alone for a while, and the debate is not. An answer is long,
-# one part of it is the heaviest call there is, and when it is slow or fails
-# the questions of the members after it must still be marked. Keyed by the
-# row of the turn.
+# The same for one answer of the bewindspersoon of which a window could not
+# be read: that turn is left alone for a while, and the debate is not. When
+# a window is slow or fails, the questions of the members after it must
+# still be marked. Keyed by the row of the turn.
 _answer_pause = _Pause()
-# How many parts of answers one round reads per debate, each one model call
-# (two when the reply is unreadable the first time). The turns of members
-# of a round are read first; this bounds what the answers add to it.
-MAX_ANSWER_PARTS_PER_ROUND = 2
+# How many windows of answers one round reads per debate, each one model
+# call (two when the reply is unreadable the first time). The turns of
+# members of a round are read first; this bounds what the answers add to
+# it. Two, because a round comes every quarter of a minute and two windows
+# at their slowest are a minute: an answer of ten minutes is three windows
+# and is read in two rounds, and the members who speak meanwhile wait a
+# minute at most.
+MAX_ANSWER_WINDOWS_PER_ROUND = 2
+# How long the call for one window of an answer may take. A window is about
+# 4,000 characters; on the debate the rules were made on, 14 such calls took
+# 4.2 to 7.1 seconds. Four times the slowest, and half of what a turn of a
+# member gets: a window that takes longer than this hangs.
+WINDOW_TIMEOUT = 30.0
+# How often one window is tried before the answer is read on behind it.
+# With the pauses in between that is a minute and a half. Per window: the
+# count starts anew when the answer is read further.
+WINDOW_ATTEMPTS = 3
 # How long one call for a turn may take, model and all. Measured: 3 to 14
-# seconds for a turn of a member. Of a long answer one call reads one part
-# (`Beurt.delen_gelezen`), so this is per part and not for the whole answer.
+# seconds for a turn of a member. An answer of the bewindspersoon is read
+# a window per call and has a limit of its own (`WINDOW_TIMEOUT`).
 JUDGE_TIMEOUT = 60.0
 # How long one round may spend on working reactions in, in seconds, before
 # it goes on to the turns. Enough for a few replies on a slow Mattermost.
@@ -482,11 +496,24 @@ class DebatVraagWorker:
                 }
             floor: Turn | None = None
             before: Turn | None = None
+            # When the meeting was suspended or taken up again. What was
+            # said before a break is not what an answer after it is to.
+            # From the events, not from the turns: a suspension only has a
+            # message of its own when the chairman said something first.
+            breaks = [
+                start
+                for _, kind, start, _ in events.get(debate_id, [])
+                if kind in (dd.EVENT_SUSPENDED, dd.EVENT_CONTINUED)
+            ]
             for turn in turns:
                 if turn.closing:
                     # A suspension or the end, with the words of the
                     # chairman under it. Nobody's turn at speaking.
                     continue
+                if before is not None and any(
+                    before.start < moment <= turn.start for moment in breaks
+                ):
+                    before = None
                 if (
                     turn.beoordeeld_at is None
                     and turn.row_id not in unsettled
@@ -584,7 +611,7 @@ class DebatVraagWorker:
             members += len(answers) == set_aside
         parts = 0
         for item in answers:
-            if parts >= MAX_ANSWER_PARTS_PER_ROUND:
+            if parts >= MAX_ANSWER_WINDOWS_PER_ROUND:
                 break
             if _answer_pause.waiting(item.turn.row_id, now):
                 continue
@@ -682,12 +709,13 @@ class DebatVraagWorker:
             ),
             voorafgaand=asked.label if asked else None,
             voorafgaand_tekst=item.before.text if asked and item.before else "",
-            delen_gelezen=await self._parts_read(turn.row_id) if answer else 0,
+            gelezen_tot=await self._position(turn.row_id) if answer else 0,
         )
         outcome = None
         try:
             outcome = await asyncio.wait_for(
-                vragen.beoordeel_beurt(beurt, context), JUDGE_TIMEOUT
+                vragen.beoordeel_beurt(beurt, context),
+                WINDOW_TIMEOUT if answer else JUDGE_TIMEOUT,
             )
             failed = outcome.opnieuw_proberen
         except Exception:
@@ -700,19 +728,35 @@ class DebatVraagWorker:
         if failed:
             result.fouten += 1
             attempts = await self._count_attempt(turn.row_id)
+            if answer:
+                # Only this turn waits. The debate goes on: its members'
+                # turns were read before this one, and are next round too.
+                _answer_pause.failed(turn.row_id, now)
+                if attempts >= WINDOW_ATTEMPTS:
+                    # This window is given up on, not the answer: what was
+                    # read before it is stored, and what comes behind it
+                    # is still read.
+                    further = skip_window(tekst, beurt.gelezen_tot)
+                    logger.warning(
+                        "Spreekbeurt %s: venster vanaf teken %d na %d pogingen"
+                        " overgeslagen, verder vanaf %d",
+                        turn.row_id,
+                        beurt.gelezen_tot,
+                        attempts,
+                        further,
+                    )
+                    await self._keep_position(turn.row_id, further)
+                    _answer_pause.succeeded(turn.row_id)
+                    if next_window(tekst, further) is None:
+                        await self._mark(turn.row_id, now)
+                return False
             if attempts >= MAX_ATTEMPTS:
-                # What earlier parts of an answer held is stored and stays.
                 logger.warning(
                     "Spreekbeurt %s na %d pogingen overgeslagen",
                     turn.row_id,
                     attempts,
                 )
                 await self._mark(turn.row_id, now)
-            if answer:
-                # Only this turn waits. The debate goes on: its members'
-                # turns were read before this one, and are next round too.
-                _answer_pause.failed(turn.row_id, now)
-                return False
             # The turns after this one would find the same, each after
             # its own wait. The debate is left alone for a while, longer
             # each time; a turn that keeps failing is given up on, so
@@ -722,7 +766,7 @@ class DebatVraagWorker:
         assert outcome is not None
         if answer:
             _answer_pause.succeeded(turn.row_id)
-            await self._keep_parts_read(turn.row_id, outcome.delen_gelezen)
+            await self._keep_position(turn.row_id, outcome.gelezen_tot)
         else:
             _pause.succeeded(sessie_id)
         if outcome.uitkomst == UITKOMST_GEMARKEERD:
@@ -732,27 +776,30 @@ class DebatVraagWorker:
             result.moties += outcome.moties
             result.toezeggingen += outcome.toezeggingen
         if outcome.meer:
-            # A long answer of which a part was read. The rest is for the
-            # next rounds, a part at a time.
+            # A long answer of which a window was read. The rest is for
+            # the next rounds, a window at a time.
             return False
         await self._mark(turn.row_id, now)
         result.beoordeeld += 1
         return False
 
-    async def _parts_read(self, row_id: uuid.UUID) -> int:
+    async def _position(self, row_id: uuid.UUID) -> int:
+        """How many characters of an answer were read and stored."""
         return (
             await self.session.scalar(
-                select(DebatSpreekbeurt.antwoord_delen_gelezen).where(
+                select(DebatSpreekbeurt.antwoord_gelezen_tot).where(
                     DebatSpreekbeurt.id == row_id
                 )
             )
         ) or 0
 
-    async def _keep_parts_read(self, row_id: uuid.UUID, parts: int) -> None:
+    async def _keep_position(self, row_id: uuid.UUID, position: int) -> None:
+        """Note how far an answer was read; the tries of the next window
+        start at none."""
         await self.session.execute(
             update(DebatSpreekbeurt)
             .where(DebatSpreekbeurt.id == row_id)
-            .values(antwoord_delen_gelezen=parts)
+            .values(antwoord_gelezen_tot=position, beoordeel_pogingen=0)
         )
         await self.session.commit()
 

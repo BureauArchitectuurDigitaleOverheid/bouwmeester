@@ -201,13 +201,13 @@ class DebatSpreekbeurt(Base):
     beoordeel_pogingen: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("0")
     )
-    # For a long answer of the bewindspersoon, which is read in parts: how
-    # many parts were read and stored. A part is a model call, and one
-    # round reads one, so a turn of four parts takes four rounds; this is
-    # where the next round goes on. 0 for every other turn.
-    antwoord_delen_gelezen: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    # For an answer of the bewindspersoon, which is read for toezeggingen a
+    # window at a time: how many characters of its text were read and
+    # stored. The next round goes on from here; what is in front of it is
+    # never sent to the model again. NULL when nothing of it was read, and
+    # for every other turn. For such a turn `beoordeel_pogingen` counts the
+    # tries of the window that is next, and starts anew when this moves.
+    antwoord_gelezen_tot: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

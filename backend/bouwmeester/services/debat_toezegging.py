@@ -419,7 +419,13 @@ _GENERIC = frozenset(
     " andere anders eerder verder zoals omdat tussen binnen zonder onder"
     " alleen altijd nooit precies eigenlijk natuurlijk misschien volgende"
     " mensen manier moment punt zaken stand goede groot grote nieuwe"
-    " informeren informeert stuurt sturen brief schriftelijk".split()
+    " informeren informeert stuurt sturen brief schriftelijk"
+    # Who and what every debate is about, whatever its subject: two
+    # sentences that both name the gemeenten and the provincies are not
+    # about the same thing yet.
+    " gemeente gemeenten provincie provincies rijksoverheid overheid overheden"
+    " nederland nederlandse europa europese burgers bedrijven beleid"
+    " miljoen miljard euros bedrag gesprek gesprekken overleg".split()
 )
 # A word counts from this many letters, and two words are the same word when
 # they start alike: "bezuinigd" and "bezuinigingen", "onderzoek" and

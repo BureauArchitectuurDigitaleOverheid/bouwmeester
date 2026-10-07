@@ -591,9 +591,12 @@ class BaseLLMService(ABC):
             voorafgaand_tekst=voorafgaand_tekst,
             passages=passages,
         )
+        # Room for a window in which nearly every sentence promises
+        # something: a reply that is cut off is not JSON, and the second
+        # try would be cut off at the same place.
         for poging in (1, 2):
             try:
-                text = await self._complete(prompt, max_tokens=2048)
+                text = await self._complete(prompt, max_tokens=4096)
             except Exception:
                 logger.exception("LLM onbereikbaar bij het markeren van toezeggingen")
                 return DebatToezeggingenResult(fout=DEBAT_VRAGEN_ONBEREIKBAAR)

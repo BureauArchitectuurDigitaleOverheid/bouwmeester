@@ -1795,7 +1795,7 @@ class TestForgetting:
             "vervolg_post_ids",
             "beoordeeld_at",
             "beoordeel_pogingen",
-            "antwoord_delen_gelezen",
+            "antwoord_gelezen_tot",
         }
         assert set(sessie.ondertitels[feed.parts[0].id]) == {
             "url",
