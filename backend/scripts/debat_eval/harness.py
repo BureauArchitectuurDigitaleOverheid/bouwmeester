@@ -38,7 +38,7 @@ from bouwmeester.services.llm.base import (
     DataSensitivity,
     ProviderCapabilities,
 )
-from bouwmeester.services.tk_activiteit import Bewindspersoon
+from bouwmeester.services.tk_activiteit import Bewindspersoon, Initiatiefnemer
 
 from .gold import KIND_VRAAG
 
@@ -127,6 +127,9 @@ class SilentMattermost:
         self.messages[post_id] = message
         return True
 
+    async def add_reaction(self, post_id, emoji_name) -> bool:
+        return True
+
 
 def context_from(gold: dict) -> DebatContext:
     debat = gold["debat"]
@@ -139,6 +142,11 @@ def context_from(gold: dict) -> DebatContext:
         ),
         stukken=tuple(debat.get("stukken") or ()),
         initiatiefnemers=bool(debat.get("initiatiefnemers")),
+        # Optional in a gold file: who they are, as the TK API has them.
+        initiatiefnemer_namen=tuple(
+            Initiatiefnemer(naam=i["naam"], fractie=i.get("fractie"))
+            for i in debat.get("initiatiefnemer_namen") or []
+        ),
     )
 
 

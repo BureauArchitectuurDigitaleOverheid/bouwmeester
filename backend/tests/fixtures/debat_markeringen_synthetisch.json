@@ -326,6 +326,50 @@
   },
   {
    "nr": 29,
+   "soort": "speaker",
+   "spreker": "Kamerlid B (Y)",
+   "fractie": "Y",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:56:30+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter. Ik heb één vraag en twee moties. Kan de minister zeggen wanneer de telling van de stallingen klaar is. Dan de eerste motie. De Kamer gehoord. De beraadslaging constaterende dat gemeenten de kosten van toezicht niet kunnen dragen... overwegende dat het rijk daar geld voor heeft gereserveerd... verzoekt de regering dat geld vóór de zomer te verdelen over de gemeenten... en gaat over tot de orde van de dag... mede ingediend door het lid C. De Kamer gehoor de beraadslaging overwegende dat camera's diefstal voorkomen verzoekt de regering camera's in elke bewaakte stalling verplicht te stellen. Gaat verder tot orde van de dag. Dank u wel."
+  },
+  {
+   "nr": 30,
+   "soort": "interrupter",
+   "spreker": "Kamerlid C (Z)",
+   "fractie": "Z",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:57:00+01:00",
+   "onderbroken": "Kamerlid B (Y)",
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Dat tweede punt steun ik. Maar toezicht is meer dan camera's, en daar dien ik zelf nog een motie over in."
+  },
+  {
+   "nr": 31,
+   "soort": "speaker",
+   "spreker": "Bewindspersoon A (minister van Voorbeelden)",
+   "fractie": null,
+   "is_bewindspersoon": true,
+   "start": "2030-01-14T10:57:20+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter, dan de moties. De motie van Kamerlid C verzoekt de regering om samen met de vervoerders een plan te maken en gaat dan over tot de orde van de dag. Die krijgt oordeel Kamer. De motie over het geld moet ik ontraden, want dat geld is al verdeeld."
+  },
+  {
+   "nr": 32,
+   "soort": "speaker",
+   "spreker": "Kamerlid A (X)",
+   "fractie": "X",
+   "is_bewindspersoon": false,
+   "start": "2030-01-14T10:57:40+01:00",
+   "onderbroken": null,
+   "onderbroken_is_bewindspersoon": false,
+   "tekst": "Voorzitter, kort. Vorig jaar is een motie aangenomen die de regering verzoekt om elk station een stalling te geven. Wij hebben daar toen zelf ook een motie over ingediend. Ik dien nu geen nieuwe motie in, want dat scheelt ons allemaal tijd."
+  },
+  {
+   "nr": 33,
    "soort": "interrupter",
    "spreker": "Kamerlid B (Y)",
    "fractie": "Y",
@@ -336,7 +380,7 @@
    "tekst": "Voorzitter, een punt van orde. Als de minister kort antwoordt, kunnen we dan elk nog één interruptie krijgen?"
   },
   {
-   "nr": 30,
+   "nr": 34,
    "soort": "chairman",
    "spreker": "de voorzitter",
    "fractie": null,
@@ -578,7 +622,43 @@
    "herhaling": false
   },
   {
+   "beurt": 29,
+   "soort": "vraag",
+   "citaat": "Kan de minister zeggen wanneer de telling van de stallingen klaar is.",
+   "gericht_aan": "minister",
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "in a turn that also holds two moties"
+  },
+  {
+   "beurt": 29,
+   "soort": "motie",
+   "citaat": "verzoekt de regering dat geld vóór de zomer te verdelen over de gemeenten... en gaat over tot de orde van de dag",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "read out, the opening misheard; co-signer follows"
+  },
+  {
+   "beurt": 29,
+   "soort": "motie",
+   "citaat": "verzoekt de regering camera's in elke bewaakte stalling verplicht te stellen. Gaat verder tot orde van de dag",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "read out, the opening and the close misheard"
+  },
+  {
    "beurt": 30,
+   "soort": "motie",
+   "citaat": "Maar toezicht is meer dan camera's, en daar dien ik zelf nog een motie over in.",
+   "gericht_aan": null,
+   "onzeker": false,
+   "herhaling": false,
+   "notitie": "announced in an interruption of a member, a turn the model is not asked about"
+  },
+  {
+   "beurt": 34,
    "soort": "toezegging",
    "citaat": "De minister zegt toe de Kamer vóór de begrotingsbehandeling een brief te sturen met de bezetting van de bewaakte stallingen per provincie.",
    "gericht_aan": null,
@@ -587,7 +667,7 @@
    "notitie": "the chairman reads the list"
   },
   {
-   "beurt": 30,
+   "beurt": 34,
    "soort": "toezegging",
    "citaat": "De minister zegt toe in het voorjaar schriftelijk terug te komen op de besteding van het geld uit het vorige akkoord.",
    "gericht_aan": null,
@@ -731,7 +811,31 @@
    "citaat": "Ik hoop dat de minister deze motie ziet als steun in de rug."
   },
   {
-   "beurt": 29,
+   "beurt": 31,
+   "type": "geen_motie",
+   "citaat": "verzoekt de regering om samen met de vervoerders een plan te maken",
+   "notitie": "the bewindspersoon repeats a dictum to give an oordeel"
+  },
+  {
+   "beurt": 32,
+   "type": "geen_motie",
+   "citaat": "Vorig jaar is een motie aangenomen die de regering verzoekt om elk station een stalling te geven.",
+   "notitie": "a motie of earlier"
+  },
+  {
+   "beurt": 32,
+   "type": "geen_motie",
+   "citaat": "Wij hebben daar toen zelf ook een motie over ingediend.",
+   "notitie": "submitted in the past"
+  },
+  {
+   "beurt": 32,
+   "type": "geen_motie",
+   "citaat": "Ik dien nu geen nieuwe motie in, want dat scheelt ons allemaal tijd.",
+   "notitie": "says no motie is coming"
+  },
+  {
+   "beurt": 33,
    "type": "orde",
    "citaat": "Als de minister kort antwoordt, kunnen we dan elk nog één interruptie krijgen?"
   }

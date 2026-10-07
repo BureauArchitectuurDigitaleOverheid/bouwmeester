@@ -35,7 +35,7 @@ import re
 import unicodedata
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 
 from sqlalchemy import exists, func, literal, select, update
@@ -43,6 +43,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_markering import (
+    SOORT_MOTIE,
     SOORT_VRAAG,
     STATUS_OPEN,
     STATUS_TOEGEWEZEN,
@@ -54,7 +55,18 @@ from bouwmeester.models.debat_markering import (
 from bouwmeester.models.debat_sessie import DebatSessie
 from bouwmeester.services import debat_direct as dd
 from bouwmeester.services.debat_kanaal_service import AMSTERDAM
+from bouwmeester.services.debat_motie import (
+    VORM_AANGEKONDIGD,
+    VORM_INGEDIEND,
+    VORM_OVERWOGEN,
+    Motie,
+    dictum_without_close,
+    find_moties,
+    is_motion_text,
+    motie_vorm,
+)
 from bouwmeester.services.debat_statusregel import (
+    ICOON_MOTIE,
     ICOON_VRAAG,
     met_status,
     statusregel,
@@ -69,6 +81,7 @@ from bouwmeester.services.debat_vraag_moment import (
     question_url,
 )
 from bouwmeester.services.debat_vraag_reacties import REACTIE_HINT, stand_marker
+from bouwmeester.services.debat_vraag_vorm import has_question_form
 from bouwmeester.services.llm.base import (
     DEBAT_VRAGEN_ONBEREIKBAAR,
     BaseLLMService,
@@ -81,7 +94,11 @@ from bouwmeester.services.mattermost_service import (
 from bouwmeester.services.mattermost_utils import (
     escape_mattermost_prose as _escape,
 )
-from bouwmeester.services.tk_activiteit import Activiteit, Bewindspersoon
+from bouwmeester.services.tk_activiteit import (
+    Activiteit,
+    Bewindspersoon,
+    Initiatiefnemer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +122,9 @@ MAX_VERWORPEN = 120
 MAX_DOOR = 64
 
 UITKOMST_OVERGESLAGEN = "overgeslagen"
+# Why a turn is not read at all, for no kind of markering.
+REDEN_VOORZITTER = "voorzitter"
+REDEN_BEWINDSPERSOON = "bewindspersoon"
 UITKOMST_AL_BEOORDEELD = "al_beoordeeld"
 UITKOMST_GEEN_VRAAG = "geen_vraag"
 UITKOMST_GEMARKEERD = "gemarkeerd"
@@ -185,6 +205,13 @@ class DebatContext:
     # answer questions themselves: the debate is about their initiatiefnota
     # or initiatiefwet. Half of the questions then go to them.
     initiatiefnemers: bool = False
+    # Who they are, when the TK API lists them; it does for about six in
+    # ten of such debates (see `tk_activiteit`). Empty means not known,
+    # and everything is then as it was before the names were read.
+    initiatiefnemer_namen: tuple[Initiatiefnemer, ...] = ()
+    # When this was read from the TK API. For whoever keeps it: the names
+    # of the initiatiefnemers may be added on the day of the debate.
+    gelezen_at: datetime | None = field(default=None, compare=False)
 
     @classmethod
     def from_activiteit(cls, activiteit: Activiteit) -> DebatContext:
@@ -199,7 +226,9 @@ class DebatContext:
             soort=activiteit.soort,
             bewindspersonen=activiteit.bewindspersonen,
             stukken=tuple(stukken),
-            initiatiefnemers="initiatief" in activiteit.onderwerp.lower(),
+            initiatiefnemers=bool(activiteit.initiatiefnemers)
+            or "initiatief" in activiteit.onderwerp.lower(),
+            initiatiefnemer_namen=activiteit.initiatiefnemers,
         )
 
 
@@ -216,9 +245,12 @@ class Beoordeling:
     herhaald: tuple[int, ...] = ()
     # Threads posted by this call, backlog of earlier turns included.
     threads: int = 0
-    # Answers of the model that were dropped, mostly a quote that is not
-    # in the turn.
+    # Answers of the model that were dropped: a quote that is not in the
+    # turn, that holds no question, or that is the text of a motie.
     afgevallen: int = 0
+    # How many moties this call stored. Those are found by rule, and are
+    # stored whether or not the model could be asked.
+    moties: int = 0
 
     @property
     def opnieuw_proberen(self) -> bool:
@@ -451,17 +483,7 @@ def format_vraag_thread(
         # lines. The quote and the summary stay in the row, and taking the
         # reaction away brings the whole reply back.
         return f"{icoon} ~~Vraag {volgnummer} · {kop}~~ · {stand}"
-    tijd = _hhmm(vraag_moment or moment)
-    link = None
-    if vraag_moment is not None:
-        link = question_url(moment_url, vraag_moment, moment)
-    if link is None and moment_url and _VEILIGE_URL.match(moment_url):
-        # A link that cannot be moved to the question still opens the turn.
-        link = moment_url
-    if link:
-        tijd = f"[{tijd}]({link})"
-    if vraag_moment is None:
-        tijd = f"{tijd} {BEGIN_BEURT}"
+    tijd = _tijd_met_link(moment, moment_url, vraag_moment)
     meta = [f"Vraag {volgnummer}", f"aan {aan_wie(gericht_aan)}", tijd]
     if stand:
         meta.insert(1, stand)
@@ -474,6 +496,150 @@ def format_vraag_thread(
         regels.append("")
         regels.append(f"_{NOOT_TRANSCRIPT}_")
     return "\n".join(regels)
+
+
+def _tijd_met_link(
+    moment: datetime, moment_url: str | None, vraag_moment: datetime | None
+) -> str:
+    """The time in the line under a markering, as a link when there is one."""
+    tijd = _hhmm(vraag_moment or moment)
+    link = None
+    if vraag_moment is not None:
+        link = question_url(moment_url, vraag_moment, moment)
+    if link is None and moment_url and _VEILIGE_URL.match(moment_url):
+        # A link that cannot be moved to the question still opens the turn.
+        link = moment_url
+    if link:
+        tijd = f"[{tijd}]({link})"
+    if vraag_moment is None:
+        tijd = f"{tijd} {BEGIN_BEURT}"
+    return tijd
+
+
+# What the first line of a motie says when it is not read out yet.
+KOP_AANGEKONDIGD = "Kondigt een motie aan"
+KOP_OVERWOGEN = "Overweegt een motie"
+_VORM_WOORD = {
+    VORM_INGEDIEND: "ingediend",
+    VORM_AANGEKONDIGD: "aangekondigd",
+    VORM_OVERWOGEN: "overwogen",
+}
+# The first line of a motie that is read out: this much of its dictum.
+MAX_KOP_MOTIE = 160
+
+
+def format_motie_thread(
+    *,
+    volgnummer: int,
+    citaat: str,
+    moment: datetime,
+    moment_url: str | None,
+    vraag_moment: datetime | None = None,
+    first_in_thread: bool = True,
+    status: str = STATUS_OPEN,
+    door: str | None = None,
+) -> str:
+    """The reply under the message of a turn that is the thread of a motie.
+
+        📜 **Verzoekt de regering om <the start of the dictum>…**
+        Motie 12 · ingediend · [21:55](<link>)
+        > <the dictum, and who signed it if that was read out>
+
+    Laid out as a question is (`format_vraag_thread`), and for the same
+    reasons: who submits it is not in it, because the reply hangs under
+    the message of the speaker, and the number is that of the markering in
+    this debate. It is not the number the chairman gives the motie.
+
+    No model wrote any of this. The first line is the dictum as the
+    transcript has it, cut short, or for an announcement a few words of
+    ours; the whole of what was said is the quote. All of it is escaped
+    all the same: the transcript comes from outside too.
+
+    A motie is not answered. It gets an oordeel of the bewindspersoon, and
+    that is not read from the debate yet, so the reactions say it in the
+    words of a motie (see `stand_marker`).
+    """
+    gezegd = _RUNS_ON.sub(" ", citaat)
+    vorm = motie_vorm(citaat)
+    kop = _motie_kop(gezegd, vorm)
+    icoon, stand = stand_marker(
+        status, _vrij(_kort(door or "", MAX_DOOR)), soort=SOORT_MOTIE
+    )
+    if status == STATUS_VERWORPEN:
+        return f"{icoon} ~~Motie {volgnummer} · {kop}~~ · {stand}"
+    meta = [
+        f"Motie {volgnummer}",
+        _VORM_WOORD[vorm],
+        _tijd_met_link(moment, moment_url, vraag_moment),
+    ]
+    if stand:
+        meta.insert(1, stand)
+    regels = [
+        f"{icoon or ICOON_MOTIE} **{kop}**",
+        " · ".join(meta),
+        f"> {_vrij(_kort(gezegd, MAX_CITAAT))}",
+    ]
+    if first_in_thread:
+        regels.append("")
+        regels.append(f"_{NOOT_TRANSCRIPT}_")
+    return "\n".join(regels)
+
+
+def _motie_kop(gezegd: str, vorm: str) -> str:
+    """What a motie asks, for the first line, ready to be made bold."""
+    if vorm == VORM_OVERWOGEN:
+        return KOP_OVERWOGEN
+    if vorm == VORM_AANGEKONDIGD:
+        return KOP_AANGEKONDIGD
+    dictum = dictum_without_close(gezegd)
+    kop = _vrij(_kort(dictum[:1].upper() + dictum[1:], MAX_KOP_MOTIE)).strip()
+    return kop or "Motie"
+
+
+def format_thread(
+    soort: str,
+    *,
+    volgnummer: int,
+    gericht_aan: str,
+    citaat: str,
+    samenvatting: str,
+    stuk: str | None,
+    moment: datetime,
+    moment_url: str | None,
+    vraag_moment: datetime | None = None,
+    first_in_thread: bool = True,
+    status: str = STATUS_OPEN,
+    door: str | None = None,
+) -> str:
+    """The reply of a markering, whatever kind it is.
+
+    For whoever writes a reply from a row: posting it, and writing it
+    again when a reaction changed where it stands.
+    """
+    if soort == SOORT_MOTIE:
+        return format_motie_thread(
+            volgnummer=volgnummer,
+            citaat=citaat,
+            moment=moment,
+            moment_url=moment_url,
+            vraag_moment=vraag_moment,
+            first_in_thread=first_in_thread,
+            status=status,
+            door=door,
+        )
+    return format_vraag_thread(
+        volgnummer=volgnummer,
+        gericht_aan=gericht_aan,
+        citaat=citaat,
+        samenvatting=samenvatting,
+        stuk=stuk,
+        moment=moment,
+        moment_url=moment_url,
+        vraag_moment=vraag_moment,
+        first_in_thread=first_in_thread,
+        status=status,
+        door=door,
+    )
 
 
 def _kop(samenvatting: str, citaat: str) -> str:
@@ -529,6 +695,7 @@ class _Nieuw:
     stuk: str | None
     # Where in the text of the turn the quote begins.
     plek: int = 0
+    soort: str = SOORT_VRAAG
 
 
 @dataclass(frozen=True)
@@ -567,6 +734,9 @@ def lees_antwoord(
     stukken: Sequence[str],
     openstaand: set[int],
     onderwerp: str = "",
+    *,
+    moties: Sequence[Motie] = (),
+    van_initiatiefnemer: bool = False,
 ) -> tuple[list[_Nieuw], list[_Herhaling], int]:
     """Sort what the model answered into new, repeated and dropped.
 
@@ -575,6 +745,22 @@ def lees_antwoord(
     that is not an open question is a number the model made up; the question
     is then new. A `stuk` that is not on the agenda, or that the quote does
     not point at, is left out.
+
+    Dropped as well, whatever the model says about it, because on four
+    real debates a paragraph in the prompt did not stop the model:
+
+    * a quote that is the text of a motie, or stands inside one that is
+      read out in this turn (`moties`). A dictum asks the cabinet something
+      in form; it is marked as a motie, once;
+    * a quote without the form of a question or a request
+      (`has_question_form`): a statement the model made a question of;
+    * in a turn of an initiatiefnemer (`van_initiatiefnemer`), a quote that
+      does not name the bewindspersoon. They sit at the table to answer,
+      and a question in their turn is one they repeat or put to the room.
+
+    Measured on the three debates these were made on, over five runs: the
+    checks took away 12 to 21 of the 26 to 43 wrong markings per run and
+    not one question the labeller was sure of.
     """
     nieuw: list[_Nieuw] = []
     herhaald: list[_Herhaling] = []
@@ -600,6 +786,11 @@ def lees_antwoord(
             afgevallen += 1
             continue
         gezien.add(sleutel)
+        waarom = _geen_vraag(citaat, plek, moties, van_initiatiefnemer)
+        if waarom:
+            afgevallen += 1
+            logger.info("Citaat valt af als vraag, %s: %s", waarom, citaat[:120])
+            continue
         if vraag.hoort_bij is not None and vraag.hoort_bij in openstaand:
             if all(h.volgnummer != vraag.hoort_bij for h in herhaald):
                 herhaald.append(_Herhaling(vraag.hoort_bij, citaat))
@@ -619,6 +810,26 @@ def lees_antwoord(
             )
         )
     return nieuw, herhaald, afgevallen
+
+
+def _geen_vraag(
+    citaat: str, plek: int, moties: Sequence[Motie], van_initiatiefnemer: bool
+) -> str:
+    """Why a quote that stands in the turn is no question, or an empty string."""
+    eind = plek + len(citaat)
+    # Inside a motie that was found in this turn: at least half of the
+    # quote. A question that ends where a motie begins is still a question.
+    if is_motion_text(citaat) or any(
+        motie.vorm == VORM_INGEDIEND
+        and 2 * (min(eind, motie.end) - max(plek, motie.start)) >= len(citaat)
+        for motie in moties
+    ):
+        return "tekst van een motie"
+    if not has_question_form(citaat):
+        return "geen vorm van een vraag"
+    if van_initiatiefnemer and not _noemt_bewindspersoon(citaat):
+        return "initiatiefnemer noemt de bewindspersoon niet"
+    return ""
 
 
 # --- the service -------------------------------------------------------
@@ -726,17 +937,47 @@ class DebatVraagService:
             threads = await self._haal_achterstand_in(beurt.sessie_id)
 
         reden = self._overslaan(beurt, context)
-        if reden:
+        # A motie is looked for in every turn of a member, also in the ones
+        # the model is not asked about: an interruption of a colleague is
+        # where "ik dien hier een motie over in" is said. Not in a turn of
+        # the chairman, who reads nothing out, and not in one of the
+        # bewindspersoon, who repeats the words of a motie to judge it.
+        moties: list[Motie] = []
+        if reden not in (REDEN_VOORZITTER, REDEN_BEWINDSPERSOON):
+            moties = find_moties(beurt.tekst)
+        if reden and not moties:
             return Beoordeling(UITKOMST_OVERGESLAGEN, reden=reden, threads=threads)
 
-        eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
-        if eerder is not None:
+        # Was this turn read before? For a turn the model is asked about,
+        # that is when the model's answer was stored: its moties alone say
+        # nothing, they are also stored when the model could not be asked.
+        gelezen = await self._eerder_beoordeeld(
+            beurt.sessie_id, beurt.sleutel, door_model=not reden
+        )
+        if gelezen is not None:
+            alles = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
             return Beoordeling(
-                UITKOMST_AL_BEOORDEELD, markering_ids=eerder, threads=threads
+                UITKOMST_AL_BEOORDEELD, markering_ids=alles or (), threads=threads
             )
+
+        gevonden = [
+            _Nieuw(
+                citaat=motie.citaat,
+                gericht_aan="",
+                samenvatting="",
+                stuk=None,
+                plek=motie.plek,
+                soort=SOORT_MOTIE,
+            )
+            for motie in moties
+        ]
+        if reden:
+            # Only the moties: the rest of this turn is not for the model.
+            return await self._markeer(beurt, gevonden, [], {}, threads, 0)
 
         open_ids = await self._openstaand(beurt.sessie_id, beurt.spreker)
         openstaand = [(nummer, wie, wat) for nummer, wie, wat, _ in open_ids]
+        van_initiatiefnemer = _is_initiatiefnemer(beurt, context)
         result = await self.llm.markeer_debat_vragen(
             onderwerp=context.onderwerp,
             soort_vergadering=context.soort,
@@ -751,7 +992,27 @@ class DebatVraagService:
             tekst=beurt.tekst,
             onderbroken=beurt.onderbroken,
             initiatiefnemers=context.initiatiefnemers,
+            initiatiefnemer_namen=[
+                f"{i.naam} ({i.fractie})" if i.fractie else i.naam
+                for i in context.initiatiefnemer_namen
+            ],
+            spreker_is_initiatiefnemer=van_initiatiefnemer,
         )
+        if result.fout and gevonden:
+            # The moties of this turn are a rule and do not wait for the
+            # model. Stored now, a model that stays away loses none; the
+            # turn still counts as not read, so its questions are asked
+            # for again, and a motie that is there is not stored twice.
+            logger.warning(
+                "Spreekbeurt van %s in sessie %s: model %s, alleen de moties",
+                _hhmm(beurt.start),
+                beurt.sessie_id,
+                result.fout,
+            )
+            opgeslagen = await self._markeer(beurt, gevonden, [], {}, threads, 0)
+            if result.fout == DEBAT_VRAGEN_ONBEREIKBAAR:
+                return replace(opgeslagen, uitkomst=UITKOMST_LLM_ONBEREIKBAAR)
+            return opgeslagen
         if result.fout:
             logger.warning(
                 "Spreekbeurt van %s in sessie %s niet beoordeeld: model %s",
@@ -772,30 +1033,51 @@ class DebatVraagService:
             context.stukken,
             {nummer for nummer, _, _ in openstaand},
             context.onderwerp,
+            moties=moties,
+            van_initiatiefnemer=van_initiatiefnemer,
         )
-        if not nieuw and not herhaald:
+        if not nieuw and not herhaald and not gevonden:
             return Beoordeling(
                 UITKOMST_GEEN_VRAAG, threads=threads, afgevallen=afgevallen
             )
-
-        ids = await self._leg_vast(
-            beurt, nieuw, herhaald, {nummer: id_ for nummer, _, _, id_ in open_ids}
+        return await self._markeer(
+            beurt,
+            # Numbered in the order they were said.
+            sorted([*nieuw, *gevonden], key=lambda n: n.plek),
+            herhaald,
+            {nummer: id_ for nummer, _, _, id_ in open_ids},
+            threads,
+            afgevallen,
         )
-        if ids is None:
+
+    async def _markeer(
+        self,
+        beurt: Beurt,
+        nieuw: list[_Nieuw],
+        herhaald: list[_Herhaling],
+        open_ids: dict[int, uuid.UUID],
+        threads: int,
+        afgevallen: int,
+    ) -> Beoordeling:
+        """Store what was found in a turn and put it in the channel."""
+        opgeslagen = await self._leg_vast(beurt, nieuw, herhaald, open_ids)
+        if opgeslagen is None:
             # Someone else stored this turn while the model was reading.
             eerder = await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel)
             return Beoordeling(
                 UITKOMST_AL_BEOORDEELD, markering_ids=eerder or (), threads=threads
             )
 
+        ids, vragen, moties = opgeslagen
         for markering_id in ids:
             if await self._post_thread(markering_id):
                 threads += 1
         await self._werk_statusregels_bij(beurt.sessie_id)
         logger.info(
-            "Spreekbeurt van %s: %d vragen, %d herhaald",
+            "Spreekbeurt van %s: %d vragen, %d moties, %d herhaald",
             _hhmm(beurt.start),
-            len(ids),
+            vragen,
+            moties,
             len(herhaald),
         )
         return Beoordeling(
@@ -804,16 +1086,17 @@ class DebatVraagService:
             herhaald=tuple(h.volgnummer for h in herhaald),
             threads=threads,
             afgevallen=afgevallen,
+            moties=moties,
         )
 
     def _overslaan(self, beurt: Beurt, context: DebatContext) -> str:
         """Why this turn is not sent to the model, or an empty string."""
         if beurt.soort == SOORT_CHAIRMAN:
             # The chairman gives the floor and keeps order.
-            return "voorzitter"
+            return REDEN_VOORZITTER
         if beurt.is_bewindspersoon or _is_aan_tafel(beurt, context):
             # An answer, not a question.
-            return "bewindspersoon"
+            return REDEN_BEWINDSPERSOON
         if len(beurt.tekst.split()) < MIN_WOORDEN:
             return "te kort"
         if (
@@ -830,24 +1113,26 @@ class DebatVraagService:
         return ""
 
     async def _eerder_beoordeeld(
-        self, sessie_id: uuid.UUID, sleutel: str
+        self, sessie_id: uuid.UUID, sleutel: str, *, door_model: bool = False
     ) -> tuple[uuid.UUID, ...] | None:
         """The markeringen of a turn that was stored before, or ``None``.
 
         A turn that held nothing is not stored, so it is ``None`` here and
         is read again. That costs a call and changes nothing.
+
+        With `door_model` only what an answer of the model left behind
+        counts: a question, or a question asked again. A turn of which only
+        the moties are stored was not read by the model yet, or held no
+        question when it was; either way it is ``None`` and is read again.
         """
+        stmt = select(DebatMarkering.id).where(
+            DebatMarkering.sessie_id == sessie_id,
+            DebatMarkering.beurt_sleutel == sleutel,
+        )
+        if door_model:
+            stmt = stmt.where(DebatMarkering.soort != SOORT_MOTIE)
         ids = (
-            (
-                await self.session.execute(
-                    select(DebatMarkering.id)
-                    .where(
-                        DebatMarkering.sessie_id == sessie_id,
-                        DebatMarkering.beurt_sleutel == sleutel,
-                    )
-                    .order_by(DebatMarkering.volgnummer)
-                )
-            )
+            (await self.session.execute(stmt.order_by(DebatMarkering.volgnummer)))
             .scalars()
             .all()
         )
@@ -913,13 +1198,19 @@ class DebatVraagService:
         nieuw: list[_Nieuw],
         herhaald: list[_Herhaling],
         open_ids: dict[int, uuid.UUID],
-    ) -> tuple[uuid.UUID, ...] | None:
-        """Store what the model found in this turn, in one commit.
+    ) -> tuple[tuple[uuid.UUID, ...], int, int] | None:
+        """Store what was found in this turn, in one commit.
 
-        ``None`` if the turn was stored in the meantime, or the debate is
-        gone. The lock on the sessie makes two calls for the same debate
-        take turns here: the second sees what the first stored, and the
-        numbers are handed out once.
+        ``None`` if the answer of the model for this turn was stored in the
+        meantime, or the debate is gone. The lock on the sessie makes two
+        calls for the same debate take turns here: the second sees what the
+        first stored, and the numbers are handed out once.
+
+        A motie of this turn that is there already is not stored again: the
+        moties of a turn can be stored before its questions, when the model
+        could not be asked. Returns the markeringen of the turn that are
+        new or were moties already, and how many questions and moties were
+        added.
         """
         locked = (
             await self.session.execute(
@@ -931,9 +1222,27 @@ class DebatVraagService:
         if locked is None:
             await self.session.commit()
             return None
-        if await self._eerder_beoordeeld(beurt.sessie_id, beurt.sleutel) is not None:
+        gelezen = await self._eerder_beoordeeld(
+            beurt.sessie_id, beurt.sleutel, door_model=True
+        )
+        if gelezen is not None:
             await self.session.commit()
             return None
+        er_al = {
+            citaat: id_
+            for id_, citaat in (
+                await self.session.execute(
+                    select(DebatMarkering.id, DebatMarkering.citaat)
+                    .where(
+                        DebatMarkering.sessie_id == beurt.sessie_id,
+                        DebatMarkering.beurt_sleutel == beurt.sleutel,
+                        DebatMarkering.soort == SOORT_MOTIE,
+                    )
+                    .order_by(DebatMarkering.volgnummer)
+                )
+            ).all()
+        }
+        nieuw = [n for n in nieuw if not (n.soort == SOORT_MOTIE and n.citaat in er_al)]
 
         hoogste = (
             await self.session.execute(
@@ -953,7 +1262,7 @@ class DebatVraagService:
                             spreekbeurt_id=beurt.spreekbeurt_id,
                             beurt_sleutel=beurt.sleutel,
                             volgnummer=hoogste + i,
-                            soort=SOORT_VRAAG,
+                            soort=vraag.soort,
                             status=STATUS_OPEN,
                             channel_id=beurt.channel_id,
                             beurt_post_id=beurt.post_id,
@@ -989,7 +1298,8 @@ class DebatVraagService:
                 )
             )
         await self.session.commit()
-        return tuple(ids)
+        moties = sum(n.soort == SOORT_MOTIE for n in nieuw)
+        return (*er_al.values(), *ids), len(nieuw) - moties, moties
 
     async def _post_thread(self, markering_id: uuid.UUID) -> bool:
         """Post the thread of one markering, if it has none yet.
@@ -1016,6 +1326,7 @@ class DebatVraagService:
                     DebatMarkering.moment,
                     DebatMarkering.moment_url,
                     DebatMarkering.vraag_moment,
+                    DebatMarkering.soort,
                 )
                 .where(
                     DebatMarkering.id == markering_id,
@@ -1054,7 +1365,8 @@ class DebatVraagService:
             )
         )
 
-        tekst = format_vraag_thread(
+        tekst = format_thread(
+            row[10],
             volgnummer=row[2],
             gericht_aan=row[3],
             citaat=row[4],
@@ -1175,9 +1487,42 @@ def _vraag_moment(beurt: Beurt, plek: int) -> datetime | None:
     return max(found, beurt.start) if found is not None else None
 
 
+# The bewindspersoon in the words of a transcript, also the ways it gets
+# them wrong: one s in "staatsecretaris", "minster", "bewindsman".
+_BEWINDSPERSOON_GEZEGD = re.compile(
+    r"mini?ster|staats*ecreta|kabinet|regering|bewinds|premier"
+)
+
+
 def _noemt_bewindspersoon(tekst: str) -> bool:
-    laag = tekst.lower()
-    return any(woord in laag for woord in _AAN_BEWINDSPERSOON)
+    """Whether a text names a bewindspersoon, misheard or not.
+
+    By title only. "Kan hij dat toezeggen" names nobody, and in a turn of
+    an initiatiefnemer or an interruption of a colleague "hij" is as often
+    someone else.
+    """
+    return bool(_BEWINDSPERSOON_GEZEGD.search(tekst.lower()))
+
+
+def _is_initiatiefnemer(beurt: Beurt, context: DebatContext) -> bool:
+    """Whether the speaker is one of the initiatiefnemers of this debate.
+
+    On the surname and the party together: the TK API writes initials
+    ("A.B. Voorbeeld") where Debat Direct writes a first name, and two
+    members can share a surname. Without a party on either side nothing
+    is concluded.
+    """
+    fractie = (beurt.fractie or "").strip().lower()
+    if not fractie:
+        return False
+    woorden = set(re.findall(r"[\w-]+", beurt.spreker.lower()))
+    for initiatiefnemer in context.initiatiefnemer_namen:
+        if (initiatiefnemer.fractie or "").strip().lower() != fractie:
+            continue
+        delen = re.findall(r"[\w-]+", initiatiefnemer.naam.lower())
+        if delen and len(delen[-1]) >= 3 and delen[-1] in woorden:
+            return True
+    return False
 
 
 def _is_aan_tafel(beurt: Beurt, context: DebatContext) -> bool:

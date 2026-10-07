@@ -45,7 +45,7 @@ from bouwmeester.services.debat_vraag_reacties import (
     stand_uit_reacties,
 )
 from bouwmeester.services.debat_vraag_service import (
-    format_vraag_thread,
+    format_thread,
     schrijf_statusregel,
 )
 from bouwmeester.services.mattermost_service import (
@@ -217,7 +217,8 @@ class DebatVraagStatusService:
         )
         gebruiker = await self._gebruiker(stand.mattermost_user_id)
         # What the reply is made from, read before the commit expires it.
-        tekst = format_vraag_thread(
+        tekst = format_thread(
+            markering.soort,
             volgnummer=markering.volgnummer,
             gericht_aan=markering.gericht_aan,
             citaat=markering.citaat,

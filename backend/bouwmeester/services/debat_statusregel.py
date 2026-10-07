@@ -40,6 +40,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from bouwmeester.models.debat_markering import (
+    SOORT_MOTIE,
     SOORT_VRAAG,
     STATUS_ANTWOORD_KLAAR,
     STATUS_BEANTWOORD,
@@ -52,13 +53,17 @@ from bouwmeester.models.debat_markering import (
 SCHEIDING = "---"
 
 ICOON_VRAAG = "❓"
+ICOON_MOTIE = "📜"
 
-# (singular, plural) per soort. A soort that is not in here is not shown.
+# (singular, plural) per soort, in the order the lines are shown. A soort
+# that is not in here is not shown.
 _SOORT_LABEL: dict[str, tuple[str, str]] = {
     SOORT_VRAAG: ("vraag", "vragen"),
+    SOORT_MOTIE: ("motie", "moties"),
 }
 _SOORT_ICOON: dict[str, str] = {
     SOORT_VRAAG: ICOON_VRAAG,
+    SOORT_MOTIE: ICOON_MOTIE,
 }
 # One word per status, in the order they are shown.
 _STATUS_LABEL: dict[str, str] = {
@@ -67,6 +72,15 @@ _STATUS_LABEL: dict[str, str] = {
     STATUS_ANTWOORD_KLAAR: "antwoord klaar",
     STATUS_BEANTWOORD: "beantwoord",
     STATUS_VERVALT: "hoeft geen antwoord",
+}
+# The words of a status that differ for a soort. A motie is not answered:
+# it gets an oordeel.
+_STATUS_LABEL_PER_SOORT: dict[str, dict[str, str]] = {
+    SOORT_MOTIE: {
+        STATUS_ANTWOORD_KLAAR: "oordeel klaar",
+        STATUS_BEANTWOORD: "oordeel gegeven",
+        STATUS_VERVALT: "hoeft geen oordeel",
+    },
 }
 
 
@@ -114,6 +128,7 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
         ❓ 1 vraag · open
         ❓ 3 vragen · open
         ❓ 3 vragen · 2 open · 1 beantwoord
+        📜 1 motie · open
 
     Short, because it stands under every message with a question in it. A
     block in the channel that still has the longer words of before is
@@ -130,6 +145,7 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
         ]
         if not statussen:
             continue
+        woorden = {**_STATUS_LABEL, **_STATUS_LABEL_PER_SOORT.get(soort, {})}
         aantal = len(statussen)
         kop = f"{aantal} {enkel if aantal == 1 else meer}"
         per_status = [
@@ -138,11 +154,9 @@ def statusregel(markeringen: Sequence[tuple[str, str]]) -> str:
             if status in statussen
         ]
         if len(per_status) == 1:
-            stand = _STATUS_LABEL[per_status[0][0]]
+            stand = woorden[per_status[0][0]]
         else:
-            stand = " · ".join(
-                f"{n} {_STATUS_LABEL[status]}" for status, n in per_status
-            )
+            stand = " · ".join(f"{n} {woorden[status]}" for status, n in per_status)
         regel = f"{_SOORT_ICOON[soort]} {kop}"
         regels.append(f"{regel} · {stand}" if stand else regel)
     return "\n".join(regels)

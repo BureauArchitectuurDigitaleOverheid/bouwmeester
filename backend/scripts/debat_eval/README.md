@@ -4,13 +4,15 @@ Measures how well the application marks what happens in a debate, on real
 debates with the real model, and shows what a change to the prompt or to the
 checks in the code gains or costs.
 
-Today the code marks one kind: a `vraag` put to the bewindspersoon. Four more
-kinds are named in `models/debat_markering.py`. The gold format, the codebook
-and the scoring cover all five, so a kind that gets built can be measured from
-its first prompt.
+Today the code marks two kinds: a `vraag` put to the bewindspersoon, and a
+`motie` that a member announces or reads out. Three more kinds are named in
+`models/debat_markering.py`. The gold format, the codebook and the scoring
+cover all five, so a kind that gets built can be measured from its first
+prompt.
 
 Nothing in this directory is used by the application. `VOORSTEL.md` (Dutch)
-holds the proposal that came out of the first measurement.
+holds the proposal that came out of the first measurement; "What was built
+from the proposal" below says what became of it and what it measured.
 
 ## What is where
 
@@ -23,12 +25,12 @@ holds the proposal that came out of the first measurement.
 | `run.py` | Command line around the harness; writes a run file and prints the report |
 | `report.py` | Scores a saved run again, without a model or a database |
 | `scoring.py` | Matching, counting, the report and the comparison of two runs |
-| `variants.py` | Prompt variants and code checks to try, applied from outside production code |
+| `variants.py` | Where a prompt variant to try goes, and the production checks for scoring a run from before they existed |
 | `stats.py` | Counts of a gold set: items per kind, per hour, hard negatives |
 
 Tests: `backend/tests/test_debat_eval.py`. The fixture
 `backend/tests/fixtures/debat_markeringen_synthetisch.json` is a made-up debate
-of 30 turns in the gold format that covers every kind and every hard negative
+of 34 turns in the gold format that covers every kind and every hard negative
 of the codebook. It is meant for prompt tests with a fake model.
 
 ## The gold set is not in this repository
@@ -66,7 +68,15 @@ uv run python -m debat_eval.stats $GOLD/gold-*.json
 `variants.py` before it reaches the model. That is how a wording change is
 measured without editing `prompts.py`. Once a change is in `prompts.py`, run
 with the default variant `productie` and `--compare` against the saved
-baseline.
+baseline. The variants of the first measurement are in `prompts.py` now, so
+only `productie` is left; a new wording to try is one line in
+`PROMPT_VARIANTS`.
+
+A gold file of a debate on an initiatiefnota or initiatiefwet can name the
+initiatiefnemers the way the TK API does, in
+`debat.initiatiefnemer_namen` (`[{"naam": "A.B. Voorbeeld", "fractie": "X"}]`).
+Without it the harness runs as production does for a debate the API lists
+nobody for.
 
 ### Providers
 
@@ -116,6 +126,133 @@ Read every `ongelabeld` false positive after a run and label it: as a negative
 if the model was wrong, as an item if the labeller missed it. Then score again
 with `report.py`. In the first measurement 28 of 53 false positives were
 unlabelled at first; all 28 turned out to be statements.
+
+## What was built from the proposal
+
+The first three steps of `VOORSTEL.md` are in production code: the two
+paragraphs in the prompt, the checks on the quote in `lees_antwoord`
+(`debat_vraag_vorm.has_question_form`, `debat_motie.is_motion_text`), the
+names of the initiatiefnemers where the TK API gives them, and the motie as a
+kind of its own (`debat_motie.find_moties`, by rule, without a model).
+
+### One debate was kept apart
+
+The proposal warned that the question-form check was tuned on the whole gold
+set. So the rules were made on three of the four debates (the two
+commissiedebatten with a bewindspersoon and the fragment) and the fourth, the
+plenary one, was left unread until the last run was in. One caveat: the word
+lists the check started from were written with all four debates in view, so
+the debate that was kept apart is less unseen for the questions than it is
+for the moties.
+
+Model `claude-haiku-4-5-20251001` through `claude_cli`, three runs each, 135
+calls a run. The mean, and the lowest and highest run. "After" is the first
+version that was built; "after the review" is what is in the code now, with
+the rules for moties narrowed and the question-form check widened (see
+below).
+
+| Questions | Marked | Wrong | Precision | Recall |
+|---|---|---|---|---|
+| Three debates the rules were made on, before | 133 to 145 | 32 to 43 | 73% (70 to 76) | 95% (93 to 96) |
+| The same, after | 116 to 117 | 13 to 16 | 87% (86 to 89) | 93% (91 to 94) |
+| The same, after the review | 111 to 116 | 11 to 13 | 89% (88 to 90) | 91% (90 to 94) |
+| The debate kept apart, before | 41 to 49 | 12 to 19 | 65% (60 to 70) | 93% (93 to 93) |
+| The same, after | 35 to 36 | 6 to 9 | 79% (75 to 82) | 90% (86 to 93) |
+| The same, after the review | 34 to 42 | 6 to 10 | 80% (76 to 82) | 91% (90 to 93) |
+| All four, before | 182 to 191 | 51 to 55 | 71% (70 to 72) | 95% (93 to 96) |
+| All four, after | 152 | 19 to 24 | 85% (84 to 87) | 92% (90 to 93) |
+| All four, after the review | 145 to 153 | 17 to 23 | 87% (85 to 88) | 91% (90 to 93) |
+
+What that says:
+
+- The debate that was kept apart gains as many points of precision as the
+  other three (about 15), from a lower start to a lower end.
+- The review widened the question-form check for questions without a
+  question mark: a preposition in front of the question word, indirect
+  questions, requests for a reaction or a toezegging, a condition or a
+  vocative first, a verb with a subject that is nobody at the table. That
+  cost no precision that three runs can show: 87% after it against 85%
+  before it on all four, inside the spread of either. Applied to the stored
+  answers of the three runs before, the wider check lets one more wrong
+  marking through in one run of three, and keeps one more sure question in
+  two.
+- What the check still costs. In the debate kept apart it dropped one
+  question the labeller was sure of in every run, the same one: a demand
+  worded as a wish, without the word order or the words of a request, and
+  with the request for a reaction in the next sentence, which the model left
+  out of its quote. Reading the sentence after the quote would catch it.
+  That was tried on the three debates, gained about one right marking and
+  one wrong one per run, and was left out. In the three debates the rules
+  were made on it dropped a quote of a sure question in two runs of three:
+  the tail of a question whose first words the model had cut off. One of
+  those shapes ("met me eens dat") was added to the rule after these runs.
+- The rest of the lost recall is not the form check. Of the 134 questions the
+  runs before found 128, 127 and 125, the runs after the review 122, 121 and
+  125. Per run 1 to 3 more were named by the model with a quote that is not
+  in the turn; the others the model did not name. That is the model finding
+  a little less with the new paragraphs, or chance: three runs do not tell
+  those apart.
+- The checks alone, applied to the answers of the three runs before, without
+  asking the model again: 83% precision (81 to 85) at 94% recall on all four.
+- Wrong markings left, summed over the three runs after the review, all four
+  debates: 20 statements, 9 questions to nobody in the debate with
+  initiatiefnemers, 7 not labelled yet, 6 calls, 6 retold, 5 rhetorical, 3 to
+  the initiatiefnemers, 2 to another member, 1 about the cabinet. Before: 65
+  statements, 24 times the text of a motie, 6 about the cabinet.
+- The names of the initiatiefnemers: one debate has them. In the turns of the
+  initiatiefnemers the checks left 4 or 5 markings per run, of which 0 to 2
+  were right; asking that the quote names the bewindspersoon takes 1 to 3 of
+  the wrong ones away and none of the right ones. Too little to say more
+  than that it does no harm.
+- The debate kept apart was read after the first three runs, to see what was
+  lost in it. The rules of the review were written from made-up sentences
+  and checked on the other three debates, but it is no longer unseen.
+
+| Moties | Gold, sure | Found | Gold, unsure or repeated | Found | Marked | Wrong |
+|---|---|---|---|---|---|---|
+| Three debates the rule was made on | 10 | 10 | 2 | 2 | 12 | 0 |
+| The debate kept apart | 1 | 1 | 1 | 0 | 1 | 0 |
+
+The same in every run, before and after the review: the rule asks no model.
+Of the 11, 9 were read out and 2 announced. The one that was not found is a
+motie a member said to be considering, in a clause that leaves its subject
+out; the codebook calls that unsure. One debate with one announcement is not
+a test of the rule for announcements: that rule is narrow on purpose and will
+miss other wordings. No dictum was marked as a question in any run after,
+against 6 to 9 per run before.
+
+The gold set does not show what the review found, because nobody in these
+four debates says "aan de orde van de dag" next to a question or tells what
+an earlier motie "verzoekt" in a turn with another part of the formula. So
+the rule now takes a part of the formula only in the shape it has in a motie
+("overwegende dat", not "aan de orde van de dag", not "de motie verzoekt"),
+and only close to the other parts: at most 600 characters between two parts
+in front of the dictum and 900 from the dictum to the close, against 404 and
+619 at most in the 9 moties that were read out. A dictum with "motie" in the
+five words in front of it is told about and is no motie; none of the 9 has
+that. Those cases are tested on made-up sentences only.
+
+### What is still open
+
+- The oordeel of the bewindspersoon on a motie is not read from the debate.
+  A motie stays "open" until someone ticks it off.
+- A motie that is announced in the first term and read out in the second is
+  marked twice. The table has `DebatMarkeringVermelding` for that; nothing
+  writes it for a motie yet.
+- The first line of a motie is the start of its dictum as the transcript has
+  it. A summary by the model would read better and cost a call per motie.
+- Whether the TK API lists the initiatiefnemers before a debate begins is not
+  known. Meetings that are planned carry none; 20 of 33 that were held do.
+- A dictum whose opening and considerans fell in the turn before and whose
+  close was not heard is a dictum alone, and is not marked: the rule reads
+  one turn and cannot tell it from someone talking about a motie. Reading
+  it would take the end of the turn before.
+- A turn of which only moties are stored counts as not read by the model, so
+  that a model that was away loses no questions. Read a second time, such a
+  turn costs one more call; the worker reads a turn once.
+- In a turn of an initiatiefnemer a question counts when its quote names the
+  bewindspersoon by title, misheard titles included. "Kan hij dat toezeggen"
+  with nothing but "hij" is dropped there.
 
 ## Making a gold file
 
@@ -247,5 +384,5 @@ The examples above are made up; they are the ones in the fixture.
 - The 28 `stelling` negatives that were added after the baseline run were found
   because the model marked them. Statements the model did not mark are not all
   labelled, so the count of that type says little about how often it occurs.
-- The check `vraagvorm` in `variants.py` was tuned on this set. Its numbers on
-  this set are an upper bound.
+- The question-form check was made on three of the four debates; see "One
+  debate was kept apart" for what it does on the fourth.

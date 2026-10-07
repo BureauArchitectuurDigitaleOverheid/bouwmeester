@@ -2,7 +2,8 @@
 
     {
       "debat": {"onderwerp", "soort", "bewindspersonen": [{"naam", "functie"}],
-                "stukken": [...], "initiatiefnemers": bool},
+                "stukken": [...], "initiatiefnemers": bool,
+                "initiatiefnemer_namen": [{"naam", "fractie"}]},
       "beurten": [{"nr", "soort", "spreker", "fractie", "is_bewindspersoon",
                    "start", "onderbroken", "onderbroken_is_bewindspersoon",
                    "tekst"}],

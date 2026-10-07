@@ -32,9 +32,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from bouwmeester.core.database import Base
 
-# What was marked. Only the vraag is built; the others are named here so
-# the column, the status line and the thread do not have to change shape
-# when they arrive.
+# What was marked. The vraag and the motie are built; the others are named
+# here so the column, the status line and the thread do not have to change
+# shape when they arrive.
 SOORT_VRAAG = "vraag"
 SOORT_TOEZEGGING = "toezegging"
 SOORT_FEITELIJKE_CLAIM = "feitelijke_claim"
@@ -44,6 +44,12 @@ SOORT_VERZOEK_OM_BRIEF = "verzoek_om_brief"
 # Where a markering stands. A markering starts as `open`; the people who
 # follow the debate set the others with a reaction on its reply (see
 # `debat_vraag_reacties`). `antwoord_klaar` is not set by anything yet.
+#
+# The names are those of a question, and a motie uses the same ones: it is
+# not answered but gets an oordeel, so `beantwoord` is shown as "oordeel
+# gegeven", `vervalt` as "hoeft geen oordeel" and `verworpen` as "geen
+# motie". Which oordeel it was is not stored: reading that from the debate
+# is not built, and it will need a column of its own.
 STATUS_OPEN = "open"
 # Someone said they are on it.
 STATUS_TOEGEWEZEN = "toegewezen"

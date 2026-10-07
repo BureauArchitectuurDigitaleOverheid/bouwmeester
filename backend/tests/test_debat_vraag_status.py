@@ -23,6 +23,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_markering import (
+    SOORT_MOTIE,
     SOORT_VRAAG,
     STATUS_BEANTWOORD,
     STATUS_OPEN,
@@ -51,6 +52,7 @@ from bouwmeester.services.debat_vraag_reacties import (
 )
 from bouwmeester.services.debat_vraag_service import (
     DebatVraagService,
+    format_thread,
     format_vraag_thread,
 )
 from bouwmeester.services.debat_vraag_status_service import (
@@ -671,7 +673,8 @@ async def _markering(
 
 
 def _tekst(markering: DebatMarkering, **extra) -> str:
-    return format_vraag_thread(
+    return format_thread(
+        markering.soort or SOORT_VRAAG,
         volgnummer=markering.volgnummer,
         gericht_aan=markering.gericht_aan,
         citaat=markering.citaat,
@@ -786,6 +789,79 @@ class TestEenReactieWordtEenStatus:
         body, status_blok = splits(mm.messages[row.beurt_post_id])
         assert body == TURN
         assert status_blok == blok
+
+    @pytest.mark.parametrize(
+        ("emoji", "status", "begin", "blok"),
+        [
+            (
+                REACTIE_BEANTWOORD,
+                STATUS_BEANTWOORD,
+                "✅ **Verzoekt de regering een plan te maken**\n"
+                "Motie 1 · oordeel gegeven · ingediend · 10:02",
+                "📜 1 motie · oordeel gegeven",
+            ),
+            (
+                REACTIE_OPGEPAKT,
+                STATUS_TOEGEWEZEN,
+                "👀 **Verzoekt de regering een plan te maken**\n"
+                "Motie 1 · opgepakt door persoon.a · ingediend · 10:02",
+                "📜 1 motie · opgepakt",
+            ),
+            (
+                REACTIE_VERVALT,
+                STATUS_VERVALT,
+                "🚫 **Verzoekt de regering een plan te maken**\n"
+                "Motie 1 · hoeft geen oordeel · ingediend · 10:02",
+                "📜 1 motie · hoeft geen oordeel",
+            ),
+            (
+                REACTIE_GEEN_VRAAG,
+                STATUS_VERWORPEN,
+                "❌ ~~Motie 1 · Verzoekt de regering een plan te maken~~ · geen motie",
+                "",
+            ),
+        ],
+    )
+    async def test_a_reaction_on_a_motie_says_it_in_the_words_of_a_motie(
+        self, db_session, emoji, status, begin, blok
+    ):
+        """The same reactions and statuses; nothing about an answer."""
+        mm = FakeMattermost()
+        mm.usernames[PERSOON_A] = "persoon.a"
+        sessie_id = await _sessie(db_session)
+        markering = await _markering(
+            db_session,
+            mm,
+            sessie_id,
+            soort=SOORT_MOTIE,
+            gericht_aan="",
+            samenvatting="",
+            citaat=(
+                "verzoekt de regering een plan te maken, en gaat over tot de orde"
+                " van de dag"
+            ),
+        )
+        assert mm.messages[markering.thread_post_id].startswith(
+            "📜 **Verzoekt de regering een plan te maken**\nMotie 1 · ingediend · "
+        )
+
+        await _reageer(db_session, mm, markering.thread_post_id, PERSOON_A, emoji)
+        await _ronde(db_session, mm)
+
+        row = await _lees(db_session, markering.id)
+        assert row.status == status
+        tekst = mm.messages[row.thread_post_id]
+        assert tekst.startswith(begin)
+        assert "vraag" not in tekst.lower()
+        assert splits(mm.messages[row.beurt_post_id])[1] == blok
+
+        # Taking the reaction away brings the reply of an open motie back.
+        await _haal_weg(db_session, mm, markering.thread_post_id, PERSOON_A, emoji)
+        await _ronde(db_session, mm)
+        assert mm.messages[row.thread_post_id].startswith(
+            "📜 **Verzoekt de regering een plan te maken**\nMotie 1 · ingediend · "
+        )
+        assert splits(mm.messages[row.beurt_post_id])[1] == "📜 1 motie · open"
 
     async def test_the_reply_keeps_what_it_said(self, db_session):
         mm = FakeMattermost()
