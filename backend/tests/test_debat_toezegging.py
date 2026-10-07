@@ -723,6 +723,9 @@ class TestBijWelkeVraagRegel:
         assert self._link(interruption=kaal, **bare) == Link(None, self.A)
         # With a word of the question in what the member said, it is tied.
         assert self._link(**bare) == Link(3, self.A)
+        # Unless the model says the toezegging is about something else.
+        anders = {**bare, "summary": "Stuurt een brief over de camera's."}
+        assert self._link(**anders) == Link(None, self.A)
         # Or in what the bewindspersoon said in front of it.
         assert self._link(
             interruption=kaal, said_before="Over de kelders dan.", **bare

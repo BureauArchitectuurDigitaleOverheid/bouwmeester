@@ -151,6 +151,9 @@ class TestDeFormule:
             "Ik hoorde een aantal toezeggingen, namelijk een brief en een overzicht.",
             "Dan kom ik bij de toezeggingen.",
             "Dan de toezeggingen.",
+            # Far enough from the formula, without a full stop in between.
+            "ik heb in het eerste deel geen toezeggingen gehoord maar in het tweede"
+            " deel van dit debat wel dus ik lees nu de toezeggingen voor",
             # As speech recognition writes the word.
             "Ik lees de toe zeggingen voor.",
             "Ik lees de toezegging en voor.",
@@ -379,6 +382,7 @@ class TestEenItemUitDeLijst:
             "In het voorjaar volgt er een evaluatie van de proef.",
             "De Kamer wordt vóór het reces geïnformeerd over de kosten.",
             "Vóór de zomer ontvangt de Kamer een overzicht.",
+            "Vóór de zomer wordt er een overzicht gemaakt van de kelders.",
         ],
     )
     def test_what_a_bewindspersoon_committed_to_read_out(self, citaat):
@@ -1300,6 +1304,22 @@ class TestDeLijstLezen:
         await _judge(db_session, WEIGERT, toegezegd(), sessie_id=sessie_id, mm=mm)
         assert mm.replies[-1][1] == post_id
 
+    async def test_an_end_message_that_cannot_be_read_is_not_gone(self, db_session):
+        """Mattermost is down: the message may well be there."""
+
+        class Down(FakeMattermost):
+            async def get_post(self, post_id):
+                raise RuntimeError("mattermost is weg")
+
+        mm = Down()
+        sessie_id, _, _, _, _ = await _judge(db_session, ANTWOORD, toegezegd(), mm=mm)
+        mm.fail_sends = 1
+        result, _, _ = await _read_list(
+            db_session, sessie_id, mm, toegezegd(toezegging(I_KELDERS))
+        )
+        assert result.threads == 0
+        assert mm.replies == []
+
     async def test_a_toezegging_of_a_turn_gets_no_message_of_its_own(self, db_session):
         """Only what came from the list: a reply to a turn whose message
         is gone has nothing to say without it."""
@@ -2102,9 +2122,13 @@ class TestDeWerker:
         await w._tick(db_session, mm, llm)
         await w._tick(db_session, mm, llm, now_seconds=700)
         assert await w._at(db_session, einde) is None
+        assert worker_mod._list_pause._until != {}
         result = await w._tick(db_session, mm, llm, now_seconds=700 + 120)
         assert (result.toezeggingen, result.fouten) == (1, 0)
         assert await w._at(db_session, einde) is not None
+        # Nothing is kept about a list that was read.
+        assert worker_mod._list_pause._until == {}
+        assert worker_mod._list_pause._failures == {}
 
     async def test_a_reply_that_cannot_be_read_gets_one_more_try(
         self, db_session, monkeypatch
