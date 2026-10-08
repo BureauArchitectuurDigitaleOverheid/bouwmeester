@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 USER_AGENT = (
     "bouwmeester-signalen/1.0 "
-    "(+https://github.com/BureauArchitectuurDigitaleOverheid; "
+    "(+https://github.com/NederlandseDigitaleDienst; "
     "monitort publicaties over de digitale overheid)"
 )
 
