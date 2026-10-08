@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/bureauarchitectuurdigitaleoverheid/bouwmeester
+  IMAGE_PREFIX: ghcr.io/nederlandsedigitaledienst/bouwmeester
 
 jobs:
   build:

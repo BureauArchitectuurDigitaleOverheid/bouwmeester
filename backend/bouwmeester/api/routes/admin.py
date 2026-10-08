@@ -782,7 +782,7 @@ _VERSION_INFO = {
     "build_time": os.environ.get("BUILD_TIME", ""),
     "repo_url": os.environ.get(
         "REPO_URL",
-        "https://github.com/BureauArchitectuurDigitaleOverheid/bouwmeester",
+        "https://github.com/NederlandseDigitaleDienst/bouwmeester",
     ),
 }
 

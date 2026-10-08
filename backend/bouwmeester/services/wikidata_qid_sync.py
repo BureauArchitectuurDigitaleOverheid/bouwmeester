@@ -74,7 +74,7 @@ async def _query_sparql(
     headers = {
         "Accept": "application/sparql-results+json",
         "User-Agent": (
-            "Bouwmeester/1.0 (https://github.com/BureauArchitectuurDigitaleOverheid"
+            "Bouwmeester/1.0 (https://github.com/NederlandseDigitaleDienst"
             "/bouwmeester) bouwmeester@example.com"
         ),
     }
