@@ -88,7 +88,7 @@ export function zoekDebatten(
 /** What the toast says after announcing. */
 export function aankondigMelding(gepostIn: number | null): string {
   if (!gepostIn) {
-    return 'Het debat staat op de lijst. Er is niets gepost: dit initiatief heeft geen kanaal dat bereikbaar is.';
+    return 'Het debat staat op de lijst. Er is niets gepost: geen kanaal van dit initiatief heeft Kamerstuk-alerts aan staan.';
   }
   return gepostIn === 1
     ? 'Het debat is aangekondigd in 1 kanaal.'

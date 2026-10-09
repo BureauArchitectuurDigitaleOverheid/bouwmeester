@@ -31,6 +31,13 @@ class DebatKanaal(BaseModel):
     wordt_gevolgd: bool = False
 
 
+class DebatInitiatief(BaseModel):
+    """An initiatief a debate was announced for."""
+
+    id: UUID
+    naam: str
+
+
 class AankomendDebat(BaseModel):
     activiteit_id: str
     nummer: str | None = None
@@ -47,6 +54,9 @@ class AankomendDebat(BaseModel):
     stand: str | None = None
     # When it really started, once it has.
     begonnen_om: datetime | None = None
+    # The initiatieven this debate was announced for, as far as this person
+    # may see them.
+    aangekondigd_voor: list[DebatInitiatief] = []
 
 
 class AankomendeDebattenResponse(BaseModel):

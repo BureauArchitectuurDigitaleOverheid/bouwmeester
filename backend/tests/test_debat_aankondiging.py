@@ -90,6 +90,9 @@ async def _link(db_session, initiatief, *, team=TEAM, **overrides):
         "team_id": team,
         "scope_type": SCOPE_INITIATIEF,
         "scope_id": initiatief.id,
+        # A channel that follows the Kamer, unless a test says otherwise:
+        # only those get an announcement.
+        "parlementaire_alerts_enabled": True,
     }
     values.update(overrides)
     link = MattermostChannelLink(**values)
@@ -188,13 +191,13 @@ class TestMessages:
 
 @pytest.mark.asyncio
 class TestAnnounce:
-    async def test_posts_in_every_linked_channel_whatever_its_switches(
+    async def test_posts_in_the_channels_that_follow_the_kamer(
         self, db_session, initiatief, monkeypatch
     ):
         activiteit = _activiteit()
         _known(monkeypatch, activiteit)
         een = await _link(db_session, initiatief)
-        twee = await _link(db_session, initiatief, parlementaire_alerts_enabled=True)
+        twee = await _link(db_session, initiatief)
         await _link(db_session, initiatief, disabled_at=datetime.now(UTC))
         other = Initiatief(id=uuid.uuid4(), naam=f"Ander {uuid.uuid4().hex[:8]}")
         db_session.add(other)
@@ -213,6 +216,45 @@ class TestAnnounce:
         assert row.onderwerp == "Digitaliserende overheid"
         assert row.aanvang == activiteit.aanvang
         assert row.stand == STAND_AANGEKONDIGD
+
+    async def test_a_channel_linked_for_something_else_gets_nothing(
+        self, db_session, initiatief, monkeypatch
+    ):
+        """Two debates once landed in a channel that was linked for news
+        from the press. The switch says what a channel is for."""
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        kamer = await _link(db_session, initiatief)
+        await _link(
+            db_session,
+            initiatief,
+            parlementaire_alerts_enabled=False,
+            nieuws_alerts_enabled=True,
+        )
+        await _link(db_session, initiatief, parlementaire_alerts_enabled=False)
+        mm = Mattermost()
+
+        result = await _announce(db_session, mm, initiatief, activiteit)
+        mm.messages.clear()
+        await DebatAankondigingService(db_session, mm).tick(MORNING)
+
+        assert result.gepost_in == 1
+        # The reminder of the day itself follows the same rule.
+        assert [m[0] for m in mm.messages] == [kamer.channel_id]
+
+    async def test_without_a_channel_for_the_kamer_the_debate_is_still_listed(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        await _link(db_session, initiatief, parlementaire_alerts_enabled=False)
+        mm = Mattermost()
+
+        result = await _announce(db_session, mm, initiatief, activiteit)
+
+        assert result.gepost_in == 0
+        assert mm.messages == []
+        assert len(await _rows(db_session, initiatief)) == 1
 
     async def test_without_a_channel_the_debate_is_still_listed(
         self, db_session, initiatief, monkeypatch

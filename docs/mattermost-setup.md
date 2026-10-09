@@ -92,15 +92,16 @@ their Mattermost account is linked.
 
 Not every debate needs a channel of its own. On the **Signalen** tab of an
 initiatief, the card **Debatten** searches the same agenda and announces a
-meeting in every channel that is linked to that initiatief: one message with
+meeting in the channels of that initiatief where "Kamerstuk-alerts" is on: one message with
 the subject, the time and the committee. On the morning of the debate (from
 07:00) the meeting is read again and the same channels get a reminder, or the
 news that it was cancelled or moved. A debate that was moved to a new date is
 followed there, and reminded of on the new day.
 
-This goes to all linked channels, whatever their switches say: the switches
-are for what the bot sends by itself, and this is something a person asked
-for. Taking a debate off the list stops the reminder; what was posted stays.
+A channel that is linked for something else, such as news from the press,
+gets none of this: the switch says what a channel is for. With no such
+channel the debate is still listed, and the page says nothing was posted.
+Taking a debate off the list stops the reminder; what was posted stays.
 
 Announcing and taking off need contributor on the initiatief; a viewer sees
 the list and nothing to press.

@@ -899,3 +899,93 @@ class TestOnBehalfOfAPerson:
 
         assert lijst.status_code == 403
         assert start.status_code == 403
+
+
+async def _announced(db_session, activiteit, naam: str, **overrides):
+    """An initiatief with this name that the debate was announced for."""
+    from bouwmeester.models.debat_aankondiging import DebatAankondiging
+    from bouwmeester.models.initiatief import Initiatief
+
+    initiatief = Initiatief(id=uuid.uuid4(), naam=f"{naam} {uuid.uuid4().hex[:6]}")
+    db_session.add(initiatief)
+    await db_session.flush()
+    values = {
+        "initiatief_id": initiatief.id,
+        "activiteit_id": activiteit.id,
+        "onderwerp": activiteit.onderwerp,
+        "aanvang": activiteit.aanvang,
+    }
+    values.update(overrides)
+    db_session.add(DebatAankondiging(**values))
+    await db_session.flush()
+    return initiatief
+
+
+@pytest.mark.asyncio
+class TestAangekondigdVoor:
+    """The list says for which initiatieven a debate was announced."""
+
+    async def test_names_the_initiatieven_in_order(
+        self, client, db_session, monkeypatch
+    ):
+        activiteit = _activiteit()
+        other = _activiteit(onderwerp="Leefomgeving")
+        _stub_upcoming(monkeypatch, [activiteit, other])
+        _stub_mattermost(monkeypatch)
+        zebra = await _announced(db_session, activiteit, "Zebra")
+        alfa = await _announced(db_session, activiteit, "Alfa", stand="herinnerd")
+
+        resp = await client.get("/api/debatten/aankomend")
+
+        by_id = {d["activiteit_id"]: d for d in resp.json()["debatten"]}
+        assert by_id[activiteit.id]["aangekondigd_voor"] == [
+            {"id": str(alfa.id), "naam": alfa.naam},
+            {"id": str(zebra.id), "naam": zebra.naam},
+        ]
+        assert by_id[other.id]["aangekondigd_voor"] == []
+
+    @pytest.mark.parametrize("stand", ["afgelast", "voorbij"])
+    async def test_an_announcement_that_no_longer_holds_is_left_out(
+        self, client, db_session, monkeypatch, stand
+    ):
+        activiteit = _activiteit()
+        _stub_upcoming(monkeypatch, [activiteit])
+        _stub_mattermost(monkeypatch)
+        await _announced(db_session, activiteit, "Alfa", stand=stand)
+
+        resp = await client.get("/api/debatten/aankomend")
+
+        assert resp.json()["debatten"][0]["aangekondigd_voor"] == []
+
+    async def test_only_initiatieven_the_person_may_see(
+        self, db_session, people, monkeypatch
+    ):
+        """That a debate matters to an initiatief says something about the
+        initiatief, so its name does not go to someone outside it."""
+        from bouwmeester.models.resource_permission import ResourcePermission
+        from tests.factories import client_as
+
+        activiteit = _activiteit()
+        _stub_upcoming(monkeypatch, [activiteit])
+        _stub_mattermost(monkeypatch, **TWO_TEAMS)
+        mine = await _announced(db_session, activiteit, "Mijn")
+        await _announced(db_session, activiteit, "Andermans")
+        db_session.add(
+            ResourcePermission(
+                person_id=people.reviewer.id,
+                resource_type="initiatief",
+                resource_id=mine.id,
+                rol="viewer",
+            )
+        )
+        await db_session.flush()
+
+        async with client_as(db_session, people.reviewer) as c:
+            as_member = await c.get("/api/debatten/aankomend")
+        async with client_as(db_session, people.unlinked) as c:
+            as_stranger = await c.get("/api/debatten/aankomend")
+
+        assert as_member.json()["debatten"][0]["aangekondigd_voor"] == [
+            {"id": str(mine.id), "naam": mine.naam}
+        ]
+        assert as_stranger.json()["debatten"][0]["aangekondigd_voor"] == []

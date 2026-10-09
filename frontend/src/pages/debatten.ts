@@ -160,6 +160,18 @@ export function volgTekst(debat: AankomendDebat, kanalen: DebatKanaal[]): string
 }
 
 /**
+ * `aangekondigd voor NLDD`, or with several: `aangekondigd voor NLDD en
+ * Regelrecht`. Nothing for a debate nobody announced.
+ */
+export function aangekondigdTekst(debat: Pick<AankomendDebat, 'aangekondigd_voor'>): string | null {
+  const namen = (debat.aangekondigd_voor ?? []).map((initiatief) => initiatief.naam);
+  if (namen.length === 0) return null;
+  const lijst =
+    namen.length === 1 ? namen[0] : `${namen.slice(0, -1).join(', ')} en ${namen[namen.length - 1]}`;
+  return `aangekondigd voor ${lijst}`;
+}
+
+/**
  * Whether the row offers to set up a channel.
  *
  * Not for a debate Debat Direct says has ended: the audio and the subtitles
@@ -186,15 +198,17 @@ export function kanaalLinkLabel(onderwerp: string, kanaal: DebatKanaal): string 
 
 /**
  * The line under the subject. For a debate that is on: since when it runs
- * instead of when it was planned. Then kind, committee, and what the bot
- * does with it.
+ * instead of when it was planned. Then kind, committee, what the bot does
+ * with it, and which initiatieven it was announced for.
  */
 export function formatDebatRegel(debat: AankomendDebat, kanalen: DebatKanaal[] = []): string {
   const tijd =
     isNuBezig(debat) && debat.begonnen_om
       ? `Begonnen om ${time.format(new Date(debat.begonnen_om))}`
       : formatTijd(debat);
-  return [tijd, debat.soort, debat.commissie, volgTekst(debat, kanalen)].filter(Boolean).join(' · ');
+  return [tijd, debat.soort, debat.commissie, volgTekst(debat, kanalen), aangekondigdTekst(debat)]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** Matches every word of the query somewhere in subject, kind or committee. */

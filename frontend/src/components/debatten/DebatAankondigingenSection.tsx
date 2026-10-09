@@ -132,7 +132,8 @@ function ResultaatRow({
 /**
  * Debates announced for this initiatief, and announcing another one.
  *
- * Announcing posts one message in every channel linked to the initiatief,
+ * Announcing posts one message in the channels of the initiatief that have
+ * "Kamerstuk-alerts" on,
  * and a reminder on the morning of the debate. The search reads the agenda
  * of the Kamer only once someone types: most visits to this tab are not
  * about a debate.
@@ -198,8 +199,8 @@ export function DebatAankondigingenSection({
         </nldd-container>
         <nldd-text size="sm" color="secondary">
           {canEdit
-            ? 'Kondig een debat aan in de kanalen van dit initiatief. Op de ochtend van het debat volgt daar een herinnering, of het bericht dat het niet doorgaat.'
-            : 'Debatten die in de kanalen van dit initiatief zijn aangekondigd. Op de ochtend van het debat volgt daar een herinnering, of het bericht dat het niet doorgaat.'}
+            ? 'Kondig een debat aan in de kanalen van dit initiatief waar Kamerstuk-alerts aan staat. Op de ochtend van het debat volgt daar een herinnering, of het bericht dat het niet doorgaat.'
+            : 'Debatten die zijn aangekondigd in de kanalen van dit initiatief waar Kamerstuk-alerts aan staat. Op de ochtend van het debat volgt daar een herinnering, of het bericht dat het niet doorgaat.'}
         </nldd-text>
 
         {aankondigingen.isLoading && (

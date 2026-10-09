@@ -22,7 +22,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.core.auth import OptionalUser
 from bouwmeester.core.database import get_db
+from bouwmeester.core.initiatief_context import (
+    InitiatiefContext,
+    get_initiatief_context,
+)
 from bouwmeester.core.permissions import require_permission
+from bouwmeester.models.debat_aankondiging import (
+    STAND_AANGEKONDIGD,
+    STAND_HERINNERD,
+    DebatAankondiging,
+)
 from bouwmeester.models.debat_markering import (
     SOORT_VRAAG,
     STATUS_OPEN,
@@ -36,11 +45,13 @@ from bouwmeester.models.debat_sessie import (
     DebatSessie,
     DebatSpreekbeurt,
 )
+from bouwmeester.models.initiatief import Initiatief
 from bouwmeester.models.person import Person
 from bouwmeester.repositories.mattermost_user import MattermostUserRepository
 from bouwmeester.schema.debat import (
     AankomendDebat,
     AankomendeDebattenResponse,
+    DebatInitiatief,
     DebatKanaal,
     DebatStartRequest,
     DebatStartResponse,
@@ -343,11 +354,46 @@ def _on_the_list(
     return stand is not None and stand.stand in debat_stand.STAND_NU
 
 
+async def _announced_for(
+    db: AsyncSession, activiteit_ids: list[str], ctx: InitiatiefContext
+) -> dict[str, list[DebatInitiatief]]:
+    """Per activiteit, the initiatieven it was announced for.
+
+    Only initiatieven this person may see: that a debate matters to an
+    initiatief says something about the initiatief. Not what was called
+    off: the row then stays, but the announcement no longer holds.
+    """
+    if not activiteit_ids:
+        return {}
+    if not ctx.is_admin and not ctx.visible_initiatief_ids:
+        return {}
+    stmt = (
+        select(DebatAankondiging.activiteit_id, Initiatief.id, Initiatief.naam)
+        .join(Initiatief, Initiatief.id == DebatAankondiging.initiatief_id)
+        .where(
+            DebatAankondiging.activiteit_id.in_(activiteit_ids),
+            DebatAankondiging.stand.in_((STAND_AANGEKONDIGD, STAND_HERINNERD)),
+        )
+        .order_by(Initiatief.naam, Initiatief.id)
+    )
+    if not ctx.is_admin:
+        stmt = stmt.where(
+            DebatAankondiging.initiatief_id.in_(ctx.visible_initiatief_ids)
+        )
+    found: dict[str, list[DebatInitiatief]] = {}
+    for activiteit_id, initiatief_id, naam in (await db.execute(stmt)).all():
+        found.setdefault(activiteit_id, []).append(
+            DebatInitiatief(id=initiatief_id, naam=naam)
+        )
+    return found
+
+
 @router.get("/aankomend", response_model=AankomendeDebattenResponse)
 async def list_aankomende_debatten(
     current_user: OptionalUser,
     dagen: int = Query(UPCOMING_DAGEN, ge=1, le=60),
     db: AsyncSession = Depends(get_db),
+    ctx: InitiatiefContext = Depends(get_initiatief_context),
     _perm=Depends(require_permission("parlementair:read")),
 ) -> AankomendeDebattenResponse:
     """The meetings of the coming weeks, with the channel if there is one.
@@ -440,6 +486,7 @@ async def list_aankomende_debatten(
             )
 
     activiteiten = [a for a in activiteiten if _on_the_list(a, standen, now)]
+    aangekondigd = await _announced_for(db, [a.id for a in activiteiten], ctx)
 
     return AankomendeDebattenResponse(
         debatten=[
@@ -455,6 +502,7 @@ async def list_aankomende_debatten(
                 kanalen=kanalen.get(a.id, []),
                 stand=standen[a.id].stand if a.id in standen else None,
                 begonnen_om=standen[a.id].begonnen_om if a.id in standen else None,
+                aangekondigd_voor=aangekondigd.get(a.id, []),
             )
             for a in activiteiten
         ],

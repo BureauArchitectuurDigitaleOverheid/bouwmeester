@@ -96,7 +96,9 @@ export function useKondigDebatAan(initiatiefId: string) {
   return useMutationWithError<DebatAankondiging, { activiteitId: string }>({
     mutationFn: ({ activiteitId }) => kondigDebatAan(initiatiefId, activiteitId),
     errorMessage: 'Aankondigen is niet gelukt',
-    invalidateKeys: [queryKeys.initiatieven.debatten(initiatiefId)],
+    // Also the agenda: the Debatten page says per debate which initiatieven
+    // it was announced for.
+    invalidateKeys: [queryKeys.initiatieven.debatten(initiatiefId), queryKeys.debatten.all],
   });
 }
 
@@ -104,6 +106,8 @@ export function useVerwijderDebatAankondiging(initiatiefId: string) {
   return useMutationWithError<void, { aankondigingId: string }>({
     mutationFn: ({ aankondigingId }) => verwijderDebatAankondiging(initiatiefId, aankondigingId),
     errorMessage: 'Van de lijst halen is niet gelukt',
-    invalidateKeys: [queryKeys.initiatieven.debatten(initiatiefId)],
+    // Also the agenda: the Debatten page says per debate which initiatieven
+    // it was announced for.
+    invalidateKeys: [queryKeys.initiatieven.debatten(initiatiefId), queryKeys.debatten.all],
   });
 }

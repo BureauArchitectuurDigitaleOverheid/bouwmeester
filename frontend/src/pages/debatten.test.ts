@@ -7,6 +7,7 @@ import type {
   GevolgdeDebatten,
 } from '@/types/debat';
 import {
+  aangekondigdTekst,
   afloopBadge,
   filterDebatten,
   filterGevolgd,
@@ -49,6 +50,7 @@ function debat(overrides: Partial<AankomendDebat> = {}): AankomendDebat {
     kanalen: [],
     stand: null,
     begonnen_om: null,
+    aangekondigd_voor: [],
     ...overrides,
   };
 }
@@ -476,6 +478,37 @@ describe('volgTekst', () => {
 
   it('says nothing without a channel', () => {
     expect(volgTekst(debat({ stand: 'bezig' }), [])).toBeNull();
+  });
+});
+
+describe('aangekondigdTekst', () => {
+  it('says nothing for a debate nobody announced', () => {
+    expect(aangekondigdTekst(debat())).toBeNull();
+  });
+
+  it('names the initiatief', () => {
+    expect(aangekondigdTekst(debat({ aangekondigd_voor: [{ id: 'i1', naam: 'NLDD' }] }))).toBe(
+      'aangekondigd voor NLDD',
+    );
+  });
+
+  it('joins several the way a sentence does', () => {
+    const voor = [
+      { id: 'i1', naam: 'NLDD' },
+      { id: 'i2', naam: 'Regelrecht' },
+      { id: 'i3', naam: 'MOZa' },
+    ];
+    expect(aangekondigdTekst(debat({ aangekondigd_voor: voor.slice(0, 2) }))).toBe(
+      'aangekondigd voor NLDD en Regelrecht',
+    );
+    expect(aangekondigdTekst(debat({ aangekondigd_voor: voor }))).toBe(
+      'aangekondigd voor NLDD, Regelrecht en MOZa',
+    );
+  });
+
+  it('closes the line under the subject', () => {
+    const regel = formatDebatRegel(debat({ aangekondigd_voor: [{ id: 'i1', naam: 'NLDD' }] }));
+    expect(regel).toMatch(/ · vaste commissie voor Digitale Zaken · aangekondigd voor NLDD$/);
   });
 });
 
