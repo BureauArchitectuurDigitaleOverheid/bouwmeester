@@ -115,3 +115,7 @@ Run `just` to see all commands. Key ones:
 | `just lint` | Backend lint (ruff) |
 | `just test` | Backend tests |
 | `just typecheck` | Frontend TypeScript check |
+
+## License
+
+Bouwmeester is licensed under the [EUPL-1.2](LICENSE). How to report a vulnerability, how to contribute and the code of conduct are in the [organisation-wide defaults](https://github.com/NederlandseDigitaleDienst/.github).
