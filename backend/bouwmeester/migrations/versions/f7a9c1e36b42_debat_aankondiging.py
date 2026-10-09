@@ -42,6 +42,7 @@ def upgrade() -> None:
         sa.Column("commissie", sa.Text(), nullable=True),
         sa.Column("aanvang", sa.DateTime(timezone=True), nullable=True),
         sa.Column("einde", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("channel_id", sa.String(26), nullable=True),
         sa.Column(
             "stand",
             sa.String(20),

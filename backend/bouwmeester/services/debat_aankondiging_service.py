@@ -223,6 +223,17 @@ def moved_message(row: DebatAankondiging, activiteit: Activiteit) -> str:
 
 
 @dataclass
+class _Recorded:
+    row: DebatAankondiging
+    # The meeting as the Kamer has it now.
+    activiteit: Activiteit
+    is_today: bool
+    # Set when the meeting was on the list already, for one channel only,
+    # and now reaches further: the channel it was limited to.
+    widened_from: str | None = None
+
+
+@dataclass
 class AnnounceResult:
     row: DebatAankondiging
     # In how many channels the announcement was posted. Zero is a valid
@@ -269,21 +280,25 @@ class DebatAankondigingService:
         `AnnounceRefusedError` when this meeting is not one to announce and
         `AlreadyAnnouncedError` when it was announced before.
         """
-        row, activiteit, is_today = await self._record(
-            initiatief.id, activiteit_id, person_id, now
-        )
+        recorded = await self._record(initiatief.id, activiteit_id, person_id, now)
+        activiteit = recorded.activiteit
+        links = await self._channels(initiatief.id)
+        if recorded.widened_from:
+            # The channel where someone pressed the megaphone has the alert
+            # and the answer under it; it does not need the news again.
+            links = [link for link in links if link.channel_id != recorded.widened_from]
         gepost = await self._post(
-            initiatief.id,
             activiteit.id,
             lambda kanaal: announcement_message(
                 activiteit,
                 initiatief_naam=initiatief.naam,
                 door=door,
-                reminder_follows=not is_today,
+                reminder_follows=not recorded.is_today,
                 debat_channel=kanaal,
             ),
+            links,
         )
-        return AnnounceResult(row=row, gepost_in=gepost)
+        return AnnounceResult(row=recorded.row, gepost_in=gepost)
 
     async def announce_from_alert(
         self,
@@ -299,8 +314,10 @@ class DebatAankondigingService:
         For the reaction under an alert. The alert is the announcement, so
         nothing new goes into the channel: the answer is a reply in the
         thread, also when nothing was done, and the reminder follows on the
-        day. Anyone in the channel may press, like the start button: all it
-        brings about is one more message in a channel they are already in.
+        day, in this channel only. Anyone in the channel may press, like
+        the start button: all it brings about is one more message in a
+        channel they are already in. A press in a second channel of the
+        same initiatief widens the reminder to all its channels.
 
         Returns what happened: listed, exists, refused or failed.
         """
@@ -344,8 +361,8 @@ class DebatAankondigingService:
         # None of the refusals below leaves anything to roll back: the
         # meeting is only read, and a lost insert undoes its own savepoint.
         try:
-            _, activiteit, is_today = await self._record(
-                initiatief.id, str(activiteit_id), person_id, now
+            recorded = await self._record(
+                initiatief.id, str(activiteit_id), person_id, now, channel_id
             )
             await self.session.commit()
         except TkApiError:
@@ -364,7 +381,11 @@ class DebatAankondigingService:
             )
             return "exists"
 
-        await reply(listed_message(activiteit, naam, reminder_follows=not is_today))
+        await reply(
+            listed_message(
+                recorded.activiteit, naam, reminder_follows=not recorded.is_today
+            )
+        )
         return "listed"
 
     async def _record(
@@ -373,10 +394,14 @@ class DebatAankondigingService:
         activiteit_id: str,
         person_id: uuid.UUID | None,
         now: datetime | None,
-    ) -> tuple[DebatAankondiging, Activiteit, bool]:
+        channel_id: str | None = None,
+    ) -> _Recorded:
         """Read the meeting and put it on the list; posts nothing.
 
-        Returns the row, the meeting as it stands and whether it is today.
+        `channel_id` limits the reminder to that channel; without it every
+        channel of the initiatief gets it. A meeting that is on the list
+        for one channel and is asked for again from elsewhere is widened
+        to all channels instead of refused.
         """
         async with httpx.AsyncClient(timeout=_TK_TIMEOUT) as client:
             activiteit = await fetch_activiteit(activiteit_id, client)
@@ -390,6 +415,13 @@ class DebatAankondigingService:
             raise AnnounceRefusedError(
                 "Deze vergadering is verplaatst. Kies de nieuwe datum in de lijst."
             )
+        if activiteit.aanvang is None:
+            # The round of the day goes by the date. A row without one
+            # would promise a reminder and never be looked at again.
+            raise AnnounceRefusedError(
+                "Deze vergadering heeft nog geen datum. Probeer het opnieuw "
+                "als de Kamer haar heeft ingepland."
+            )
         now = now or datetime.now(UTC)
         if is_over(activiteit.aanvang, activiteit.einde, now):
             raise AnnounceRefusedError("Deze vergadering is al geweest.")
@@ -397,6 +429,7 @@ class DebatAankondigingService:
         row = DebatAankondiging(
             initiatief_id=initiatief_id,
             activiteit_id=activiteit.id,
+            channel_id=channel_id,
             created_by_id=person_id,
         )
         self._take_over(row, activiteit)
@@ -415,8 +448,24 @@ class DebatAankondigingService:
             async with self.session.begin_nested():
                 self.session.add(row)
         except IntegrityError as exc:
-            raise AlreadyAnnouncedError from exc
-        return row, activiteit, is_today
+            existing = (
+                await self.session.execute(
+                    select(DebatAankondiging).where(
+                        DebatAankondiging.initiatief_id == initiatief_id,
+                        DebatAankondiging.activiteit_id == activiteit.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if (
+                existing is None
+                or existing.channel_id is None
+                or existing.channel_id == channel_id
+            ):
+                raise AlreadyAnnouncedError from exc
+            widened_from = existing.channel_id
+            existing.channel_id = None
+            return _Recorded(existing, activiteit, is_today, widened_from)
+        return _Recorded(row, activiteit, is_today)
 
     async def tick(self, now: datetime | None = None) -> TickResult:
         """Remind of what is on today, and say what is off."""
@@ -507,7 +556,10 @@ class DebatAankondigingService:
                     row, "is verplaatst. Een nieuwe datum is er nog niet.", result
                 )
                 return
-            await self._follow(row, successor, result)
+            await self._follow(row, successor, now, result)
+            return
+        if activiteit.aanvang is None:
+            await self._call_off(row, "heeft geen datum meer.", result)
             return
 
         today = now.astimezone(AMSTERDAM).date()
@@ -517,7 +569,7 @@ class DebatAankondigingService:
         ):
             # Same meeting, later day: the Kamer changed the time without
             # moving it to a new activiteit.
-            await self._follow(row, activiteit, result)
+            await self._follow(row, activiteit, now, result)
             return
 
         self._take_over(row, activiteit)
@@ -525,9 +577,7 @@ class DebatAankondigingService:
             row.stand = STAND_VOORBIJ
             return
         await self._deliver(
-            row.initiatief_id,
-            activiteit.id,
-            lambda kanaal: reminder_message(activiteit, kanaal),
+            row, activiteit.id, lambda kanaal: reminder_message(activiteit, kanaal)
         )
         row.stand = STAND_HERINNERD
         result.herinnerd += 1
@@ -536,14 +586,24 @@ class DebatAankondigingService:
         self, row: DebatAankondiging, wat: str, result: TickResult
     ) -> None:
         tekst = off_message(row, wat)
-        await self._deliver(row.initiatief_id, row.activiteit_id, lambda _: tekst)
+        await self._deliver(row, row.activiteit_id, lambda _: tekst)
         row.stand = STAND_AFGELAST
         result.afgelast += 1
 
     async def _follow(
-        self, row: DebatAankondiging, activiteit: Activiteit, result: TickResult
+        self,
+        row: DebatAankondiging,
+        activiteit: Activiteit,
+        now: datetime,
+        result: TickResult,
     ) -> None:
         """Move the row to the meeting as it stands now, and say so."""
+        if is_over(activiteit.aanvang, activiteit.einde, now):
+            # Moved to a date that has gone by: the row is only read on the
+            # morning of the date it knew. "Moved to last Tuesday" is news
+            # nobody can use.
+            row.stand = STAND_VOORBIJ
+            return
         tekst = moved_message(row, activiteit)
         if activiteit.id != row.activiteit_id:
             already = (
@@ -560,7 +620,7 @@ class DebatAankondigingService:
                 row.stand = STAND_AFGELAST
                 return
             row.activiteit_id = activiteit.id
-        await self._deliver(row.initiatief_id, activiteit.id, lambda _: tekst)
+        await self._deliver(row, activiteit.id, lambda _: tekst)
         self._take_over(row, activiteit)
         result.verzet += 1
 
@@ -573,12 +633,17 @@ class DebatAankondigingService:
         row.aanvang = activiteit.aanvang
         row.einde = activiteit.einde
 
-    async def _channels(self, initiatief_id: uuid.UUID) -> list[MattermostChannelLink]:
+    async def _channels(
+        self, initiatief_id: uuid.UUID, only: str | None = None
+    ) -> list[MattermostChannelLink]:
+        """The channels of the initiatief the bot can still write in."""
         stmt = select(MattermostChannelLink).where(
             MattermostChannelLink.scope_type == SCOPE_INITIATIEF,
             MattermostChannelLink.scope_id == initiatief_id,
             MattermostChannelLink.disabled_at.is_(None),
         )
+        if only is not None:
+            stmt = stmt.where(MattermostChannelLink.channel_id == only)
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def _debat_channels(self, activiteit_id: str) -> dict[str, str]:
@@ -590,36 +655,32 @@ class DebatAankondigingService:
         )
         return {team: name for team, name in (await self.session.execute(stmt)).all()}
 
-    async def _deliver(
-        self, initiatief_id: uuid.UUID, activiteit_id: str, build
-    ) -> None:
-        """Post, and raise when there were channels and none took it.
+    async def _deliver(self, row: DebatAankondiging, activiteit_id: str, build) -> None:
+        """Post where this row is to be told, and raise when nowhere took it.
 
         Without a channel there is nobody to tell, and that counts as
         told: the row moves on instead of being asked about every tick.
+
+        One channel that took it is enough. A channel that failed while
+        another succeeded does not get the message later: trying again
+        would post it a second time where it did arrive, and a message
+        that comes twice is worse than one that is missed in one of
+        several channels.
         """
-        links = await self._channels(initiatief_id)
-        if links and not await self._post(initiatief_id, activiteit_id, build, links):
+        links = await self._channels(row.initiatief_id, only=row.channel_id)
+        if links and not await self._post(activiteit_id, build, links):
             raise _NotDeliveredError
 
     async def _post(
-        self,
-        initiatief_id: uuid.UUID,
-        activiteit_id: str,
-        build,
-        links: list[MattermostChannelLink] | None = None,
+        self, activiteit_id: str, build, links: list[MattermostChannelLink]
     ) -> int:
-        """Post in every channel of the initiatief; returns in how many.
+        """Post in each of these channels; returns in how many.
 
         `build` gets the name of the debate channel in the team of the
         channel that is written to, or ``None``: a `~channel` link only
         works within one team.
         """
-        if not await self.mattermost.is_enabled():
-            return 0
-        if links is None:
-            links = await self._channels(initiatief_id)
-        if not links:
+        if not links or not await self.mattermost.is_enabled():
             return 0
         debat_channels = await self._debat_channels(activiteit_id)
         gepost = 0

@@ -4,6 +4,13 @@ import { filterDebatten } from '@/pages/debatten';
 
 const AMSTERDAM = 'Europe/Amsterdam';
 
+const dayKey = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: AMSTERDAM,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 const moment = new Intl.DateTimeFormat('nl-NL', {
   timeZone: AMSTERDAM,
   weekday: 'long',
@@ -28,20 +35,22 @@ export function formatAankondigingRegel(
 /**
  * The badge for a debate that is not simply coming up. None for one that is
  * announced and waiting for its day: that is what being on the list says.
+ *
+ * "Vandaag" goes by the date and not by the reminder having gone out: a
+ * debate stays on the list for a day after it started, and the reminder of
+ * yesterday does not make it today.
  */
 export function aankondigingBadge(
-  debat: Pick<DebatAankondiging, 'stand'>,
+  debat: Pick<DebatAankondiging, 'stand' | 'aanvang'>,
+  nu: Date = new Date(),
 ): { label: string; color: EntityColor } | null {
-  switch (debat.stand) {
-    case 'afgelast':
-      return { label: 'Afgelast of verplaatst', color: 'oranje' };
-    case 'herinnerd':
-      return { label: 'Vandaag', color: 'groen' };
-    case 'voorbij':
-      return { label: 'Voorbij', color: 'coolgray' };
-    default:
-      return null;
-  }
+  if (debat.stand === 'afgelast') return { label: 'Afgelast of verplaatst', color: 'oranje' };
+  if (!debat.aanvang) return null;
+  const dag = dayKey.format(new Date(debat.aanvang));
+  const vandaag = dayKey.format(nu);
+  if (dag === vandaag) return { label: 'Vandaag', color: 'groen' };
+  if (dag < vandaag) return { label: 'Voorbij', color: 'coolgray' };
+  return null;
 }
 
 /** From how many characters a search is a search. */

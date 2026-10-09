@@ -55,14 +55,39 @@ describe('formatAankondigingRegel', () => {
 });
 
 describe('aankondigingBadge', () => {
+  const aanvang = '2026-10-06T14:30:00Z';
+
   it('has none for a debate that waits for its day', () => {
-    expect(aankondigingBadge({ stand: 'aangekondigd' })).toBeNull();
+    const nu = new Date('2026-10-05T10:00:00Z');
+    expect(aankondigingBadge({ stand: 'aangekondigd', aanvang }, nu)).toBeNull();
   });
 
-  it('marks what is off, today or over', () => {
-    expect(aankondigingBadge({ stand: 'afgelast' })?.label).toBe('Afgelast of verplaatst');
-    expect(aankondigingBadge({ stand: 'herinnerd' })?.label).toBe('Vandaag');
-    expect(aankondigingBadge({ stand: 'voorbij' })?.label).toBe('Voorbij');
+  it('says today on the day itself, reminded or not', () => {
+    const nu = new Date('2026-10-06T07:00:00Z');
+    expect(aankondigingBadge({ stand: 'herinnerd', aanvang }, nu)?.label).toBe('Vandaag');
+    expect(aankondigingBadge({ stand: 'aangekondigd', aanvang }, nu)?.label).toBe('Vandaag');
+  });
+
+  it('does not call yesterday today because the reminder went out', () => {
+    const nu = new Date('2026-10-07T08:00:00Z');
+    expect(aankondigingBadge({ stand: 'herinnerd', aanvang }, nu)?.label).toBe('Voorbij');
+  });
+
+  it('goes by the Dutch day, not the day in UTC', () => {
+    // 23:30 UTC on the 5th is 01:30 on the 6th in Amsterdam.
+    const nu = new Date('2026-10-05T23:30:00Z');
+    expect(aankondigingBadge({ stand: 'aangekondigd', aanvang }, nu)?.label).toBe('Vandaag');
+  });
+
+  it('marks what is off whatever the date', () => {
+    const nu = new Date('2026-10-01T10:00:00Z');
+    expect(aankondigingBadge({ stand: 'afgelast', aanvang }, nu)?.label).toBe(
+      'Afgelast of verplaatst',
+    );
+  });
+
+  it('has none without a date', () => {
+    expect(aankondigingBadge({ stand: 'aangekondigd', aanvang: null })).toBeNull();
   });
 });
 

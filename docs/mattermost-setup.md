@@ -110,7 +110,9 @@ of a procedurevergadering) is posted with a megaphone reaction. Pressing it
 puts that meeting on the list of the initiatief the channel hangs on. Nothing
 new goes into the channel, since the alert already is the announcement: the
 bot answers in the thread, and the reminder follows on the morning of the
-meeting. Anyone in the channel may press, like the headphones.
+meeting, in that channel only. Pressed in a second channel of the same
+initiatief, or announced on the tab afterwards, the meeting goes to all its
+channels. Anyone in the channel may press, like the headphones.
 
 Every alert ends with one line that says what the reactions under it do, and
 names only the ones that are there: the cross for "not relevant", the

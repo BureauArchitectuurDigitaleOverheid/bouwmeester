@@ -71,6 +71,12 @@ class DebatAankondiging(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # The one channel the reminder goes to, for a meeting that was put on
+    # the list with the reaction under an alert: whoever pressed there
+    # asked for that channel, not for every channel of the initiatief.
+    # NULL is all of them, which is what announcing on the tab means.
+    channel_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+
     stand: Mapped[str] = mapped_column(
         String(20),
         nullable=False,

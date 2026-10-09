@@ -269,6 +269,20 @@ class TestAnnounce:
         assert mm.messages == []
         assert await _rows(db_session, initiatief) == []
 
+    async def test_refuses_a_meeting_without_a_date(
+        self, db_session, initiatief, monkeypatch
+    ):
+        """The round of the day goes by the date: without one the reminder
+        that is promised would never come."""
+        activiteit = _activiteit(aanvang=None, einde=None)
+        _known(monkeypatch, activiteit)
+        mm = Mattermost()
+
+        with pytest.raises(AnnounceRefusedError, match="nog geen datum"):
+            await _announce(db_session, mm, initiatief, activiteit)
+
+        assert await _rows(db_session, initiatief) == []
+
     async def test_refuses_a_meeting_the_kamer_does_not_know(
         self, db_session, initiatief, monkeypatch
     ):
@@ -556,6 +570,43 @@ class TestTick:
         assert row.aanvang == later.aanvang
         assert row.stand == STAND_AANGEKONDIGD
 
+    async def test_a_debate_whose_date_was_taken_away_is_called_off(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, replace(activiteit, aanvang=None, einde=None))
+        await _link(db_session, initiatief)
+        row = await _row(db_session, initiatief, activiteit)
+        mm = Mattermost()
+
+        result = await self._tick(db_session, mm)
+
+        assert result.afgelast == 1
+        assert result.herinnerd == 0
+        assert "heeft geen datum meer." in mm.messages[0][1]
+        assert "Vandaag" not in mm.messages[0][1]
+        assert row.stand == STAND_AFGELAST
+
+    async def test_a_move_to_a_date_that_has_gone_by_says_nothing(
+        self, db_session, initiatief, monkeypatch
+    ):
+        """The row is only read on the morning of the date it knew, so an
+        earlier new date is found out too late to be of use."""
+        activiteit = _activiteit()
+        earlier = activiteit.aanvang - timedelta(days=3)
+        successor = _activiteit(aanvang=earlier, einde=earlier + timedelta(hours=3))
+        moved = replace(activiteit, status="Verplaatst", vervangen_door=(successor.id,))
+        _known(monkeypatch, moved, successor)
+        await _link(db_session, initiatief)
+        row = await _row(db_session, initiatief, activiteit)
+        mm = Mattermost()
+
+        result = await self._tick(db_session, mm)
+
+        assert mm.messages == []
+        assert result.verzet == 0
+        assert row.stand == STAND_VOORBIJ
+
     async def test_a_debate_that_is_over_gets_no_message(
         self, db_session, initiatief, monkeypatch
     ):
@@ -822,6 +873,50 @@ class TestRoutes:
         assert [d["id"] for d in resp.json()] == [str(coming.id)]
 
 
+@pytest.mark.asyncio
+class TestThePressIsKept:
+    async def test_the_row_is_there_for_another_session(
+        self, real_session, _test_engine, monkeypatch
+    ):
+        """`db_session` cannot show this: a commit there does nothing, so
+        a press that forgot to commit would look the same."""
+        session, made = real_session
+        initiatief = Initiatief(
+            id=uuid.uuid4(), naam=f"Initiatief {uuid.uuid4().hex[:8]}"
+        )
+        session.add(initiatief)
+        made.append(initiatief.id)
+        await session.flush()
+        link = await _link(session, initiatief)
+        channel_id = link.channel_id
+        initiatief_id = initiatief.id
+        await session.commit()
+        # After the day `TestFailedRound` looks at, so its round does not
+        # pick this row up.
+        start = datetime(2199, 6, 10, 14, 0, tzinfo=AMS)
+        activiteit = _activiteit(aanvang=start, einde=start + timedelta(hours=2))
+        _known(monkeypatch, activiteit)
+        mm = Mattermost()
+
+        outcome = await DebatAankondigingService(session, mm).announce_from_alert(
+            extra={"activiteit_id": activiteit.id},
+            channel_id=channel_id,
+            post_id=POST,
+            mattermost_user_id=None,
+        )
+
+        assert outcome == "listed"
+        async with AsyncSession(bind=_test_engine) as other:
+            rows = (
+                await other.execute(
+                    select(
+                        DebatAankondiging.activiteit_id, DebatAankondiging.channel_id
+                    ).where(DebatAankondiging.initiatief_id == initiatief_id)
+                )
+            ).all()
+        assert rows == [(activiteit.id, channel_id)]
+
+
 async def _member(db_session, initiatief, rol: str):
     person = await make_person(db_session, f"Lid {uuid.uuid4().hex[:6]}")
     db_session.add(
@@ -1001,6 +1096,97 @@ class TestAnnounceFromAlert:
         assert result.herinnerd == 1
         assert "Vandaag om 16:30" in mm.messages[-1][1]
         assert mm.messages[-1][2] is None
+
+    async def test_the_reminder_goes_to_the_channel_that_asked_only(
+        self, db_session, initiatief, monkeypatch
+    ):
+        """The legend says "herinner dit kanaal". A second channel of the
+        same initiatief did not ask."""
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        other = await _link(db_session, initiatief)
+        mm = Mattermost()
+        await self._press(db_session, mm, link, activiteit)
+        mm.messages.clear()
+
+        await DebatAankondigingService(db_session, mm).tick(MORNING)
+
+        assert [m[0] for m in mm.messages] == [link.channel_id]
+        assert other.channel_id not in [m[0] for m in mm.messages]
+
+    async def test_a_cancellation_also_stays_in_that_channel(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        asked = _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        await _link(db_session, initiatief)
+        mm = Mattermost()
+        await self._press(db_session, mm, link, activiteit)
+        mm.messages.clear()
+        asked.clear()
+        _known(monkeypatch, replace(activiteit, status="Geannuleerd"))
+
+        await DebatAankondigingService(db_session, mm).tick(MORNING)
+
+        assert [m[0] for m in mm.messages] == [link.channel_id]
+        assert "is geannuleerd." in mm.messages[0][1]
+
+    async def test_a_press_in_a_second_channel_widens_it_to_all(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        een = await _link(db_session, initiatief)
+        twee = await _link(db_session, initiatief)
+        mm = Mattermost()
+        await self._press(db_session, mm, een, activiteit)
+
+        outcome = await self._press(db_session, mm, twee, activiteit)
+
+        assert outcome == "listed"
+        assert mm.messages[-1][0] == twee.channel_id
+        (row,) = await _rows(db_session, initiatief)
+        assert row.channel_id is None
+        mm.messages.clear()
+        await DebatAankondigingService(db_session, mm).tick(MORNING)
+        assert {m[0] for m in mm.messages} == {een.channel_id, twee.channel_id}
+
+    async def test_announcing_on_the_tab_afterwards_tells_the_other_channels(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        een = await _link(db_session, initiatief)
+        twee = await _link(db_session, initiatief)
+        mm = Mattermost()
+        await self._press(db_session, mm, een, activiteit)
+        mm.messages.clear()
+
+        result = await _announce(db_session, mm, initiatief, activiteit)
+
+        # Not again where the alert and the answer under it already are.
+        assert result.gepost_in == 1
+        assert [m[0] for m in mm.messages] == [twee.channel_id]
+        assert "Debat aangekondigd" in mm.messages[0][1]
+        (row,) = await _rows(db_session, initiatief)
+        assert row.channel_id is None
+
+    async def test_an_unreadable_agenda_is_answered_and_lists_nothing(
+        self, db_session, initiatief, monkeypatch
+    ):
+        _known(monkeypatch, error=TkApiError("stuk"))
+        link = await _link(db_session, initiatief)
+        mm = Mattermost()
+
+        outcome = await self._press(db_session, mm, link, _activiteit())
+
+        assert outcome == "failed"
+        assert "nu niet op te halen" in mm.messages[0][1]
+        assert "Haal je reactie weg" in mm.messages[0][1]
+        assert mm.messages[0][2] == POST
+        assert await _rows(db_session, initiatief) == []
 
     async def test_a_second_press_says_it_is_there_already(
         self, db_session, initiatief, monkeypatch
