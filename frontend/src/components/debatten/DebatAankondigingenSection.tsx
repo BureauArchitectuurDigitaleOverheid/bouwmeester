@@ -57,7 +57,8 @@ function AankondigingRow({
 }: {
   debat: DebatAankondiging;
   busy: boolean;
-  onVerwijder: (debat: DebatAankondiging) => void;
+  /** Absent for someone who may only look. */
+  onVerwijder?: (debat: DebatAankondiging) => void;
 }) {
   const badge = aankondigingBadge(debat);
   return (
@@ -70,17 +71,21 @@ function AankondigingRow({
       )}
       {debat.agenda_url && <nldd-spacer-cell size="16" hide-below="md" />}
       <AgendaLink url={debat.agenda_url} onderwerp={debat.onderwerp} />
-      <nldd-spacer-cell size="8" />
-      <nldd-cell horizontal-alignment="right">
-        <NlddIconButton
-          icon="trash"
-          accessibleLabel={`${debat.onderwerp} van de lijst halen`}
-          variant="neutral-transparent"
-          size="sm"
-          disabled={busy}
-          onClick={() => onVerwijder(debat)}
-        />
-      </nldd-cell>
+      {onVerwijder && (
+        <>
+          <nldd-spacer-cell size="8" />
+          <nldd-cell horizontal-alignment="right">
+            <NlddIconButton
+              icon="trash"
+              accessibleLabel={`${debat.onderwerp} van de lijst halen`}
+              variant="neutral-transparent"
+              size="sm"
+              disabled={busy}
+              onClick={() => onVerwijder(debat)}
+            />
+          </nldd-cell>
+        </>
+      )}
     </nldd-list-item>
   );
 }
@@ -131,15 +136,24 @@ function ResultaatRow({
  * and a reminder on the morning of the debate. The search reads the agenda
  * of the Kamer only once someone types: most visits to this tab are not
  * about a debate.
+ *
+ * A viewer sees the list and nothing to press: an announcement makes the bot
+ * post in the channels, and the backend refuses that below contributor.
  */
-export function DebatAankondigingenSection({ initiatiefId }: { initiatiefId: string }) {
+export function DebatAankondigingenSection({
+  initiatiefId,
+  canEdit,
+}: {
+  initiatiefId: string;
+  canEdit: boolean;
+}) {
   const aankondigingen = useDebatAankondigingen(initiatiefId);
   const kondigAan = useKondigDebatAan(initiatiefId);
   const verwijder = useVerwijderDebatAankondiging(initiatiefId);
   const { showSuccess } = useToast();
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search, 200);
-  const zoekt = debounced.trim().length >= ZOEK_MIN;
+  const zoekt = canEdit && debounced.trim().length >= ZOEK_MIN;
   const agenda = useDebatAgenda(zoekt);
 
   const lijst = useMemo(() => aankondigingen.data ?? [], [aankondigingen.data]);
@@ -183,8 +197,9 @@ export function DebatAankondigingenSection({ initiatiefId }: { initiatiefId: str
           </nldd-text>
         </nldd-container>
         <nldd-text size="sm" color="secondary">
-          Kondig een debat aan in de kanalen van dit initiatief. Op de ochtend van het debat
-          volgt daar een herinnering, of het bericht dat het niet doorgaat.
+          {canEdit
+            ? 'Kondig een debat aan in de kanalen van dit initiatief. Op de ochtend van het debat volgt daar een herinnering, of het bericht dat het niet doorgaat.'
+            : 'Debatten die in de kanalen van dit initiatief zijn aangekondigd. Op de ochtend van het debat volgt daar een herinnering, of het bericht dat het niet doorgaat.'}
         </nldd-text>
 
         {aankondigingen.isLoading && (
@@ -206,13 +221,17 @@ export function DebatAankondigingenSection({ initiatiefId }: { initiatiefId: str
                 key={debat.id}
                 debat={debat}
                 busy={busy}
-                onVerwijder={handleVerwijder}
+                onVerwijder={canEdit ? handleVerwijder : undefined}
               />
             ))}
           </nldd-list>
         )}
 
-        <AgendaSearchField value={search} onChange={setSearch} />
+        {!canEdit && !aankondigingen.isLoading && !aankondigingen.isError && lijst.length === 0 && (
+          <nldd-inline-dialog text="Er is nog geen debat aangekondigd." />
+        )}
+
+        {canEdit && <AgendaSearchField value={search} onChange={setSearch} />}
 
         {zoekt && agenda.isLoading && <nldd-inline-dialog variant="loading" text="Agenda ophalen..." />}
         {zoekt && agenda.isError && (

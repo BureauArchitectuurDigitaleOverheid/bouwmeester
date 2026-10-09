@@ -1,8 +1,9 @@
 """Debates announced for an initiatief: list them, announce one, take one off.
 
-Authorisation is access to the initiatief, as for its search terms: saying
-that a debate matters to an initiatief is part of working on it, not system
-administration.
+Whoever may see the initiatief may see the list. Announcing and taking off
+need contributor: an announcement makes the bot post in every channel of
+the initiatief, and that is not something a viewer does. A search term on
+the same tab is open to viewers because it posts nothing by itself.
 """
 
 import logging
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from bouwmeester.api.routes.initiatief import _require_access
 from bouwmeester.api.routes.parlementair_abonnement import (
     _require_initiatief_toegang,
 )
@@ -22,7 +24,9 @@ from bouwmeester.core.initiatief_context import (
     InitiatiefContext,
     get_initiatief_context,
 )
+from bouwmeester.core.permissions import PermissionContext, get_permission_context
 from bouwmeester.models.debat_aankondiging import DebatAankondiging
+from bouwmeester.repositories.initiatief import InitiatiefRepository
 from bouwmeester.schema.debat import (
     DebatAankondigingCreate,
     DebatAankondigingResponse,
@@ -105,10 +109,16 @@ async def create_debat_aankondiging(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     ctx: InitiatiefContext = Depends(get_initiatief_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     actor_id: UUID | None = None,
 ) -> DebatAankondigingResponse:
     """Announce a debate in the channels of this initiatief."""
+    # First whether it may be seen at all, so an initiatief someone has no
+    # business with answers 404 and not 403.
     initiatief = await _require_initiatief_toegang(db, ctx, initiatief_id)
+    await _require_access(
+        InitiatiefRepository(db), initiatief_id, current_user, perm_ctx, "contributor"
+    )
 
     service = DebatAankondigingService(db)
     try:
@@ -155,6 +165,7 @@ async def delete_debat_aankondiging(
     current_user: OptionalUser,
     db: AsyncSession = Depends(get_db),
     ctx: InitiatiefContext = Depends(get_initiatief_context),
+    perm_ctx: PermissionContext = Depends(get_permission_context),
     actor_id: UUID | None = None,
 ) -> Response:
     """Take a debate off the list, so no reminder follows.
@@ -164,6 +175,9 @@ async def delete_debat_aankondiging(
     was not followed up.
     """
     await _require_initiatief_toegang(db, ctx, initiatief_id)
+    await _require_access(
+        InitiatiefRepository(db), initiatief_id, current_user, perm_ctx, "contributor"
+    )
 
     row = await db.get(DebatAankondiging, aankondiging_id)
     if row is None or row.initiatief_id != initiatief_id:

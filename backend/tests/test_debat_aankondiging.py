@@ -28,6 +28,7 @@ from bouwmeester.models.mattermost_channel_link import (
     SCOPE_INITIATIEF,
     MattermostChannelLink,
 )
+from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.services import debat_aankondiging_service as mod
 from bouwmeester.services import debat_kanaal_service as kanaal_mod
 from bouwmeester.services.debat_aankondiging_service import (
@@ -39,6 +40,7 @@ from bouwmeester.services.debat_aankondiging_service import (
     reminder_message,
 )
 from bouwmeester.services.tk_activiteit import TkApiError
+from tests.factories import client_as, make_person
 from tests.test_debat_kanaal import AMS, TEAM, FakeMattermost, _activiteit
 
 OTHER_TEAM = "team00000000000000000000bb"
@@ -815,3 +817,84 @@ class TestRoutes:
         resp = await client.get(f"/api/initiatieven/{initiatief.id}/debatten")
 
         assert [d["id"] for d in resp.json()] == [str(coming.id)]
+
+
+async def _member(db_session, initiatief, rol: str):
+    person = await make_person(db_session, f"Lid {uuid.uuid4().hex[:6]}")
+    db_session.add(
+        ResourcePermission(
+            person_id=person.id,
+            resource_type="initiatief",
+            resource_id=initiatief.id,
+            rol=rol,
+        )
+    )
+    await db_session.flush()
+    return person
+
+
+@pytest.mark.asyncio
+class TestWhoMayAnnounce:
+    """An announcement makes the bot post in every channel of the
+    initiatief. Seeing the initiatief is not enough for that."""
+
+    @pytest.fixture
+    def mattermost(self, monkeypatch):
+        mm = Mattermost()
+        monkeypatch.setattr(mod, "MattermostService", lambda session: mm)
+        return mm
+
+    async def test_a_viewer_sees_the_list_and_cannot_announce(
+        self, db_session, initiatief, monkeypatch, mattermost
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        await _link(db_session, initiatief)
+        row = await _row(db_session, initiatief, _activiteit())
+        viewer = await _member(db_session, initiatief, "viewer")
+        url = f"/api/initiatieven/{initiatief.id}/debatten"
+
+        async with client_as(db_session, viewer) as client:
+            listed = await client.get(url)
+            created = await client.post(url, json={"activiteit_id": activiteit.id})
+            deleted = await client.delete(f"{url}/{row.id}")
+
+        assert [d["id"] for d in listed.json()] == [str(row.id)]
+        assert created.status_code == 403
+        assert deleted.status_code == 403
+        assert mattermost.messages == []
+        assert [r.id for r in await _rows(db_session, initiatief)] == [row.id]
+
+    async def test_a_contributor_can_announce_and_take_off(
+        self, db_session, initiatief, monkeypatch, mattermost
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        await _link(db_session, initiatief)
+        contributor = await _member(db_session, initiatief, "contributor")
+        url = f"/api/initiatieven/{initiatief.id}/debatten"
+
+        async with client_as(db_session, contributor) as client:
+            created = await client.post(url, json={"activiteit_id": activiteit.id})
+            deleted = await client.delete(f"{url}/{created.json()['id']}")
+
+        assert created.status_code == 201, created.text
+        assert deleted.status_code == 204
+        # Who announced it is in the message.
+        assert f"door {contributor.naam}" in mattermost.messages[0][1]
+
+    async def test_an_outsider_does_not_learn_the_initiatief_exists(
+        self, db_session, initiatief, monkeypatch, mattermost
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        outsider = await make_person(db_session, f"Buiten {uuid.uuid4().hex[:6]}")
+        url = f"/api/initiatieven/{initiatief.id}/debatten"
+
+        async with client_as(db_session, outsider) as client:
+            listed = await client.get(url)
+            created = await client.post(url, json={"activiteit_id": activiteit.id})
+
+        assert listed.status_code == 404
+        assert created.status_code == 404
+        assert mattermost.messages == []

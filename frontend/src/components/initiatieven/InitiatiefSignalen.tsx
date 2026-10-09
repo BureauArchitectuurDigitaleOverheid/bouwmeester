@@ -27,7 +27,10 @@ export function InitiatiefSignalen({ initiatief }: { initiatief: InitiatiefDetai
     <nldd-container gap="16">
       <AbonnementenSection initiatiefId={initiatief.id} />
       <SignaalcontextSection initiatiefId={initiatief.id} />
-      <DebatAankondigingenSection initiatiefId={initiatief.id} />
+      <DebatAankondigingenSection
+        initiatiefId={initiatief.id}
+        canEdit={initiatief.access_level === 'eigenaar' || initiatief.access_level === 'contributor'}
+      />
       <MattermostChannelsSection scope={{ type: 'initiatief', id: initiatief.id }} />
     </nldd-container>
   );
