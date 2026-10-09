@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class DebatTeam(BaseModel):
@@ -110,3 +110,29 @@ class GevolgdeDebattenResponse(BaseModel):
     totaal: int
     limit: int
     offset: int
+
+
+class DebatAankondigingCreate(BaseModel):
+    activiteit_id: UUID
+
+
+class DebatAankondigingResponse(BaseModel):
+    """A debate that was announced for an initiatief."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    activiteit_id: str
+    nummer: str | None = None
+    soort: str | None = None
+    onderwerp: str
+    commissie: str | None = None
+    aanvang: datetime | None = None
+    einde: datetime | None = None
+    agenda_url: str | None = None
+    # aangekondigd | herinnerd | afgelast | voorbij
+    stand: str
+    created_at: datetime
+    # Only on the answer to announcing: in how many channels the message
+    # was posted. Zero when the initiatief has no channel yet.
+    gepost_in: int | None = None

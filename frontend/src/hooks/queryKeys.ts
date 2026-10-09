@@ -185,6 +185,7 @@ export const queryKeys = {
     detail: (id: string | undefined) => ['initiatieven', 'detail', id] as const,
     mattermostChannels: (id: string | undefined) =>
       ['initiatieven', 'detail', id, 'mattermost-channels'] as const,
+    debatten: (id: string | undefined) => ['initiatieven', 'detail', id, 'debatten'] as const,
   },
 
   // --- Mattermost-channels ---

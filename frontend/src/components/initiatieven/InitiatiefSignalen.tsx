@@ -1,4 +1,5 @@
 import type { InitiatiefDetail } from '@/types';
+import { DebatAankondigingenSection } from '@/components/debatten/DebatAankondigingenSection';
 import { MattermostChannelsSection } from '@/components/mattermost/MattermostChannelsSection';
 import { AbonnementenSection } from '@/components/parlementair/AbonnementenSection';
 import { SignaalcontextSection } from '@/components/parlementair/SignaalcontextSection';
@@ -17,12 +18,16 @@ import { SignaalcontextSection } from '@/components/parlementair/SignaalcontextS
  * leads en voor berichten-als-notities, en die hebben met signalen niets
  * te maken. Een kop die twee derde van zijn inhoud niet dekt is
  * misleidender dan een saaie kop.
+ *
+ * Debates sit between the two: they are not something a search term
+ * found but something a person picked, and they go to the same channels.
  */
 export function InitiatiefSignalen({ initiatief }: { initiatief: InitiatiefDetail }) {
   return (
     <nldd-container gap="16">
       <AbonnementenSection initiatiefId={initiatief.id} />
       <SignaalcontextSection initiatiefId={initiatief.id} />
+      <DebatAankondigingenSection initiatiefId={initiatief.id} />
       <MattermostChannelsSection scope={{ type: 'initiatief', id: initiatief.id }} />
     </nldd-container>
   );

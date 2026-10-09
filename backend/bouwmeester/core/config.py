@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     # this step is skipped and a line stays where the time put it.
     DEBAT_STEMMEN_ENABLED: bool = True
     DEBAT_STEM_MODEL_PATH: str = "/models/voxceleb_resnet34_LM.onnx"
+    # Debates announced for an initiatief: how often is looked whether one
+    # is on today. The reminder goes out once, in the morning, so minutes
+    # do not matter here.
+    DEBAT_AANKONDIGING_INTERVAL_SECONDS: int = 600
 
     # tkconv (berthub.eu) draait op een privéserver zonder SLA en heeft een
     # eigen poll-ritme, los van de officiële TK-API. Het ritme volgt wanneer

@@ -12,6 +12,7 @@ from bouwmeester.models.bron_bijlage import BronBijlage  # noqa: F401
 from bouwmeester.models.chat_attachment import ChatAttachment  # noqa: F401
 from bouwmeester.models.chat_conversation import ChatConversation  # noqa: F401
 from bouwmeester.models.corpus_node import CorpusNode  # noqa: F401
+from bouwmeester.models.debat_aankondiging import DebatAankondiging  # noqa: F401
 from bouwmeester.models.debat_markering import (  # noqa: F401
     DebatMarkering,
     DebatMarkeringVermelding,
