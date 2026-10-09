@@ -102,6 +102,16 @@ This goes to all linked channels, whatever their switches say: the switches
 are for what the bot sends by itself, and this is something a person asked
 for. Taking a debate off the list stops the reminder; what was posted stays.
 
+Announcing and taking off need contributor on the initiatief; a viewer sees
+the list and nothing to press.
+
+An alert about a meeting that is still to come (a convocatie, or the agenda
+of a procedurevergadering) is posted with a megaphone reaction. Pressing it
+puts that meeting on the list of the initiatief the channel hangs on. Nothing
+new goes into the channel, since the alert already is the announcement: the
+bot answers in the thread, and the reminder follows on the morning of the
+meeting. Anyone in the channel may press, like the headphones.
+
 ### Channel creation rights
 
 Mattermost checks one permission for creating the channel,

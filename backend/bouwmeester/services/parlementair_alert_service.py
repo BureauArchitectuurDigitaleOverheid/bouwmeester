@@ -19,7 +19,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bouwmeester.models.mattermost_channel_link import MattermostChannelLink
+from bouwmeester.models.mattermost_channel_link import (
+    SCOPE_INITIATIEF,
+    MattermostChannelLink,
+)
 from bouwmeester.models.parlementair_item import ParlementairItem
 from bouwmeester.repositories.parlementair_abonnement import (
     ParlementairAbonnementRepository,
@@ -240,6 +243,9 @@ class ParlementairAlertService:
 
         # Eén kanaal kan via meerdere termen meekijken; post er één keer.
         kanalen: dict[str, MattermostChannelLink] = {}
+        # The channels that hang on an initiatief and not on a lead: only
+        # an initiatief has a list of meetings to put one on.
+        van_een_initiatief: set[str] = set()
         for abonnement in abonnementen:
             stmt = select(MattermostChannelLink).where(
                 MattermostChannelLink.scope_type == abonnement.scope_type,
@@ -252,6 +258,10 @@ class ParlementairAlertService:
             )
             for link in (await self.session.execute(stmt)).scalars().all():
                 kanalen.setdefault(link.channel_id, link)
+                # A channel hangs on exactly one scope, so the scope of the
+                # abonnement that found it is the scope of the channel.
+                if abonnement.scope_type == SCOPE_INITIATIEF:
+                    van_een_initiatief.add(link.channel_id)
 
         if not kanalen:
             logger.info(
@@ -284,6 +294,13 @@ class ParlementairAlertService:
         # button for setting up a channel for that debate.
         start_button = is_startable(extra)
 
+        # Any meeting that is still to come gets a reaction that puts it on
+        # the list of the initiatief, so a reminder follows on the day. Not
+        # in a channel that hangs on a lead: only an initiatief has a list.
+        from bouwmeester.services.debat_aankondiging_service import is_announceable
+
+        announce_button = is_announceable(extra)
+
         gepost = 0
         for channel_id in kanalen:
             root_id = draden.get(channel_id)
@@ -298,7 +315,11 @@ class ParlementairAlertService:
                 continue
             gepost += 1
             await self._onthoud_post(
-                item.id, channel_id, post_id, start_button=start_button
+                item.id,
+                channel_id,
+                post_id,
+                start_button=start_button,
+                announce_button=(announce_button and channel_id in van_een_initiatief),
             )
         return gepost
 
@@ -348,6 +369,7 @@ class ParlementairAlertService:
         post_id: str,
         *,
         start_button: bool = False,
+        announce_button: bool = False,
     ) -> None:
         """Leg vast waar dit stuk is gepost, en bied de reacties aan.
 
@@ -390,6 +412,12 @@ class ParlementairAlertService:
             from bouwmeester.services.debat_kanaal_service import REACTIE_UITLUISTEREN
 
             reacties.append(REACTIE_UITLUISTEREN)
+        if announce_button:
+            from bouwmeester.services.debat_aankondiging_service import (
+                REACTIE_AANKONDIGEN,
+            )
+
+            reacties.append(REACTIE_AANKONDIGEN)
         for emoji in reacties:
             if not await self.mattermost.add_reaction(post_id, emoji):
                 logger.info("Reactie %s niet geplaatst op post %s", emoji, post_id)

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, select
@@ -32,10 +32,12 @@ from bouwmeester.models.resource_permission import ResourcePermission
 from bouwmeester.services import debat_aankondiging_service as mod
 from bouwmeester.services import debat_kanaal_service as kanaal_mod
 from bouwmeester.services.debat_aankondiging_service import (
+    REACTIE_AANKONDIGEN,
     AlreadyAnnouncedError,
     AnnounceRefusedError,
     DebatAankondigingService,
     announcement_message,
+    is_announceable,
     is_over,
     reminder_message,
 )
@@ -81,15 +83,16 @@ async def initiatief(db_session):
 
 
 async def _link(db_session, initiatief, *, team=TEAM, **overrides):
-    link = MattermostChannelLink(
-        channel_id=uuid.uuid4().hex[:26],
-        channel_name="een-kanaal",
-        channel_display_name="Een kanaal",
-        team_id=team,
-        scope_type=SCOPE_INITIATIEF,
-        scope_id=initiatief.id,
-        **overrides,
-    )
+    values = {
+        "channel_id": uuid.uuid4().hex[:26],
+        "channel_name": "een-kanaal",
+        "channel_display_name": "Een kanaal",
+        "team_id": team,
+        "scope_type": SCOPE_INITIATIEF,
+        "scope_id": initiatief.id,
+    }
+    values.update(overrides)
+    link = MattermostChannelLink(**values)
     db_session.add(link)
     await db_session.flush()
     return link
@@ -898,3 +901,329 @@ class TestWhoMayAnnounce:
         assert listed.status_code == 404
         assert created.status_code == 404
         assert mattermost.messages == []
+
+
+class TestIsAnnounceable:
+    EXTRA = {
+        "activiteit_id": "cc83dcc6-44ac-46ee-b56d-87371a47f94f",
+        "categorie": "vergadering_vooruit",
+        "soort": "Agenda procedurevergadering",
+        "activiteit_datum": "2026-10-14",
+        "activiteit_status": "Gepland",
+    }
+    TODAY = date(2026, 10, 9)
+
+    def test_an_upcoming_meeting_gets_the_button(self):
+        assert is_announceable(self.EXTRA, self.TODAY) is True
+
+    def test_a_convocatie_too(self):
+        extra = {**self.EXTRA, "soort": "Convocatie commissieactiviteit"}
+        assert is_announceable(extra, self.TODAY) is True
+
+    def test_today_still_counts_and_yesterday_does_not(self):
+        assert is_announceable(self.EXTRA, date(2026, 10, 14)) is True
+        assert is_announceable(self.EXTRA, date(2026, 10, 15)) is False
+
+    def test_without_a_meeting_there_is_nothing_to_list(self):
+        assert (
+            is_announceable({**self.EXTRA, "activiteit_id": None}, self.TODAY) is False
+        )
+
+    def test_a_deadline_for_written_input_is_not_a_meeting(self):
+        extra = {**self.EXTRA, "soort": "Convocatie inbreng"}
+        assert is_announceable(extra, self.TODAY) is False
+
+    def test_a_report_of_a_meeting_that_was_gets_no_button(self):
+        extra = {**self.EXTRA, "categorie": "vergadering_terug"}
+        assert is_announceable(extra, self.TODAY) is False
+
+    @pytest.mark.parametrize("status", ["Geannuleerd", "Verplaatst"])
+    def test_a_meeting_that_is_off_gets_no_button(self, status):
+        extra = {**self.EXTRA, "activiteit_status": status}
+        assert is_announceable(extra, self.TODAY) is False
+
+    def test_no_extra_at_all(self):
+        assert is_announceable(None, self.TODAY) is False
+
+
+POST = "post000000000000000000aaaa"
+USER = "user000000000000000000aaaa"
+
+
+@pytest.mark.asyncio
+class TestAnnounceFromAlert:
+    """The megaphone under an alert: on the list, and a reply in the thread."""
+
+    async def _press(self, db_session, mm, link, activiteit, now=None):
+        return await DebatAankondigingService(db_session, mm).announce_from_alert(
+            extra={"activiteit_id": activiteit.id},
+            channel_id=link.channel_id,
+            post_id=POST,
+            mattermost_user_id=USER,
+            now=now,
+        )
+
+    async def test_lists_the_meeting_and_answers_in_the_thread(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        other = await _link(db_session, initiatief)
+        mm = Mattermost()
+
+        outcome = await self._press(db_session, mm, link, activiteit)
+
+        assert outcome == "listed"
+        (row,) = await _rows(db_session, initiatief)
+        assert row.activiteit_id == activiteit.id
+        assert row.stand == STAND_AANGEKONDIGD
+        # One reply under the alert, and nothing new in any channel: the
+        # alert is the announcement.
+        ((channel, tekst, root),) = mm.messages
+        assert (channel, root) == (link.channel_id, POST)
+        assert other.channel_id != channel
+        assert f"op de lijst van **{initiatief.naam}**" in tekst
+        assert "Op de ochtend van dinsdag 6 oktober" in tekst
+        assert "begint om 16:30" in tekst
+
+    async def test_the_reminder_then_follows_on_the_day(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        mm = Mattermost()
+        await self._press(db_session, mm, link, activiteit)
+
+        result = await DebatAankondigingService(db_session, mm).tick(MORNING)
+
+        assert result.herinnerd == 1
+        assert "Vandaag om 16:30" in mm.messages[-1][1]
+        assert mm.messages[-1][2] is None
+
+    async def test_a_second_press_says_it_is_there_already(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        mm = Mattermost()
+        await self._press(db_session, mm, link, activiteit)
+
+        outcome = await self._press(db_session, mm, link, activiteit)
+
+        assert outcome == "exists"
+        assert "staat al op de lijst" in mm.messages[-1][1]
+        assert len(await _rows(db_session, initiatief)) == 1
+
+    async def test_a_meeting_of_today_promises_no_reminder(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        mm = Mattermost()
+
+        await self._press(db_session, mm, link, activiteit, now=MORNING)
+
+        (row,) = await _rows(db_session, initiatief)
+        assert row.stand == STAND_HERINNERD
+        assert "herinnering" not in mm.messages[0][1]
+
+    async def test_a_cancelled_meeting_is_answered_with_the_reason(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit(status="Geannuleerd")
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief)
+        mm = Mattermost()
+
+        outcome = await self._press(db_session, mm, link, activiteit)
+
+        assert outcome == "refused"
+        assert mm.messages[0][1] == "Deze vergadering is geannuleerd."
+        assert mm.messages[0][2] == POST
+
+    async def test_an_alert_without_a_meeting_is_answered(self, db_session, initiatief):
+        link = await _link(db_session, initiatief)
+        mm = Mattermost()
+
+        outcome = await DebatAankondigingService(db_session, mm).announce_from_alert(
+            extra={}, channel_id=link.channel_id, post_id=POST, mattermost_user_id=USER
+        )
+
+        assert outcome == "refused"
+        assert "geen vergadering bekend" in mm.messages[0][1]
+
+    async def test_a_channel_of_a_lead_has_no_list(
+        self, db_session, initiatief, monkeypatch
+    ):
+        activiteit = _activiteit()
+        _known(monkeypatch, activiteit)
+        link = await _link(db_session, initiatief, scope_type="lead")
+        mm = Mattermost()
+
+        outcome = await self._press(db_session, mm, link, activiteit)
+
+        assert outcome == "refused"
+        assert "hangt niet aan een initiatief" in mm.messages[0][1]
+        assert await _rows(db_session, initiatief) == []
+
+
+@pytest.mark.asyncio
+class TestMegaphoneUnderTheAlert:
+    async def _post_alert(self, scope_type="initiatief", **extra) -> list[str]:
+        from tests.test_wegklikken import (
+            TestPostAlertLegtVast,
+            _abonnement,
+            _Mattermost,
+            _Sessie,
+        )
+        from tests.test_wegklikken import _item as alert_item
+
+        mm = _Mattermost(post_id="post-abc")
+        abonnement = _abonnement()
+        abonnement.scope_type = scope_type
+        svc = TestPostAlertLegtVast()._svc_met_kanaal(mm, _Sessie(), abonnement)
+        assert await svc.post_alert(alert_item(relevantie_score=85, **extra)) == 1
+        return [emoji for _, emoji in mm.reacties]
+
+    VERGADERING = {
+        "categorie": "vergadering_vooruit",
+        "soort": "Agenda procedurevergadering",
+        "activiteit_id": str(uuid.uuid4()),
+        "activiteit_datum": "2099-10-14",
+        "activiteit_status": "Gepland",
+    }
+
+    async def test_an_agenda_of_an_upcoming_meeting_gets_it(self):
+        assert await self._post_alert(**self.VERGADERING) == [
+            "x",
+            "eyes",
+            REACTIE_AANKONDIGEN,
+        ]
+
+    async def test_a_brief_does_not(self):
+        reactions = await self._post_alert(categorie="brief", soort="Brief regering")
+        assert reactions == ["x", "eyes"]
+
+    async def test_a_channel_of_a_lead_does_not(self):
+        reactions = await self._post_alert(scope_type="lead", **self.VERGADERING)
+        assert reactions == ["x", "eyes"]
+
+
+@pytest.mark.asyncio
+class TestReactionReachesTheService:
+    async def _react(self, db_session, monkeypatch, *, emoji, post_id, user=USER):
+        from contextlib import asynccontextmanager
+
+        from bouwmeester.services import mattermost_websocket_service as ws_mod
+
+        calls: list[dict] = []
+
+        class FakeService:
+            def __init__(self, session):
+                pass
+
+            async def announce_from_alert(self, **kwargs):
+                calls.append(kwargs)
+                return "listed"
+
+            async def close(self):
+                pass
+
+        monkeypatch.setattr(mod, "DebatAankondigingService", FakeService)
+
+        @asynccontextmanager
+        async def _session():
+            yield db_session
+
+        monkeypatch.setattr(ws_mod, "async_session", _session)
+        svc = ws_mod.MattermostWebsocketService.__new__(
+            ws_mod.MattermostWebsocketService
+        )
+        svc._bot_user_id = "bot0000000000000000000aaaa"
+        await svc._dispatch_reaction_added(
+            {
+                "event": "reaction_added",
+                "data": {
+                    "reaction": {
+                        "user_id": user,
+                        "post_id": post_id,
+                        "emoji_name": emoji,
+                    }
+                },
+            }
+        )
+        return calls
+
+    async def _alert(self, db_session) -> tuple[str, str, str]:
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+        from tests.test_debat_kanaal import _item
+
+        activiteit_id = str(uuid.uuid4())
+        item = await _item(db_session, activiteit_id)
+        post_id = f"post{uuid.uuid4().hex[:22]}"
+        channel_id = uuid.uuid4().hex[:26]
+        db_session.add(
+            ParlementairAlertPost(
+                parlementair_item_id=item.id, channel_id=channel_id, post_id=post_id
+            )
+        )
+        await db_session.flush()
+        return activiteit_id, channel_id, post_id
+
+    async def test_the_megaphone_on_an_alert_reaches_the_service(
+        self, db_session, monkeypatch
+    ):
+        activiteit_id, channel_id, post_id = await self._alert(db_session)
+
+        calls = await self._react(
+            db_session, monkeypatch, emoji=REACTIE_AANKONDIGEN, post_id=post_id
+        )
+
+        assert calls == [
+            {
+                "extra": {"activiteit_id": activiteit_id},
+                "channel_id": channel_id,
+                "post_id": post_id,
+                "mattermost_user_id": USER,
+            }
+        ]
+
+    async def test_another_emoji_does_not(self, db_session, monkeypatch):
+        _, _, post_id = await self._alert(db_session)
+
+        calls = await self._react(
+            db_session, monkeypatch, emoji="thumbsup", post_id=post_id
+        )
+
+        assert calls == []
+
+    async def test_the_megaphone_on_another_post_does_not(
+        self, db_session, monkeypatch
+    ):
+        calls = await self._react(
+            db_session,
+            monkeypatch,
+            emoji=REACTIE_AANKONDIGEN,
+            post_id="post000000000000000000zzzz",
+        )
+
+        assert calls == []
+
+    async def test_the_megaphone_the_bot_places_itself_does_nothing(
+        self, db_session, monkeypatch
+    ):
+        _, _, post_id = await self._alert(db_session)
+
+        calls = await self._react(
+            db_session,
+            monkeypatch,
+            emoji=REACTIE_AANKONDIGEN,
+            post_id=post_id,
+            user="bot0000000000000000000aaaa",
+        )
+
+        assert calls == []

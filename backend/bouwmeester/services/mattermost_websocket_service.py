@@ -535,6 +535,72 @@ class MattermostWebsocketService:
                 await service.close()
             return True
 
+    async def _handle_debat_aankondiging(
+        self, post_id: str, emoji_name: str, user_id: str
+    ) -> bool:
+        """Put the meeting of an alert on the list of its initiatief.
+
+        Returns whether the reaction was handled here. Like the start
+        button: any human may add the reaction, also under an alert that
+        was posted without it, and whether there is a meeting to list is
+        decided when it is pressed. The answer is a reply in the thread.
+        """
+        from bouwmeester.services.debat_aankondiging_service import (
+            REACTIE_AANKONDIGEN,
+            DebatAankondigingService,
+        )
+
+        if emoji_name != REACTIE_AANKONDIGEN:
+            return False
+
+        from bouwmeester.models.parlementair_alert_post import ParlementairAlertPost
+        from bouwmeester.models.parlementair_item import ParlementairItem
+
+        async with async_session() as session:
+            # The lookup apart from the work, as in `_handle_debat_start`.
+            try:
+                stmt = (
+                    select(
+                        ParlementairItem.extra_data, ParlementairAlertPost.channel_id
+                    )
+                    .join(
+                        ParlementairAlertPost,
+                        ParlementairAlertPost.parlementair_item_id
+                        == ParlementairItem.id,
+                    )
+                    .where(ParlementairAlertPost.post_id == post_id)
+                )
+                row = (await session.execute(stmt)).first()
+            except Exception:
+                logger.exception(
+                    "Kon niet opzoeken of post %s bij een kamerstuk hoort", post_id
+                )
+                return False
+
+            if row is None:
+                return False
+            extra, channel_id = row
+
+            service = DebatAankondigingService(session)
+            try:
+                outcome = await service.announce_from_alert(
+                    extra=extra,
+                    channel_id=channel_id,
+                    post_id=post_id,
+                    mattermost_user_id=user_id,
+                )
+                logger.info(
+                    "Aankondigknop op post %s door %s: %s", post_id, user_id, outcome
+                )
+            except Exception:
+                await session.rollback()
+                logger.exception(
+                    "Vergadering op de lijst zetten vanaf post %s mislukt", post_id
+                )
+            finally:
+                await service.close()
+            return True
+
     async def _handle_vraag_reactie(self, post_id: str, emoji_name: str) -> bool:
         """Note a reaction on the reply of a marked question in a debate.
 
@@ -644,6 +710,9 @@ class MattermostWebsocketService:
         # en zonder deze volgorde zou een wegklik op een alert in het
         # suggested-lead-pad belanden, daar niets vinden en stil verdwijnen.
         if await self._handle_debat_start(post_id, emoji_name, user_id):
+            return
+
+        if await self._handle_debat_aankondiging(post_id, emoji_name, user_id):
             return
 
         # Before the two below: "x" and "white_check_mark" mean something

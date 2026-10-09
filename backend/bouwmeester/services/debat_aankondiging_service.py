@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
@@ -36,14 +36,17 @@ from bouwmeester.models.mattermost_channel_link import (
     SCOPE_INITIATIEF,
     MattermostChannelLink,
 )
+from bouwmeester.repositories.mattermost_user import MattermostUserRepository
 from bouwmeester.services.debat_kanaal_service import (
     AMSTERDAM,
     DEBAT_DIRECT_URL,
+    RETRY_HINT_REACTION,
     _format_start,
     activiteit_url,
     find_successor,
     format_moment,
 )
+from bouwmeester.services.kamerstuk_soort import CAT_VERGADERING_VOORUIT
 from bouwmeester.services.mattermost_service import MattermostService
 from bouwmeester.services.mattermost_utils import (
     escape_mattermost_md,
@@ -64,6 +67,13 @@ _TK_TIMEOUT = 15.0
 # From when on the day the reminder goes out, in Dutch local time. Early
 # enough for a debate at ten, late enough that someone reads it.
 REMINDER_FROM_HOUR = 7
+
+# The reaction under an alert that puts its meeting on the list.
+REACTIE_AANKONDIGEN = "mega"
+
+# A convocatie for written input announces a deadline, not a meeting: there
+# is nothing to watch on the day.
+_SOORT_ZONDER_VERGADERING = "Convocatie inbreng"
 
 # How long a planned meeting is taken to last when the API gives no end.
 _ASSUMED_DURATION = timedelta(hours=4)
@@ -89,6 +99,33 @@ def is_over(
     if einde is not None:
         return einde < now
     return aanvang is not None and aanvang + _ASSUMED_DURATION < now
+
+
+def is_announceable(extra: dict | None, today: date | None = None) -> bool:
+    """Should this alert get the reaction that puts its meeting on the list?
+
+    Decided on what the import stored, without a call to the TK API: this
+    runs for every alert that is posted. Pressing reads the current state,
+    so a meeting that was cancelled afterwards is caught there.
+    """
+    extra = extra or {}
+    if not extra.get("activiteit_id"):
+        return False
+    if extra.get("categorie") != CAT_VERGADERING_VOORUIT:
+        return False
+    if extra.get("soort") == _SOORT_ZONDER_VERGADERING:
+        return False
+    if extra.get("activiteit_status") in (STATUS_CANCELLED, STATUS_MOVED):
+        return False
+    raw = extra.get("activiteit_datum")
+    if raw:
+        try:
+            datum = date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            return True
+        if datum < (today or datetime.now(AMSTERDAM).date()):
+            return False
+    return True
 
 
 def _title(activiteit: Activiteit) -> str:
@@ -154,17 +191,33 @@ def reminder_message(activiteit: Activiteit, debat_channel: str | None = None) -
     return "\n".join(regel for regel in regels if regel)
 
 
+def listed_message(
+    activiteit: Activiteit, initiatief_naam: str, *, reminder_follows: bool
+) -> str:
+    """The reply under an alert whose meeting was put on the list."""
+    naam = escape_mattermost_md(initiatief_naam)
+    if not reminder_follows or activiteit.aanvang is None:
+        return f"📣 Deze vergadering staat op de lijst van **{naam}**."
+    start = activiteit.aanvang.astimezone(AMSTERDAM)
+    dag = _format_start(activiteit.aanvang).split(",")[0]
+    return (
+        f"📣 Deze vergadering staat op de lijst van **{naam}**. Op de ochtend "
+        f"van {dag} volgt in dit kanaal een herinnering; ze begint om "
+        f"{start:%H:%M}."
+    )
+
+
 def off_message(row: DebatAankondiging, wat: str) -> str:
     """The message that an announced debate is not happening as announced."""
     wanneer = f" van {_format_start(row.aanvang)}" if row.aanvang else ""
-    return f"⚠️ Het debat **{escape_mattermost_md(row.onderwerp)}**{wanneer} {wat}"
+    return f"⚠️ De vergadering **{escape_mattermost_md(row.onderwerp)}**{wanneer} {wat}"
 
 
 def moved_message(row: DebatAankondiging, activiteit: Activiteit) -> str:
     """The message that an announced debate has a new moment."""
     was = f" (was {_format_start(row.aanvang)})" if row.aanvang else ""
     return (
-        f"📅 Het debat **{_title(activiteit)}** is verzet naar "
+        f"📅 De vergadering **{_title(activiteit)}** is verzet naar "
         f"{format_moment(activiteit)}{was}."
     )
 
@@ -216,6 +269,115 @@ class DebatAankondigingService:
         `AnnounceRefusedError` when this meeting is not one to announce and
         `AlreadyAnnouncedError` when it was announced before.
         """
+        row, activiteit, is_today = await self._record(
+            initiatief.id, activiteit_id, person_id, now
+        )
+        gepost = await self._post(
+            initiatief.id,
+            activiteit.id,
+            lambda kanaal: announcement_message(
+                activiteit,
+                initiatief_naam=initiatief.naam,
+                door=door,
+                reminder_follows=not is_today,
+                debat_channel=kanaal,
+            ),
+        )
+        return AnnounceResult(row=row, gepost_in=gepost)
+
+    async def announce_from_alert(
+        self,
+        *,
+        extra: dict | None,
+        channel_id: str,
+        post_id: str,
+        mattermost_user_id: str | None,
+        now: datetime | None = None,
+    ) -> str:
+        """Put the meeting of an alert on the list of the initiatief.
+
+        For the reaction under an alert. The alert is the announcement, so
+        nothing new goes into the channel: the answer is a reply in the
+        thread, also when nothing was done, and the reminder follows on the
+        day. Anyone in the channel may press, like the start button: all it
+        brings about is one more message in a channel they are already in.
+
+        Returns what happened: listed, exists, refused or failed.
+        """
+
+        async def reply(tekst: str) -> None:
+            await self.mattermost.send_channel_message(
+                channel_id, tekst, root_id=post_id
+            )
+
+        link = (
+            await self.session.execute(
+                select(MattermostChannelLink).where(
+                    MattermostChannelLink.channel_id == channel_id
+                )
+            )
+        ).scalar_one_or_none()
+        initiatief = (
+            await self.session.get(Initiatief, link.scope_id)
+            if link is not None and link.scope_type == SCOPE_INITIATIEF
+            else None
+        )
+        if initiatief is None:
+            await reply(
+                "Dit kanaal hangt niet aan een initiatief, dus er is geen lijst "
+                "om deze vergadering op te zetten."
+            )
+            return "refused"
+        activiteit_id = (extra or {}).get("activiteit_id")
+        if not activiteit_id:
+            await reply("Bij dit stuk is geen vergadering bekend.")
+            return "refused"
+
+        person_id = None
+        if mattermost_user_id:
+            mapping = await MattermostUserRepository(
+                self.session
+            ).get_by_mattermost_user_id(mattermost_user_id)
+            person_id = mapping.person_id if mapping else None
+
+        naam = initiatief.naam
+        # None of the refusals below leaves anything to roll back: the
+        # meeting is only read, and a lost insert undoes its own savepoint.
+        try:
+            _, activiteit, is_today = await self._record(
+                initiatief.id, str(activiteit_id), person_id, now
+            )
+            await self.session.commit()
+        except TkApiError:
+            await reply(
+                "De agenda van de Tweede Kamer is nu niet op te halen. "
+                f"{RETRY_HINT_REACTION}"
+            )
+            return "failed"
+        except AnnounceRefusedError as exc:
+            await reply(str(exc))
+            return "refused"
+        except AlreadyAnnouncedError:
+            await reply(
+                "Deze vergadering staat al op de lijst van "
+                f"**{escape_mattermost_md(naam)}**."
+            )
+            return "exists"
+
+        await reply(listed_message(activiteit, naam, reminder_follows=not is_today))
+        return "listed"
+
+    async def _record(
+        self,
+        initiatief_id: uuid.UUID,
+        activiteit_id: str,
+        person_id: uuid.UUID | None,
+        now: datetime | None,
+    ) -> tuple[DebatAankondiging, Activiteit, bool]:
+        """Read the meeting and put it on the list; posts nothing.
+
+        Returns the row, the meeting as it stands and whether it is today.
+        """
         async with httpx.AsyncClient(timeout=_TK_TIMEOUT) as client:
             activiteit = await fetch_activiteit(activiteit_id, client)
         if activiteit is None:
@@ -233,7 +395,7 @@ class DebatAankondigingService:
             raise AnnounceRefusedError("Deze vergadering is al geweest.")
 
         row = DebatAankondiging(
-            initiatief_id=initiatief.id,
+            initiatief_id=initiatief_id,
             activiteit_id=activiteit.id,
             created_by_id=person_id,
         )
@@ -254,19 +416,7 @@ class DebatAankondigingService:
                 self.session.add(row)
         except IntegrityError as exc:
             raise AlreadyAnnouncedError from exc
-
-        gepost = await self._post(
-            initiatief.id,
-            activiteit.id,
-            lambda kanaal: announcement_message(
-                activiteit,
-                initiatief_naam=initiatief.naam,
-                door=door,
-                reminder_follows=not is_today,
-                debat_channel=kanaal,
-            ),
-        )
-        return AnnounceResult(row=row, gepost_in=gepost)
+        return row, activiteit, is_today
 
     async def tick(self, now: datetime | None = None) -> TickResult:
         """Remind of what is on today, and say what is off."""
