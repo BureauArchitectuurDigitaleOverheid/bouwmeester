@@ -24,6 +24,12 @@ export type TijdlijnStatus = 'gekoppeld' | 'loopt' | 'afgelopen' | 'afgelast';
 /** Where a debate stands according to Debat Direct. */
 export type DebatStand = 'niet_begonnen' | 'bezig' | 'geschorst' | 'afgelopen';
 
+/** An initiatief a debate was announced for. */
+export interface DebatInitiatief {
+  id: string;
+  naam: string;
+}
+
 export interface AankomendDebat {
   activiteit_id: string;
   nummer: string | null;
@@ -38,6 +44,8 @@ export interface AankomendDebat {
   stand: DebatStand | null;
   /** When it really started, once it has. */
   begonnen_om: string | null;
+  /** The initiatieven it was announced for, as far as this person may see them. */
+  aangekondigd_voor: DebatInitiatief[];
 }
 
 export interface AankomendeDebatten {

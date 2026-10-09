@@ -22,6 +22,7 @@ function debat(overrides: Partial<AankomendDebat> = {}): AankomendDebat {
     kanalen: [],
     stand: null,
     begonnen_om: null,
+    aangekondigd_voor: [],
     ...overrides,
   };
 }
