@@ -1,0 +1,66 @@
+# Machine-leesbare metadata volgens de publiccode.yml-standaard, voor de
+# open-sourcecatalogus op developer.overheid.nl.
+
+publiccodeYmlVersion: "0.7"
+
+name: Bouwmeester
+url: "https://github.com/NederlandseDigitaleDienst/bouwmeester"
+landingURL: "https://bouwmeester.rijks.app"
+
+softwareType: standalone/web
+developmentStatus: beta
+
+platforms:
+  - web
+
+categories:
+  - collaboration
+  - knowledge-management
+
+description:
+  nl:
+    shortDescription: >-
+      Gedeelde werkplek voor beleidsmakers bij de Rijksoverheid, met de
+      bouwstenen van beleid naast de mensen en de organisatie erachter.
+    longDescription: >-
+      Bouwmeester is een gedeelde werkplek voor mensen die beleid maken bij de
+      Rijksoverheid. Het houdt de bouwstenen van beleid bij als een graaf:
+      dossiers, doelen, instrumenten en maatregelen en hoe die samenhangen,
+      met taken en eigenaren op elk onderdeel. Daarnaast staat de organisatie
+      erin: de organisatieboom, wie waar werkt, en wie wat mag zien of
+      wijzigen.
+
+      Bouwmeester volgt ook de Tweede Kamer. Het zoekt in nieuwe Kamerstukken
+      op zoektermen en plaatst wat ertoe doet met een samenvatting in een
+      Mattermost-kanaal. Een debat is live te volgen in een kanaal: wie
+      spreekt, wat er gezegd wordt, en welke vragen, moties en toezeggingen
+      eruit komen. De backend is gebouwd met FastAPI en PostgreSQL, de
+      frontend met React en het NLDD Designsysteem. De interface is in het
+      Nederlands.
+    features:
+      - Beleidscorpus als graaf met taken en eigenaren
+      - Organisatieboom met rechten
+      - Initiatieven met een optionele openbare pagina
+      - Kamerstukken volgen op zoektermen
+      - Debatten van de Tweede Kamer live volgen in Mattermost
+
+legal:
+  license: EUPL-1.2
+  mainCopyrightOwner: Nederlandse Digitale Dienst
+
+maintenance:
+  type: internal
+  contacts:
+    - name: Nederlandse Digitale Dienst
+      email: opensource@minbzk.nl
+
+localisation:
+  localisationReady: false
+  availableLanguages:
+    - nl
+
+intendedAudience:
+  countries:
+    - NL
+  scope:
+    - government
