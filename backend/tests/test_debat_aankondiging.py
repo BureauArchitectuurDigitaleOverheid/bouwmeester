@@ -12,7 +12,8 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bouwmeester.models.debat_aankondiging import (
     STAND_AANGEKONDIGD,
@@ -302,22 +303,33 @@ class TestAnnounce:
 
         assert len(await _rows(db_session, other)) == 1
 
+    @pytest.mark.parametrize(
+        ("now", "stand", "promised"),
+        [
+            # The evening before: the reminder is still to come.
+            (MORNING - timedelta(hours=10), STAND_AANGEKONDIGD, True),
+            # The day itself, before and after the hour the reminder goes
+            # out, and while the debate is on.
+            (MORNING.replace(hour=6), STAND_HERINNERD, False),
+            (MORNING, STAND_HERINNERD, False),
+            (MORNING.replace(hour=17), STAND_HERINNERD, False),
+        ],
+    )
     async def test_a_debate_of_today_is_not_reminded_of_again(
-        self, db_session, initiatief, monkeypatch
+        self, db_session, initiatief, monkeypatch, now, stand, promised
     ):
-        now = datetime.now(UTC)
-        activiteit = _activiteit(
-            aanvang=now - timedelta(minutes=1), einde=now + timedelta(hours=2)
-        )
+        activiteit = _activiteit()
         _known(monkeypatch, activiteit)
         await _link(db_session, initiatief)
         mm = Mattermost()
 
-        await _announce(db_session, mm, initiatief, activiteit)
+        await DebatAankondigingService(db_session, mm).announce(
+            initiatief, activiteit.id, person_id=None, door=None, now=now
+        )
 
         (row,) = await _rows(db_session, initiatief)
-        assert row.stand == STAND_HERINNERD
-        assert "herinnering" not in mm.messages[0][1]
+        assert row.stand == stand
+        assert ("herinnering" in mm.messages[0][1]) is promised
 
     async def test_names_the_debate_channel_of_the_same_team_only(
         self, db_session, initiatief, monkeypatch
@@ -582,20 +594,118 @@ class TestTick:
         assert result.herinnerd == 0
         assert mm.messages == []
 
-    async def test_a_message_mattermost_refuses_is_not_counted_as_sent(
-        self, db_session, initiatief, monkeypatch
+
+@pytest.fixture
+async def real_session(_test_engine):
+    """A session that really commits and really rolls back.
+
+    `db_session` joins an outer transaction, so the rollback after a failed
+    row undoes the whole test. What a failed round leaves behind can only
+    be seen with rows that are really there.
+    """
+    session = AsyncSession(bind=_test_engine, expire_on_commit=False)
+    made: list[uuid.UUID] = []
+    try:
+        yield session, made
+    finally:
+        await session.rollback()
+        for initiatief_id in made:
+            await session.execute(
+                delete(MattermostChannelLink).where(
+                    MattermostChannelLink.scope_id == initiatief_id
+                )
+            )
+            # The aankondigingen go with the initiatief.
+            await session.execute(
+                delete(Initiatief).where(Initiatief.id == initiatief_id)
+            )
+        await session.commit()
+        await session.close()
+
+
+@pytest.mark.asyncio
+class TestFailedRound:
+    """One test, on purpose: a round reads every open row there is, so two
+    tests that commit rows would find each other's."""
+
+    async def test_a_failed_row_waits_and_does_not_hold_up_the_next(
+        self, real_session, _test_engine, monkeypatch
     ):
-        activiteit = _activiteit()
-        _known(monkeypatch, activiteit)
-        await _link(db_session, initiatief)
-        await _row(db_session, initiatief, activiteit)
+        session, made = real_session
+        initiatief = Initiatief(
+            id=uuid.uuid4(), naam=f"Initiatief {uuid.uuid4().hex[:8]}"
+        )
+        session.add(initiatief)
+        made.append(initiatief.id)
+        await session.flush()
+        link = await _link(session, initiatief)
+        # A century on, so no row of another test is on this day.
+        start = datetime(2199, 3, 5, 14, 0, tzinfo=AMS)
+        morning = start.replace(hour=9)
+        first = _activiteit(
+            onderwerp="Eerste", aanvang=start, einde=start + timedelta(hours=2)
+        )
+        second = _activiteit(
+            onderwerp="Tweede",
+            aanvang=start + timedelta(hours=1),
+            einde=start + timedelta(hours=3),
+        )
+        # The ids and not the rows: a rollback expires what was loaded,
+        # and reading an expired row outside the session's own calls fails.
+        row_one = (await _row(session, initiatief, first)).id
+        row_two = (await _row(session, initiatief, second)).id
+        channel_id = link.channel_id
+        await session.commit()
+
+        unreadable = {first.id}
+        known = {first.id: first, second.id: second}
+
+        async def fake_fetch(activiteit_id, client, base_url=None):
+            if activiteit_id in unreadable:
+                raise TkApiError("stuk")
+            return known.get(activiteit_id)
+
+        monkeypatch.setattr(mod, "fetch_activiteit", fake_fetch)
         mm = Mattermost()
+
+        async def stand(row_id: uuid.UUID) -> str:
+            # A session of its own: what counts is what was committed.
+            async with AsyncSession(bind=_test_engine) as other:
+                return (
+                    await other.execute(
+                        select(DebatAankondiging.stand).where(
+                            DebatAankondiging.id == row_id
+                        )
+                    )
+                ).scalar_one()
+
+        def ours() -> list[str]:
+            return [m[1] for m in mm.messages if m[0] == channel_id]
+
+        # The agenda fails for the first, Mattermost refuses the second.
         mm.post_ok = False
+        await DebatAankondigingService(session, mm).tick(morning)
 
-        result = await self._tick(db_session, mm)
+        assert ours() == []
+        assert await stand(row_one) == STAND_AANGEKONDIGD
+        assert await stand(row_two) == STAND_AANGEKONDIGD
 
-        assert result.fouten == 1
-        assert result.herinnerd == 0
+        # Mattermost is back. The first still fails and the second goes out.
+        mm.post_ok = True
+        await DebatAankondigingService(session, mm).tick(morning)
+
+        assert len(ours()) == 1
+        assert "Tweede" in ours()[0]
+        assert await stand(row_one) == STAND_AANGEKONDIGD
+        assert await stand(row_two) == STAND_HERINNERD
+
+        # The agenda is back: the first goes out, the second not again.
+        unreadable.clear()
+        await DebatAankondigingService(session, mm).tick(morning)
+
+        assert len(ours()) == 2
+        assert "Eerste" in ours()[1]
+        assert await stand(row_one) == STAND_HERINNERD
 
 
 @pytest.mark.asyncio

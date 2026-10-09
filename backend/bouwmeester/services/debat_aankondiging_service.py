@@ -208,6 +208,7 @@ class DebatAankondigingService:
         *,
         person_id: uuid.UUID | None,
         door: str | None,
+        now: datetime | None = None,
     ) -> AnnounceResult:
         """Record the debate for this initiatief and tell its channels.
 
@@ -227,7 +228,8 @@ class DebatAankondigingService:
             raise AnnounceRefusedError(
                 "Deze vergadering is verplaatst. Kies de nieuwe datum in de lijst."
             )
-        if is_over(activiteit.aanvang, activiteit.einde):
+        now = now or datetime.now(UTC)
+        if is_over(activiteit.aanvang, activiteit.einde, now):
             raise AnnounceRefusedError("Deze vergadering is al geweest.")
 
         row = DebatAankondiging(
@@ -238,7 +240,7 @@ class DebatAankondigingService:
         self._take_over(row, activiteit)
         # A debate of today is not reminded of minutes after it was
         # announced: the announcement is the reminder.
-        today = datetime.now(AMSTERDAM).date()
+        today = now.astimezone(AMSTERDAM).date()
         is_today = (
             activiteit.aanvang is not None
             and activiteit.aanvang.astimezone(AMSTERDAM).date() <= today
