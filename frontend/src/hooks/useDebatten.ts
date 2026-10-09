@@ -1,15 +1,18 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   getAankomendeDebatten,
+  getDebatAankondigingen,
   getGevolgdeDebatten,
   hervatDebat,
+  kondigDebatAan,
   startDebat,
   stopDebat,
+  verwijderDebatAankondiging,
 } from '@/api/debatten';
 import { volgendeOffset } from '@/pages/debatten';
 import { useMutationWithError } from '@/hooks/useMutationWithError';
 import { queryKeys } from '@/hooks/queryKeys';
-import type { DebatStartResult, DebatVolgenResult } from '@/types/debat';
+import type { DebatAankondiging, DebatStartResult, DebatVolgenResult } from '@/types/debat';
 
 export function useAankomendeDebatten() {
   return useQuery({
@@ -63,5 +66,44 @@ export function useHervatDebat() {
     mutationFn: ({ sessieId }) => hervatDebat(sessieId),
     errorMessage: 'Fout bij het hervatten van het volgen',
     invalidateKeys: [queryKeys.debatten.all],
+  });
+}
+
+/**
+ * The agenda of the Kamer, for picking a debate to announce.
+ *
+ * The same list as the Debatten page, under the same key, but read only
+ * while someone is searching and not refreshed by the minute: what is
+ * running right now does not matter for choosing a debate of next week.
+ */
+export function useDebatAgenda(enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.debatten.aankomend(),
+    queryFn: getAankomendeDebatten,
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useDebatAankondigingen(initiatiefId: string) {
+  return useQuery({
+    queryKey: queryKeys.initiatieven.debatten(initiatiefId),
+    queryFn: () => getDebatAankondigingen(initiatiefId),
+  });
+}
+
+export function useKondigDebatAan(initiatiefId: string) {
+  return useMutationWithError<DebatAankondiging, { activiteitId: string }>({
+    mutationFn: ({ activiteitId }) => kondigDebatAan(initiatiefId, activiteitId),
+    errorMessage: 'Aankondigen is niet gelukt',
+    invalidateKeys: [queryKeys.initiatieven.debatten(initiatiefId)],
+  });
+}
+
+export function useVerwijderDebatAankondiging(initiatiefId: string) {
+  return useMutationWithError<void, { aankondigingId: string }>({
+    mutationFn: ({ aankondigingId }) => verwijderDebatAankondiging(initiatiefId, aankondigingId),
+    errorMessage: 'Van de lijst halen is niet gelukt',
+    invalidateKeys: [queryKeys.initiatieven.debatten(initiatiefId)],
   });
 }

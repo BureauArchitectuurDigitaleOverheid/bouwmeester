@@ -1453,7 +1453,7 @@ class TestButtonUnderTheAlert:
     async def test_other_alerts_do_not(self):
         reactions = await self._reactions(False)
         assert REACTIE_UITLUISTEREN not in reactions
-        assert reactions == ["x", "eyes"]
+        assert reactions == ["x"]
 
     async def _post_alert(self, **extra) -> list[str]:
         """Run `post_alert` itself: the wiring, not only the building block."""
@@ -1479,11 +1479,12 @@ class TestButtonUnderTheAlert:
             activiteit_datum="2099-10-06",
             activiteit_status="Gepland",
         )
-        assert reactions == ["x", "eyes", REACTIE_UITLUISTEREN]
+        # The megaphone is the other button, see `test_debat_aankondiging`.
+        assert reactions == ["x", REACTIE_UITLUISTEREN, "mega"]
 
     async def test_post_alert_puts_no_button_under_a_brief(self):
         reactions = await self._post_alert(categorie="brief", soort="Brief regering")
-        assert reactions == ["x", "eyes"]
+        assert reactions == ["x"]
 
 
 @pytest.mark.asyncio

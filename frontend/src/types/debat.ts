@@ -94,3 +94,23 @@ export interface GevolgdeDebatten {
   limit: number;
   offset: number;
 }
+
+/** Where an announced debate stands. */
+export type AankondigingStand = 'aangekondigd' | 'herinnerd' | 'afgelast' | 'voorbij';
+
+/** A debate that was announced in the channels of an initiatief. */
+export interface DebatAankondiging {
+  id: string;
+  activiteit_id: string;
+  nummer: string | null;
+  soort: string | null;
+  onderwerp: string;
+  commissie: string | null;
+  aanvang: string | null;
+  einde: string | null;
+  agenda_url: string | null;
+  stand: AankondigingStand;
+  created_at: string;
+  /** Only on the answer to announcing: in how many channels it was posted. */
+  gepost_in: number | null;
+}

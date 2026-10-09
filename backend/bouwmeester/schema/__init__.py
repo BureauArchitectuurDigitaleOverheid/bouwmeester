@@ -51,6 +51,8 @@ from bouwmeester.schema.database_backup import (
 from bouwmeester.schema.debat import (
     AankomendDebat,
     AankomendeDebattenResponse,
+    DebatAankondigingCreate,
+    DebatAankondigingResponse,
     DebatKanaal,
     DebatStartRequest,
     DebatStartResponse,
@@ -595,6 +597,8 @@ __all__ = [
     "MattermostChannelOverview",
     "AankomendDebat",
     "AankomendeDebattenResponse",
+    "DebatAankondigingCreate",
+    "DebatAankondigingResponse",
     "DebatKanaal",
     "DebatStartRequest",
     "DebatStartResponse",

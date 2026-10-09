@@ -489,6 +489,39 @@ class _Existing(NamedTuple):
 _MAY_FOLLOW_A_MOVE = (TIJDLIJN_AFGELAST, TIJDLIJN_AFGELOPEN)
 
 
+async def find_successor(
+    moved: Activiteit, client: httpx.AsyncClient
+) -> Activiteit | None:
+    """The meeting a moved one became, if the API is certain about it.
+
+    Only when the old activiteit names exactly one successor (66 of 72
+    moved ones; the other 6 were merged into another debate, turned
+    into a written round, or have no new date yet) and that successor
+    is a meeting of the same kind (124 of 133 links; the rest mostly
+    became an "Inbreng schriftelijk overleg", which nobody can listen
+    to). In every other case the caller keeps the moved activiteit and
+    answers as before.
+
+    One step is enough: the successor named is always the meeting as
+    it stands now (66 of 66), also after several moves. Whether that
+    meeting can be started is for the caller: a new date that was
+    cancelled is answered with "geannuleerd", as it would be under its
+    own convocatie.
+    """
+    if len(moved.vervangen_door) != 1:
+        return None
+    successor = await fetch_activiteit(moved.vervangen_door[0], client)
+    if successor is None or successor.soort != moved.soort:
+        return None
+    if successor.aanvang is None:
+        # "Nieuwe datum volgt": the successor is there, the date is
+        # not (11 of 50 moved meetings since 1 September 2026).
+        # Following it would tie the channel to a meeting the timeline
+        # can never find, and say it was rescheduled when it was not.
+        return None
+    return successor
+
+
 class DebatKanaalService:
     def __init__(
         self, session: AsyncSession, mattermost: MattermostService | None = None
@@ -868,34 +901,7 @@ class DebatKanaalService:
     async def _successor(
         self, moved: Activiteit, client: httpx.AsyncClient
     ) -> Activiteit | None:
-        """The meeting a moved one became, if the API is certain about it.
-
-        Only when the old activiteit names exactly one successor (66 of 72
-        moved ones; the other 6 were merged into another debate, turned
-        into a written round, or have no new date yet) and that successor
-        is a meeting of the same kind (124 of 133 links; the rest mostly
-        became an "Inbreng schriftelijk overleg", which nobody can listen
-        to). In every other case the caller keeps the moved activiteit and
-        answers as before.
-
-        One step is enough: the successor named is always the meeting as
-        it stands now (66 of 66), also after several moves. Whether that
-        meeting can be started is for the caller: a new date that was
-        cancelled is answered with "geannuleerd", as it would be under its
-        own convocatie.
-        """
-        if len(moved.vervangen_door) != 1:
-            return None
-        successor = await fetch_activiteit(moved.vervangen_door[0], client)
-        if successor is None or successor.soort != moved.soort:
-            return None
-        if successor.aanvang is None:
-            # "Nieuwe datum volgt": the successor is there, the date is
-            # not (11 of 50 moved meetings since 1 September 2026).
-            # Following it would tie the channel to a meeting the timeline
-            # can never find, and say it was rescheduled when it was not.
-            return None
-        return successor
+        return await find_successor(moved, client)
 
     async def _follow_change(self, existing: _Existing, activiteit: Activiteit) -> None:
         """Bring the channel up to date when the meeting itself changed.

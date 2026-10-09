@@ -1,7 +1,7 @@
 """Waar een kamerstuk-alert is gepost, zodat een reactie terug te leiden is.
 
 Zonder deze tabel kan wegklikken niet werken, en dat was ook de stand van
-zaken: de constanten `REACTIE_NIET_RELEVANT` en `REACTIE_OPVOLGEN` stonden
+zaken: de constanten voor de reacties stonden
 er, `markeer_niet_relevant` bestond en werkte, maar er was geen enkele
 aanroeper. De reden zit een laag dieper: `send_channel_message` gaf een
 bool terug en gooide het post-id weg, en `_dispatch_reaction_added` zoekt

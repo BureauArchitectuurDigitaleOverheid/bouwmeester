@@ -88,6 +88,36 @@ the same code as the reaction, so the same refusals and the same guard against
 a second channel apply. Whoever starts it there is added to the channel if
 their Mattermost account is linked.
 
+### Announcing a debate in the channels of an initiatief
+
+Not every debate needs a channel of its own. On the **Signalen** tab of an
+initiatief, the card **Debatten** searches the same agenda and announces a
+meeting in every channel that is linked to that initiatief: one message with
+the subject, the time and the committee. On the morning of the debate (from
+07:00) the meeting is read again and the same channels get a reminder, or the
+news that it was cancelled or moved. A debate that was moved to a new date is
+followed there, and reminded of on the new day.
+
+This goes to all linked channels, whatever their switches say: the switches
+are for what the bot sends by itself, and this is something a person asked
+for. Taking a debate off the list stops the reminder; what was posted stays.
+
+Announcing and taking off need contributor on the initiatief; a viewer sees
+the list and nothing to press.
+
+An alert about a meeting that is still to come (a convocatie, or the agenda
+of a procedurevergadering) is posted with a megaphone reaction. Pressing it
+puts that meeting on the list of the initiatief the channel hangs on. Nothing
+new goes into the channel, since the alert already is the announcement: the
+bot answers in the thread, and the reminder follows on the morning of the
+meeting, in that channel only. Pressed in a second channel of the same
+initiatief, or announced on the tab afterwards, the meeting goes to all its
+channels. Anyone in the channel may press, like the headphones.
+
+Every alert ends with one line that says what the reactions under it do, and
+names only the ones that are there: the cross for "not relevant", the
+headphones and the megaphone where they apply.
+
 ### Channel creation rights
 
 Mattermost checks one permission for creating the channel,
