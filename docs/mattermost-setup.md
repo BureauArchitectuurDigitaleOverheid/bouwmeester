@@ -112,6 +112,10 @@ new goes into the channel, since the alert already is the announcement: the
 bot answers in the thread, and the reminder follows on the morning of the
 meeting. Anyone in the channel may press, like the headphones.
 
+Every alert ends with one line that says what the reactions under it do, and
+names only the ones that are there: the cross for "not relevant", the
+headphones and the megaphone where they apply.
+
 ### Channel creation rights
 
 Mattermost checks one permission for creating the channel,

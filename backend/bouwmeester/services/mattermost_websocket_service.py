@@ -406,9 +406,8 @@ class MattermostWebsocketService:
         Geeft terug of de reactie hier is afgehandeld, zodat de aanroeper
         weet dat hij niet ook nog het suggested-lead-pad moet proberen.
 
-        Alleen "x" telt. `REACTIE_OPVOLGEN` ("eyes") plaatst de bot wel als
-        affordance, maar er hangt nog geen actie aan; die zou een taak of
-        een toewijzing moeten aanmaken en dat is een aparte keuze.
+        Alleen "x" telt. De koptelefoon en de megafoon zijn hiervoor al
+        afgehandeld; elke andere emoji is gewoon een reactie.
         """
         from bouwmeester.services.parlementair_alert_service import (
             REACTIE_NIET_RELEVANT,

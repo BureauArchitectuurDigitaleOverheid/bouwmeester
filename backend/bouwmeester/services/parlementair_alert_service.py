@@ -68,8 +68,11 @@ _NL_MAANDEN = (
 
 # De reactions die de bot zelf plaatst als affordance. De websocket-laag
 # leest ze terug; eigen reactions triggeren daar geen actie.
+#
+# Alleen wat ook iets doet. Hier stond ook "eyes" als knop voor opvolgen,
+# maar daar hing nooit een actie aan: een knop die niets doet leert mensen
+# dat de knoppen niets doen.
 REACTIE_NIET_RELEVANT = "x"
-REACTIE_OPVOLGEN = "eyes"
 
 
 # Teksten die een mislukte LLM-aanroep ooit als samenvatting heeft
@@ -86,6 +89,25 @@ _FOUTMELDINGEN = frozenset(
         "extractie mislukt",
     }
 )
+
+
+def reactie_uitleg(*, start_button: bool = False, announce_button: bool = False) -> str:
+    """De regel die zegt wat de reacties onder een alert doen.
+
+    Alleen de reacties die er ook staan, in dezelfde volgorde. Zonder deze
+    regel stonden er tot vier emoji onder een bericht en moest je drukken
+    om te ontdekken wat er gebeurt; bij de koptelefoon is dat een kanaal
+    dat er daarna is.
+
+    De emoji staan hier als teken en niet als naam: dit is uitleg bij wat
+    je ziet, en de namen horen bij `add_reaction`.
+    """
+    delen = ["\u274c niet relevant"]
+    if start_button:
+        delen.append("\U0001f3a7 eigen kanaal voor dit debat")
+    if announce_button:
+        delen.append("\U0001f4e3 herinner dit kanaal op de dag zelf")
+    return f"**Reageer:** {' · '.join(delen)}"
 
 
 def _kort(tekst: str, grens: int) -> str:
@@ -284,7 +306,7 @@ class ParlementairAlertService:
         # gekoppeld. Eén keer beknopt beslissen voor alle kanalen gaf daar
         # een bericht zonder kop, zonder termen en zonder voettekst, met
         # niets erboven dat die context droeg.
-        vormen: dict[bool, tuple[str, dict]] = {}
+        vormen: dict[tuple[bool, bool], tuple[str, dict]] = {}
 
         # Imported here: the debate service builds on helpers of this
         # module, so a module-level import would be circular.
@@ -305,9 +327,19 @@ class ParlementairAlertService:
         for channel_id in kanalen:
             root_id = draden.get(channel_id)
             beknopt = root_id is not None
-            if beknopt not in vormen:
-                vormen[beknopt] = self.format_alert(item, termen, beknopt=beknopt)
-            text, props = vormen[beknopt]
+            announce_here = announce_button and channel_id in van_een_initiatief
+            # Also per button: the line that explains the reactions names
+            # only the ones that are under this message.
+            vorm = (beknopt, announce_here)
+            if vorm not in vormen:
+                vormen[vorm] = self.format_alert(
+                    item,
+                    termen,
+                    beknopt=beknopt,
+                    start_button=start_button,
+                    announce_button=announce_here,
+                )
+            text, props = vormen[vorm]
             post_id = await self.mattermost.send_channel_message(
                 channel_id, text, props, root_id=root_id
             )
@@ -319,7 +351,7 @@ class ParlementairAlertService:
                 channel_id,
                 post_id,
                 start_button=start_button,
-                announce_button=(announce_button and channel_id in van_een_initiatief),
+                announce_button=announce_here,
             )
         return gepost
 
@@ -407,7 +439,7 @@ class ParlementairAlertService:
         # De reacties die de bot zelf plaatst zijn de affordance: zonder
         # zichtbare "x" weet niemand dat wegklikken kan. De websocket
         # negeert reacties van de bot zelf, dus ze triggeren niets.
-        reacties = [REACTIE_NIET_RELEVANT, REACTIE_OPVOLGEN]
+        reacties = [REACTIE_NIET_RELEVANT]
         if start_button:
             from bouwmeester.services.debat_kanaal_service import REACTIE_UITLUISTEREN
 
@@ -423,7 +455,13 @@ class ParlementairAlertService:
                 logger.info("Reactie %s niet geplaatst op post %s", emoji, post_id)
 
     def format_alert(
-        self, item: ParlementairItem, termen: list[str], beknopt: bool = False
+        self,
+        item: ParlementairItem,
+        termen: list[str],
+        beknopt: bool = False,
+        *,
+        start_button: bool = False,
+        announce_button: bool = False,
     ) -> tuple[str, dict]:
         """Bouw het bericht: strak, met bron, soort en herkomst.
 
@@ -438,6 +476,9 @@ class ParlementairAlertService:
         dezelfde datum, dezelfde bron, en een titel die de brief bijna
         letterlijk herhaalt. Wat overblijft is wat de bijlage zelf
         toevoegt: waar hij over gaat en waar hij te vinden is.
+
+        `start_button` en `announce_button` zeggen welke reacties er onder
+        dit bericht komen, zodat de uitlegregel alleen die noemt.
         """
         extra = item.extra_data or {}
         score = _relevantie(extra)
@@ -481,7 +522,17 @@ class ParlementairAlertService:
                 "short": False,
                 "title": "Gevonden op",
                 "value": ", ".join(_escape_proza(t) for t in termen),
-            }
+            },
+            # Zonder titel: het is geen gegeven over het stuk maar een
+            # aanwijzing, en als laatste veld staat hij vlak boven de
+            # reacties waar hij over gaat.
+            {
+                "short": False,
+                "title": "",
+                "value": reactie_uitleg(
+                    start_button=start_button, announce_button=announce_button
+                ),
+            },
         ]
 
         # Het `title`-veld is platte tekst zolang er een `title_link`

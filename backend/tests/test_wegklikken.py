@@ -20,7 +20,6 @@ from uuid import uuid4
 from bouwmeester.models.parlementair_abonnement import ParlementairAbonnement
 from bouwmeester.services.parlementair_alert_service import (
     REACTIE_NIET_RELEVANT,
-    REACTIE_OPVOLGEN,
     ParlementairAlertService,
 )
 
@@ -148,8 +147,8 @@ class TestPostOnthouden:
         await svc._onthoud_post(uuid4(), "kanaal1", "post123")
 
         emoji = [e for _, e in mm.reacties]
-        assert REACTIE_NIET_RELEVANT in emoji
-        assert REACTIE_OPVOLGEN in emoji
+        # Alleen wat iets doet: de oogjes stonden hier ook, zonder actie.
+        assert emoji == [REACTIE_NIET_RELEVANT]
 
     async def test_mislukte_administratie_gooit_niet(self):
         """Het bericht staat er al; dat is niet terug te draaien."""
@@ -482,7 +481,7 @@ class TestWebsocketTeltDeWegklik:
         assert afgehandeld is True
 
     async def test_andere_emoji_telt_niet(self, monkeypatch):
-        """Alleen "x" is wegklikken; "eyes" heeft nog geen actie.
+        """Alleen "x" is wegklikken; elke andere emoji is gewoon een reactie.
 
         Via de helper, met een sessie die een rij zou vinden. De eerste
         versie riep de methode kaal aan en kwam daardoor groen uit om de

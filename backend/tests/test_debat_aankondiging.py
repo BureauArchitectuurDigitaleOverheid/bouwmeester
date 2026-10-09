@@ -1098,19 +1098,15 @@ class TestMegaphoneUnderTheAlert:
     }
 
     async def test_an_agenda_of_an_upcoming_meeting_gets_it(self):
-        assert await self._post_alert(**self.VERGADERING) == [
-            "x",
-            "eyes",
-            REACTIE_AANKONDIGEN,
-        ]
+        assert await self._post_alert(**self.VERGADERING) == ["x", REACTIE_AANKONDIGEN]
 
     async def test_a_brief_does_not(self):
         reactions = await self._post_alert(categorie="brief", soort="Brief regering")
-        assert reactions == ["x", "eyes"]
+        assert reactions == ["x"]
 
     async def test_a_channel_of_a_lead_does_not(self):
         reactions = await self._post_alert(scope_type="lead", **self.VERGADERING)
-        assert reactions == ["x", "eyes"]
+        assert reactions == ["x"]
 
 
 @pytest.mark.asyncio
@@ -1227,3 +1223,113 @@ class TestReactionReachesTheService:
         )
 
         assert calls == []
+
+
+class TestReactionLegend:
+    """One line under the alert that says what the reactions do, naming
+    only the ones that are there."""
+
+    def _legend(self, **buttons) -> str:
+        from tests.test_wegklikken import _item as alert_item
+        from tests.test_wegklikken import _svc
+
+        _, props = _svc().format_alert(
+            alert_item(relevantie_score=85, categorie="vergadering_vooruit"),
+            ["Digitale Dienst"],
+            **buttons,
+        )
+        return props["attachments"][0]["fields"][-1]["value"]
+
+    def test_every_alert_says_what_the_cross_does(self):
+        assert self._legend() == "**Reageer:** ❌ niet relevant"
+
+    def test_the_megaphone_is_explained_where_it_is(self):
+        assert self._legend(announce_button=True) == (
+            "**Reageer:** ❌ niet relevant · "
+            "\U0001f4e3 herinner dit kanaal op de dag zelf"
+        )
+
+    def test_both_buttons_in_the_order_they_stand(self):
+        assert self._legend(start_button=True, announce_button=True) == (
+            "**Reageer:** ❌ niet relevant · "
+            "\U0001f3a7 eigen kanaal voor dit debat · "
+            "\U0001f4e3 herinner dit kanaal op de dag zelf"
+        )
+
+    def test_the_search_terms_stay_the_first_field(self):
+        from tests.test_wegklikken import _item as alert_item
+        from tests.test_wegklikken import _svc
+
+        _, props = _svc().format_alert(alert_item(relevantie_score=85), ["Fundament"])
+
+        fields = props["attachments"][0]["fields"]
+        assert [f["title"] for f in fields] == ["Gevonden op", ""]
+
+    def test_a_reply_in_a_thread_stays_short(self):
+        from tests.test_wegklikken import _item as alert_item
+        from tests.test_wegklikken import _svc
+
+        _, props = _svc().format_alert(
+            alert_item(relevantie_score=85), ["Fundament"], beknopt=True
+        )
+
+        assert "fields" not in props["attachments"][0]
+
+
+@pytest.mark.asyncio
+class TestLegendMatchesTheButtons:
+    async def _posted(self, scope_type="initiatief", **extra) -> tuple[str, list[str]]:
+        """The legend of the message that was sent, and the reactions under it."""
+        from tests.test_wegklikken import (
+            TestPostAlertLegtVast,
+            _abonnement,
+            _Mattermost,
+            _Sessie,
+        )
+        from tests.test_wegklikken import _item as alert_item
+
+        mm = _Mattermost(post_id="post-abc")
+        sent: list[dict] = []
+        original = mm.send_channel_message
+
+        async def recording(channel_id, text, props=None, root_id=None):
+            sent.append(props)
+            return await original(channel_id, text, props, root_id=root_id)
+
+        mm.send_channel_message = recording
+        abonnement = _abonnement()
+        abonnement.scope_type = scope_type
+        svc = TestPostAlertLegtVast()._svc_met_kanaal(mm, _Sessie(), abonnement)
+        assert await svc.post_alert(alert_item(relevantie_score=85, **extra)) == 1
+        legend = sent[0]["attachments"][0]["fields"][-1]["value"]
+        return legend, [emoji for _, emoji in mm.reacties]
+
+    CONVOCATIE = {
+        "categorie": "vergadering_vooruit",
+        "soort": "Convocatie commissieactiviteit",
+        "activiteit_id": str(uuid.uuid4()),
+        "activiteit_datum": "2099-10-14",
+        "activiteit_status": "Gepland",
+    }
+
+    async def test_a_convocatie_explains_all_three(self):
+        legend, reactions = await self._posted(**self.CONVOCATIE)
+
+        assert reactions == ["x", "headphones", "mega"]
+        assert "\U0001f3a7" in legend
+        assert "\U0001f4e3" in legend
+
+    async def test_in_a_channel_of_a_lead_the_megaphone_is_not_promised(self):
+        legend, reactions = await self._posted(scope_type="lead", **self.CONVOCATIE)
+
+        assert reactions == ["x", "headphones"]
+        assert "\U0001f3a7" in legend
+        assert "\U0001f4e3" not in legend
+
+    async def test_a_brief_only_explains_the_cross(self):
+        legend, reactions = await self._posted(
+            categorie="brief", soort="Brief regering"
+        )
+
+        assert reactions == ["x"]
+        assert legend == "**Reageer:** ❌ niet relevant"
