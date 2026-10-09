@@ -1,14 +1,17 @@
 """Announce a debate in the channels of an initiatief, and remind on the day.
 
-Two moments. When someone announces a debate, one message goes into every
-channel that is linked to the initiatief. On the morning of the debate the
+Two moments. When someone announces a debate, one message goes into the
+channels of the initiatief that follow the Kamer. On the morning of the debate the
 meeting is read again and the same channels get either a reminder or the
 news that it is off: a convocatie comes a median 20.5 days ahead (measured
 over 80), and of 250 measured activiteiten 25 were cancelled or moved in
 between.
 
-All linked channels, whatever their switches say. The switches are for
-what the bot sends by itself; this is something a person asked for.
+Only channels where "Kamerstuk-alerts" is on. The first version posted in
+every linked channel, on the reasoning that the switches are for what the
+bot sends by itself and this is something a person asked for. That put two
+debates in a channel that was linked for news from the press: the switch
+says what a channel is for, not only what the bot may start by itself.
 """
 
 from __future__ import annotations
@@ -636,11 +639,12 @@ class DebatAankondigingService:
     async def _channels(
         self, initiatief_id: uuid.UUID, only: str | None = None
     ) -> list[MattermostChannelLink]:
-        """The channels of the initiatief the bot can still write in."""
+        """The channels of the initiatief that are about the Kamer."""
         stmt = select(MattermostChannelLink).where(
             MattermostChannelLink.scope_type == SCOPE_INITIATIEF,
             MattermostChannelLink.scope_id == initiatief_id,
             MattermostChannelLink.disabled_at.is_(None),
+            MattermostChannelLink.parlementaire_alerts_enabled.is_(True),
         )
         if only is not None:
             stmt = stmt.where(MattermostChannelLink.channel_id == only)
